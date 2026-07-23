@@ -1,39 +1,16 @@
 <!doctype html>
 <html lang="ru">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#09090b" />
-  <meta name="description" content="Open-source SQL Academy: теория, практика, экзамены и реалистичные кейсы IT-поддержки." />
-  <meta name="privacy" content="No personal data is included in this project." />
-  <title>SQL Academy — для 2nd Support Engineer</title>
-  <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-  <div id="root">
-    <div class="app-shell">
-      <aside class="sidebar" id="sidebar">
-        <div class="brand">
-          <div class="brand-mark">SQL</div>
-          <div><strong>SQL Academy</strong><span>Open-source Edition</span></div>
-        </div>
-        <nav class="nav" id="moduleNav" aria-label="Модули курса"></nav>
-        <div class="sidebar-footer"><button class="ghost-btn" id="resetProgressBtn">Сбросить прогресс</button></div>
-      </aside>
-      <main class="main">
-        <header class="topbar">
-          <button class="icon-btn mobile-only" id="menuBtn" aria-label="Открыть меню">☰</button>
-          <div><h1 id="screenTitle">Панель обучения</h1><p id="screenSubtitle">Fast-track SQL для 2nd Support Engineer</p></div>
-          <div class="top-actions"><div class="xp-pill"><span id="xpValue">0</span> XP</div><button class="primary-btn" id="continueBtn">Продолжить</button></div>
-        </header>
-        <section id="dashboardView" class="view active"></section><section id="lessonView" class="view"></section><section id="practiceView" class="view"></section><section id="reviewView" class="view"></section><section id="examView" class="view"></section><section id="projectView" class="view"></section><section id="sandboxView" class="view"></section>
-      </main>
-    </div>
-  </div>
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
-  <script src="lessons.js"></script>
-  <script src="app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#09090b" />
+    <meta name="description" content="Open-source SQL Academy для 2nd Support Engineer: 100+ задач, практика, интервью, проекты и AI Mentor." />
+    <meta name="privacy" content="This project contains no personal data." />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⌘</text></svg>" />
+    <title>SQL Academy</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
