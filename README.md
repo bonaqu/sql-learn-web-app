@@ -1,4 +1,4 @@
-# SQL Academy — Евгений Edition
+# SQL Academy
 
 Персональный интерактивный fast-track курс SQL для 2nd Support Engineer. Приложение работает прямо в браузере на SQLite WASM и не требует backend.
 
