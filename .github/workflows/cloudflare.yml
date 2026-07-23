@@ -106,4 +106,46 @@ jobs:
         run: npx wrangler d1 migrations apply sql-academy --remote --config wrangler.deploy.jsonc
 
       - name: Deploy Worker and static assets
-        run: npx wrangler deploy --config wrangler.deploy.jsonc
+        id: deploy
+        shell: bash
+        run: |
+          set -o pipefail
+          npx wrangler deploy --config wrangler.deploy.jsonc 2>&1 | tee cloudflare-deploy.log
+          DEPLOY_URL=$(grep -Eo 'https://[A-Za-z0-9.-]+\.workers\.dev' cloudflare-deploy.log | tail -n 1)
+          test -n "$DEPLOY_URL"
+          echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke-test Cloudflare frontend and API
+        shell: bash
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          test -n "$DEPLOY_URL"
+          curl --fail --silent --show-error --location \
+            --retry 6 --retry-delay 5 --retry-all-errors \
+            "$DEPLOY_URL/" > cloudflare-index.html
+          grep -q '<div id="root"></div>' cloudflare-index.html
+
+          curl --fail --silent --show-error --location \
+            --retry 6 --retry-delay 5 --retry-all-errors \
+            "$DEPLOY_URL/api/health" > cloudflare-health.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const health = JSON.parse(fs.readFileSync('cloudflare-health.json', 'utf8'));
+          if (!health.ok || !health.d1 || !health.kv || !health.ai) {
+            console.error('Unhealthy Cloudflare deployment:', health);
+            process.exit(1);
+          }
+          NODE
+
+      - name: Upload deployment diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-deployment-diagnostics
+          path: |
+            cloudflare-deploy.log
+            cloudflare-index.html
+            cloudflare-health.json
+          if-no-files-found: ignore
+          retention-days: 7
