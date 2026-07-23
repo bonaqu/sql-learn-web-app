@@ -2,6 +2,10 @@
 
 Персональный интерактивный fast-track курс SQL для 2nd Support Engineer. Приложение работает прямо в браузере на SQLite WASM и не требует backend.
 
+## Онлайн-версия
+
+GitHub Pages: https://bonaqu.github.io/sql-learn-web-app/
+
 ## Что внутри
 
 - 12 практических уроков: SELECT, WHERE, NULL, GROUP BY, HAVING, CASE, JOIN, LEFT JOIN, подзапросы, CTE, оконные функции, индексы и EXPLAIN.
@@ -23,7 +27,7 @@ python -m http.server 8765
 
 ## GitHub Pages
 
-Workflow `.github/workflows/pages.yml` публикует содержимое ветки `bonaqu_projects`. В настройках репозитория выбери **Settings → Pages → Source: GitHub Actions**.
+Workflow `.github/workflows/pages.yml` публикует содержимое ветки `bonaqu_projects` через GitHub Actions.
 
 ## Cloudflare
 
