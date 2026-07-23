@@ -5,6 +5,14 @@ const expectNoHorizontalOverflow = async (page: import('@playwright/test').Page)
   expect(overflow).toBe(false);
 };
 
+const replaceEditorSql = async (page: import('@playwright/test').Page, sql: string) => {
+  const editor = page.locator('.monaco-editor');
+  await expect(editor).toBeVisible();
+  await editor.click();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.insertText(sql);
+};
+
 test('desktop academy workflow is usable and stable', async ({ page }, testInfo) => {
   const pageErrors: string[] = [];
   page.on('pageerror', error => pageErrors.push(error.message));
@@ -19,10 +27,16 @@ test('desktop academy workflow is usable and stable', async ({ page }, testInfo)
   await page.locator('.task-row').first().click();
 
   await expect(page.locator('.editor-panel')).toBeVisible();
-  await expect(page.locator('.editor-wrap')).toBeVisible();
   await expect(page.locator('.mentor-panel')).toBeVisible();
+  const runButton = page.getByRole('button', { name: /Проверить SQL/ });
+  await expect(runButton).toBeEnabled();
 
-  await page.locator('.mentor-panel').getByRole('button', { name: 'Следующий шаг' }).click();
+  await replaceEditorSql(page, "SELECT ticket_id, service, status FROM tickets WHERE service = 'VPN' ORDER BY ticket_id;");
+  await runButton.click();
+  await expect(page.locator('.feedback.success')).toContainText('Верно');
+  await expect(page.locator('.result-table-wrap')).toBeVisible();
+
+  await page.locator('.mentor-panel').getByRole('button', { name: 'Объяснить тему' }).click();
   await expect(page.locator('.mentor-panel .mentor-answer')).not.toContainText('Анализирую текущий SQL');
   await expect(page.locator('.mentor-panel .mentor-answer')).not.toBeEmpty();
   await expectNoHorizontalOverflow(page);
@@ -45,6 +59,8 @@ test('mobile task flow uses list-to-editor navigation', async ({ page }, testInf
 
   await expect(page.locator('.catalog-panel')).toBeHidden();
   await expect(page.locator('.editor-panel')).toBeVisible();
+  await expect(page.locator('.monaco-editor')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Проверить SQL/ })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'К списку' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Развернуть редактор' }).click();
