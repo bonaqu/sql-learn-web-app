@@ -1,0 +1,52 @@
+name: Pull Request Quality
+
+on:
+  pull_request:
+    branches: [bonaqu_projects]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: TypeScript, build and Worker dry run
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: TypeScript check
+        run: npm run check
+
+      - name: Production build
+        run: npm run build
+
+      - name: Verify expected build output
+        shell: bash
+        run: |
+          test -f dist/index.html
+          test -n "$(find dist/assets -type f -name '*.js' -print -quit)"
+          test -n "$(find dist/assets -type f -name '*.css' -print -quit)"
+
+      - name: Cloudflare Worker dry run
+        run: npx wrangler deploy --dry-run --config wrangler.jsonc
+
+      - name: Verify PWA metadata
+        shell: bash
+        run: |
+          grep -R 'SQL Academy' dist/index.html dist/manifest.webmanifest* 2>/dev/null || true
+          test -n "$(find dist -type f \( -name 'manifest.webmanifest' -o -name 'manifest-*.webmanifest' \) -print -quit)"
