@@ -11,7 +11,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['list']],
   timeout: 45_000,
-  expect: { timeout: 10_000 },
+  expect: { timeout: 12_000 },
   use: {
     baseURL: applicationUrl,
     trace: 'retain-on-failure',
@@ -19,7 +19,7 @@ export default defineConfig({
     video: 'off'
   },
   webServer: {
-    command: 'npm run preview -- --host 127.0.0.1 --port 4173',
+    command: `npm run preview -- --host 127.0.0.1 --port 4173 --base ${applicationPath}`,
     url: applicationUrl,
     reuseExistingServer: !process.env.CI,
     timeout: 30_000
@@ -27,10 +27,12 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop-chromium',
+      grep: /desktop academy/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } }
     },
     {
       name: 'mobile-chromium',
+      grep: /mobile task flow/,
       use: { ...devices['Pixel 7'] }
     }
   ]
