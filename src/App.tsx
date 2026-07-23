@@ -47,7 +47,7 @@ import {
   recordHint,
   reviewQueue,
   saveProgress,
-  weakTopics
+  weakTopics as calculateWeakTopics
 } from './lib/progress';
 
 const Editor = lazy(() => import('@monaco-editor/react'));
@@ -55,6 +55,7 @@ type SqlEngine = Awaited<ReturnType<typeof initSqlJs>>;
 type View = 'home' | 'catalog' | 'practice' | 'review' | 'interview' | 'puzzle' | 'achievements' | 'mentor';
 type SqlTable = { columns: string[]; values: unknown[][] };
 type RunStatus = 'idle' | 'success' | 'error';
+type WeakTopic = ReturnType<typeof calculateWeakTopics>[number];
 
 const PROFILE_KEY = 'sql-academy-profile-id';
 
@@ -156,12 +157,13 @@ const mentorQuestions: Record<MentorMode, string> = {
 };
 
 function App() {
-  const [progress, setProgress] = useState<Progress>(loadProgress);
+  const initialProgress = useMemo(() => loadProgress(), []);
+  const [progress, setProgress] = useState<Progress>(initialProgress);
   const [view, setView] = useState<View>('home');
   const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem('sql-theme') as 'dark' | 'light') || 'dark');
   const [query, setQuery] = useState('');
   const [moduleFilter, setModuleFilter] = useState('all');
-  const [selected, setSelected] = useState<SqlTask>(() => tasks.find(task => task.id === loadProgress().lastTask) || tasks[0]);
+  const [selected, setSelected] = useState<SqlTask>(() => tasks.find(task => task.id === initialProgress.lastTask) || tasks[0]);
   const [sql, setSql] = useState(selected.starter);
   const [result, setResult] = useState<SqlTable[]>([]);
   const [message, setMessage] = useState('SQLite загружается…');
@@ -200,7 +202,7 @@ function App() {
   }, [editorFullscreen]);
 
   const queue = useMemo(() => reviewQueue(progress), [progress]);
-  const focusTopics = useMemo(() => weakTopics(progress), [progress]);
+  const focusTopics = useMemo(() => calculateWeakTopics(progress), [progress]);
   const completed = useMemo(() => new Set(progress.completed), [progress.completed]);
   const completion = Math.round(progress.completed.length / tasks.length * 100);
   const currentStats = progress.taskStats[selected.id] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
@@ -327,7 +329,7 @@ function App() {
     try {
       const response = await fetch('/api/mentor', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'x-profile-id': profileId() },
         body: JSON.stringify({
           mode,
           question: mentorQuestions[mode],
@@ -452,7 +454,7 @@ function App() {
       {view === 'home' && <HomeView
         progress={progress}
         completion={completion}
-        weakTopics={focusTopics}
+        focusTopics={focusTopics}
         reviewCount={queue.length}
         onStart={() => navigate('practice')}
         onReview={() => navigate('review')}
@@ -588,7 +590,7 @@ function App() {
 
       {view === 'mentor' && <MentorDashboard
         progress={progress}
-        weakTopics={focusTopics}
+        focusTopics={focusTopics}
         queue={queue}
         selected={selected}
         answer={mentorAnswer}
@@ -643,9 +645,9 @@ function MentorPanel({ answer, loading, activeMode, onAsk }: { answer: string; l
   </aside>;
 }
 
-function MentorDashboard({ progress, weakTopics, queue, selected, answer, loading, onAsk, onOpenTask }: {
+function MentorDashboard({ progress, focusTopics, queue, selected, answer, loading, onAsk, onOpenTask }: {
   progress: Progress;
-  weakTopics: ReturnType<typeof weakTopics>;
+  focusTopics: WeakTopic[];
   queue: SqlTask[];
   selected: SqlTask;
   answer: string;
@@ -656,17 +658,17 @@ function MentorDashboard({ progress, weakTopics, queue, selected, answer, loadin
   return <section className="page mentor-dashboard">
     <div className="mentor-hero"><div><h1>AI SQL Mentor</h1><p className="lead">Не отдельный чат, а наставник, который знает текущую тему, попытки и слабые места.</p></div><Sparkles /></div>
     <div className="mentor-dashboard-grid">
-      <article className="mentor-profile"><h2>Учебный профиль</h2><div className="profile-stats"><span><strong>{progress.completed.length}</strong> решено</span><span><strong>{progress.streak}</strong> streak</span><span><strong>{queue.length}</strong> на повтор</span></div><h3>Фокус</h3>{weakTopics.map(topic => <div className="focus-row" key={topic.id}><span>{topic.title}</span><b>{topic.solved}/{topic.total}</b></div>)}</article>
+      <article className="mentor-profile"><h2>Учебный профиль</h2><div className="profile-stats"><span><strong>{progress.completed.length}</strong> решено</span><span><strong>{progress.streak}</strong> streak</span><span><strong>{queue.length}</strong> на повтор</span></div><h3>Фокус</h3>{focusTopics.map(topic => <div className="focus-row" key={topic.id}><span>{topic.title}</span><b>{topic.solved}/{topic.total}</b></div>)}</article>
       <article className="mentor-workbench"><h2>Текущая задача</h2><strong>{selected.title}</strong><p>{selected.description}</p><div className="mentor-big-actions"><button onClick={() => onAsk('concept')}><GraduationCap /> Объяснить концепт</button><button onClick={() => onAsk('review')}><Repeat2 /> Составить повторение</button></div><div className="mentor-answer">{loading ? 'Анализирую…' : answer}</div></article>
       <article className="review-preview"><h2>Следующие задачи</h2>{queue.slice(0, 5).map(task => <button key={task.id} onClick={() => onOpenTask(task)}><span>{task.id.replace('task-', '#')}</span><p><strong>{task.title}</strong><small>{task.topic}</small></p><ChevronRight /></button>)}</article>
     </div>
   </section>;
 }
 
-function HomeView({ progress, completion, weakTopics, reviewCount, onStart, onReview, onOpenTopic }: {
+function HomeView({ progress, completion, focusTopics, reviewCount, onStart, onReview, onOpenTopic }: {
   progress: Progress;
   completion: number;
-  weakTopics: ReturnType<typeof weakTopics>;
+  focusTopics: WeakTopic[];
   reviewCount: number;
   onStart: () => void;
   onReview: () => void;
@@ -675,7 +677,7 @@ function HomeView({ progress, completion, weakTopics, reviewCount, onStart, onRe
   return <>
     <section className="hero"><div><h1>SQL, который работает<br />в реальной поддержке.</h1><p>Практическая академия для 2nd Support Engineer: точная проверка результата, адаптивное повторение и Mentor в каждой задаче.</p><div className="hero-actions"><button className="primary" onClick={onStart}>Продолжить обучение <ChevronRight /></button>{reviewCount > 0 && <button onClick={onReview}><Repeat2 /> Повторить {reviewCount}</button>}</div><div className="hero-proof"><span><ShieldCheck /> без персональных данных</span><span><BrainCircuit /> 120 задач</span><span><Sparkles /> AI + local fallback</span></div></div><div className="terminal"><div className="terminal-bar"><i /><i /><i /><span>support_analytics.sql</span></div><pre><b>WITH</b> service_stats <b>AS</b> ({'\n'}  <b>SELECT</b> service, COUNT(*) tickets,{'\n'}         AVG(resolution_minutes) avg_time{'\n'}  <b>FROM</b> tickets <b>GROUP BY</b> service{'\n'}){'\n'}<b>SELECT</b> *, RANK() <b>OVER</b> ({'\n'}  <b>ORDER BY</b> tickets <b>DESC</b>{'\n'}) load_rank <b>FROM</b> service_stats;</pre><div className="terminal-success">✓ Query completed · 5 rows</div></div></section>
     <section className="stats"><article><small>Общий прогресс</small><strong>{completion}%</strong><div className="progress"><i style={{ width: `${completion}%` }} /></div></article><article><small>Решено задач</small><strong>{progress.completed.length}<span>/120</span></strong></article><article><small>Текущий streak</small><strong>{progress.streak}<span> дней</span></strong></article><article><small>На повторение</small><strong>{reviewCount}</strong></article></section>
-    <section className="dashboard-grid"><article className="chart-card"><div><h2>Активность</h2><p>Правильно решённые задачи за неделю</p></div><ResponsiveContainer width="100%" height={250}><AreaChart data={progress.history}><defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#8b5cf6" stopOpacity={.35} /><stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} /></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="day" /><YAxis allowDecimals={false} /><Tooltip /><Area type="monotone" dataKey="solved" stroke="#8b5cf6" fill="url(#fill)" strokeWidth={3} /></AreaChart></ResponsiveContainer></article><article className="modules-card"><h2>Фокус повторения</h2><div>{weakTopics.map((topic, index) => <button className="weak-topic" key={topic.id} onClick={() => onOpenTopic(topic.id)}><span>{String(index + 1).padStart(2, '0')}</span><p><strong>{topic.title}</strong><small>{topic.solved}/{topic.total} решено</small></p><ChevronRight /></button>)}</div></article></section>
+    <section className="dashboard-grid"><article className="chart-card"><div><h2>Активность</h2><p>Правильно решённые задачи за неделю</p></div><ResponsiveContainer width="100%" height={250}><AreaChart data={progress.history}><defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#8b5cf6" stopOpacity={.35} /><stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} /></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="day" /><YAxis allowDecimals={false} /><Tooltip /><Area type="monotone" dataKey="solved" stroke="#8b5cf6" fill="url(#fill)" strokeWidth={3} /></AreaChart></ResponsiveContainer></article><article className="modules-card"><h2>Фокус повторения</h2><div>{focusTopics.map((topic, index) => <button className="weak-topic" key={topic.id} onClick={() => onOpenTopic(topic.id)}><span>{String(index + 1).padStart(2, '0')}</span><p><strong>{topic.title}</strong><small>{topic.solved}/{topic.total} решено</small></p><ChevronRight /></button>)}</div></article></section>
   </>;
 }
 
