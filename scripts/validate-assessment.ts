@@ -6,6 +6,7 @@ import {
   AssessmentMode,
   AssessmentSession,
   buildAssessmentReport,
+  mergeAssessmentAnswer,
   selectAssessmentTasks
 } from '../src/lib/assessment';
 import { defaultProgress, Progress } from '../src/lib/progress';
@@ -79,6 +80,30 @@ assert(report.moduleScores.length >= 2, 'module report is too narrow');
 assert(report.localDebrief.length > 80, 'local debrief is missing');
 assert(report.readinessDelta >= -5 && report.readinessDelta <= 10, 'readiness delta out of range');
 
+const answered = mergeAssessmentAnswer(session.answers[quickTasks[0].id], {
+  attempts: 3,
+  incorrect: 2,
+  correct: true,
+  skipped: false,
+  elapsedSeconds: 125,
+  completedAt
+});
+const afterStaleTimer = mergeAssessmentAnswer(answered, { sql: 'SELECT 1;', elapsedSeconds: 5 });
+assert(afterStaleTimer.attempts === 3, 'timer patch regressed attempts');
+assert(afterStaleTimer.incorrect === 2, 'timer patch regressed incorrect count');
+assert(afterStaleTimer.correct, 'timer patch regressed correct state');
+assert(afterStaleTimer.elapsedSeconds === 130, 'timer patch must advance latest elapsed time by one tick');
+const afterStaleRun = mergeAssessmentAnswer(afterStaleTimer, {
+  attempts: 1,
+  incorrect: 0,
+  correct: false,
+  elapsedSeconds: 40
+});
+assert(afterStaleRun.attempts === 3, 'stale run regressed attempts');
+assert(afterStaleRun.incorrect === 2, 'stale run regressed incorrect count');
+assert(afterStaleRun.correct, 'stale run regressed correct state');
+assert(afterStaleRun.elapsedSeconds === 130, 'stale run regressed elapsed time');
+
 const lockedExam = assessmentEligibility('exam', defaultProgress);
 assert(!lockedExam.eligible && lockedExam.missingCompleted === assessmentModes.exam.minimumCompleted, 'exam prerequisites must be enforced');
 
@@ -86,4 +111,4 @@ const migration = readFileSync(new URL('../migrations/0004_assessment_center.sql
 assert(/REFERENCES\s+users\s*\(\s*user_id\s*\)/i.test(migration), 'assessment report FK must reference users.user_id');
 assert(!/REFERENCES\s+users\s*\(\s*id\s*\)/i.test(migration), 'assessment report FK must not reference a nonexistent users.id');
 
-console.log(`Assessment validation passed: ${Object.keys(assessmentModes).length} modes, deterministic selection, scoring, prerequisites and D1 FK contract.`);
+console.log(`Assessment validation passed: ${Object.keys(assessmentModes).length} modes, deterministic selection, monotonic session merge, scoring, prerequisites and D1 FK contract.`);
