@@ -13,14 +13,52 @@ const replaceEditorSql = async (page: import('@playwright/test').Page, sql: stri
   await page.keyboard.insertText(sql);
 };
 
-test('desktop academy workflow is usable and stable', async ({ page }, testInfo) => {
+const mockMentorWithoutUsingQuota = async (page: import('@playwright/test').Page) => {
+  await page.route('**/api/mentor', async route => {
+    const origin = route.request().headers().origin || '*';
+    const headers = {
+      'access-control-allow-origin': origin,
+      'access-control-allow-methods': 'POST, OPTIONS',
+      'access-control-allow-headers': 'content-type, x-profile-id',
+      'content-type': 'application/json; charset=utf-8'
+    };
+    if (route.request().method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      headers,
+      body: JSON.stringify({ answer: 'Концепт\n• Сначала сформулируй ожидаемые строки.\n• Затем проверь WHERE и ORDER BY.' })
+    });
+  });
+};
+
+test('desktop academy workflow is usable and shares the Cloudflare API', async ({ page }, testInfo) => {
   const pageErrors: string[] = [];
   page.on('pageerror', error => pageErrors.push(error.message));
+  await mockMentorWithoutUsingQuota(page);
 
   await page.goto('./');
   await expect(page.getByRole('heading', { name: /SQL, который работает/i })).toBeVisible();
   await expect(page.locator('.mobile-bottom-nav')).toBeHidden();
   await expectNoHorizontalOverflow(page);
+
+  const cloudHealth = await page.evaluate(async () => {
+    const response = await fetch('/api/health');
+    return { status: response.status, body: await response.json() };
+  });
+  expect(cloudHealth.status).toBe(200);
+  expect(cloudHealth.body).toMatchObject({ ok: true, d1: true, kv: true, ai: true, progressVersion: 4 });
+
+  const cloudProgress = await page.evaluate(async () => {
+    const response = await fetch('/api/progress', {
+      headers: { 'x-profile-id': 'playwright-profile-0001' }
+    });
+    return { status: response.status, body: await response.json() };
+  });
+  expect(cloudProgress.status).toBe(200);
+  expect(cloudProgress.body).toHaveProperty('progress');
 
   await page.locator('.sidebar nav').getByRole('button', { name: 'Practice' }).click();
   await expect(page.getByRole('heading', { name: 'Practice Mode' })).toBeVisible();
@@ -37,8 +75,7 @@ test('desktop academy workflow is usable and stable', async ({ page }, testInfo)
   await expect(page.locator('.result-table-wrap')).toBeVisible();
 
   await page.locator('.mentor-panel').getByRole('button', { name: 'Объяснить тему' }).click();
-  await expect(page.locator('.mentor-panel .mentor-answer')).not.toContainText('Анализирую текущий SQL');
-  await expect(page.locator('.mentor-panel .mentor-answer')).not.toBeEmpty();
+  await expect(page.locator('.mentor-panel .mentor-answer')).toContainText('Концепт');
   await expectNoHorizontalOverflow(page);
 
   await page.screenshot({ path: testInfo.outputPath('desktop-academy.png'), fullPage: true });
