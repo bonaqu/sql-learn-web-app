@@ -143,19 +143,25 @@ async function saveReport(request: Request, env: Cloudflare.Env, userId: string)
   if (body.userId !== userId) return json({ error: 'Assessment owner mismatch' }, 403);
   const serialized = JSON.stringify(body);
   if (new TextEncoder().encode(serialized).byteLength > MAX_REPORT_BYTES) return json({ error: 'Assessment report is too large' }, 413);
-  await env.DB.prepare(`INSERT INTO assessment_reports(
-      id, user_id, mode, status, started_at, completed_at, duration_seconds, score, payload
-    ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      status = excluded.status,
-      completed_at = excluded.completed_at,
-      duration_seconds = excluded.duration_seconds,
-      score = excluded.score,
-      payload = excluded.payload,
-      updated_at = datetime('now')
-    WHERE assessment_reports.user_id = excluded.user_id`)
-    .bind(body.id, userId, body.mode, body.status, body.startedAt, body.completedAt, body.durationSeconds, body.score, serialized)
-    .run();
+
+  const existing = await env.DB.prepare('SELECT user_id FROM assessment_reports WHERE id = ?')
+    .bind(body.id)
+    .first<{ user_id: string }>();
+  if (existing && existing.user_id !== userId) return json({ error: 'Assessment owner mismatch' }, 403);
+
+  if (existing) {
+    await env.DB.prepare(`UPDATE assessment_reports SET
+        mode = ?, status = ?, started_at = ?, completed_at = ?, duration_seconds = ?, score = ?, payload = ?, updated_at = datetime('now')
+      WHERE id = ? AND user_id = ?`)
+      .bind(body.mode, body.status, body.startedAt, body.completedAt, body.durationSeconds, body.score, serialized, body.id, userId)
+      .run();
+  } else {
+    await env.DB.prepare(`INSERT INTO assessment_reports(
+        id, user_id, mode, status, started_at, completed_at, duration_seconds, score, payload
+      ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(body.id, userId, body.mode, body.status, body.startedAt, body.completedAt, body.durationSeconds, body.score, serialized)
+      .run();
+  }
   return json({ ok: true });
 }
 
