@@ -177,12 +177,21 @@ jobs:
           }));
           NODE
 
-          curl --fail --silent --show-error --location \
-            --retry 6 --retry-delay 5 --retry-all-errors \
+          REGISTER_STATUS=$(curl --silent --show-error --location \
             --request POST \
             --header 'content-type: application/json' \
             --data @cloudflare-register-payload.json \
-            "$DEPLOY_URL/api/auth/register" > cloudflare-register.json
+            --dump-header cloudflare-register-headers.txt \
+            --output cloudflare-register.json \
+            --write-out '%{http_code}' \
+            "$DEPLOY_URL/api/auth/register")
+          printf '%s\n' "$REGISTER_STATUS" > cloudflare-register-status.txt
+          if [ "$REGISTER_STATUS" != "201" ]; then
+            echo "Registration smoke failed with HTTP $REGISTER_STATUS"
+            cat cloudflare-register-headers.txt || true
+            cat cloudflare-register.json || true
+            exit 1
+          fi
 
           AUTH_TOKEN=$(node -e "const x=require('./cloudflare-register.json'); if(x.session?.token) process.stdout.write(x.session.token)")
           RECOVERY_CODE=$(node -e "const x=require('./cloudflare-register.json'); if(x.recoveryCodes?.[0]) process.stdout.write(x.recoveryCodes[0])")
@@ -237,6 +246,9 @@ jobs:
             cloudflare-index.html
             cloudflare-health.json
             cloudflare-unauthorized.json
+            cloudflare-register-payload.json
+            cloudflare-register-status.txt
+            cloudflare-register-headers.txt
             cloudflare-register.json
             cloudflare-session.json
             cloudflare-progress.json
