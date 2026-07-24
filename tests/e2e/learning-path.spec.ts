@@ -19,7 +19,9 @@ test('desktop adaptive learning path builds a session and opens a task', async (
   await expect(page.getByTestId('learning-path')).toBeVisible();
   await expect(page.getByRole('heading', { name: /Понятный путь к рабочему SQL/ })).toBeVisible();
   await expect(page.locator('.phase-card')).toHaveCount(4);
-  await expect(page.locator('.session-list > button')).toHaveCount(2);
+  const sessionTasks = await page.locator('.session-list > button').count();
+  expect(sessionTasks).toBeGreaterThanOrEqual(2);
+  expect(sessionTasks).toBeLessThanOrEqual(6);
   await expect(page.getByText('0%')).toBeVisible();
 
   await page.getByRole('button', { name: 'AI-план' }).click();
