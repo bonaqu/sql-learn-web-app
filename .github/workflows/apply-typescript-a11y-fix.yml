@@ -1,0 +1,40 @@
+name: Apply TypeScript A11y Fix
+
+on:
+  push:
+    branches: [agent/accessibility-performance-pwa]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-typescript-a11y-fix
+  cancel-in-progress: false
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/accessibility-performance-pwa
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: node scripts/apply-typescript-a11y-fix.mjs
+      - shell: bash
+        run: |
+          git diff --check
+          git diff --exit-code -- .github/workflows/apply-typescript-a11y-fix.yml scripts/apply-typescript-a11y-fix.mjs
+          EXPECTED=$(printf '%s\n' src/App.tsx src/lib/dialog-focus.ts src/components/AuthGate.tsx | sort)
+          ACTUAL=$(git diff --name-only | sort)
+          test "$ACTUAL" = "$EXPECTED"
+      - shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/App.tsx src/lib/dialog-focus.ts src/components/AuthGate.tsx
+          git commit -m 'fix: satisfy strict effect and dialog accessibility types'
+          git push origin HEAD:agent/accessibility-performance-pwa
