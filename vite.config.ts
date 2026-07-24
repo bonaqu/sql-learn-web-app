@@ -42,10 +42,11 @@ export default defineConfig(({ command }) => ({
     sourcemap: true,
     rollupOptions: {
       output: {
-        manualChunks: {
-          editor: ['@monaco-editor/react'],
-          charts: ['recharts'],
-          sqlite: ['sql.js/dist/sql-wasm.js']
+        manualChunks(id) {
+          if (id.includes('@monaco-editor')) return 'editor';
+          if (id.includes('recharts')) return 'charts';
+          if (id.includes('sql.js')) return 'sqlite';
+          return undefined;
         }
       }
     }
