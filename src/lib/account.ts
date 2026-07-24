@@ -72,7 +72,9 @@ function bytesToBase64Url(bytes: Uint8Array) {
 
 async function digest(value: Uint8Array | string) {
   const source = typeof value === 'string' ? new TextEncoder().encode(value) : value;
-  return new Uint8Array(await crypto.subtle.digest('SHA-256', source));
+  const owned = new Uint8Array(source.byteLength);
+  owned.set(source);
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', owned.buffer));
 }
 
 function base32Encode(bytes: Uint8Array) {
