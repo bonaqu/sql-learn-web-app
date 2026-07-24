@@ -604,7 +604,7 @@
 .project-rubric b,
 .project-rubric small { display: block; }
 .project-rubric b { font-size: .75rem; }
-.project-rubric small { margin-top: .25rem; color: #71717a; font-size: .68rem; line-height: 1.45; }
+.project-rubric small { margin-top: .25rem; color: #a1a1aa; font-size: .68rem; line-height: 1.45; }
 
 .project-complete-bar { justify-content: space-between; gap: 1rem; margin-top: 2rem; padding: 1rem 1.1rem; border: 1px solid rgb(139 92 246 / 25%); border-radius: .9rem; background: linear-gradient(90deg, rgb(91 33 182 / 18%), rgb(24 24 27 / 70%)); }
 .project-complete-bar strong,
