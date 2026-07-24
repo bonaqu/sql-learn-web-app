@@ -12,8 +12,14 @@ export type TestAuth = {
   session: Record<string, unknown>;
 };
 
+function testUsername(label: string) {
+  const compact = label.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || 'test';
+  const unique = `${Date.now().toString(36).slice(-7)}${Math.random().toString(36).slice(2, 7)}`;
+  return `pw_${compact}_${unique}`.slice(0, 32);
+}
+
 export async function authenticatePage(page: Page, label = 'academy'): Promise<TestAuth> {
-  const username = `pw_${label}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`.toLowerCase();
+  const username = testUsername(label);
   const response = await page.request.post(`${WORKER_URL}/api/auth/register`, {
     data: {
       username,
