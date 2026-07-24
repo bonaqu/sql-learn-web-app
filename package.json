@@ -1,14 +1,15 @@
 {
   "name": "sql-academy",
   "private": true,
-  "version": "2.3.0",
+  "version": "2.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "types:worker": "wrangler types worker-configuration.d.ts --config wrangler.typegen.jsonc",
     "validate:course": "node --experimental-strip-types scripts/validate-course.ts",
     "validate:path": "tsx scripts/validate-learning-path.ts",
-    "check": "npm run types:worker && tsc -b --pretty false && npm run validate:course && npm run validate:path",
+    "validate:assessment": "tsx scripts/validate-assessment.ts",
+    "check": "npm run types:worker && tsc -b --pretty false && npm run validate:course && npm run validate:path && npm run validate:assessment",
     "build": "npm run types:worker && tsc -b && vite build",
     "test:e2e": "playwright test",
     "preview": "vite preview",

@@ -18,6 +18,9 @@ Open-source SQL-платформа для 2nd Support Engineer. Репозито
 - Mastery каждого модуля по покрытию, точности и самостоятельности.
 - Персональные сессии на 15, 25 или 40 минут.
 - Readiness к рабочим задачам и SQL-интервью.
+- Assessment Center: Quick Check, SQL Interview Simulation и Academy Exam.
+- Resumable assessment timer, skill reports и история результатов между устройствами.
+- AI Interviewer и AI Debrief с deterministic local fallback.
 - AI Coach для следующего учебного шага с deterministic local fallback.
 - Каталог, глобальный поиск, Practice, Interview и SQL Puzzle.
 - Статистика, график активности, XP, streak, повторение и достижения.
@@ -27,14 +30,13 @@ Open-source SQL-платформа для 2nd Support Engineer. Репозито
 - Отдельная отзываемая сессия для каждого устройства.
 - Revision-based merge, защищающий прогресс от молчаливого перезаписывания.
 - Базовые настройки профиля и управление активными сессиями.
-- Cloudflare D1 для пользователей, сессий, recovery-кодов и прогресса.
-- Cloudflare KV для настроек core API и лимитов AI Mentor.
-- Workers AI Mentor с локальным fallback.
+- Cloudflare D1 для пользователей, сессий, recovery-кодов, прогресса и assessment reports.
+- Cloudflare KV для настроек core API и лимитов AI Mentor/Interviewer/Debrief.
 - Автоматический CI/CD в GitHub Pages и Cloudflare Workers Static Assets.
 
 ## Password authentication
 
-Без проверенной сессии пользователь видит только экран входа, регистрации или сброса пароля. Компоненты курса, локальный SQLite workspace и Learning Path до входа не монтируются.
+Без проверенной сессии пользователь видит только экран входа, регистрации или сброса пароля. Компоненты курса, локальный SQLite workspace, Learning Path и Assessment Center до входа не монтируются.
 
 ### Пароль
 
@@ -58,6 +60,28 @@ Open-source SQL-платформа для 2nd Support Engineer. Репозито
 - перевыпуск разрешён не чаще одного раза за 24 часа.
 
 Подробная модель: [`docs/password-auth.md`](docs/password-auth.md).
+
+## Assessment Center
+
+Assessment Center — отдельный проверочный контур. Он использует собственную SQLite-базу и не начисляет XP за экзаменационные попытки.
+
+- **Quick Check:** 3 задачи, 12 минут, доступен сразу;
+- **SQL Interview Simulation:** 5 задач, 35 минут, до двух уточнений AI Interviewer на задачу;
+- **Academy Exam:** 8 задач, 55 минут, открывается после прохождения prerequisites.
+
+Во время активной проверки физически отсутствуют обычный AI Mentor, подсказки и эталонное решение. Сессия сохраняется в браузере под ID текущего пользователя, автоматически восстанавливается после reload и завершается при истечении deadline.
+
+Skill report учитывает:
+
+- правильность результата;
+- число попыток и долю решений с первой попытки;
+- время на каждую задачу;
+- использование Interviewer как показатель самостоятельности;
+- покрытие модулей;
+- readiness delta;
+- deterministic local debrief и опциональный AI Debrief.
+
+Завершённые отчёты сохраняются в D1 и доступны после входа на другом устройстве. Пароль, recovery-коды и bearer token в assessment session/report не записываются.
 
 ## Adaptive Learning Path
 
@@ -96,9 +120,9 @@ npm run build
 
 Полный integration gate в Pull Request дополнительно поднимает локальный Wrangler runtime, применяет все D1 migrations и запускает Chromium на desktop и Pixel-sized mobile viewport.
 
-`npm run check` проверяет TypeScript, 120 SQL-решений и инварианты Adaptive Learning Path: 20 модулей, четыре этапа, существование checkpoints, диапазоны mastery/readiness и отсутствие дублей в дневной сессии.
+`npm run check` проверяет TypeScript, 120 SQL-решений, инварианты Adaptive Learning Path и Assessment Center: deterministic selection, diversity, prerequisites, scoring, report ranges и внешний ключ D1 к реальному `users.user_id`.
 
-Browser gate дополнительно проверяет обязательный auth screen, регистрацию, восемь recovery-кодов, password reset, одноразовость кода, отзыв сессий, multi-device progress sync, профиль и существующие Academy/Learning Path flows.
+Browser gate проверяет обязательный auth screen, регистрацию, восемь recovery-кодов, password reset, одноразовость кода, отзыв сессий, multi-device progress sync, профиль, существующие Academy/Learning Path flows, assessment resume/expiry, запрет подсказок, AI Interviewer, skill report sync и Pixel 7 layout.
 
 ## Cloudflare Free-first
 
@@ -143,6 +167,9 @@ Endpoints с `Authorization: Bearer <session-token>`:
 - `GET|PUT /api/progress`
 - `GET|PUT /api/settings`
 - `POST /api/mentor`
+- `GET|POST /api/assessment/reports`
+- `POST /api/assessment/interviewer`
+- `POST /api/assessment/debrief`
 
 Для core endpoints Worker игнорирует клиентский `x-profile-id` и сам подставляет ID аутентифицированного пользователя.
 
@@ -154,5 +181,6 @@ Endpoints с `Authorization: Bearer <session-token>`:
 - Нет персональных данных в репозитории и seed-данных.
 - В браузере хранится отзываемый session token и локальная копия учебного прогресса.
 - Recovery-коды после подтверждения не сохраняются приложением.
-- В AI Mentor отправляются только контекст задачи, текст вопроса, SQL и техническая статистика попыток.
-- В AI Coach отправляется только агрегированный mastery-профиль без логина, пароля, recovery-кодов и session token.
+- Assessment session/report не содержит пароль, recovery-коды или bearer token.
+- В AI Mentor/Interviewer отправляются только контекст задачи, текст вопроса, SQL и техническая статистика попыток.
+- В AI Coach/Debrief отправляется только агрегированный mastery/assessment-профиль без логина, пароля, recovery-кодов и session token.

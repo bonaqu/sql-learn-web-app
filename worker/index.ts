@@ -1,4 +1,5 @@
 import core from './core';
+import { handleAssessmentRequest } from './assessment';
 import { authenticateSession, handleAuthRequest } from './auth';
 
 const ALLOWED_ORIGINS = new Set([
@@ -40,14 +41,14 @@ function withCors(response: Response, origin: string) {
   });
 }
 
-function authFailure(error: unknown, pathname: string) {
+function pipelineFailure(error: unknown, pathname: string, pipeline: 'auth' | 'assessment') {
   const requestId = crypto.randomUUID();
   const name = error instanceof Error ? error.name.slice(0, 80) : 'UnknownError';
   const message = error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240);
-  console.error('auth_pipeline_unhandled', { requestId, pathname, name, message });
+  console.error(`${pipeline}_pipeline_unhandled`, { requestId, pathname, name, message });
   return new Response(JSON.stringify({
-    error: 'Authentication operation failed',
-    code: 'AUTH_PIPELINE_UNHANDLED',
+    error: `${pipeline === 'auth' ? 'Authentication' : 'Assessment'} operation failed`,
+    code: `${pipeline.toUpperCase()}_PIPELINE_UNHANDLED`,
     requestId
   }), {
     status: 500,
@@ -70,10 +71,10 @@ export default {
       return new Response(JSON.stringify({ error: 'Origin is not allowed' }), {
         status: 403,
         headers: {
-          'content-type': 'application/json; charset=utf-8',
-          'cache-control': 'no-store',
-          'x-content-type-options': 'nosniff',
-          vary: 'Origin'
+'content-type': 'application/json; charset=utf-8',
+'cache-control': 'no-store',
+'x-content-type-options': 'nosniff',
+vary: 'Origin'
         }
       });
     }
@@ -87,7 +88,7 @@ export default {
     try {
       authResponse = await handleAuthRequest(request, env);
     } catch (error) {
-      const response = authFailure(error, url.pathname);
+      const response = pipelineFailure(error, url.pathname, 'auth');
       return origin ? withCors(response, origin) : response;
     }
     if (authResponse) return origin ? withCors(authResponse, origin) : authResponse;
@@ -98,10 +99,20 @@ export default {
       try {
         auth = await authenticateSession(request, env);
       } catch (error) {
-        const response = authFailure(error, url.pathname);
+        const response = pipelineFailure(error, url.pathname, 'auth');
         return origin ? withCors(response, origin) : response;
       }
       if (auth instanceof Response) return origin ? withCors(auth, origin) : auth;
+
+      let assessmentResponse: Response | null;
+      try {
+        assessmentResponse = await handleAssessmentRequest(request, env, auth.userId);
+      } catch (error) {
+        const response = pipelineFailure(error, url.pathname, 'assessment');
+        return origin ? withCors(response, origin) : response;
+      }
+      if (assessmentResponse) return origin ? withCors(assessmentResponse, origin) : assessmentResponse;
+
       const headers = new Headers(request.headers);
       headers.set('x-profile-id', auth.userId);
       routedRequest = new Request(request, { headers });

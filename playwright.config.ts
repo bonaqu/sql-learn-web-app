@@ -36,12 +36,12 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop-chromium',
-      grep: /desktop academy|desktop password account|desktop password recovery|desktop adaptive learning/,
+      grep: /desktop academy|desktop password account|desktop password recovery|desktop adaptive learning|desktop assessment/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } }
     },
     {
       name: 'mobile-chromium',
-      grep: /mobile task flow|mobile password registration|mobile adaptive learning/,
+      grep: /mobile task flow|mobile password registration|mobile adaptive learning|mobile assessment/,
       use: { ...devices['Pixel 7'] }
     }
   ]
