@@ -191,7 +191,7 @@ function App() {
   useEffect(() => {
     const notify = (dirty: boolean) => window.dispatchEvent(new CustomEvent('sql-academy-dirty-state', { detail: { dirty } }));
     notify(workspaceActive && sql !== selected.starter);
-    return () => notify(false);
+    return () => { notify(false); };
   }, [selected.id, selected.starter, sql, workspaceActive]);
 
   useEffect(() => {

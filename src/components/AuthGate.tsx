@@ -425,8 +425,8 @@ function ProfilePortal({ session, onSessionChange }: { session: AuthSession; onS
         <button role="tab" aria-selected={tab === 'security'} className={tab === 'security' ? 'active' : ''} onClick={() => setTab('security')}><ShieldCheck />Безопасность</button>
         <button role="tab" aria-selected={tab === 'sessions'} className={tab === 'sessions' ? 'active' : ''} onClick={() => setTab('sessions')}><MonitorSmartphone />Сессии</button>
       </nav>
-      {error && <div className="auth-notice error profile-notice"><ShieldCheck />{error}</div>}
-      {message && <div className="auth-notice success profile-notice"><Check />{message}</div>}
+      {error && <div className="auth-notice error profile-notice" role="alert"><ShieldCheck />{error}</div>}
+      {message && <div className="auth-notice success profile-notice" role="status" aria-live="polite"><Check />{message}</div>}
 
       {tab === 'profile' && <div className="profile-body">
         <div className="profile-summary"><div>{(session.displayName || session.username).slice(0, 1).toUpperCase()}</div><span><strong>{session.displayName || session.username}</strong><small>@{session.username}</small></span></div>

@@ -31,7 +31,7 @@ export function useDialogFocus(
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const applicationRoot = document.getElementById('root');
     const previousInert = applicationRoot?.inert || false;
-    const previousAriaHidden = applicationRoot?.getAttribute('aria-hidden');
+    const previousAriaHidden = applicationRoot ? applicationRoot.getAttribute('aria-hidden') : null;
 
     if (applicationRoot && !applicationRoot.contains(container)) {
       applicationRoot.inert = true;
