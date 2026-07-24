@@ -37,6 +37,8 @@ jobs:
 
       - name: Production build
         shell: bash
+        env:
+          VITE_API_BASE: http://127.0.0.1:8787
         run: |
           set -o pipefail
           npm run build 2>&1 | tee production-build.log
@@ -59,6 +61,9 @@ jobs:
         run: |
           grep -R 'SQL Academy' dist/index.html dist/manifest.webmanifest* 2>/dev/null || true
           test -n "$(find dist -type f \( -name 'manifest.webmanifest' -o -name 'manifest-*.webmanifest' \) -print -quit)"
+
+      - name: Prepare local D1 database
+        run: npx wrangler d1 migrations apply sql-academy --local --config wrangler.jsonc
 
       - name: Install Chromium for responsive QA
         run: npx playwright install --with-deps chromium
