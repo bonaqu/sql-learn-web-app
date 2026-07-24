@@ -1,4 +1,5 @@
 import core from './core';
+import { handleAssessmentRequest } from './assessment';
 import { authenticateSession, handleAuthRequest } from './auth';
 
 const ALLOWED_ORIGINS = new Set([
@@ -70,6 +71,10 @@ export default {
     if (url.pathname !== '/api/health') {
       const auth = await authenticateSession(request, env);
       if (auth instanceof Response) return origin ? withCors(auth, origin) : auth;
+
+      const assessmentResponse = await handleAssessmentRequest(request, env, auth.userId);
+      if (assessmentResponse) return origin ? withCors(assessmentResponse, origin) : assessmentResponse;
+
       const headers = new Headers(request.headers);
       headers.set('x-profile-id', auth.userId);
       routedRequest = new Request(request, { headers });
