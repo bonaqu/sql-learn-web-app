@@ -37,6 +37,8 @@ jobs:
 
       - name: Production build
         shell: bash
+        env:
+          VITE_API_BASE: https://sql-learn-web-app.bonaqu.workers.dev
         run: |
           set -o pipefail
           npm run build 2>&1 | tee production-build.log
