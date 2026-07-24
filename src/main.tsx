@@ -4,6 +4,7 @@ import './lib/api-fetch';
 import App from './App';
 import AuthGate from './components/AuthGate';
 import ChunkErrorBoundary from './components/ChunkErrorBoundary';
+import CurriculumSyncAgent from './components/CurriculumSyncAgent';
 import DeferredFeaturePortals from './components/DeferredFeaturePortals';
 import PwaStatus from './components/PwaStatus';
 import './styles.css';
@@ -19,6 +20,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <AuthGate>
         <App />
         <DeferredFeaturePortals />
+        <CurriculumSyncAgent />
       </AuthGate>
       <PwaStatus />
     </ChunkErrorBoundary>
