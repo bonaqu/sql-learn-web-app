@@ -24,7 +24,7 @@ test('desktop adaptive learning path builds a session and opens a task', async (
   expect(sessionTasks).toBeLessThanOrEqual(6);
   await expect(page.locator('.readiness-ring strong')).toHaveText('0%');
 
-  await page.getByRole('button', { name: 'AI-план' }).click();
+  await page.getByRole('button', { name: 'AI-план', exact: true }).click();
   await expect(page.locator('.path-ai-answer')).toContainText('Персональный план');
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('desktop-learning-path.png'), fullPage: true });
