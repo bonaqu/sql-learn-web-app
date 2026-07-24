@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { tasks } from '../src/data/course';
 import {
   assessmentEligibility,
@@ -81,4 +82,8 @@ assert(report.readinessDelta >= -5 && report.readinessDelta <= 10, 'readiness de
 const lockedExam = assessmentEligibility('exam', defaultProgress);
 assert(!lockedExam.eligible && lockedExam.missingCompleted === assessmentModes.exam.minimumCompleted, 'exam prerequisites must be enforced');
 
-console.log(`Assessment validation passed: ${Object.keys(assessmentModes).length} modes, deterministic selection, scoring and prerequisites.`);
+const migration = readFileSync(new URL('../migrations/0004_assessment_center.sql', import.meta.url), 'utf8');
+assert(/REFERENCES\s+users\s*\(\s*user_id\s*\)/i.test(migration), 'assessment report FK must reference users.user_id');
+assert(!/REFERENCES\s+users\s*\(\s*id\s*\)/i.test(migration), 'assessment report FK must not reference a nonexistent users.id');
+
+console.log(`Assessment validation passed: ${Object.keys(assessmentModes).length} modes, deterministic selection, scoring, prerequisites and D1 FK contract.`);
