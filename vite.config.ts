@@ -62,11 +62,6 @@ export default defineConfig(({ command }) => ({
               name: 'learning-path',
               test: /src[\\/](?:components[\\/]LearningPathPortal\.tsx|lib[\\/]learning-path\.ts)$/,
               priority: 30
-            },
-            {
-              name: 'charts',
-              test: /node_modules[\\/]recharts[\\/]/,
-              priority: 10
             }
           ]
         }
