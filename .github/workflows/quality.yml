@@ -14,9 +14,9 @@ concurrency:
 
 jobs:
   verify:
-    name: TypeScript, build and Worker dry run
+    name: Course, browser, build and Worker validation
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,7 +29,7 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
-      - name: TypeScript check
+      - name: TypeScript and course validation
         shell: bash
         run: |
           set -o pipefail
@@ -60,6 +60,24 @@ jobs:
           grep -R 'SQL Academy' dist/index.html dist/manifest.webmanifest* 2>/dev/null || true
           test -n "$(find dist -type f \( -name 'manifest.webmanifest' -o -name 'manifest-*.webmanifest' \) -print -quit)"
 
+      - name: Install Chromium for responsive QA
+        run: npx playwright install --with-deps chromium
+
+      - name: Run desktop and mobile browser tests
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run test:e2e 2>&1 | tee playwright.log
+
+      - name: Upload browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-browser-evidence-${{ github.run_attempt }}
+          path: test-results
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload diagnostic logs
         if: failure()
         uses: actions/upload-artifact@v4
@@ -69,5 +87,7 @@ jobs:
             typescript-check.log
             production-build.log
             wrangler-dry-run.log
+            playwright.log
+            test-results
           if-no-files-found: ignore
           retention-days: 7

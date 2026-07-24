@@ -1,9 +1,18 @@
+import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(({ command }) => ({
   base: command === 'build' && process.env.GITHUB_ACTIONS ? '/sql-learn-web-app/' : '/',
+  resolve: {
+    alias: [
+      {
+        find: /^sql\.js$/,
+        replacement: fileURLToPath(new URL('./src/lib/sql-browser.ts', import.meta.url))
+      }
+    ]
+  },
   plugins: [
     react(),
     VitePWA({
@@ -25,14 +34,20 @@ export default defineConfig(({ command }) => ({
       },
       workbox: {
         navigateFallback: 'index.html',
-        globPatterns: ['**/*.{js,css,html,svg,wasm}'],
-        runtimeCaching: [{
-          urlPattern: /^https:\/\/sql\.js\.org\//,
-          handler: 'CacheFirst',
-          options: { cacheName: 'sqljs-runtime', expiration: { maxEntries: 4, maxAgeSeconds: 2592000 } }
-        }]
+        globPatterns: ['**/*.{js,css,html,svg,wasm}']
       }
     })
   ],
-  build: { sourcemap: true }
+  build: {
+    sourcemap: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          editor: ['@monaco-editor/react'],
+          charts: ['recharts'],
+          sqlite: ['sql.js/dist/sql-wasm.js']
+        }
+      }
+    }
+  }
 }));
