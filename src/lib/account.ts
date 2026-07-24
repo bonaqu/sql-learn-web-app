@@ -298,6 +298,16 @@ export function mergeProgress(local: Progress, cloud: Progress | null): Progress
   };
 }
 
+function progressFingerprint(progress: Progress | null) {
+  if (!progress) return 'null';
+  return JSON.stringify({
+    ...progress,
+    completed: [...progress.completed].sort(),
+    taskStats: Object.fromEntries(Object.entries(progress.taskStats).sort(([left], [right]) => left.localeCompare(right))),
+    history: [...progress.history].sort((left, right) => left.day.localeCompare(right.day))
+  });
+}
+
 function saveMergedProgress(progress: Progress) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
 }
@@ -315,18 +325,30 @@ export async function syncAccountProgress(session = loadAccountSession()): Promi
   let cloud = await fetchCloudProgress(session);
   const local = loadProgress();
   let merged = mergeProgress(local, cloud.progress);
-  let localChanged = JSON.stringify(local) !== JSON.stringify(merged);
+  let localChanged = progressFingerprint(local) !== progressFingerprint(merged);
+  const syncedAt = new Date().toISOString();
+
+  if (cloud.progress && progressFingerprint(cloud.progress) === progressFingerprint(merged)) {
+    session = { ...session, revision: cloud.revision, lastSyncAt: syncedAt };
+    if (localChanged) saveMergedProgress(merged);
+    saveAccountSession(session);
+    return { session, progress: merged, localChanged, revision: session.revision };
+  }
 
   try {
     const saved = await putProgress(session, merged, cloud.revision);
-    session = { ...session, revision: saved.revision, lastSyncAt: new Date().toISOString() };
+    session = { ...session, revision: saved.revision, lastSyncAt: syncedAt };
   } catch (error) {
     if ((error as Error & { status?: number }).status !== 409) throw error;
     cloud = await fetchCloudProgress(session);
     merged = mergeProgress(merged, cloud.progress);
-    localChanged = JSON.stringify(local) !== JSON.stringify(merged);
-    const saved = await putProgress(session, merged, cloud.revision);
-    session = { ...session, revision: saved.revision, lastSyncAt: new Date().toISOString() };
+    localChanged = progressFingerprint(local) !== progressFingerprint(merged);
+    if (cloud.progress && progressFingerprint(cloud.progress) === progressFingerprint(merged)) {
+      session = { ...session, revision: cloud.revision, lastSyncAt: syncedAt };
+    } else {
+      const saved = await putProgress(session, merged, cloud.revision);
+      session = { ...session, revision: saved.revision, lastSyncAt: syncedAt };
+    }
   }
 
   if (localChanged) saveMergedProgress(merged);
