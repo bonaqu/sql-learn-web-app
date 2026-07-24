@@ -37,7 +37,7 @@
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@types/sql.js": "^1.4.9",
-    "@vitejs/plugin-react": "^4.7.0",
+    "@vitejs/plugin-react": "^6.0.4",
     "tsx": "^4.20.6",
     "typescript": "^5.9.2",
     "vite": "^7.1.3",
