@@ -139,6 +139,9 @@ test('desktop password recovery consumes a code and revokes sessions', async ({ 
     return { status: response.status, body: await response.json() };
   }, { currentPassword: newPassword, recoveryCode: secondCode });
   expect(changedAgain.status).toBe(200);
+
+  const invalidatedSessionStatus = await page.evaluate(async () => (await fetch('/api/auth/session')).status);
+  expect(invalidatedSessionStatus).toBe(401);
   await expect(page.getByRole('heading', { name: 'Войти в академию' })).toBeVisible();
 });
 
