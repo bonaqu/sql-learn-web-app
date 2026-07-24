@@ -30,10 +30,15 @@ export default function PwaStatus() {
 
   useEffect(() => {
     let updateTimer = 0;
+    let offlineReadyTimer = 0;
     updateRef.current = registerSW({
       immediate: true,
       onNeedRefresh: () => setNeedRefresh(true),
-      onOfflineReady: () => setOfflineReady(true),
+      onOfflineReady: () => {
+        setOfflineReady(true);
+        window.clearTimeout(offlineReadyTimer);
+        offlineReadyTimer = window.setTimeout(() => setOfflineReady(false), 4_000);
+      },
       onRegisteredSW: (_url, registration) => {
         if (!registration) return;
         updateTimer = window.setInterval(() => {
@@ -42,7 +47,10 @@ export default function PwaStatus() {
       },
       onRegisterError: error => setRegistrationError(error instanceof Error ? error.message : 'Service Worker недоступен')
     });
-    return () => window.clearInterval(updateTimer);
+    return () => {
+      window.clearInterval(updateTimer);
+      window.clearTimeout(offlineReadyTimer);
+    };
   }, []);
 
   useEffect(() => {
@@ -83,15 +91,14 @@ export default function PwaStatus() {
     </div>
 
     <div className="pwa-live-region" aria-live="polite" aria-atomic="true">
-      {!online && <section className="pwa-toast" data-testid="offline-notice">
+      {!online && <section className="pwa-toast passive" data-testid="offline-notice">
         <CloudOff />
         <div><strong>Офлайн-режим</strong><p>Статические материалы и локальный SQLite доступны. Вход, синхронизация и AI требуют сеть.</p></div>
       </section>}
 
-      {offlineReady && online && <section className="pwa-toast" data-testid="offline-ready">
+      {offlineReady && online && <section className="pwa-toast passive" data-testid="offline-ready">
         <DownloadCloud />
         <div><strong>Приложение готово к офлайн-работе</strong><p>Основные статические ресурсы сохранены в этом браузере.</p></div>
-        <button type="button" className="pwa-icon" onClick={() => setOfflineReady(false)} aria-label="Закрыть уведомление"><X /></button>
       </section>}
 
       {needRefresh && <section className="pwa-toast update" role="dialog" aria-labelledby="pwa-update-title" data-testid="pwa-update-notice">
