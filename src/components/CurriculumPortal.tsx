@@ -25,7 +25,6 @@ import {
 } from 'lucide-react';
 import {
   capstoneProjects,
-  curriculumCompletion,
   curriculumLessons,
   curriculumSearch,
   lessonById,
