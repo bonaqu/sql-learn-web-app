@@ -109,7 +109,7 @@ export function moduleMastery(progress: Progress): ModuleMastery[] {
     const hints = stats.reduce((sum, item) => sum + item.hintsUsed, 0);
     const coverage = moduleTasks.length ? solved / moduleTasks.length : 0;
     const accuracy = attempts ? clamp((attempts - incorrect) / attempts * 100) : 0;
-    const independence = attempts ? clamp(100 - hints / Math.max(attempts, 1) * 28) : 100;
+    const independence = attempts ? clamp(100 - hints / Math.max(attempts, 1) * 28) : 0;
     const mastery = Math.round(clamp(coverage * 65 + accuracy * 0.23 + independence * 0.12));
     const previousModule = index > 0 ? modules[index - 1][0] : null;
     const previousSolved = !previousModule || tasks
