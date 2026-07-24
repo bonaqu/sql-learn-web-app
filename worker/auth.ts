@@ -192,16 +192,47 @@ async function sha256(value: string | Uint8Array) {
   return new Uint8Array(await crypto.subtle.digest('SHA-256', ownedBuffer(bytes)));
 }
 
+const PASSWORD_PBKDF2_CHUNK = 100_000;
+const PASSWORD_HASH_SCHEME = 'pbkdf2-sha256-chain-v1';
+
+function concatenateBytes(...parts: Uint8Array[]) {
+  const output = new Uint8Array(parts.reduce((total, part) => total + part.byteLength, 0));
+  let offset = 0;
+  for (const part of parts) {
+    output.set(part, offset);
+    offset += part.byteLength;
+  }
+  return output;
+}
+
 async function passwordHash(password: string, saltBase64: string, iterations = PASSWORD_ITERATIONS) {
-  const passwordBytes = new TextEncoder().encode(password);
-  const key = await crypto.subtle.importKey('raw', ownedBuffer(passwordBytes), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({
-    name: 'PBKDF2',
-    hash: 'SHA-256',
-    salt: ownedBuffer(base64UrlToBytes(saltBase64)),
-    iterations
-  }, key, 256);
-  return bytesToBase64Url(new Uint8Array(bits));
+  if (!Number.isSafeInteger(iterations) || iterations < 1 || iterations > 1_000_000) {
+    throw new RangeError('Invalid password KDF iteration count');
+  }
+
+  const encoder = new TextEncoder();
+  const baseSalt = base64UrlToBytes(saltBase64);
+  let material = encoder.encode(password);
+  let remaining = iterations;
+  let stage = 0;
+
+  while (remaining > 0) {
+    const stageIterations = Math.min(PASSWORD_PBKDF2_CHUNK, remaining);
+    const stageDomain = encoder.encode(`sql-academy/password-chain/v1:${iterations}:${stage}:`);
+    const stageSalt = await sha256(concatenateBytes(stageDomain, baseSalt));
+    const key = await crypto.subtle.importKey('raw', ownedBuffer(material), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits({
+      name: 'PBKDF2',
+      hash: 'SHA-256',
+      salt: ownedBuffer(stageSalt),
+      iterations: stageIterations
+    }, key, 256);
+    material = new Uint8Array(bits);
+    remaining -= stageIterations;
+    stage += 1;
+  }
+
+  return `${PASSWORD_HASH_SCHEME}:${iterations}:${bytesToBase64Url(material)}`;
 }
 
 function constantTimeEqual(left: string, right: string) {

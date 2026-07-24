@@ -29,13 +29,16 @@ The application does not expose whether a username exists during password reset.
 
 Accepted passwords are 15–128 Unicode characters and at most 512 UTF-8 bytes. No arbitrary uppercase/lowercase/digit composition rule is imposed.
 
-For every account the Worker generates a random 128-bit salt and derives a 256-bit value using:
+For every account the Worker generates a random 128-bit salt and derives a 256-bit value using the versioned `pbkdf2-sha256-chain-v1` scheme:
 
-- PBKDF2;
-- HMAC-SHA-256;
-- 600,000 iterations.
+- PBKDF2 with HMAC-SHA-256;
+- six sequential, domain-separated stages;
+- 100,000 iterations per stage;
+- 600,000 cumulative HMAC iterations.
 
-D1 stores only the salt, derived password hash and iteration count. The original password is never stored or logged by the application.
+Cloudflare Workers limits a single PBKDF2 Web Crypto call to 100,000 iterations. Each stage therefore derives the key material for the next stage and uses a SHA-256 stage salt derived from the account salt, total iteration count and stage index. Stages cannot be evaluated in parallel because every stage depends on the previous 256-bit result.
+
+D1 stores only the random salt, versioned derived password hash and cumulative iteration count. The original password and intermediate stage values are never stored or logged by the application.
 
 After five consecutive invalid password attempts the account is locked for 15 minutes. A successful login or password reset clears the failure counter.
 
@@ -100,7 +103,7 @@ Deleting the account removes users, profile, sessions, recovery-code verifiers, 
 - A compromised origin or successful XSS could read the browser session token. The project therefore avoids third-party runtime scripts and untrusted HTML rendering.
 - Losing all eight recovery codes while also forgetting the password makes recovery impossible by design.
 - Recovery-code confirmation is a client acknowledgement; the server cannot verify that the user actually stored the codes safely.
-- PBKDF2 is used because it is available in the Cloudflare Web Crypto runtime. The stored iteration count allows future password hashes to be upgraded during login or password change.
+- PBKDF2 is used because it is available in the Cloudflare Web Crypto runtime. The hash scheme is versioned and the cumulative iteration count is stored so future password hashes can be upgraded during login or password change.
 
 ## Automated verification
 

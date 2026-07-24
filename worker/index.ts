@@ -48,8 +48,7 @@ function authFailure(error: unknown, pathname: string) {
   return new Response(JSON.stringify({
     error: 'Authentication operation failed',
     code: 'AUTH_PIPELINE_UNHANDLED',
-    requestId,
-    diagnostic: { name, message }
+    requestId
   }), {
     status: 500,
     headers: {
