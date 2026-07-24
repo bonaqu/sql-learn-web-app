@@ -44,12 +44,13 @@ test('desktop assessment resumes, scores SQL and syncs report to a second device
   await expect(page.getByTestId('assessment-landing')).toBeVisible();
   await page.getByTestId('start-quick').click();
 
+  const center = page.getByTestId('assessment-center');
   await expect(page.getByTestId('assessment-session')).toBeVisible();
   await expect(page.getByTestId('assessment-timer')).toContainText(/\d{2}:\d{2}/);
   await expect(page.getByTestId('assessment-locked-tools')).toBeVisible();
-  await expect(page.getByRole('button', { name: /Следующая подсказка/i })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Показать решение/i })).toHaveCount(0);
-  await expect(page.getByText('AI Mentor', { exact: true })).toHaveCount(0);
+  await expect(center.getByRole('button', { name: /Следующая подсказка/i })).toHaveCount(0);
+  await expect(center.getByRole('button', { name: /Показать решение/i })).toHaveCount(0);
+  await expect(center.getByText('AI Mentor', { exact: true })).toHaveCount(0);
 
   await replaceEditorSql(page, QUICK_FIRST_SOLUTION);
   await page.getByRole('button', { name: 'Проверить SQL' }).click();
@@ -92,10 +93,11 @@ test('desktop assessment enforces exam integrity and restores an expired session
   await page.getByTestId('assessment-trigger').click();
   await page.getByTestId('start-exam').click();
 
+  const center = page.getByTestId('assessment-center');
   await expect(page.getByTestId('assessment-session')).toBeVisible();
   await expect(page.getByTestId('assessment-interviewer')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Следующая подсказка/i })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Показать решение/i })).toHaveCount(0);
+  await expect(center.getByRole('button', { name: /Следующая подсказка/i })).toHaveCount(0);
+  await expect(center.getByRole('button', { name: /Показать решение/i })).toHaveCount(0);
 
   const sessionKey = `sql-academy-assessment-session-v1:${String(auth.session.userId)}`;
   await page.evaluate(key => {
