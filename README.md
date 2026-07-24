@@ -14,6 +14,9 @@ Open-source SQL-платформа для 2nd Support Engineer. Репозито
 - React + TypeScript + Vite.
 - Monaco Editor и SQLite WASM прямо в браузере.
 - 20 учебных модулей и 120 автоматически проверяемых задач.
+- Curriculum Studio: 20 структурированных уроков, 60 theory sections, glossary, runnable examples и knowledge checks.
+- Project Lab с тремя production-like T-Bonk capstone-проектами, deliverables, drafts и rubric.
+- Cross-device curriculum sync через D1 с optimistic concurrency и deterministic conflict merge.
 - Adaptive Learning Path с четырьмя этапами и контрольными точками.
 - Mastery каждого модуля по покрытию, точности и самостоятельности.
 - Персональные сессии на 15, 25 или 40 минут.
@@ -27,14 +30,14 @@ Open-source SQL-платформа для 2nd Support Engineer. Репозито
 - PWA с локальным SQLite WASM и офлайн-кэшем статических ресурсов.
 - Явное online/offline состояние и управляемое обновление без неожиданного auto-reload.
 - Skip link, keyboard focus trap, возврат фокуса, `aria-live` и поддержка `prefers-reduced-motion`.
-- Lazy loading Learning Path, Assessment Center, SQLite, Monaco и графика активности.
+- Lazy loading Curriculum Studio, Learning Path, Assessment Center, SQLite, Monaco и графика активности.
 - Автоматический raw/gzip bundle budget и axe-core audit на desktop и Pixel 7.
 - Обязательная авторизация по логину и паролю без email, SMS и OAuth.
 - Восемь одноразовых recovery-кодов после регистрации.
 - Отдельная отзываемая сессия для каждого устройства.
 - Revision-based merge, защищающий прогресс от молчаливого перезаписывания.
 - Базовые настройки профиля и управление активными сессиями.
-- Cloudflare D1 для пользователей, сессий, recovery-кодов, прогресса и assessment reports.
+- Cloudflare D1 для пользователей, сессий, recovery-кодов, task progress, curriculum drafts и assessment reports.
 - Cloudflare KV для настроек core API и лимитов AI Mentor/Interviewer/Debrief.
 - Автоматический CI/CD в GitHub Pages и Cloudflare Workers Static Assets.
 
@@ -110,11 +113,34 @@ Mastery модуля учитывает:
 
 Readiness использует mastery модулей, пройденные checkpoints и результаты Interview Mode. AI Coach получает только агрегированный учебный профиль и список рекомендованных тем; готовые SQL-решения в этом режиме запрещены.
 
+## Curriculum Studio и Project Lab
+
+Curriculum Studio добавляет к существующим 120 задачам полноценный цикл обучения:
+
+1. learning objectives и prerequisites;
+2. три theory sections: модель, рабочий алгоритм и диагностика;
+3. glossary;
+4. runnable SQLite example на общем training dataset;
+5. knowledge check с объяснением;
+6. переход к связанным Practice/Interview/Puzzle задачам.
+
+Все 20 modules имеют стабильные lesson/section/check IDs. Четыре curriculum checkpoints покрывают фундамент, query design, production SQL и Support Analytics.
+
+Project Lab содержит три case-based проекта:
+
+- Incident Command Dashboard;
+- Customer Data Trust Audit;
+- T-Bonk SLA Executive Mart.
+
+SQL drafts, заметки, deliverables, завершённые lessons/projects и bookmark хранятся отдельно от Progress v4. Локальная копия привязана к текущему аккаунту. D1 sync использует conditional PUT по server timestamp; при конфликте клиент объединяет обе копии и повторяет запись, поэтому изменения с другого устройства не перезаписываются молча.
+
+Подробная архитектура: [`docs/curriculum-studio.md`](docs/curriculum-studio.md).
+
 ## Accessibility и клавиатура
 
 - первый `Tab` открывает skip link к основному содержимому;
 - активный раздел навигации отмечается через `aria-current`;
-- Profile, Learning Path и Assessment Center удерживают фокус внутри открытого dialog;
+- Profile, Curriculum Studio, Learning Path и Assessment Center удерживают фокус внутри открытого dialog;
 - `Escape` закрывает безопасно закрываемые dialogs и возвращает фокус кнопке запуска;
 - active assessment не закрывается случайным `Escape`;
 - результаты SQL имеют доступный caption и заголовки столбцов;
@@ -129,13 +155,13 @@ Pull Request gate запускает axe-core на публичном auth scree
 Service worker кэширует production HTML, CSS, JavaScript chunks, SVG и WASM. После первого успешного открытия доступны статические материалы, локальный прогресс и SQLite workspace. Сеть всё ещё обязательна для:
 
 - входа и проверки cloud session;
-- синхронизации прогресса и assessment reports;
+- синхронизации task progress, curriculum drafts и assessment reports;
 - профиля и управления сессиями;
 - AI Mentor, Coach, Interviewer и Debrief.
 
 Новая версия не активируется автоматически. Пользователь видит уведомление и выбирает «Обновить сейчас» или «Позже». При изменённом SQL либо активной assessment-сессии требуется дополнительное подтверждение; локальная assessment-сессия остаётся resumable. Если после deployment браузер запросил chunk предыдущей сборки, recovery screen предлагает безопасную перезагрузку вместо продолжения в неконсистентном UI.
 
-Learning Path, Assessment Center, SQLite, Monaco и ActivityChart не входят в обязательную стартовую загрузку. Они загружаются при первом focus/hover/open соответствующего режима и затем остаются в browser cache.
+Curriculum Studio, Learning Path, Assessment Center, SQLite, Monaco и ActivityChart не входят в обязательную стартовую загрузку. Они загружаются при первом focus/hover/open соответствующего режима и затем остаются в browser cache.
 
 ## Локальный запуск
 
@@ -154,11 +180,11 @@ npm run validate:bundle
 
 Полный integration gate в Pull Request дополнительно поднимает локальный Wrangler runtime, применяет все D1 migrations и запускает Chromium на desktop и Pixel-sized mobile viewport.
 
-`npm run check` проверяет TypeScript, 120 SQL-решений, инварианты Adaptive Learning Path и Assessment Center: deterministic selection, diversity, prerequisites, scoring, report ranges и внешний ключ D1 к реальному `users.user_id`.
+`npm run check` проверяет TypeScript, 120 SQL-решений, инварианты Adaptive Learning Path и Assessment Center, а также curriculum graph: 20 lessons, prerequisite DAG, 20 runnable SQLite examples, task/checkpoint/project references, rubric weights и D1 cascade foreign key.
 
-Bundle gate ограничивает initial entry, общий CSS и каждый крупный chunk одновременно в raw и gzip представлении. Он также требует отдельные lazy boundaries для Assessment Center, Learning Path, SQLite, ActivityChart и SqlEditor и запрещает ссылаться на них из `dist/index.html`.
+Bundle gate ограничивает initial entry, общий CSS и каждый крупный chunk одновременно в raw и gzip представлении. Он также требует отдельные lazy boundaries для Curriculum Studio, Assessment Center, Learning Path, SQLite, ActivityChart и SqlEditor и запрещает ссылаться на них из `dist/index.html`.
 
-Browser gate проверяет обязательный auth screen, регистрацию, восемь recovery-кодов, password reset, одноразовость кода, отзыв сессий, multi-device progress sync, профиль, существующие Academy/Learning Path flows, assessment resume/expiry, запрет подсказок, AI Interviewer, skill report sync, keyboard-only focus flows, offline/update UX, reduced motion, axe-core и Pixel 7 layout.
+Browser gate проверяет обязательный auth screen, регистрацию, восемь recovery-кодов, password reset, одноразовость кода, отзыв сессий, multi-device task/curriculum sync, профиль, Academy/Learning Path/Curriculum flows, runnable lesson examples, project completion, assessment resume/expiry, запрет подсказок, AI Interviewer, skill report sync, keyboard-only focus flows, offline/update UX, reduced motion, axe-core и Pixel 7 layout.
 
 ## Cloudflare Free-first
 
@@ -202,6 +228,7 @@ Endpoints с `Authorization: Bearer <session-token>`:
 - `GET|PUT /api/user/progress`
 - `GET|PUT /api/progress`
 - `GET|PUT /api/settings`
+- `GET|PUT /api/curriculum/progress`
 - `POST /api/mentor`
 - `GET|POST /api/assessment/reports`
 - `POST /api/assessment/interviewer`
@@ -215,7 +242,7 @@ Endpoints с `Authorization: Bearer <session-token>`:
 - Для аккаунта не нужны email, SMS, телефон или внешний профиль.
 - Отображаемое имя необязательно и используется только внутри приложения.
 - Нет персональных данных в репозитории и seed-данных.
-- В браузере хранится отзываемый session token и локальная копия учебного прогресса.
+- В браузере хранится отзываемый session token, локальная копия task progress и curriculum drafts текущего аккаунта.
 - Service worker не получает и не кэширует password, recovery-коды или bearer token.
 - Recovery-коды после подтверждения не сохраняются приложением.
 - Assessment session/report не содержит пароль, recovery-коды или bearer token.
