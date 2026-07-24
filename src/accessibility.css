@@ -38,6 +38,12 @@
   border: 0 !important;
 }
 
+.privacy,
+.task-number,
+.mentor-panel > small {
+  color: #a1a1aa;
+}
+
 .network-pill {
   position: fixed;
   right: 1rem;
