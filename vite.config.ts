@@ -16,7 +16,8 @@ export default defineConfig(({ command }) => ({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
+      injectRegister: null,
       includeAssets: ['logo.svg', 'maskable.svg'],
       manifest: {
         name: 'SQL Academy — Support Engineering Track',
@@ -33,7 +34,9 @@ export default defineConfig(({ command }) => ({
         ]
       },
       workbox: {
+        cleanupOutdatedCaches: true,
         navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/api\//],
         globPatterns: ['**/*.{js,css,html,svg,wasm}']
       }
     })
@@ -43,9 +46,14 @@ export default defineConfig(({ command }) => ({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes('@monaco-editor')) return 'editor';
-          if (id.includes('recharts')) return 'charts';
-          if (id.includes('sql.js')) return 'sqlite';
+          const normalized = id.replace(/\\/g, '/');
+          if (normalized.includes('/src/components/AssessmentCenterPortal')
+            || normalized.includes('/src/lib/assessment')) return 'assessment';
+          if (normalized.includes('/src/components/LearningPathPortal')
+            || normalized.includes('/src/lib/learning-path')) return 'learning-path';
+          if (normalized.includes('@monaco-editor')) return 'editor';
+          if (normalized.includes('recharts')) return 'charts';
+          if (normalized.includes('sql.js') || normalized.includes('/src/lib/sql-browser')) return 'sqlite';
           return undefined;
         }
       }
