@@ -129,6 +129,20 @@ jobs:
           test -n "$DEPLOY_URL"
           echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
 
+      - name: Start Worker error tail
+        shell: bash
+        run: |
+          : > cloudflare-tail.log
+          nohup timeout 240s npx wrangler tail sql-learn-web-app \
+            --status error --format json > cloudflare-tail.log 2>&1 &
+          TAIL_PID=$!
+          echo "TAIL_PID=$TAIL_PID" >> "$GITHUB_ENV"
+          sleep 6
+          if ! kill -0 "$TAIL_PID" 2>/dev/null; then
+            cat cloudflare-tail.log || true
+            exit 1
+          fi
+
       - name: Smoke-test Cloudflare frontend, auth and API
         shell: bash
         env:
@@ -153,8 +167,16 @@ jobs:
           }
           NODE
 
-          UNAUTH_STATUS=$(curl --silent --output cloudflare-unauthorized.json --write-out '%{http_code}' \
-            "$DEPLOY_URL/api/auth/session")
+          UNAUTH_STATUS=""
+          for ATTEMPT in $(seq 1 12); do
+            UNAUTH_STATUS=$(curl --silent --output cloudflare-unauthorized.json --write-out '%{http_code}' \
+              "$DEPLOY_URL/api/auth/session")
+            if [ "$UNAUTH_STATUS" = "401" ]; then
+              break
+            fi
+            echo "Auth route not propagated yet (attempt $ATTEMPT/12, HTTP $UNAUTH_STATUS)"
+            sleep 5
+          done
           test "$UNAUTH_STATUS" = "401"
 
           SMOKE_USERNAME="smoke_$(date +%s)_${GITHUB_RUN_ATTEMPT}"
@@ -169,11 +191,22 @@ jobs:
           }));
           NODE
 
-          curl --fail --silent --show-error --location \
+          REGISTER_STATUS=$(curl --silent --show-error --location \
             --request POST \
             --header 'content-type: application/json' \
             --data @cloudflare-register-payload.json \
-            "$DEPLOY_URL/api/auth/register" > cloudflare-register.json
+            --dump-header cloudflare-register-headers.txt \
+            --output cloudflare-register.json \
+            --write-out '%{http_code}' \
+            "$DEPLOY_URL/api/auth/register")
+          printf '%s\n' "$REGISTER_STATUS" > cloudflare-register-status.txt
+          if [ "$REGISTER_STATUS" != "201" ]; then
+            echo "Registration smoke failed with HTTP $REGISTER_STATUS"
+            cat cloudflare-register-headers.txt || true
+            cat cloudflare-register.json || true
+            sleep 6
+            exit 1
+          fi
 
           AUTH_TOKEN=$(node -e "const x=require('./cloudflare-register.json'); if(x.session?.token) process.stdout.write(x.session.token)")
           RECOVERY_CODE=$(node -e "const x=require('./cloudflare-register.json'); if(x.recoveryCodes?.[0]) process.stdout.write(x.recoveryCodes[0])")
@@ -218,6 +251,16 @@ jobs:
             "$DEPLOY_URL/api/profile" > cloudflare-delete.json
           node -e "const x=require('./cloudflare-delete.json'); if(!x.ok) process.exit(1)"
 
+      - name: Stop Worker error tail
+        if: always()
+        shell: bash
+        run: |
+          sleep 3
+          if [ -n "${TAIL_PID:-}" ]; then
+            kill "$TAIL_PID" 2>/dev/null || true
+          fi
+          cat cloudflare-tail.log || true
+
       - name: Upload deployment diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
@@ -225,9 +268,13 @@ jobs:
           name: cloudflare-deployment-diagnostics
           path: |
             cloudflare-deploy.log
+            cloudflare-tail.log
             cloudflare-index.html
             cloudflare-health.json
             cloudflare-unauthorized.json
+            cloudflare-register-payload.json
+            cloudflare-register-status.txt
+            cloudflare-register-headers.txt
             cloudflare-register.json
             cloudflare-session.json
             cloudflare-progress.json
@@ -246,11 +293,12 @@ jobs:
             const success = process.env.JOB_STATUS === 'success';
             const params = {
               owner: context.repo.owner,
-              repo: context.repo.repo,
+              repo: context.repo.sha,
               sha: context.sha,
               state: success ? 'success' : 'failure',
               context: 'deployment/cloudflare',
               description: success ? 'Cloudflare Worker deployed and auth smoke-tested' : 'Cloudflare deployment failed'
             };
+            params.repo = context.repo.repo;
             if (process.env.DEPLOY_URL) params.target_url = process.env.DEPLOY_URL;
             await github.rest.repos.createCommitStatus(params);

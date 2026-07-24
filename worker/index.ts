@@ -49,8 +49,7 @@ function pipelineFailure(error: unknown, pathname: string, pipeline: 'auth' | 'a
   return new Response(JSON.stringify({
     error: `${pipeline === 'auth' ? 'Authentication' : 'Assessment'} operation failed`,
     code: `${pipeline.toUpperCase()}_PIPELINE_UNHANDLED`,
-    requestId,
-    diagnostic: { name, message }
+    requestId
   }), {
     status: 500,
     headers: {
@@ -72,10 +71,10 @@ export default {
       return new Response(JSON.stringify({ error: 'Origin is not allowed' }), {
         status: 403,
         headers: {
-          'content-type': 'application/json; charset=utf-8',
-          'cache-control': 'no-store',
-          'x-content-type-options': 'nosniff',
-          vary: 'Origin'
+'content-type': 'application/json; charset=utf-8',
+'cache-control': 'no-store',
+'x-content-type-options': 'nosniff',
+vary: 'Origin'
         }
       });
     }
