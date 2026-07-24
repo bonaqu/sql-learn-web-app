@@ -648,6 +648,25 @@
 [data-theme="light"] .project-deliverables article p { color: #52525b; }
 [data-theme="light"] .curriculum-section-nav { background: linear-gradient(#f8fafc 70%, transparent); }
 
+.curriculum-top-actions > .curriculum-sync-button {
+  width: auto;
+  min-width: 7.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .42rem;
+  padding: .5rem .7rem;
+  color: #d4d4d8;
+  font: inherit;
+  font-size: .7rem;
+  font-weight: 850;
+}
+.curriculum-top-actions > .curriculum-sync-button svg { width: 1rem; }
+.curriculum-top-actions > .curriculum-sync-button.synced { border-color: rgb(52 211 153 / 28%); color: #6ee7b7; }
+.curriculum-top-actions > .curriculum-sync-button.offline { color: #fbbf24; }
+.curriculum-top-actions > .curriculum-sync-button.error { border-color: rgb(244 63 94 / 30%); color: #fda4af; }
+.curriculum-top-actions > .curriculum-sync-button:disabled { cursor: wait; opacity: .72; }
+
 @media (max-width: 980px) {
   .curriculum-topbar { grid-template-columns: minmax(0, 1fr) auto; }
   .curriculum-tabs { order: 3; grid-column: 1 / -1; justify-self: center; }

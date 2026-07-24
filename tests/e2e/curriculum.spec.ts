@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
-import { authenticatePage } from './auth-helper';
+import { authenticatePage, loginPage } from './auth-helper';
 
 async function expectNoSeriousAxeViolations(page: import('@playwright/test').Page) {
   const result = await new AxeBuilder({ page })
@@ -10,8 +10,8 @@ async function expectNoSeriousAxeViolations(page: import('@playwright/test').Pag
   expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
 }
 
-test('desktop curriculum studio completes a lesson and persists project draft', async ({ page }, testInfo) => {
-  await authenticatePage(page, 'curriculum');
+test('desktop curriculum studio completes a lesson and syncs project draft across devices', async ({ page, browser }, testInfo) => {
+  const auth = await authenticatePage(page, 'curriculum');
   await page.goto('./');
 
   const trigger = page.getByTestId('curriculum-trigger');
@@ -42,16 +42,24 @@ test('desktop curriculum studio completes a lesson and persists project draft', 
   await page.getByRole('button', { name: /Отметить: Приоритет внимания/i }).click();
   await page.getByTestId('complete-project').click();
   await expect(page.getByText('Проект завершён')).toBeVisible();
+  await page.getByTestId('curriculum-sync').click();
+  await expect(page.getByTestId('curriculum-sync')).toContainText('В облаке');
 
   await expectNoSeriousAxeViolations(page);
   await page.screenshot({ path: testInfo.outputPath('curriculum-project-lab-desktop.png'), fullPage: true });
 
   await page.getByRole('button', { name: 'Закрыть Curriculum Studio' }).click();
   await expect(trigger).toBeFocused();
-  await page.reload();
-  await page.getByTestId('curriculum-trigger').click();
-  await page.getByRole('tab', { name: /Project Lab/i }).click();
-  await expect(page.getByTestId('project-sql-draft')).toHaveValue(/WITH base/);
+
+  const secondContext = await browser.newContext();
+  const secondPage = await secondContext.newPage();
+  await loginPage(secondPage, auth.username, auth.password);
+  await secondPage.goto('./');
+  await secondPage.getByTestId('curriculum-trigger').click();
+  await secondPage.getByRole('tab', { name: /Project Lab/i }).click();
+  await expect(secondPage.getByTestId('project-sql-draft')).toHaveValue(/WITH base/);
+  await expect(secondPage.getByText('Проект завершён')).toBeVisible();
+  await secondContext.close();
 });
 
 test('mobile curriculum reader remains accessible without horizontal overflow', async ({ page }, testInfo) => {

@@ -1,4 +1,5 @@
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 import initSqlJs from 'sql.js';
 import { capstoneProjects, curriculumCheckpoints, curriculumLessons } from '../src/data/curriculum';
 import { modules, tasks } from '../src/data/course';
@@ -9,6 +10,7 @@ const wasmPath = require.resolve('sql.js/dist/sql-wasm.wasm');
 const SQL = await initSqlJs({ locateFile: () => wasmPath });
 
 const errors: string[] = [];
+const curriculumMigration = readFileSync(new URL('../migrations/0010_curriculum_progress.sql', import.meta.url), 'utf8');
 const assert = (condition: unknown, message: string) => {
   if (!condition) errors.push(message);
 };
@@ -19,6 +21,8 @@ const lessonIds = new Set(curriculumLessons.map(lesson => lesson.id));
 const sectionIds = curriculumLessons.flatMap(lesson => lesson.sections.map(section => section.id));
 const checkIds = curriculumLessons.map(lesson => lesson.check.id);
 
+assert(curriculumMigration.includes('CREATE TABLE IF NOT EXISTS curriculum_progress'), 'Curriculum D1 migration must create curriculum_progress');
+assert(curriculumMigration.includes('REFERENCES users(user_id) ON DELETE CASCADE'), 'Curriculum progress must cascade with the authenticated user');
 assert(curriculumLessons.length === modules.length, `Expected ${modules.length} lessons, got ${curriculumLessons.length}`);
 assert(unique([...lessonIds]), 'Lesson IDs must be unique');
 assert(unique(sectionIds), 'Section IDs must be unique');

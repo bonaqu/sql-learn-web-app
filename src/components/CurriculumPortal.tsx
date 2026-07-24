@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import CurriculumSyncButton from './CurriculumSyncButton';
 import type { QueryExecResult, SqlJsStatic } from 'sql.js';
 import {
   ArrowLeft,
@@ -386,7 +387,7 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
         <button role="tab" aria-selected={tab === 'lessons'} className={tab === 'lessons' ? 'active' : ''} onClick={() => switchTab('lessons')}><BookOpen />Уроки</button>
         <button role="tab" aria-selected={tab === 'projects'} className={tab === 'projects' ? 'active' : ''} onClick={() => switchTab('projects')}><Sparkles />Project Lab</button>
       </div>
-      <div className="curriculum-top-actions"><span><strong>{completion}%</strong><small>curriculum</small></span><button data-autofocus onClick={close} aria-label="Закрыть Curriculum Studio"><X /></button></div>
+      <div className="curriculum-top-actions"><CurriculumSyncButton onProgress={setProgress} /><span><strong>{completion}%</strong><small>curriculum</small></span><button data-autofocus onClick={close} aria-label="Закрыть Curriculum Studio"><X /></button></div>
     </header>
     {tab === 'lessons' ? lessonContent : projectContent}
   </div>;
