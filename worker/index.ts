@@ -1,6 +1,7 @@
 import core from './core';
 import { handleAssessmentRequest } from './assessment';
 import { authenticateSession, handleAuthRequest } from './auth';
+import { handleCurriculumRequest } from './curriculum';
 
 const ALLOWED_ORIGINS = new Set([
   'https://bonaqu.github.io',
@@ -41,13 +42,14 @@ function withCors(response: Response, origin: string) {
   });
 }
 
-function pipelineFailure(error: unknown, pathname: string, pipeline: 'auth' | 'assessment') {
+function pipelineFailure(error: unknown, pathname: string, pipeline: 'auth' | 'assessment' | 'curriculum') {
   const requestId = crypto.randomUUID();
   const name = error instanceof Error ? error.name.slice(0, 80) : 'UnknownError';
   const message = error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240);
   console.error(`${pipeline}_pipeline_unhandled`, { requestId, pathname, name, message });
+  const label = pipeline === 'auth' ? 'Authentication' : pipeline === 'assessment' ? 'Assessment' : 'Curriculum';
   return new Response(JSON.stringify({
-    error: `${pipeline === 'auth' ? 'Authentication' : 'Assessment'} operation failed`,
+    error: `${label} operation failed`,
     code: `${pipeline.toUpperCase()}_PIPELINE_UNHANDLED`,
     requestId
   }), {
@@ -71,10 +73,10 @@ export default {
       return new Response(JSON.stringify({ error: 'Origin is not allowed' }), {
         status: 403,
         headers: {
-'content-type': 'application/json; charset=utf-8',
-'cache-control': 'no-store',
-'x-content-type-options': 'nosniff',
-vary: 'Origin'
+          'content-type': 'application/json; charset=utf-8',
+          'cache-control': 'no-store',
+          'x-content-type-options': 'nosniff',
+          vary: 'Origin'
         }
       });
     }
@@ -112,6 +114,15 @@ vary: 'Origin'
         return origin ? withCors(response, origin) : response;
       }
       if (assessmentResponse) return origin ? withCors(assessmentResponse, origin) : assessmentResponse;
+
+      let curriculumResponse: Response | null;
+      try {
+        curriculumResponse = await handleCurriculumRequest(request, env, auth.userId);
+      } catch (error) {
+        const response = pipelineFailure(error, url.pathname, 'curriculum');
+        return origin ? withCors(response, origin) : response;
+      }
+      if (curriculumResponse) return origin ? withCors(curriculumResponse, origin) : curriculumResponse;
 
       const headers = new Headers(request.headers);
       headers.set('x-profile-id', auth.userId);
