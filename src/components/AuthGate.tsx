@@ -202,9 +202,9 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (session: AuthSessio
     </section>
 
     <section className="auth-form-panel">
-      <div className="auth-tabs" role="tablist" aria-label="Режим авторизации">
-        <button type="button" role="tab" aria-selected={mode === 'login'} className={mode === 'login' ? 'active' : ''} onClick={() => switchMode('login')}>Вход</button>
-        <button type="button" role="tab" aria-selected={mode === 'register'} className={mode === 'register' ? 'active' : ''} onClick={() => switchMode('register')}>Регистрация</button>
+      <div className="auth-tabs" role="group" aria-label="Режим авторизации">
+        <button type="button" aria-pressed={mode === 'login'} className={mode === 'login' ? 'active' : ''} onClick={() => switchMode('login')}>Вход</button>
+        <button type="button" aria-pressed={mode === 'register'} className={mode === 'register' ? 'active' : ''} onClick={() => switchMode('register')}>Регистрация</button>
       </div>
       <form className="auth-form" onSubmit={event => void submit(event)}>
         <div className="auth-hero-icon">{mode === 'register' ? <User /> : mode === 'reset' ? <KeyRound /> : <Lock />}</div>
@@ -420,10 +420,10 @@ function ProfilePortal({ session, onSessionChange }: { session: AuthSession; onS
         <div><span className="auth-kicker">Аккаунт · @{session.username}</span><h2 id="profile-title">Настройки профиля</h2></div>
         <button type="button" className="icon" data-autofocus onClick={() => setOpen(false)} aria-label="Закрыть профиль"><X /></button>
       </header>
-      <nav className="profile-tabs" role="tablist" aria-label="Разделы профиля">
-        <button role="tab" aria-selected={tab === 'profile'} className={tab === 'profile' ? 'active' : ''} onClick={() => setTab('profile')}><User />Профиль</button>
-        <button role="tab" aria-selected={tab === 'security'} className={tab === 'security' ? 'active' : ''} onClick={() => setTab('security')}><ShieldCheck />Безопасность</button>
-        <button role="tab" aria-selected={tab === 'sessions'} className={tab === 'sessions' ? 'active' : ''} onClick={() => setTab('sessions')}><MonitorSmartphone />Сессии</button>
+      <nav className="profile-tabs" aria-label="Разделы профиля">
+        <button aria-pressed={tab === 'profile'} className={tab === 'profile' ? 'active' : ''} onClick={() => setTab('profile')}><User />Профиль</button>
+        <button aria-pressed={tab === 'security'} className={tab === 'security' ? 'active' : ''} onClick={() => setTab('security')}><ShieldCheck />Безопасность</button>
+        <button aria-pressed={tab === 'sessions'} className={tab === 'sessions' ? 'active' : ''} onClick={() => setTab('sessions')}><MonitorSmartphone />Сессии</button>
       </nav>
       {error && <div className="auth-notice error profile-notice" role="alert"><ShieldCheck />{error}</div>}
       {message && <div className="auth-notice success profile-notice" role="status" aria-live="polite"><Check />{message}</div>}

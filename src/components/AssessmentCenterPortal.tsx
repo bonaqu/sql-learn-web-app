@@ -49,7 +49,7 @@ import { overallReadiness } from '../lib/learning-path';
 import { loadProgress } from '../lib/progress';
 import { useDialogFocus } from '../lib/dialog-focus';
 
-const Editor = lazy(() => import('@monaco-editor/react'));
+const Editor = lazy(() => import('./SqlEditor'));
 type RunState = 'idle' | 'success' | 'error';
 
 function formatTimer(seconds: number) {

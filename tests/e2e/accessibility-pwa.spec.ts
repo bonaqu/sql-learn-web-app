@@ -29,7 +29,7 @@ test('desktop accessibility and PWA resilience preserve keyboard work', async ({
   await expect(page.locator('#main-content')).toBeFocused();
 
   const initialResources = await resourceNames(page);
-  expect(initialResources.some(name => /assessment-|learning-path-|sqlite-/i.test(name))).toBe(false);
+  expect(initialResources.some(name => /assessment-|learning-path-|sqlite-|SqlEditor-/i.test(name))).toBe(false);
 
   const profileTrigger = page.getByTestId('profile-trigger');
   await profileTrigger.click();
@@ -57,6 +57,7 @@ test('desktop accessibility and PWA resilience preserve keyboard work', async ({
   await page.getByRole('button', { name: 'Practice' }).click();
   await expect(page.getByText('SQLite готов. Выполни запрос.')).toBeVisible();
   await expect.poll(async () => (await resourceNames(page)).some(name => /sqlite-/i.test(name))).toBe(true);
+  await expect.poll(async () => (await resourceNames(page)).some(name => /SqlEditor-/i.test(name))).toBe(true);
 
   await page.evaluate(() => {
     window.dispatchEvent(new CustomEvent('sql-academy-dirty-state', { detail: { dirty: true } }));

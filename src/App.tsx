@@ -9,6 +9,7 @@ import {
   Bug,
   CheckCircle2,
   ChevronRight,
+  ClipboardCheck,
   Cloud,
   Code2,
   Download,
@@ -26,6 +27,7 @@ import {
   Puzzle,
   Repeat2,
   RotateCcw,
+  Route,
   Search,
   ShieldCheck,
   Sparkles,
@@ -48,8 +50,9 @@ import {
   saveProgress,
   weakTopics as calculateWeakTopics
 } from './lib/progress';
+import { openDeferredFeature, preloadDeferredFeature } from './lib/deferred-features';
 
-const Editor = lazy(() => import('@monaco-editor/react'));
+const Editor = lazy(() => import('./components/SqlEditor'));
 const ActivityChart = lazy(() => import('./components/ActivityChart'));
 type SqlEngine = SqlJsStatic;
 type View = 'home' | 'catalog' | 'practice' | 'review' | 'interview' | 'puzzle' | 'achievements' | 'mentor';
@@ -436,10 +439,12 @@ function App() {
       <button className="close-mobile" onClick={() => setMobileNav(false)} aria-label="Закрыть меню"><X /></button>
       <nav aria-label="Разделы академии">
         <Nav icon={<Home />} label="Главная" active={view === 'home'} onClick={() => navigate('home')} />
+        <button type="button" data-testid="learning-path-trigger" onMouseEnter={() => preloadDeferredFeature('learning-path')} onFocus={() => preloadDeferredFeature('learning-path')} onClick={() => openDeferredFeature('learning-path')}><Route /><span>Учебный путь</span></button>
         <Nav icon={<BookOpen />} label="Каталог" active={view === 'catalog'} onClick={() => navigate('catalog')} />
         <Nav icon={<BrainCircuit />} label="Practice" active={view === 'practice'} onClick={() => navigate('practice')} />
         <Nav icon={<Repeat2 />} label={`Повторение${queue.length ? ` · ${queue.length}` : ''}`} active={view === 'review'} onClick={() => navigate('review')} />
         <Nav icon={<BriefcaseBusiness />} label="Interview" active={view === 'interview'} onClick={() => navigate('interview')} />
+        <button type="button" data-testid="assessment-trigger" onMouseEnter={() => preloadDeferredFeature('assessment')} onFocus={() => preloadDeferredFeature('assessment')} onClick={() => openDeferredFeature('assessment')}><ClipboardCheck /><span>Assessment Center</span></button>
         <Nav icon={<Puzzle />} label="SQL Puzzle" active={view === 'puzzle'} onClick={() => navigate('puzzle')} />
         <Nav icon={<Trophy />} label="Достижения" active={view === 'achievements'} onClick={() => navigate('achievements')} />
         <Nav icon={<Sparkles />} label="AI Mentor" active={view === 'mentor'} onClick={() => navigate('mentor')} />
@@ -621,8 +626,10 @@ function App() {
 
     <nav className="mobile-bottom-nav" aria-label="Мобильная навигация">
       <MobileNav icon={<Home />} label="Главная" active={view === 'home'} onClick={() => navigate('home')} />
+      <button type="button" data-testid="learning-path-mobile-trigger" onTouchStart={() => preloadDeferredFeature('learning-path')} onFocus={() => preloadDeferredFeature('learning-path')} onClick={() => openDeferredFeature('learning-path')}><span className="mobile-nav-icon"><Route /></span><small>Путь</small></button>
       <MobileNav icon={<BrainCircuit />} label="Практика" active={view === 'practice'} onClick={() => navigate('practice')} />
       <MobileNav icon={<Repeat2 />} label="Повтор" active={view === 'review'} badge={queue.length} onClick={() => navigate('review')} />
+      <button type="button" data-testid="assessment-mobile-trigger" onTouchStart={() => preloadDeferredFeature('assessment')} onFocus={() => preloadDeferredFeature('assessment')} onClick={() => openDeferredFeature('assessment')}><span className="mobile-nav-icon"><ClipboardCheck /></span><small>Экзамен</small></button>
       <MobileNav icon={<Sparkles />} label="Mentor" active={view === 'mentor'} onClick={() => navigate('mentor')} />
     </nav>
   </div></>;

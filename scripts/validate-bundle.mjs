@@ -49,13 +49,13 @@ for (const name of js) {
   if (info.gzip > CHUNK_GZIP_BUDGET) fail(`${name} is ${kib(info.gzip)} KiB gzip; chunk budget ${kib(CHUNK_GZIP_BUDGET)} KiB`);
 }
 
-for (const boundary of ['assessment', 'learning-path', 'sqlite', 'charts']) {
+for (const boundary of ['assessment', 'learning-path', 'sqlite', 'charts', 'SqlEditor']) {
   if (!js.some(name => name.startsWith(`${boundary}-`) || name.includes(`-${boundary}-`))) {
     fail(`expected a separate ${boundary} chunk`);
   }
 }
 
-for (const heavy of ['assessment-', 'learning-path-', 'sqlite-', 'charts-']) {
+for (const heavy of ['assessment-', 'learning-path-', 'sqlite-', 'charts-', 'SqlEditor-']) {
   if (html.includes(heavy)) fail(`dist/index.html eagerly references heavy chunk ${heavy}`);
 }
 
