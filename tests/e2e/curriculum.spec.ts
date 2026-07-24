@@ -18,7 +18,7 @@ test('desktop curriculum studio completes a lesson and persists project draft', 
   await trigger.click();
   const studio = page.getByRole('dialog', { name: /Curriculum Studio/i });
   await expect(studio).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'SQL-мышление' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'SQL-мышление', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: /Выполнить на SQLite/i }).click();
   await expect(page.getByTestId('curriculum-example-result')).toBeVisible();
