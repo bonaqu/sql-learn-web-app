@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 const applicationPath = process.env.GITHUB_ACTIONS ? '/sql-learn-web-app/' : '/';
 const applicationUrl = `http://127.0.0.1:4173${applicationPath}`;
+const workerUrl = 'http://127.0.0.1:8787/api/health';
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -18,12 +19,20 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'off'
   },
-  webServer: {
-    command: `npm run preview -- --host 127.0.0.1 --port 4173 --base ${applicationPath}`,
-    url: applicationUrl,
-    reuseExistingServer: !process.env.CI,
-    timeout: 30_000
-  },
+  webServer: [
+    {
+      command: `npm run preview -- --host 127.0.0.1 --port 4173 --base ${applicationPath}`,
+      url: applicationUrl,
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000
+    },
+    {
+      command: 'npx wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.jsonc',
+      url: workerUrl,
+      reuseExistingServer: !process.env.CI,
+      timeout: 45_000
+    }
+  ],
   projects: [
     {
       name: 'desktop-chromium',
