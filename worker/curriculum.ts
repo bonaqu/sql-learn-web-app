@@ -27,6 +27,13 @@ type CurriculumPayload = {
   updatedAt: string;
 };
 
+type CurriculumWrite = {
+  progress?: unknown;
+  baseUpdatedAt?: unknown;
+};
+
+type CurriculumRow = { payload: string; updated_at: string };
+
 const json = (data: unknown, status = 200, extraHeaders: Record<string, string> = {}) => new Response(JSON.stringify(data), {
   status,
   headers: {
@@ -109,38 +116,70 @@ function validCurriculum(payload: unknown): payload is CurriculumPayload {
     && safeTimestamp(value.updatedAt);
 }
 
+async function readRow(env: Cloudflare.Env, userId: string) {
+  return env.DB.prepare('SELECT payload, updated_at FROM curriculum_progress WHERE user_id = ?')
+    .bind(userId)
+    .first<CurriculumRow>();
+}
+
+function parsedRow(row: CurriculumRow | null) {
+  if (!row) return { progress: null, updatedAt: null };
+  try {
+    const progress: unknown = JSON.parse(row.payload);
+    if (!validCurriculum(progress)) return null;
+    return { progress, updatedAt: row.updated_at };
+  } catch {
+    return null;
+  }
+}
+
+async function conflict(env: Cloudflare.Env, userId: string) {
+  const current = parsedRow(await readRow(env, userId));
+  if (!current) return json({ error: 'Stored curriculum progress is corrupted' }, 500);
+  return json({ error: 'Curriculum progress changed on another device', ...current }, 409);
+}
+
 export async function handleCurriculumRequest(request: Request, env: Cloudflare.Env, userId: string): Promise<Response | null> {
   const url = new URL(request.url);
   if (url.pathname !== '/api/curriculum/progress') return null;
   if (!env.DB) return json({ error: 'D1 binding is not configured' }, 503);
 
   if (request.method === 'GET') {
-    const row = await env.DB.prepare('SELECT payload, updated_at FROM curriculum_progress WHERE user_id = ?')
-      .bind(userId)
-      .first<{ payload: string; updated_at: string }>();
-    if (!row) return json({ progress: null });
-    try {
-      const progress: unknown = JSON.parse(row.payload);
-      if (!validCurriculum(progress)) return json({ error: 'Stored curriculum progress is invalid' }, 500);
-      return json({ progress, updatedAt: row.updated_at });
-    } catch {
-      return json({ error: 'Stored curriculum progress is corrupted' }, 500);
-    }
+    const current = parsedRow(await readRow(env, userId));
+    if (!current) return json({ error: 'Stored curriculum progress is corrupted' }, 500);
+    return json(current);
   }
 
   if (request.method === 'PUT') {
     if (bodyTooLarge(request)) return json({ error: 'Curriculum payload is too large' }, 413);
-    const payload: unknown = await request.json();
-    if (!validCurriculum(payload)) return json({ error: 'Invalid curriculum payload' }, 400);
-    const serialized = JSON.stringify(payload);
+    const body = await request.json<CurriculumWrite>();
+    if (!validCurriculum(body.progress)) return json({ error: 'Invalid curriculum payload' }, 400);
+    if (body.baseUpdatedAt !== null && body.baseUpdatedAt !== undefined && !safeTimestamp(body.baseUpdatedAt)) {
+      return json({ error: 'Invalid baseUpdatedAt' }, 400);
+    }
+
+    const serialized = JSON.stringify(body.progress);
     if (new TextEncoder().encode(serialized).byteLength > MAX_CURRICULUM_BYTES) {
       return json({ error: 'Curriculum payload is too large' }, 413);
     }
-    await env.DB.prepare(`INSERT INTO curriculum_progress(user_id, payload, updated_at) VALUES(?, ?, datetime('now'))
-      ON CONFLICT(user_id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at`)
-      .bind(userId, serialized)
+
+    const updatedAt = new Date().toISOString();
+    if (typeof body.baseUpdatedAt === 'string') {
+      const result = await env.DB.prepare(`UPDATE curriculum_progress
+        SET payload = ?, updated_at = ?
+        WHERE user_id = ? AND updated_at = ?`)
+        .bind(serialized, updatedAt, userId, body.baseUpdatedAt)
+        .run();
+      if (!result.meta.changes) return conflict(env, userId);
+      return json({ ok: true, version: body.progress.version, updatedAt });
+    }
+
+    const result = await env.DB.prepare(`INSERT OR IGNORE INTO curriculum_progress(user_id, payload, updated_at)
+      VALUES(?, ?, ?)`)
+      .bind(userId, serialized, updatedAt)
       .run();
-    return json({ ok: true, version: payload.version, updatedAt: payload.updatedAt });
+    if (!result.meta.changes) return conflict(env, userId);
+    return json({ ok: true, version: body.progress.version, updatedAt });
   }
 
   return json({ error: 'Method not allowed' }, 405, { allow: 'GET, PUT' });
