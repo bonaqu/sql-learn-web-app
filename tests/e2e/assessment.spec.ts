@@ -24,6 +24,9 @@ const waitForInitialCloudHydration = async (page: import('@playwright/test').Pag
     return Number(session?.revision || 0);
   }, AUTH_KEY), { timeout: 30_000 }).toBeGreaterThan(0);
   await expect(page.getByRole('heading', { name: /SQL, который работает/i })).toBeVisible();
+  await page.waitForTimeout(900);
+  await expect(page.locator('.auth-loading-screen')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: /SQL, который работает/i })).toBeVisible();
 };
 
 function practicedProgress() {
@@ -132,7 +135,9 @@ test('desktop assessment interview allows bounded clarification without exposing
   await page.getByTestId('start-interview').click();
   await expect(page.getByTestId('assessment-interviewer')).toBeVisible();
   await page.getByPlaceholder('Задай уточняющий вопрос о требованиях…').fill('Нужна ли стабильная сортировка результата?');
-  await page.getByRole('button', { name: 'Спросить' }).click();
+  const askButton = page.getByRole('button', { name: 'Спросить' });
+  await expect(askButton).toBeEnabled();
+  await askButton.click();
   await expect(page.locator('.assessment-interviewer p')).not.toContainText('AI Interviewer может');
   await expect(page.locator('.assessment-interviewer')).toContainText('Осталось уточнений: 1');
   await expect(page.locator('.assessment-interviewer p')).not.toContainText(/SELECT\s/i);
