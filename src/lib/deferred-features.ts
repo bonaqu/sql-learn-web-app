@@ -1,4 +1,4 @@
-export type DeferredFeature = 'learning-path' | 'assessment';
+export type DeferredFeature = 'learning-path' | 'assessment' | 'curriculum';
 
 export const OPEN_DEFERRED_FEATURE_EVENT = 'sql-academy-open-feature';
 export const PRELOAD_DEFERRED_FEATURE_EVENT = 'sql-academy-preload-feature';
