@@ -21,6 +21,7 @@ export type Progress = {
 };
 
 export const STORAGE_KEY = 'sql-academy-progress-v4';
+export const PROGRESS_CHANGED_EVENT = 'sql-academy-progress-changed';
 const LEGACY_KEYS = ['sql-academy-progress-v3', 'sql-academy-progress-v2'];
 const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
@@ -94,6 +95,7 @@ export function loadProgress(): Progress {
 
 export function saveProgress(progress: Progress) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+  window.dispatchEvent(new CustomEvent(PROGRESS_CHANGED_EVENT, { detail: progress }));
 }
 
 export function recordAttempt(progress: Progress, task: SqlTask, correct: boolean): Progress {

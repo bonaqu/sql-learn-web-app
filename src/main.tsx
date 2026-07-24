@@ -3,13 +3,16 @@ import ReactDOM from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import './lib/api-fetch';
 import App from './App';
+import SyncAccountPortal from './components/SyncAccountPortal';
 import './styles.css';
 import './enhancements.css';
+import './account.css';
 
 registerSW({ immediate: true });
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
+    <SyncAccountPortal />
   </React.StrictMode>
 );

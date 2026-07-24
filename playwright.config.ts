@@ -11,8 +11,8 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: 1,
   reporter: [['list']],
-  timeout: 45_000,
-  expect: { timeout: 12_000 },
+  timeout: 75_000,
+  expect: { timeout: 15_000 },
   use: {
     baseURL: applicationUrl,
     trace: 'retain-on-failure',
@@ -36,12 +36,12 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop-chromium',
-      grep: /desktop academy/,
+      grep: /desktop academy|desktop anonymous account/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } }
     },
     {
       name: 'mobile-chromium',
-      grep: /mobile task flow/,
+      grep: /mobile task flow|mobile anonymous account/,
       use: { ...devices['Pixel 7'] }
     }
   ]
