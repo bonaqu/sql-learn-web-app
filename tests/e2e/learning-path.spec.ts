@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { authenticatePage } from './auth-helper';
 
 const expectNoHorizontalOverflow = async (page: import('@playwright/test').Page) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
@@ -6,6 +7,7 @@ const expectNoHorizontalOverflow = async (page: import('@playwright/test').Page)
 };
 
 test('desktop adaptive learning path builds a session and opens a task', async ({ page }, testInfo) => {
+  await authenticatePage(page, 'desktop-path');
   await page.route('**/api/mentor', async route => {
     await route.fulfill({
       status: 200,
@@ -41,6 +43,7 @@ test('desktop adaptive learning path builds a session and opens a task', async (
 });
 
 test('mobile adaptive learning path remains usable and responsive', async ({ page }, testInfo) => {
+  await authenticatePage(page, 'mobile-path');
   await page.goto('./');
   await page.getByTestId('learning-path-mobile-trigger').click();
   await expect(page.getByTestId('learning-path')).toBeVisible();
