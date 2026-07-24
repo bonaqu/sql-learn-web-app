@@ -16,7 +16,11 @@ const expectNoHorizontalOverflow = async (page: import('@playwright/test').Page)
   expect(overflow).toBe(false);
 };
 
-const uniqueUsername = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`.toLowerCase();
+const uniqueUsername = (prefix: string) => {
+  const compact = prefix.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) || 'user';
+  const unique = `${Date.now().toString(36).slice(-7)}${Math.random().toString(36).slice(2, 7)}`;
+  return `${compact}_${unique}`.slice(0, 32);
+};
 
 test('desktop password account requires login and syncs progress across two devices', async ({ page, browser }, testInfo) => {
   const username = uniqueUsername('desktop_auth');
