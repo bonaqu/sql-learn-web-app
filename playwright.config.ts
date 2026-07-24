@@ -41,7 +41,7 @@ export default defineConfig({
     },
     {
       name: 'mobile-chromium',
-      grep: /mobile task flow/,
+      grep: /mobile task flow|mobile anonymous account/,
       use: { ...devices['Pixel 7'] }
     }
   ]
