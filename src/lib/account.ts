@@ -176,7 +176,6 @@ export function loadAccountSession(): AccountSession | null {
 
 export function saveAccountSession(session: AccountSession) {
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  window.dispatchEvent(new CustomEvent('sql-academy-account-session', { detail: session }));
 }
 
 export function clearAccountSession() {
