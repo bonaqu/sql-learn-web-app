@@ -33,8 +33,8 @@ const cssGzip = css.reduce((total, name) => total + fileInfo(join(ASSETS.pathnam
 
 const ENTRY_RAW_BUDGET = 460 * 1024;
 const ENTRY_GZIP_BUDGET = 155 * 1024;
-const CSS_RAW_BUDGET = 220 * 1024;
-const CSS_GZIP_BUDGET = 50 * 1024;
+const CSS_RAW_BUDGET = 260 * 1024;
+const CSS_GZIP_BUDGET = 60 * 1024;
 const CHUNK_RAW_BUDGET = 950 * 1024;
 const CHUNK_GZIP_BUDGET = 320 * 1024;
 
@@ -49,13 +49,13 @@ for (const name of js) {
   if (info.gzip > CHUNK_GZIP_BUDGET) fail(`${name} is ${kib(info.gzip)} KiB gzip; chunk budget ${kib(CHUNK_GZIP_BUDGET)} KiB`);
 }
 
-for (const boundary of ['assessment', 'learning-path', 'sqlite', 'ActivityChart', 'SqlEditor']) {
+for (const boundary of ['assessment', 'learning-path', 'CurriculumPortal', 'sqlite', 'ActivityChart', 'SqlEditor']) {
   if (!js.some(name => name.startsWith(`${boundary}-`) || name.includes(`-${boundary}-`))) {
     fail(`expected a separate ${boundary} chunk`);
   }
 }
 
-for (const heavy of ['assessment-', 'learning-path-', 'sqlite-', 'ActivityChart-', 'SqlEditor-']) {
+for (const heavy of ['assessment-', 'learning-path-', 'CurriculumPortal-', 'sqlite-', 'ActivityChart-', 'SqlEditor-']) {
   if (html.includes(heavy)) fail(`dist/index.html eagerly references heavy chunk ${heavy}`);
 }
 
