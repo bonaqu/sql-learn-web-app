@@ -127,9 +127,12 @@ export function loadAuthSession(): AuthSession | null {
   }
 }
 
-export function saveAuthSession(session: AuthSession) {
+function persistAuthSession(session: AuthSession) {
   localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
-  window.dispatchEvent(new CustomEvent(AUTH_CHANGED_EVENT, { detail: session }));
+}
+
+export function saveAuthSession(session: AuthSession) {
+  persistAuthSession(session);
 }
 
 export function clearAuthSession() {
@@ -178,8 +181,18 @@ export async function loginUser(username: string, password: string) {
     body: JSON.stringify({ username, password, deviceName: deviceName() })
   }));
   const session = sessionFromResponse(response);
-  saveAuthSession(session);
-  return { response, session };
+  persistAuthSession(session);
+  try {
+    const synced = await syncUserProgress(session);
+    return { response, session: synced.session };
+  } catch (error) {
+    if ((error as Error & { status?: number }).status === 401) {
+      clearAuthSession();
+      throw error;
+    }
+    persistAuthSession(session);
+    return { response, session };
+  }
 }
 
 export async function validateSession() {
@@ -197,8 +210,15 @@ export async function validateSession() {
     deviceName: info.session.deviceName,
     revision: Math.max(0, Number(info.session.revision) || 0)
   };
-  saveAuthSession(session);
-  return { info, session };
+  persistAuthSession(session);
+  try {
+    const synced = await syncUserProgress(session);
+    return { info, session: synced.session };
+  } catch (error) {
+    if ((error as Error & { status?: number }).status === 401) throw error;
+    persistAuthSession(session);
+    return { info, session };
+  }
 }
 
 export async function logoutUser() {
@@ -255,7 +275,7 @@ export async function updateUserProfile(profile: UserProfile) {
   }));
   const session = loadAuthSession();
   if (session) {
-    saveAuthSession({
+    persistAuthSession({
       ...session,
       displayName: result.user.displayName || '',
       dailyMinutes: parseMinutes(result.user.dailyMinutes),
@@ -359,7 +379,7 @@ export async function syncUserProgress(session = loadAuthSession()) {
   if (cloud.progress && progressFingerprint(cloud.progress) === progressFingerprint(merged)) {
     const next = { ...session, revision: cloud.revision, lastSyncAt: syncedAt };
     if (localChanged) localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-    saveAuthSession(next);
+    persistAuthSession(next);
     return { session: next, progress: merged, localChanged, revision: next.revision };
   }
 
@@ -380,7 +400,7 @@ export async function syncUserProgress(session = loadAuthSession()) {
   }
 
   if (localChanged) localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-  saveAuthSession(session);
+  persistAuthSession(session);
   return { session, progress: merged, localChanged, revision: session.revision };
 }
 
