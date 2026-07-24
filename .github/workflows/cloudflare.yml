@@ -153,8 +153,16 @@ jobs:
           }
           NODE
 
-          UNAUTH_STATUS=$(curl --silent --output cloudflare-unauthorized.json --write-out '%{http_code}' \
-            "$DEPLOY_URL/api/auth/session")
+          UNAUTH_STATUS=""
+          for ATTEMPT in $(seq 1 12); do
+            UNAUTH_STATUS=$(curl --silent --output cloudflare-unauthorized.json --write-out '%{http_code}' \
+              "$DEPLOY_URL/api/auth/session")
+            if [ "$UNAUTH_STATUS" = "401" ]; then
+              break
+            fi
+            echo "Auth route not propagated yet (attempt $ATTEMPT/12, HTTP $UNAUTH_STATUS)"
+            sleep 5
+          done
           test "$UNAUTH_STATUS" = "401"
 
           SMOKE_USERNAME="smoke_$(date +%s)_${GITHUB_RUN_ATTEMPT}"
@@ -170,6 +178,7 @@ jobs:
           NODE
 
           curl --fail --silent --show-error --location \
+            --retry 6 --retry-delay 5 --retry-all-errors \
             --request POST \
             --header 'content-type: application/json' \
             --data @cloudflare-register-payload.json \
