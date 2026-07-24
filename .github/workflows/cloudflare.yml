@@ -17,7 +17,7 @@ jobs:
   deploy:
     name: Validate and deploy Worker
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -129,208 +129,10 @@ jobs:
           test -n "$DEPLOY_URL"
           echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
 
-      - name: Smoke-test Cloudflare frontend, auth and API
-        shell: bash
+      - name: Smoke-test Cloudflare frontend, auth and curriculum API
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-        run: |
-          set -euo pipefail
-          test -n "$DEPLOY_URL"
-          curl --fail --silent --show-error --location \
-            --retry 6 --retry-delay 5 --retry-all-errors \
-            "$DEPLOY_URL/" > cloudflare-index.html
-          grep -q '<div id="root"></div>' cloudflare-index.html
-
-          curl --fail --silent --show-error --location \
-            --retry 6 --retry-delay 5 --retry-all-errors \
-            "$DEPLOY_URL/api/health" > cloudflare-health.json
-          node - <<'NODE'
-          const fs = require('fs');
-          const health = JSON.parse(fs.readFileSync('cloudflare-health.json', 'utf8'));
-          if (!health.ok || !health.d1 || !health.kv || !health.ai || health.progressVersion !== 4) {
-            console.error('Unhealthy Cloudflare deployment:', health);
-            process.exit(1);
-          }
-          NODE
-
-          UNAUTH_STATUS=""
-          for ATTEMPT in $(seq 1 12); do
-            UNAUTH_STATUS=$(curl --silent --output cloudflare-unauthorized.json --write-out '%{http_code}' \
-              "$DEPLOY_URL/api/auth/session")
-            if [ "$UNAUTH_STATUS" = "401" ]; then
-              break
-            fi
-            echo "Auth route not propagated yet (attempt $ATTEMPT/12, HTTP $UNAUTH_STATUS)"
-            sleep 5
-          done
-          test "$UNAUTH_STATUS" = "401"
-
-          CURRICULUM_UNAUTH_STATUS=$(curl --silent --output cloudflare-curriculum-unauthorized.json --write-out '%{http_code}' \
-            "$DEPLOY_URL/api/curriculum/progress")
-          test "$CURRICULUM_UNAUTH_STATUS" = "401"
-
-          SMOKE_USERNAME="smoke_$(date +%s)_${GITHUB_RUN_ATTEMPT}"
-          SMOKE_PASSWORD=$(node -e "process.stdout.write(require('crypto').randomBytes(28).toString('base64url') + '!aA1')")
-          export SMOKE_USERNAME SMOKE_PASSWORD
-          node - <<'NODE' > cloudflare-register-payload.json
-          process.stdout.write(JSON.stringify({
-            username: process.env.SMOKE_USERNAME,
-            password: process.env.SMOKE_PASSWORD,
-            displayName: 'Deployment Smoke',
-            deviceName: 'GitHub Actions'
-          }));
-          NODE
-
-          REGISTER_STATUS=$(curl --silent --show-error --location \
-            --request POST \
-            --header 'content-type: application/json' \
-            --data @cloudflare-register-payload.json \
-            --dump-header cloudflare-register-headers.txt \
-            --output cloudflare-register.json \
-            --write-out '%{http_code}' \
-            "$DEPLOY_URL/api/auth/register")
-          printf '%s\n' "$REGISTER_STATUS" > cloudflare-register-status.txt
-          if [ "$REGISTER_STATUS" != "201" ]; then
-            echo "Registration smoke failed with HTTP $REGISTER_STATUS"
-            cat cloudflare-register-headers.txt || true
-            cat cloudflare-register.json || true
-            exit 1
-          fi
-
-          AUTH_TOKEN=$(node -e "const x=require('./cloudflare-register.json'); if(x.session?.token) process.stdout.write(x.session.token)")
-          RECOVERY_CODE=$(node -e "const x=require('./cloudflare-register.json'); if(x.recoveryCodes?.[0]) process.stdout.write(x.recoveryCodes[0])")
-          SMOKE_USER_ID=$(node -e "const x=require('./cloudflare-register.json'); if(x.user?.id) process.stdout.write(x.user.id)")
-          test -n "$AUTH_TOKEN"
-          test -n "$RECOVERY_CODE"
-          test -n "$SMOKE_USER_ID"
-          export AUTH_TOKEN RECOVERY_CODE SMOKE_USER_ID
-
-          curl --fail --silent --show-error --location \
-            --header "authorization: Bearer $AUTH_TOKEN" \
-            "$DEPLOY_URL/api/auth/session" > cloudflare-session.json
-          node - <<'NODE'
-          const session = require('./cloudflare-session.json');
-          if (session.user?.username !== process.env.SMOKE_USERNAME || !session.session?.id) {
-            console.error('Invalid authenticated session:', session);
-            process.exit(1);
-          }
-          NODE
-
-          curl --fail --silent --show-error --location \
-            --header "authorization: Bearer $AUTH_TOKEN" \
-            "$DEPLOY_URL/api/user/progress" > cloudflare-progress.json
-          node - <<'NODE'
-          const progress = require('./cloudflare-progress.json');
-          if (progress.revision !== 0 || progress.progress !== null) {
-            console.error('Unexpected initial progress:', progress);
-            process.exit(1);
-          }
-          NODE
-
-          curl --fail --silent --show-error --location \
-            --header "authorization: Bearer $AUTH_TOKEN" \
-            "$DEPLOY_URL/api/curriculum/progress" > cloudflare-curriculum-initial.json
-          node - <<'NODE'
-          const value = require('./cloudflare-curriculum-initial.json');
-          if (value.progress !== null || value.updatedAt !== null) {
-            console.error('Unexpected initial curriculum progress:', value);
-            process.exit(1);
-          }
-          NODE
-
-          node - <<'NODE' > cloudflare-curriculum-payload.json
-          const now = new Date().toISOString();
-          process.stdout.write(JSON.stringify({
-            progress: {
-              version: 1,
-              completedSections: ['sql-thinking-concept'],
-              completedLessons: [],
-              completedProjects: [],
-              answers: {
-                'check-sql-thinking': { optionIndex: 1, correct: true, answeredAt: now }
-              },
-              projectDrafts: {
-                'project-incident-command': {
-                  sql: 'SELECT service, COUNT(*) FROM tickets GROUP BY service;',
-                  notes: 'Deployment smoke draft',
-                  completedDeliverables: ['incident-base'],
-                  updatedAt: now
-                }
-              },
-              bookmark: { lessonId: 'lesson-sql-thinking', sectionId: 'sql-thinking-concept', updatedAt: now },
-              updatedAt: now
-            },
-            baseUpdatedAt: null
-          }));
-          NODE
-
-          curl --fail --silent --show-error --location \
-            --request PUT \
-            --header "authorization: Bearer $AUTH_TOKEN" \
-            --header 'content-type: application/json' \
-            --data @cloudflare-curriculum-payload.json \
-            "$DEPLOY_URL/api/curriculum/progress" > cloudflare-curriculum-put.json
-          CURRICULUM_UPDATED_AT=$(node -e "const x=require('./cloudflare-curriculum-put.json'); if(x.ok && x.updatedAt) process.stdout.write(x.updatedAt)")
-          test -n "$CURRICULUM_UPDATED_AT"
-          export CURRICULUM_UPDATED_AT
-
-          curl --fail --silent --show-error --location \
-            --header "authorization: Bearer $AUTH_TOKEN" \
-            "$DEPLOY_URL/api/curriculum/progress" > cloudflare-curriculum-get.json
-          node - <<'NODE'
-          const value = require('./cloudflare-curriculum-get.json');
-          if (value.updatedAt !== process.env.CURRICULUM_UPDATED_AT
-            || value.progress?.version !== 1
-            || value.progress?.projectDrafts?.['project-incident-command']?.notes !== 'Deployment smoke draft'
-            || value.progress?.answers?.['check-sql-thinking']?.correct !== true) {
-            console.error('Curriculum round-trip failed:', value);
-            process.exit(1);
-          }
-          NODE
-
-          STALE_STATUS=$(curl --silent --show-error --location \
-            --request PUT \
-            --header "authorization: Bearer $AUTH_TOKEN" \
-            --header 'content-type: application/json' \
-            --data @cloudflare-curriculum-payload.json \
-            --output cloudflare-curriculum-conflict.json \
-            --write-out '%{http_code}' \
-            "$DEPLOY_URL/api/curriculum/progress")
-          test "$STALE_STATUS" = "409"
-          node - <<'NODE'
-          const value = require('./cloudflare-curriculum-conflict.json');
-          if (!value.progress || !value.updatedAt || !String(value.error || '').includes('another device')) {
-            console.error('Curriculum conflict contract failed:', value);
-            process.exit(1);
-          }
-          NODE
-
-          node - <<'NODE' > cloudflare-delete-payload.json
-          process.stdout.write(JSON.stringify({
-            currentPassword: process.env.SMOKE_PASSWORD,
-            recoveryCode: process.env.RECOVERY_CODE,
-            confirm: 'DELETE'
-          }));
-          NODE
-          curl --fail --silent --show-error --location \
-            --request DELETE \
-            --header "authorization: Bearer $AUTH_TOKEN" \
-            --header 'content-type: application/json' \
-            --data @cloudflare-delete-payload.json \
-            "$DEPLOY_URL/api/profile" > cloudflare-delete.json
-          node -e "const x=require('./cloudflare-delete.json'); if(!x.ok) process.exit(1)"
-
-          npx wrangler d1 execute sql-academy --remote --config wrangler.deploy.jsonc \
-            --command "SELECT COUNT(*) AS count FROM curriculum_progress WHERE user_id = '$SMOKE_USER_ID'" \
-            --json > cloudflare-curriculum-cascade.json
-          node - <<'NODE'
-          const result = require('./cloudflare-curriculum-cascade.json');
-          const count = Number(result?.[0]?.results?.[0]?.count);
-          if (count !== 0) {
-            console.error('Curriculum cascade cleanup failed:', result);
-            process.exit(1);
-          }
-          NODE
+        run: node scripts/cloudflare-production-smoke.mjs
 
       - name: Upload deployment diagnostics
         if: failure()
@@ -338,24 +140,10 @@ jobs:
         with:
           name: cloudflare-deployment-diagnostics
           path: |
-            cloudflare-deploy.log
-            cloudflare-index.html
-            cloudflare-health.json
-            cloudflare-unauthorized.json
-            cloudflare-curriculum-unauthorized.json
-            cloudflare-register-payload.json
-            cloudflare-register-status.txt
-            cloudflare-register-headers.txt
-            cloudflare-register.json
-            cloudflare-session.json
-            cloudflare-progress.json
-            cloudflare-curriculum-initial.json
-            cloudflare-curriculum-payload.json
-            cloudflare-curriculum-put.json
-            cloudflare-curriculum-get.json
-            cloudflare-curriculum-conflict.json
-            cloudflare-curriculum-cascade.json
-            cloudflare-delete.json
+            cloudflare-*.json
+            cloudflare-*.txt
+            cloudflare-*.html
+            cloudflare-*.log
           if-no-files-found: ignore
           retention-days: 7
 
@@ -368,13 +156,21 @@ jobs:
         with:
           script: |
             const success = process.env.JOB_STATUS === 'success';
+            let description = success
+              ? 'Cloudflare deployed; curriculum lifecycle and cascade verified'
+              : 'Cloudflare deployment or production smoke failed';
+            try {
+              const fs = require('fs');
+              const stage = fs.readFileSync('cloudflare-smoke-stage.txt', 'utf8').trim();
+              if (!success && stage) description = `Cloudflare smoke failed at ${stage}`.slice(0, 140);
+            } catch {}
             const params = {
               owner: context.repo.owner,
               repo: context.repo.repo,
               sha: context.sha,
               state: success ? 'success' : 'failure',
               context: 'deployment/cloudflare',
-              description: success ? 'Cloudflare Worker deployed; auth, progress and curriculum smoke-tested' : 'Cloudflare deployment failed'
+              description
             };
             if (process.env.DEPLOY_URL) params.target_url = process.env.DEPLOY_URL;
             await github.rest.repos.createCommitStatus(params);
