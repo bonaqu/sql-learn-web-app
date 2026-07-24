@@ -41,7 +41,7 @@ test('desktop accessibility and PWA resilience preserve keyboard work', async ({
 
   const pathTrigger = page.getByTestId('learning-path-trigger');
   await pathTrigger.click();
-  await expect(page.getByRole('dialog', { name: /Adaptive Learning Path/i })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: /Понятный путь к рабочему SQL/i })).toBeVisible();
   await expect.poll(async () => (await resourceNames(page)).some(name => /learning-path-/i.test(name))).toBe(true);
   await page.keyboard.press('Escape');
   await expect(pathTrigger).toBeFocused();
