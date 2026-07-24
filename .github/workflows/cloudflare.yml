@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 concurrency:
   group: cloudflare-production
@@ -23,6 +24,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Report Cloudflare deployment pending
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: 'pending',
+              context: 'deployment/cloudflare',
+              description: 'Building and smoke-testing Cloudflare Worker'
+            });
 
       - name: Validate deployment credentials
         shell: bash
@@ -132,7 +146,7 @@ jobs:
           node - <<'NODE'
           const fs = require('fs');
           const health = JSON.parse(fs.readFileSync('cloudflare-health.json', 'utf8'));
-          if (!health.ok || !health.d1 || !health.kv || !health.ai) {
+          if (!health.ok || !health.d1 || !health.kv || !health.ai || health.progressVersion !== 4) {
             console.error('Unhealthy Cloudflare deployment:', health);
             process.exit(1);
           }
@@ -149,3 +163,23 @@ jobs:
             cloudflare-health.json
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Report Cloudflare deployment result
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const success = process.env.JOB_STATUS === 'success';
+            const params = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: success ? 'success' : 'failure',
+              context: 'deployment/cloudflare',
+              description: success ? 'Cloudflare Worker deployed and smoke-tested' : 'Cloudflare deployment failed'
+            };
+            if (process.env.DEPLOY_URL) params.target_url = process.env.DEPLOY_URL;
+            await github.rest.repos.createCommitStatus(params);
