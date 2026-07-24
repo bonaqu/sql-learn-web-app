@@ -1,4 +1,5 @@
 import core from './core';
+import { handleAccountRequest } from './account';
 
 const ALLOWED_ORIGINS = new Set([
   'https://bonaqu.github.io',
@@ -8,8 +9,8 @@ const ALLOWED_ORIGINS = new Set([
   'http://127.0.0.1:5173'
 ]);
 
-const CORS_METHODS = 'GET, PUT, POST, OPTIONS';
-const CORS_HEADERS = 'content-type, x-profile-id';
+const CORS_METHODS = 'GET, PUT, POST, DELETE, OPTIONS';
+const CORS_HEADERS = 'authorization, content-type, x-account-id, x-device-id, x-profile-id';
 
 function allowedOrigin(request: Request) {
   const origin = request.headers.get('origin');
@@ -62,7 +63,7 @@ export default {
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
 
-    const response = await core.fetch(request, env);
+    const response = await handleAccountRequest(request, env) || await core.fetch(request, env);
     return origin ? withCors(response, origin) : response;
   }
 } satisfies ExportedHandler<Cloudflare.Env>;
