@@ -36,12 +36,12 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop-chromium',
-      grep: /desktop academy|desktop anonymous account/,
+      grep: /desktop academy|desktop anonymous account|desktop adaptive learning/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } }
     },
     {
       name: 'mobile-chromium',
-      grep: /mobile task flow|mobile anonymous account/,
+      grep: /mobile task flow|mobile anonymous account|mobile adaptive learning/,
       use: { ...devices['Pixel 7'] }
     }
   ]
