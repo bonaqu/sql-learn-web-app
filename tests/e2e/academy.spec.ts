@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { authenticatePage } from './auth-helper';
 
 const expectNoHorizontalOverflow = async (page: import('@playwright/test').Page) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
@@ -19,7 +20,7 @@ const mockMentorWithoutUsingQuota = async (page: import('@playwright/test').Page
     const headers = {
       'access-control-allow-origin': origin,
       'access-control-allow-methods': 'POST, OPTIONS',
-      'access-control-allow-headers': 'content-type, x-profile-id',
+      'access-control-allow-headers': 'authorization, content-type, x-profile-id',
       'content-type': 'application/json; charset=utf-8'
     };
     if (route.request().method() === 'OPTIONS') {
@@ -34,9 +35,10 @@ const mockMentorWithoutUsingQuota = async (page: import('@playwright/test').Page
   });
 };
 
-test('desktop academy workflow is usable and shares the Cloudflare API', async ({ page }, testInfo) => {
+test('desktop academy workflow is usable and shares the authenticated Cloudflare API', async ({ page }, testInfo) => {
   const pageErrors: string[] = [];
   page.on('pageerror', error => pageErrors.push(error.message));
+  await authenticatePage(page, 'desktop-academy');
   await mockMentorWithoutUsingQuota(page);
 
   await page.goto('./');
@@ -52,9 +54,7 @@ test('desktop academy workflow is usable and shares the Cloudflare API', async (
   expect(cloudHealth.body).toMatchObject({ ok: true, d1: true, kv: true, ai: true, progressVersion: 4 });
 
   const cloudProgress = await page.evaluate(async () => {
-    const response = await fetch('/api/progress', {
-      headers: { 'x-profile-id': 'playwright-profile-0001' }
-    });
+    const response = await fetch('/api/progress');
     return { status: response.status, body: await response.json() };
   });
   expect(cloudProgress.status).toBe(200);
@@ -82,9 +82,10 @@ test('desktop academy workflow is usable and shares the Cloudflare API', async (
   expect(pageErrors).toEqual([]);
 });
 
-test('mobile task flow uses list-to-editor navigation', async ({ page }, testInfo) => {
+test('mobile task flow uses list-to-editor navigation after login', async ({ page }, testInfo) => {
   const pageErrors: string[] = [];
   page.on('pageerror', error => pageErrors.push(error.message));
+  await authenticatePage(page, 'mobile-academy');
 
   await page.goto('./');
   await expect(page.locator('.mobile-bottom-nav')).toBeVisible();
