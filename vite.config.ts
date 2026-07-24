@@ -43,21 +43,37 @@ export default defineConfig(({ command }) => ({
   ],
   build: {
     sourcemap: true,
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        onlyExplicitManualChunks: true,
-        manualChunks(id) {
-          const normalized = id.replace(/\\/g, '/');
-          if (normalized.includes('/node_modules/sql.js/')
-            || normalized.endsWith('/src/lib/sql-browser.ts')) return 'sqlite';
-          if (normalized.includes('/src/components/AssessmentCenterPortal.tsx')
-            || normalized.endsWith('/src/lib/assessment.ts')
-            || normalized.endsWith('/src/lib/assessment-runtime.ts')) return 'assessment';
-          if (normalized.includes('/src/components/LearningPathPortal.tsx')
-            || normalized.endsWith('/src/lib/learning-path.ts')) return 'learning-path';
-          if (normalized.includes('/node_modules/@monaco-editor/')) return 'editor';
-          if (normalized.includes('/node_modules/recharts/')) return 'charts';
-          return undefined;
+        codeSplitting: {
+          includeDependenciesRecursively: false,
+          groups: [
+            {
+              name: 'sqlite',
+              test: /(?:node_modules[\\/]sql\.js[\\/]|src[\\/]lib[\\/]sql-browser\.ts$)/,
+              priority: 50
+            },
+            {
+              name: 'assessment',
+              test: /src[\\/](?:components[\\/]AssessmentCenterPortal\.tsx|lib[\\/]assessment(?:-runtime)?\.ts)$/,
+              priority: 40
+            },
+            {
+              name: 'learning-path',
+              test: /src[\\/](?:components[\\/]LearningPathPortal\.tsx|lib[\\/]learning-path\.ts)$/,
+              priority: 30
+            },
+            {
+              name: 'editor',
+              test: /node_modules[\\/]@monaco-editor[\\/]/,
+              priority: 20
+            },
+            {
+              name: 'charts',
+              test: /node_modules[\\/]recharts[\\/]/,
+              priority: 10
+            }
+          ]
         }
       }
     }
