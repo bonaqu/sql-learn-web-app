@@ -24,7 +24,7 @@ function corsHeaders(origin: string) {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': CORS_METHODS,
     'access-control-allow-headers': CORS_HEADERS,
-    'access-control-expose-headers': 'retry-after',
+    'access-control-expose-headers': 'retry-after, x-request-id',
     'access-control-max-age': '86400',
     vary: 'Origin'
   };
@@ -37,6 +37,27 @@ function withCors(response: Response, origin: string) {
     status: response.status,
     statusText: response.statusText,
     headers
+  });
+}
+
+function authFailure(error: unknown, pathname: string) {
+  const requestId = crypto.randomUUID();
+  const name = error instanceof Error ? error.name.slice(0, 80) : 'UnknownError';
+  const message = error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240);
+  console.error('auth_pipeline_unhandled', { requestId, pathname, name, message });
+  return new Response(JSON.stringify({
+    error: 'Authentication operation failed',
+    code: 'AUTH_PIPELINE_UNHANDLED',
+    requestId,
+    diagnostic: { name, message }
+  }), {
+    status: 500,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-content-type-options': 'nosniff',
+      'x-request-id': requestId
+    }
   });
 }
 
@@ -63,12 +84,24 @@ export default {
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
 
-    const authResponse = await handleAuthRequest(request, env);
+    let authResponse: Response | null;
+    try {
+      authResponse = await handleAuthRequest(request, env);
+    } catch (error) {
+      const response = authFailure(error, url.pathname);
+      return origin ? withCors(response, origin) : response;
+    }
     if (authResponse) return origin ? withCors(authResponse, origin) : authResponse;
 
     let routedRequest = request;
     if (url.pathname !== '/api/health') {
-      const auth = await authenticateSession(request, env);
+      let auth: Awaited<ReturnType<typeof authenticateSession>>;
+      try {
+        auth = await authenticateSession(request, env);
+      } catch (error) {
+        const response = authFailure(error, url.pathname);
+        return origin ? withCors(response, origin) : response;
+      }
       if (auth instanceof Response) return origin ? withCors(auth, origin) : auth;
       const headers = new Headers(request.headers);
       headers.set('x-profile-id', auth.userId);
