@@ -3,6 +3,7 @@ import { authenticatePage, loginPage } from './auth-helper';
 
 const QUICK_FIRST_SOLUTION = "SELECT ticket_id, service, status FROM tickets WHERE service = 'VPN' ORDER BY ticket_id;";
 const PROGRESS_KEY = 'sql-academy-progress-v4';
+const AUTH_KEY = 'sql-academy-auth-session-v2';
 
 const expectNoHorizontalOverflow = async (page: import('@playwright/test').Page) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
@@ -15,6 +16,14 @@ const replaceEditorSql = async (page: import('@playwright/test').Page, sql: stri
   await editor.click();
   await page.keyboard.press('Control+A');
   await page.keyboard.insertText(sql);
+};
+
+const waitForInitialCloudHydration = async (page: import('@playwright/test').Page) => {
+  await expect.poll(async () => page.evaluate(key => {
+    const session = JSON.parse(localStorage.getItem(key) || 'null');
+    return Number(session?.revision || 0);
+  }, AUTH_KEY), { timeout: 30_000 }).toBeGreaterThan(0);
+  await expect(page.getByRole('heading', { name: /SQL, который работает/i })).toBeVisible();
 };
 
 function practicedProgress() {
@@ -59,15 +68,14 @@ test('desktop assessment resumes, scores SQL and syncs report to a second device
 
   const sessionKey = `sql-academy-assessment-session-v1:${String(auth.session.userId)}`;
   await expect.poll(() => page.evaluate(key => Boolean(localStorage.getItem(key)), sessionKey)).toBe(true);
-  await page.reload();
-  await page.getByTestId('assessment-trigger').click();
+  await page.goto('./', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('assessment-session')).toBeVisible();
   await expect(page.locator('.assessment-progress-strip button').first()).toHaveClass(/correct/);
 
   await page.getByRole('button', { name: 'Завершить досрочно' }).click();
   await expect(page.getByTestId('assessment-report')).toBeVisible();
   await expect(page.locator('.assessment-report-score strong')).not.toHaveText('0');
-  await expect(page.getByText(/Skill report синхронизирован|Отчёт сохранён локально/)).toBeVisible();
+  await expect(page.getByText('Skill report синхронизирован с аккаунтом.')).toBeVisible();
   await page.getByRole('button', { name: /Получить AI Debrief/ }).click();
   await expect(page.locator('.assessment-debrief-card pre')).not.toContainText('Анализирую');
   await page.screenshot({ path: testInfo.outputPath('desktop-assessment-report.png'), fullPage: true });
@@ -90,6 +98,7 @@ test('desktop assessment enforces exam integrity and restores an expired session
     value: practicedProgress()
   });
   await page.goto('./');
+  await waitForInitialCloudHydration(page);
   await page.getByTestId('assessment-trigger').click();
   await page.getByTestId('start-exam').click();
 
@@ -105,8 +114,7 @@ test('desktop assessment enforces exam integrity and restores an expired session
     session.deadlineAt = new Date(Date.now() - 2_000).toISOString();
     localStorage.setItem(key, JSON.stringify(session));
   }, sessionKey);
-  await page.reload();
-  await page.getByTestId('assessment-trigger').click();
+  await page.goto('./', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('assessment-report')).toBeVisible({ timeout: 25_000 });
   await expect(page.getByText(/Время истекло/)).toBeVisible();
   await expect(page.locator('.assessment-task-score')).toHaveCount(8);
@@ -119,6 +127,7 @@ test('desktop assessment interview allows bounded clarification without exposing
     value: practicedProgress()
   });
   await page.goto('./');
+  await waitForInitialCloudHydration(page);
   await page.getByTestId('assessment-trigger').click();
   await page.getByTestId('start-interview').click();
   await expect(page.getByTestId('assessment-interviewer')).toBeVisible();
