@@ -1,5 +1,5 @@
 import core from './core';
-import { handleAccountRequest } from './account';
+import { authenticateSession, handleAuthRequest } from './auth';
 
 const ALLOWED_ORIGINS = new Set([
   'https://bonaqu.github.io',
@@ -10,7 +10,7 @@ const ALLOWED_ORIGINS = new Set([
 ]);
 
 const CORS_METHODS = 'GET, PUT, POST, DELETE, OPTIONS';
-const CORS_HEADERS = 'authorization, content-type, x-account-id, x-device-id, x-profile-id';
+const CORS_HEADERS = 'authorization, content-type, x-profile-id';
 
 function allowedOrigin(request: Request) {
   const origin = request.headers.get('origin');
@@ -63,7 +63,19 @@ export default {
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
 
-    const response = await handleAccountRequest(request, env) || await core.fetch(request, env);
+    const authResponse = await handleAuthRequest(request, env);
+    if (authResponse) return origin ? withCors(authResponse, origin) : authResponse;
+
+    let routedRequest = request;
+    if (url.pathname !== '/api/health') {
+      const auth = await authenticateSession(request, env);
+      if (auth instanceof Response) return origin ? withCors(auth, origin) : auth;
+      const headers = new Headers(request.headers);
+      headers.set('x-profile-id', auth.userId);
+      routedRequest = new Request(request, { headers });
+    }
+
+    const response = await core.fetch(routedRequest, env);
     return origin ? withCors(response, origin) : response;
   }
 } satisfies ExportedHandler<Cloudflare.Env>;

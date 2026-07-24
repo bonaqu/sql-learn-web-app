@@ -7,7 +7,7 @@ Open-source SQL-платформа для 2nd Support Engineer. Репозито
 - GitHub Pages: https://bonaqu.github.io/sql-learn-web-app/
 - Cloudflare Worker: https://sql-learn-web-app.bonaqu.workers.dev
 
-Оба адреса используют один Cloudflare API, D1, KV и Workers AI backend.
+Оба адреса используют один Cloudflare API, D1, KV и Workers AI backend. Учебная платформа монтируется только после успешной проверки пользовательской сессии.
 
 ## Возможности
 
@@ -21,17 +21,43 @@ Open-source SQL-платформа для 2nd Support Engineer. Репозито
 - AI Coach для следующего учебного шага с deterministic local fallback.
 - Каталог, глобальный поиск, Practice, Interview и SQL Puzzle.
 - Статистика, график активности, XP, streak, повторение и достижения.
-- Светлая и тёмная темы.
-- PWA с локальным SQLite WASM и офлайн-кэшем приложения.
-- Экспорт и импорт прогресса в JSON.
-- Анонимные sync-аккаунты без email, SMS, телефона и OAuth.
-- Перенос аккаунта recovery-кодом между ПК и телефонами.
-- Отдельный отзываемый токен для каждого устройства.
+- PWA с локальным SQLite WASM и офлайн-кэшем статических ресурсов.
+- Обязательная авторизация по логину и паролю без email, SMS и OAuth.
+- Восемь одноразовых recovery-кодов после регистрации.
+- Отдельная отзываемая сессия для каждого устройства.
 - Revision-based merge, защищающий прогресс от молчаливого перезаписывания.
-- Cloudflare D1 для аккаунтов и прогресса.
-- Cloudflare KV для настроек и лимитов AI Mentor.
+- Базовые настройки профиля и управление активными сессиями.
+- Cloudflare D1 для пользователей, сессий, recovery-кодов и прогресса.
+- Cloudflare KV для настроек core API и лимитов AI Mentor.
 - Workers AI Mentor с локальным fallback.
 - Автоматический CI/CD в GitHub Pages и Cloudflare Workers Static Assets.
+
+## Password authentication
+
+Без проверенной сессии пользователь видит только экран входа, регистрации или сброса пароля. Компоненты курса, локальный SQLite workspace и Learning Path до входа не монтируются.
+
+### Пароль
+
+- длина от 15 до 128 символов;
+- разрешены пробелы, Unicode и любые печатные символы;
+- сервер использует PBKDF2-HMAC-SHA-256 с индивидуальной случайной солью и 600 000 итераций;
+- исходный пароль не записывается в D1;
+- после пяти последовательных неверных попыток вход блокируется на 15 минут.
+
+### Recovery-коды
+
+После регистрации выдаются ровно восемь случайных одноразовых кодов. Платформа остаётся заблокированной, пока пользователь явно не подтвердит, что сохранил комплект.
+
+- коды можно скопировать или скачать в `.txt`;
+- приложение не сохраняет подтверждённый комплект в persistent storage;
+- в D1 хранится только SHA-256 verifier каждого кода;
+- один код расходуется при сбросе пароля;
+- смена пароля из профиля требует текущий пароль и один recovery-код;
+- после смены или сброса пароля все активные сессии удаляются;
+- новый комплект аннулирует предыдущий;
+- перевыпуск разрешён не чаще одного раза за 24 часа.
+
+Подробная модель: [`docs/password-auth.md`](docs/password-auth.md).
 
 ## Adaptive Learning Path
 
@@ -68,25 +94,11 @@ npm run check
 npm run build
 ```
 
-Полный integration gate в Pull Request дополнительно поднимает локальный Wrangler runtime, применяет D1 migrations и запускает Chromium на desktop и mobile viewport.
+Полный integration gate в Pull Request дополнительно поднимает локальный Wrangler runtime, применяет все D1 migrations и запускает Chromium на desktop и Pixel-sized mobile viewport.
 
-`npm run check` проверяет не только TypeScript и 120 SQL-решений, но и инварианты Adaptive Learning Path: 20 модулей, четыре этапа, существование checkpoints, диапазоны mastery/readiness и отсутствие дублей в дневной сессии.
+`npm run check` проверяет TypeScript, 120 SQL-решений и инварианты Adaptive Learning Path: 20 модулей, четыре этапа, существование checkpoints, диапазоны mastery/readiness и отсутствие дублей в дневной сессии.
 
-## Anonymous sync account
-
-При создании аккаунта браузер генерирует длинный recovery-код с checksum. Из него локально выводятся account ID и master proof. Recovery-код и master secret не отправляются и не сохраняются сервером в открытом виде.
-
-После подключения сервер выдаёт устройству отдельный случайный token. Его можно отозвать из account center, не меняя recovery-код и не отключая остальные устройства.
-
-Важно:
-
-- recovery-код — единственный способ подключить новое устройство;
-- сервер не может восстановить потерянный recovery-код;
-- в localStorage хранится device token, но не recovery-код;
-- при одновременных изменениях клиент объединяет прогресс и повторяет запись по новой revision;
-- облачный аккаунт можно полностью удалить, сохранив локальную копию прогресса.
-
-Подробности: [`docs/anonymous-accounts.md`](docs/anonymous-accounts.md).
+Browser gate дополнительно проверяет обязательный auth screen, регистрацию, восемь recovery-кодов, password reset, одноразовость кода, отзыв сессий, multi-device progress sync, профиль и существующие Academy/Learning Path flows.
 
 ## Cloudflare Free-first
 
@@ -97,7 +109,10 @@ Workflow автоматически:
 3. находит или создаёт KV namespace `sql-academy-settings`;
 4. применяет миграции из `migrations/`;
 5. разворачивает Worker, API и статические assets;
-6. smoke-тестирует frontend, D1, KV, Workers AI и Progress API.
+6. проверяет health endpoint;
+7. подтверждает `401` без сессии;
+8. регистрирует временного smoke-пользователя, проверяет bearer-session и progress API;
+9. удаляет временный аккаунт паролем и recovery-кодом.
 
 Требуются GitHub Actions secrets:
 
@@ -108,28 +123,36 @@ R2 и Hyperdrive намеренно не используются. Для уче
 
 ## API
 
-Legacy browser-profile API:
+Публичные endpoints:
 
 - `GET /api/health`
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `POST /api/auth/password/reset`
+
+Endpoints с `Authorization: Bearer <session-token>`:
+
+- `GET /api/auth/session`
+- `POST /api/auth/logout`
+- `GET /api/auth/sessions`
+- `DELETE /api/auth/sessions/:sessionId`
+- `POST /api/auth/password/change`
+- `POST /api/auth/recovery/regenerate`
+- `GET|PUT|DELETE /api/profile`
+- `GET|PUT /api/user/progress`
 - `GET|PUT /api/progress`
 - `GET|PUT /api/settings`
 - `POST /api/mentor`
 
-Anonymous account API:
-
-- `POST /api/account/register`
-- `POST /api/account/connect`
-- `GET|DELETE /api/account`
-- `GET|PUT /api/account/progress`
-- `GET /api/account/devices`
-- `DELETE /api/account/devices/:deviceId`
+Для core endpoints Worker игнорирует клиентский `x-profile-id` и сам подставляет ID аутентифицированного пользователя.
 
 ## Конфиденциальность
 
 - Нет аналитических трекеров.
-- Для sync-аккаунта не нужны имя, email, SMS, телефон или внешний профиль.
+- Для аккаунта не нужны email, SMS, телефон или внешний профиль.
+- Отображаемое имя необязательно и используется только внутри приложения.
 - Нет персональных данных в репозитории и seed-данных.
-- Без аккаунта прогресс остаётся только в браузере.
-- С аккаунтом изменения синхронизируются после локального сохранения и по кнопке пользователя.
+- В браузере хранится отзываемый session token и локальная копия учебного прогресса.
+- Recovery-коды после подтверждения не сохраняются приложением.
 - В AI Mentor отправляются только контекст задачи, текст вопроса, SQL и техническая статистика попыток.
-- В AI Coach учебного пути отправляется только агрегированный mastery-профиль без персональных данных.
+- В AI Coach отправляется только агрегированный mastery-профиль без логина, пароля, recovery-кодов и session token.
