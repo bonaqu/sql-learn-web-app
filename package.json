@@ -1,7 +1,7 @@
 {
   "name": "sql-academy",
   "private": true,
-  "version": "2.5.0",
+  "version": "2.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,8 +9,9 @@
     "validate:course": "node --experimental-strip-types scripts/validate-course.ts",
     "validate:path": "tsx scripts/validate-learning-path.ts",
     "validate:assessment": "tsx scripts/validate-assessment.ts",
+    "validate:curriculum": "tsx scripts/validate-curriculum.ts",
     "validate:bundle": "node scripts/validate-bundle.mjs",
-    "check": "npm run types:worker && tsc -b --pretty false && npm run validate:course && npm run validate:path && npm run validate:assessment",
+    "check": "npm run types:worker && tsc -b --pretty false && npm run validate:course && npm run validate:path && npm run validate:assessment && npm run validate:curriculum",
     "build": "npm run types:worker && tsc -b && vite build",
     "test:e2e": "playwright test",
     "preview": "vite preview",

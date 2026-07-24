@@ -7,6 +7,7 @@ import {
 
 const LearningPathPortal = lazy(() => import('./LearningPathPortal'));
 const AssessmentCenterPortal = lazy(() => import('./AssessmentCenterPortal'));
+const CurriculumPortal = lazy(() => import('./CurriculumPortal'));
 
 function activeAssessmentExists() {
   for (let index = 0; index < localStorage.length; index += 1) {
@@ -17,15 +18,18 @@ function activeAssessmentExists() {
 
 function preload(feature: DeferredFeature) {
   if (feature === 'learning-path') return void import('./LearningPathPortal');
-  return void import('./AssessmentCenterPortal');
+  if (feature === 'assessment') return void import('./AssessmentCenterPortal');
+  return void import('./CurriculumPortal');
 }
 
 export default function DeferredFeaturePortals() {
   const activeAssessment = activeAssessmentExists();
   const [pathLoaded, setPathLoaded] = useState(false);
   const [assessmentLoaded, setAssessmentLoaded] = useState(activeAssessment);
+  const [curriculumLoaded, setCurriculumLoaded] = useState(false);
   const [pathRequest, setPathRequest] = useState(0);
   const [assessmentRequest, setAssessmentRequest] = useState(activeAssessment ? 1 : 0);
+  const [curriculumRequest, setCurriculumRequest] = useState(0);
 
   useEffect(() => {
     const onPreload = (event: Event) => {
@@ -40,6 +44,9 @@ export default function DeferredFeaturePortals() {
       } else if (feature === 'assessment') {
         setAssessmentLoaded(true);
         setAssessmentRequest(value => value + 1);
+      } else if (feature === 'curriculum') {
+        setCurriculumLoaded(true);
+        setCurriculumRequest(value => value + 1);
       }
     };
     window.addEventListener(PRELOAD_DEFERRED_FEATURE_EVENT, onPreload);
@@ -56,6 +63,9 @@ export default function DeferredFeaturePortals() {
     </Suspense>}
     {assessmentLoaded && <Suspense fallback={<div className="feature-loading" role="status">Загрузка Assessment Center…</div>}>
       <AssessmentCenterPortal externalLauncher openRequest={assessmentRequest} />
+    </Suspense>}
+    {curriculumLoaded && <Suspense fallback={<div className="feature-loading" role="status">Загрузка Curriculum Studio…</div>}>
+      <CurriculumPortal openRequest={curriculumRequest} />
     </Suspense>}
   </>;
 }

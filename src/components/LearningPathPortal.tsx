@@ -24,6 +24,7 @@ import {
   X
 } from 'lucide-react';
 import { SqlTask } from '../data/course';
+import { openAcademyTask } from '../lib/academy-navigation';
 import {
   buildDailySession,
   learningPhases,
@@ -68,27 +69,6 @@ function localPlan(progress: Progress) {
   const weakest = context.weakest[0];
   const items = context.session.slice(0, 4).map((item, index) => `${index + 1}. ${item.title} — ${item.topic}`).join('\n');
   return `План на ближайшую сессию\n• Готовность: ${context.readiness}%\n• Главный фокус: ${weakest ? `${weakest.title} (${weakest.mastery}% mastery)` : 'закрепление пройденного'}\n${items}\n• После сессии повтори ошибочный запрос без подсказки.`;
-}
-
-function openTaskInAcademy(task: SqlTask) {
-  const navLabel = task.mode === 'interview' ? 'Interview' : task.mode === 'puzzle' ? 'SQL Puzzle' : 'Practice';
-  const desktopNav = Array.from(document.querySelectorAll<HTMLButtonElement>('.sidebar nav button'))
-    .find(button => button.textContent?.trim().startsWith(navLabel));
-  desktopNav?.click();
-
-  let attempts = 0;
-  const select = () => {
-    const row = Array.from(document.querySelectorAll<HTMLButtonElement>('.task-row'))
-      .find(button => button.querySelector('strong')?.textContent === task.title);
-    if (row) {
-      row.click();
-      row.scrollIntoView({ block: 'nearest' });
-      return;
-    }
-    attempts += 1;
-    if (attempts < 20) window.setTimeout(select, 60);
-  };
-  window.setTimeout(select, 40);
 }
 
 export default function LearningPathPortal({ externalLauncher = false, openRequest = 0 }: { externalLauncher?: boolean; openRequest?: number }) {
@@ -171,7 +151,7 @@ export default function LearningPathPortal({ externalLauncher = false, openReque
   const startTask = (task: SqlTask) => {
     setActiveTask(task.id);
     setOpen(false);
-    openTaskInAcademy(task);
+    openAcademyTask(task.id);
     window.setTimeout(() => setActiveTask(null), 1000);
   };
 
