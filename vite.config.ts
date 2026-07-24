@@ -64,11 +64,6 @@ export default defineConfig(({ command }) => ({
               priority: 30
             },
             {
-              name: 'editor',
-              test: /node_modules[\\/]@monaco-editor[\\/]/,
-              priority: 20
-            },
-            {
               name: 'charts',
               test: /node_modules[\\/]recharts[\\/]/,
               priority: 10
