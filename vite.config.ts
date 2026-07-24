@@ -45,15 +45,18 @@ export default defineConfig(({ command }) => ({
     sourcemap: true,
     rollupOptions: {
       output: {
+        onlyExplicitManualChunks: true,
         manualChunks(id) {
           const normalized = id.replace(/\\/g, '/');
-          if (normalized.includes('/src/components/AssessmentCenterPortal')
-            || normalized.includes('/src/lib/assessment')) return 'assessment';
-          if (normalized.includes('/src/components/LearningPathPortal')
-            || normalized.includes('/src/lib/learning-path')) return 'learning-path';
-          if (normalized.includes('@monaco-editor')) return 'editor';
-          if (normalized.includes('recharts')) return 'charts';
-          if (normalized.includes('sql.js') || normalized.includes('/src/lib/sql-browser')) return 'sqlite';
+          if (normalized.includes('/node_modules/sql.js/')
+            || normalized.endsWith('/src/lib/sql-browser.ts')) return 'sqlite';
+          if (normalized.includes('/src/components/AssessmentCenterPortal.tsx')
+            || normalized.endsWith('/src/lib/assessment.ts')
+            || normalized.endsWith('/src/lib/assessment-runtime.ts')) return 'assessment';
+          if (normalized.includes('/src/components/LearningPathPortal.tsx')
+            || normalized.endsWith('/src/lib/learning-path.ts')) return 'learning-path';
+          if (normalized.includes('/node_modules/@monaco-editor/')) return 'editor';
+          if (normalized.includes('/node_modules/recharts/')) return 'charts';
           return undefined;
         }
       }
