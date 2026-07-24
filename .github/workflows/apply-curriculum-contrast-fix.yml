@@ -1,0 +1,29 @@
+name: Apply Curriculum Contrast Fix
+
+on:
+  push:
+    branches: [agent/structured-curriculum-project-lab]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/structured-curriculum-project-lab
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: node scripts/apply-curriculum-contrast-fix.mjs
+      - shell: bash
+        run: |
+          test "$(git diff --name-only)" = "src/styles-curriculum.css"
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/styles-curriculum.css
+          git commit -m "Fix Curriculum Studio rubric contrast"
+          git push origin HEAD:agent/structured-curriculum-project-lab
