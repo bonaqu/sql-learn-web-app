@@ -35,6 +35,7 @@ import {
   SessionItem
 } from '../lib/learning-path';
 import { loadProgress, Progress, PROGRESS_CHANGED_EVENT } from '../lib/progress';
+import { useDialogFocus } from '../lib/dialog-focus';
 
 const TARGET_KEY = 'sql-academy-session-target-v1';
 const PROFILE_KEY = 'sql-academy-profile-id';
@@ -90,10 +91,10 @@ function openTaskInAcademy(task: SqlTask) {
   window.setTimeout(select, 40);
 }
 
-export default function LearningPathPortal() {
+export default function LearningPathPortal({ externalLauncher = false, openRequest = 0 }: { externalLauncher?: boolean; openRequest?: number }) {
   const [desktopSlot, setDesktopSlot] = useState<HTMLElement | null>(null);
   const [mobileSlot, setMobileSlot] = useState<HTMLElement | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(Boolean(openRequest));
   const [progress, setProgress] = useState<Progress>(() => loadProgress());
   const [targetMinutes, setTargetMinutes] = useState(() => Math.max(15, Number(localStorage.getItem(TARGET_KEY)) || 25));
   const [expandedPhase, setExpandedPhase] = useState<string>('foundation');
@@ -101,6 +102,7 @@ export default function LearningPathPortal() {
   const [mentorLoading, setMentorLoading] = useState(false);
   const [activeTask, setActiveTask] = useState<string | null>(null);
   const previousOverflow = useRef('');
+  const shellRef = useRef<HTMLDivElement>(null);
 
   const mastery = useMemo(() => moduleMastery(progress), [progress]);
   const phases = useMemo(() => learningPhases(progress, mastery), [mastery, progress]);
@@ -110,6 +112,7 @@ export default function LearningPathPortal() {
   const nextPhase = phases.find(phase => phase.unlocked && !phase.checkpointPassed) || phases[phases.length - 1];
 
   useEffect(() => {
+    if (externalLauncher) return;
     const mount = () => {
       const sidebarNav = document.querySelector('.sidebar nav');
       const mobileNav = document.querySelector('.mobile-bottom-nav');
@@ -137,7 +140,9 @@ export default function LearningPathPortal() {
     });
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, []);
+  }, [externalLauncher]);
+
+  useEffect(() => { if (openRequest > 0) setOpen(true); }, [openRequest]);
 
   useEffect(() => {
     const update = () => setProgress(loadProgress());
@@ -153,19 +158,14 @@ export default function LearningPathPortal() {
     localStorage.setItem(TARGET_KEY, String(targetMinutes));
   }, [targetMinutes]);
 
+  useDialogFocus(open, shellRef, () => setOpen(false));
+
   useEffect(() => {
     if (!open) return;
     setProgress(loadProgress());
     previousOverflow.current = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const close = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
-    };
-    window.addEventListener('keydown', close);
-    return () => {
-      document.body.style.overflow = previousOverflow.current;
-      window.removeEventListener('keydown', close);
-    };
+    return () => { document.body.style.overflow = previousOverflow.current; };
   }, [open]);
 
   const startTask = (task: SqlTask) => {
@@ -215,7 +215,7 @@ export default function LearningPathPortal() {
     <span className="mobile-nav-icon"><Map /></span><small>Путь</small>
   </button>;
 
-  const panel = open ? <div className="learning-path-shell" data-testid="learning-path">
+  const panel = open ? <div ref={shellRef} tabIndex={-1} className="learning-path-shell" role="dialog" aria-modal="true" aria-labelledby="learning-path-title" data-testid="learning-path">
     <header className="path-topbar">
       <div className="path-brand"><div><Route /></div><span><strong>Adaptive Learning Path</strong><small>Персональный маршрут SQL Academy</small></span></div>
       <div className="path-top-actions">
@@ -230,7 +230,7 @@ export default function LearningPathPortal() {
       <section className="path-hero">
         <div className="path-hero-copy">
           <span className="path-kicker"><Sparkles /> маршрут пересчитывается по реальным попыткам</span>
-          <h1>Не просто список задач.<br />Понятный путь к рабочему SQL.</h1>
+          <h1 id="learning-path-title">Не просто список задач.<br />Понятный путь к рабочему SQL.</h1>
           <p>{readinessLabel(readiness)}. Следующая цель — <strong>{nextPhase.title}</strong>.</p>
           <div className="path-hero-actions">
             <button className="path-primary" onClick={() => session.items[0] && startTask(session.items[0].task)} disabled={!session.items.length || Boolean(activeTask)}><Play />Начать сессию</button>
@@ -265,7 +265,7 @@ export default function LearningPathPortal() {
 
         <aside className="path-ai-card path-card">
           <div className="path-section-heading"><div><span className="path-eyebrow">AI Coach</span><h2>План следующего шага</h2><p>Основан на mastery, а не на случайном совете.</p></div><BrainCircuit /></div>
-          <pre className={mentorLoading ? 'path-ai-answer loading' : 'path-ai-answer'}>{mentorLoading ? 'Анализирую учебный профиль…' : mentorAnswer}</pre>
+          <pre className={mentorLoading ? 'path-ai-answer loading' : 'path-ai-answer'} aria-live="polite">{mentorLoading ? 'Анализирую учебный профиль…' : mentorAnswer}</pre>
           <button className="path-ai-refresh" onClick={() => void askMentor()} disabled={mentorLoading}><RefreshCw className={mentorLoading ? 'spin' : ''} />Пересчитать AI-план</button>
           <small><ShieldCheck /> Без имени, email и данных работодателя.</small>
         </aside>
@@ -304,8 +304,8 @@ export default function LearningPathPortal() {
   </div> : null;
 
   return <>
-    {desktopSlot && createPortal(desktopTrigger, desktopSlot)}
-    {mobileSlot && createPortal(mobileTrigger, mobileSlot)}
+    {!externalLauncher && desktopSlot && createPortal(desktopTrigger, desktopSlot)}
+    {!externalLauncher && mobileSlot && createPortal(mobileTrigger, mobileSlot)}
     {panel && createPortal(panel, document.body)}
   </>;
 }

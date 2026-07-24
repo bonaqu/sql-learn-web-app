@@ -50,6 +50,12 @@ jobs:
           test -n "$(find dist/assets -type f -name '*.js' -print -quit)"
           test -n "$(find dist/assets -type f -name '*.css' -print -quit)"
 
+      - name: Enforce bundle budgets and lazy boundaries
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run validate:bundle 2>&1 | tee bundle-budget.log
+
       - name: Cloudflare Worker dry run
         shell: bash
         run: |
@@ -91,6 +97,7 @@ jobs:
           path: |
             typescript-check.log
             production-build.log
+            bundle-budget.log
             wrangler-dry-run.log
             playwright.log
             test-results

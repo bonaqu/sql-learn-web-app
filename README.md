@@ -25,6 +25,10 @@ Open-source SQL-платформа для 2nd Support Engineer. Репозито
 - Каталог, глобальный поиск, Practice, Interview и SQL Puzzle.
 - Статистика, график активности, XP, streak, повторение и достижения.
 - PWA с локальным SQLite WASM и офлайн-кэшем статических ресурсов.
+- Явное online/offline состояние и управляемое обновление без неожиданного auto-reload.
+- Skip link, keyboard focus trap, возврат фокуса, `aria-live` и поддержка `prefers-reduced-motion`.
+- Lazy loading Learning Path, Assessment Center, SQLite, Monaco и графика активности.
+- Автоматический raw/gzip bundle budget и axe-core audit на desktop и Pixel 7.
 - Обязательная авторизация по логину и паролю без email, SMS и OAuth.
 - Восемь одноразовых recovery-кодов после регистрации.
 - Отдельная отзываемая сессия для каждого устройства.
@@ -42,7 +46,9 @@ Open-source SQL-платформа для 2nd Support Engineer. Репозито
 
 - длина от 15 до 128 символов;
 - разрешены пробелы, Unicode и любые печатные символы;
-- сервер использует PBKDF2-HMAC-SHA-256 с индивидуальной случайной солью и 600 000 итераций;
+- сервер использует PBKDF2-HMAC-SHA-256 с индивидуальной случайной солью;
+- KDF состоит из шести последовательных domain-separated стадий по 100 000 итераций, то есть совокупная стоимость составляет 600 000 итераций;
+- результат хранится в versioned формате `pbkdf2-sha256-chain-v1`;
 - исходный пароль не записывается в D1;
 - после пяти последовательных неверных попыток вход блокируется на 15 минут.
 
@@ -104,6 +110,33 @@ Mastery модуля учитывает:
 
 Readiness использует mastery модулей, пройденные checkpoints и результаты Interview Mode. AI Coach получает только агрегированный учебный профиль и список рекомендованных тем; готовые SQL-решения в этом режиме запрещены.
 
+## Accessibility и клавиатура
+
+- первый `Tab` открывает skip link к основному содержимому;
+- активный раздел навигации отмечается через `aria-current`;
+- Profile, Learning Path и Assessment Center удерживают фокус внутри открытого dialog;
+- `Escape` закрывает безопасно закрываемые dialogs и возвращает фокус кнопке запуска;
+- active assessment не закрывается случайным `Escape`;
+- результаты SQL имеют доступный caption и заголовки столбцов;
+- ошибки, синхронизация, SQL-result и update state объявляются через `alert`/`status`/`aria-live`;
+- `prefers-reduced-motion: reduce` отключает необязательные анимации;
+- вторичный текст проходит минимальный WCAG AA contrast threshold.
+
+Pull Request gate запускает axe-core на публичном auth screen, рабочем desktop UI и Pixel 7 Assessment Center. Serious и critical violations блокируют merge.
+
+## PWA, offline и обновления
+
+Service worker кэширует production HTML, CSS, JavaScript chunks, SVG и WASM. После первого успешного открытия доступны статические материалы, локальный прогресс и SQLite workspace. Сеть всё ещё обязательна для:
+
+- входа и проверки cloud session;
+- синхронизации прогресса и assessment reports;
+- профиля и управления сессиями;
+- AI Mentor, Coach, Interviewer и Debrief.
+
+Новая версия не активируется автоматически. Пользователь видит уведомление и выбирает «Обновить сейчас» или «Позже». При изменённом SQL либо активной assessment-сессии требуется дополнительное подтверждение; локальная assessment-сессия остаётся resumable. Если после deployment браузер запросил chunk предыдущей сборки, recovery screen предлагает безопасную перезагрузку вместо продолжения в неконсистентном UI.
+
+Learning Path, Assessment Center, SQLite, Monaco и ActivityChart не входят в обязательную стартовую загрузку. Они загружаются при первом focus/hover/open соответствующего режима и затем остаются в browser cache.
+
 ## Локальный запуск
 
 ```bash
@@ -116,13 +149,16 @@ npm run dev
 ```bash
 npm run check
 npm run build
+npm run validate:bundle
 ```
 
 Полный integration gate в Pull Request дополнительно поднимает локальный Wrangler runtime, применяет все D1 migrations и запускает Chromium на desktop и Pixel-sized mobile viewport.
 
 `npm run check` проверяет TypeScript, 120 SQL-решений, инварианты Adaptive Learning Path и Assessment Center: deterministic selection, diversity, prerequisites, scoring, report ranges и внешний ключ D1 к реальному `users.user_id`.
 
-Browser gate проверяет обязательный auth screen, регистрацию, восемь recovery-кодов, password reset, одноразовость кода, отзыв сессий, multi-device progress sync, профиль, существующие Academy/Learning Path flows, assessment resume/expiry, запрет подсказок, AI Interviewer, skill report sync и Pixel 7 layout.
+Bundle gate ограничивает initial entry, общий CSS и каждый крупный chunk одновременно в raw и gzip представлении. Он также требует отдельные lazy boundaries для Assessment Center, Learning Path, SQLite, ActivityChart и SqlEditor и запрещает ссылаться на них из `dist/index.html`.
+
+Browser gate проверяет обязательный auth screen, регистрацию, восемь recovery-кодов, password reset, одноразовость кода, отзыв сессий, multi-device progress sync, профиль, существующие Academy/Learning Path flows, assessment resume/expiry, запрет подсказок, AI Interviewer, skill report sync, keyboard-only focus flows, offline/update UX, reduced motion, axe-core и Pixel 7 layout.
 
 ## Cloudflare Free-first
 
@@ -180,6 +216,7 @@ Endpoints с `Authorization: Bearer <session-token>`:
 - Отображаемое имя необязательно и используется только внутри приложения.
 - Нет персональных данных в репозитории и seed-данных.
 - В браузере хранится отзываемый session token и локальная копия учебного прогресса.
+- Service worker не получает и не кэширует password, recovery-коды или bearer token.
 - Recovery-коды после подтверждения не сохраняются приложением.
 - Assessment session/report не содержит пароль, recovery-коды или bearer token.
 - В AI Mentor/Interviewer отправляются только контекст задачи, текст вопроса, SQL и техническая статистика попыток.

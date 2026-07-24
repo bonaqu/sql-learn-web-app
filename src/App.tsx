@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import initSqlJs, { QueryExecResult } from 'sql.js';
+import type { QueryExecResult, SqlJsStatic } from 'sql.js';
 import {
   ArrowLeft,
   Award,
@@ -9,6 +9,7 @@ import {
   Bug,
   CheckCircle2,
   ChevronRight,
+  ClipboardCheck,
   Cloud,
   Code2,
   Download,
@@ -26,6 +27,7 @@ import {
   Puzzle,
   Repeat2,
   RotateCcw,
+  Route,
   Search,
   ShieldCheck,
   Sparkles,
@@ -37,7 +39,6 @@ import {
   WifiOff,
   X
 } from 'lucide-react';
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { achievements, modules, SqlTask, tasks } from './data/course';
 import { localMentor, MentorMode } from './lib/mentor';
 import {
@@ -49,9 +50,11 @@ import {
   saveProgress,
   weakTopics as calculateWeakTopics
 } from './lib/progress';
+import { openDeferredFeature, preloadDeferredFeature } from './lib/deferred-features';
 
-const Editor = lazy(() => import('@monaco-editor/react'));
-type SqlEngine = Awaited<ReturnType<typeof initSqlJs>>;
+const Editor = lazy(() => import('./components/SqlEditor'));
+const ActivityChart = lazy(() => import('./components/ActivityChart'));
+type SqlEngine = SqlJsStatic;
 type View = 'home' | 'catalog' | 'practice' | 'review' | 'interview' | 'puzzle' | 'achievements' | 'mentor';
 type SqlTable = { columns: string[]; values: unknown[][] };
 type RunStatus = 'idle' | 'success' | 'error';
@@ -179,6 +182,7 @@ function App() {
   const [mentorAnswer, setMentorAnswer] = useState('Mentor готов дать следующий шаг, разобрать ошибку или объяснить концепт.');
   const [mentorLoading, setMentorLoading] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
+  const workspaceActive = view === 'catalog' || view === 'practice' || view === 'review' || view === 'interview' || view === 'puzzle';
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -188,13 +192,25 @@ function App() {
   useEffect(() => saveProgress(progress), [progress]);
 
   useEffect(() => {
-    initSqlJs({ locateFile: file => `https://sql.js.org/dist/${file}` })
+    const notify = (dirty: boolean) => window.dispatchEvent(new CustomEvent('sql-academy-dirty-state', { detail: { dirty } }));
+    notify(workspaceActive && sql !== selected.starter);
+    return () => { notify(false); };
+  }, [selected.id, selected.starter, sql, workspaceActive]);
+
+  useEffect(() => {
+    if (!workspaceActive || engine) return;
+    let cancelled = false;
+    setMessage('SQLite загружается…');
+    import('sql.js')
+      .then(module => module.default({ locateFile: file => `https://sql.js.org/dist/${file}` }))
       .then(sqlEngine => {
+        if (cancelled) return;
         setEngine(sqlEngine);
         setMessage('SQLite готов. Выполни запрос.');
       })
-      .catch(() => setMessage('Не удалось загрузить SQLite WASM. Проверь сеть.'));
-  }, []);
+      .catch(() => { if (!cancelled) setMessage('Не удалось загрузить SQLite WASM. Проверь сеть.'); });
+    return () => { cancelled = true; };
+  }, [engine, workspaceActive]);
 
   useEffect(() => {
     document.body.style.overflow = editorFullscreen ? 'hidden' : '';
@@ -401,6 +417,7 @@ function App() {
     setMobileNav(false);
     setMobileTaskOpen(false);
     if (next !== 'catalog') setModuleFilter('all');
+    window.requestAnimationFrame(() => document.getElementById('main-content')?.focus({ preventScroll: true }));
   };
 
   const workspaceTitle = view === 'catalog'
@@ -413,19 +430,21 @@ function App() {
           ? 'Interview Mode'
           : 'SQL Puzzle';
 
-  return <div className="app">
-    <aside className={`sidebar ${mobileNav ? 'open' : ''}`}>
+  return <><a className="skip-link" href="#main-content">Перейти к содержимому</a><div className="app">
+    <aside className={`sidebar ${mobileNav ? 'open' : ''}`} aria-label="Основная навигация">
       <button className="logo" onClick={() => navigate('home')} aria-label="SQL Academy — главная">
         <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" />
         <strong>SQL Academy</strong>
       </button>
       <button className="close-mobile" onClick={() => setMobileNav(false)} aria-label="Закрыть меню"><X /></button>
-      <nav>
+      <nav aria-label="Разделы академии">
         <Nav icon={<Home />} label="Главная" active={view === 'home'} onClick={() => navigate('home')} />
+        <button type="button" data-testid="learning-path-trigger" onMouseEnter={() => preloadDeferredFeature('learning-path')} onFocus={() => preloadDeferredFeature('learning-path')} onClick={() => openDeferredFeature('learning-path')}><Route /><span>Учебный путь</span></button>
         <Nav icon={<BookOpen />} label="Каталог" active={view === 'catalog'} onClick={() => navigate('catalog')} />
         <Nav icon={<BrainCircuit />} label="Practice" active={view === 'practice'} onClick={() => navigate('practice')} />
         <Nav icon={<Repeat2 />} label={`Повторение${queue.length ? ` · ${queue.length}` : ''}`} active={view === 'review'} onClick={() => navigate('review')} />
         <Nav icon={<BriefcaseBusiness />} label="Interview" active={view === 'interview'} onClick={() => navigate('interview')} />
+        <button type="button" data-testid="assessment-trigger" onMouseEnter={() => preloadDeferredFeature('assessment')} onFocus={() => preloadDeferredFeature('assessment')} onClick={() => openDeferredFeature('assessment')}><ClipboardCheck /><span>Assessment Center</span></button>
         <Nav icon={<Puzzle />} label="SQL Puzzle" active={view === 'puzzle'} onClick={() => navigate('puzzle')} />
         <Nav icon={<Trophy />} label="Достижения" active={view === 'achievements'} onClick={() => navigate('achievements')} />
         <Nav icon={<Sparkles />} label="AI Mentor" active={view === 'mentor'} onClick={() => navigate('mentor')} />
@@ -436,12 +455,12 @@ function App() {
       </div>
     </aside>
 
-    <main>
+    <main id="main-content" tabIndex={-1}>
       <header className="topbar">
         <button className="mobile-menu" onClick={() => setMobileNav(true)} aria-label="Открыть меню"><Menu /></button>
         <div className="search">
           <Search size={18} />
-          <input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="Поиск по задачам и темам…" />
+          <input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="Поиск по задачам и темам…" aria-label="Поиск по задачам и темам" />
           <kbd>Ctrl K</kbd>
         </div>
         <div className="header-actions">
@@ -607,25 +626,27 @@ function App() {
 
     <nav className="mobile-bottom-nav" aria-label="Мобильная навигация">
       <MobileNav icon={<Home />} label="Главная" active={view === 'home'} onClick={() => navigate('home')} />
+      <button type="button" data-testid="learning-path-mobile-trigger" onTouchStart={() => preloadDeferredFeature('learning-path')} onFocus={() => preloadDeferredFeature('learning-path')} onClick={() => openDeferredFeature('learning-path')}><span className="mobile-nav-icon"><Route /></span><small>Путь</small></button>
       <MobileNav icon={<BrainCircuit />} label="Практика" active={view === 'practice'} onClick={() => navigate('practice')} />
       <MobileNav icon={<Repeat2 />} label="Повтор" active={view === 'review'} badge={queue.length} onClick={() => navigate('review')} />
+      <button type="button" data-testid="assessment-mobile-trigger" onTouchStart={() => preloadDeferredFeature('assessment')} onFocus={() => preloadDeferredFeature('assessment')} onClick={() => openDeferredFeature('assessment')}><span className="mobile-nav-icon"><ClipboardCheck /></span><small>Экзамен</small></button>
       <MobileNav icon={<Sparkles />} label="Mentor" active={view === 'mentor'} onClick={() => navigate('mentor')} />
     </nav>
-  </div>;
+  </div></>;
 }
 
 function Nav({ icon, label, active, onClick }: { icon: React.ReactNode; label: string; active: boolean; onClick: () => void }) {
-  return <button className={active ? 'active' : ''} onClick={onClick}>{icon}<span>{label}</span></button>;
+  return <button className={active ? 'active' : ''} onClick={onClick} aria-current={active ? 'page' : undefined}>{icon}<span>{label}</span></button>;
 }
 
 function MobileNav({ icon, label, active, badge, onClick }: { icon: React.ReactNode; label: string; active: boolean; badge?: number; onClick: () => void }) {
-  return <button className={active ? 'active' : ''} onClick={onClick}><span className="mobile-nav-icon">{icon}{badge ? <b>{badge > 9 ? '9+' : badge}</b> : null}</span><small>{label}</small></button>;
+  return <button className={active ? 'active' : ''} onClick={onClick} aria-current={active ? 'page' : undefined}><span className="mobile-nav-icon">{icon}{badge ? <b>{badge > 9 ? '9+' : badge}</b> : null}</span><small>{label}</small></button>;
 }
 
 function ResultTables({ tables }: { tables: SqlTable[] }) {
   if (!tables.length) return null;
   return <div className="result-stack">{tables.map((table, index) => <div className="result-table-wrap" key={index}>
-    <table><thead><tr>{table.columns.map(column => <th key={column}>{column}</th>)}</tr></thead><tbody>{table.values.map((row, rowIndex) => <tr key={rowIndex}>{row.map((value, cellIndex) => <td key={cellIndex}>{normalize(value)}</td>)}</tr>)}</tbody></table>
+    <table><caption className="sr-only">Результат SQL-запроса, таблица {index + 1}</caption><thead><tr>{table.columns.map(column => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{table.values.map((row, rowIndex) => <tr key={rowIndex}>{row.map((value, cellIndex) => <td key={cellIndex}>{normalize(value)}</td>)}</tr>)}</tbody></table>
     <div className="row-count">{table.values.length} строк</div>
   </div>)}</div>;
 }
@@ -677,7 +698,7 @@ function HomeView({ progress, completion, focusTopics, reviewCount, onStart, onR
   return <>
     <section className="hero"><div><h1>SQL, который работает<br />в реальной поддержке.</h1><p>Практическая академия для 2nd Support Engineer: точная проверка результата, адаптивное повторение и Mentor в каждой задаче.</p><div className="hero-actions"><button className="primary" onClick={onStart}>Продолжить обучение <ChevronRight /></button>{reviewCount > 0 && <button onClick={onReview}><Repeat2 /> Повторить {reviewCount}</button>}</div><div className="hero-proof"><span><ShieldCheck /> без персональных данных</span><span><BrainCircuit /> 120 задач</span><span><Sparkles /> AI + local fallback</span></div></div><div className="terminal"><div className="terminal-bar"><i /><i /><i /><span>support_analytics.sql</span></div><pre><b>WITH</b> service_stats <b>AS</b> ({'\n'}  <b>SELECT</b> service, COUNT(*) tickets,{'\n'}         AVG(resolution_minutes) avg_time{'\n'}  <b>FROM</b> tickets <b>GROUP BY</b> service{'\n'}){'\n'}<b>SELECT</b> *, RANK() <b>OVER</b> ({'\n'}  <b>ORDER BY</b> tickets <b>DESC</b>{'\n'}) load_rank <b>FROM</b> service_stats;</pre><div className="terminal-success">✓ Query completed · 5 rows</div></div></section>
     <section className="stats"><article><small>Общий прогресс</small><strong>{completion}%</strong><div className="progress"><i style={{ width: `${completion}%` }} /></div></article><article><small>Решено задач</small><strong>{progress.completed.length}<span>/120</span></strong></article><article><small>Текущий streak</small><strong>{progress.streak}<span> дней</span></strong></article><article><small>На повторение</small><strong>{reviewCount}</strong></article></section>
-    <section className="dashboard-grid"><article className="chart-card"><div><h2>Активность</h2><p>Правильно решённые задачи за неделю</p></div><ResponsiveContainer width="100%" height={250}><AreaChart data={progress.history}><defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#8b5cf6" stopOpacity={.35} /><stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} /></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="day" /><YAxis allowDecimals={false} /><Tooltip /><Area type="monotone" dataKey="solved" stroke="#8b5cf6" fill="url(#fill)" strokeWidth={3} /></AreaChart></ResponsiveContainer></article><article className="modules-card"><h2>Фокус повторения</h2><div>{focusTopics.map((topic, index) => <button className="weak-topic" key={topic.id} onClick={() => onOpenTopic(topic.id)}><span>{String(index + 1).padStart(2, '0')}</span><p><strong>{topic.title}</strong><small>{topic.solved}/{topic.total} решено</small></p><ChevronRight /></button>)}</div></article></section>
+    <section className="dashboard-grid"><article className="chart-card"><div><h2>Активность</h2><p>Правильно решённые задачи за неделю</p></div><Suspense fallback={<div className="loading" role="status">Загрузка графика активности…</div>}><ActivityChart data={progress.history} /></Suspense></article><article className="modules-card"><h2>Фокус повторения</h2><div>{focusTopics.map((topic, index) => <button className="weak-topic" key={topic.id} onClick={() => onOpenTopic(topic.id)}><span>{String(index + 1).padStart(2, '0')}</span><p><strong>{topic.title}</strong><small>{topic.solved}/{topic.total} решено</small></p><ChevronRight /></button>)}</div></article></section>
   </>;
 }
 

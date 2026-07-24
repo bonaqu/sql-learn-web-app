@@ -16,7 +16,8 @@ export default defineConfig(({ command }) => ({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
+      injectRegister: null,
       includeAssets: ['logo.svg', 'maskable.svg'],
       manifest: {
         name: 'SQL Academy — Support Engineering Track',
@@ -33,20 +34,36 @@ export default defineConfig(({ command }) => ({
         ]
       },
       workbox: {
+        cleanupOutdatedCaches: true,
         navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/api\//],
         globPatterns: ['**/*.{js,css,html,svg,wasm}']
       }
     })
   ],
   build: {
     sourcemap: true,
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks(id) {
-          if (id.includes('@monaco-editor')) return 'editor';
-          if (id.includes('recharts')) return 'charts';
-          if (id.includes('sql.js')) return 'sqlite';
-          return undefined;
+        codeSplitting: {
+          includeDependenciesRecursively: false,
+          groups: [
+            {
+              name: 'sqlite',
+              test: /(?:node_modules[\\/]sql\.js[\\/]|src[\\/]lib[\\/]sql-browser\.ts$)/,
+              priority: 50
+            },
+            {
+              name: 'assessment',
+              test: /src[\\/](?:components[\\/]AssessmentCenterPortal\.tsx|lib[\\/]assessment(?:-runtime)?\.ts)$/,
+              priority: 40
+            },
+            {
+              name: 'learning-path',
+              test: /src[\\/](?:components[\\/]LearningPathPortal\.tsx|lib[\\/]learning-path\.ts)$/,
+              priority: 30
+            }
+          ]
         }
       }
     }
