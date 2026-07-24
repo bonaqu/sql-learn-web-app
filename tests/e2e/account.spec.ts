@@ -8,7 +8,12 @@ const replaceEditorSql = async (page: import('@playwright/test').Page, sql: stri
   await page.keyboard.insertText(sql);
 };
 
-test('desktop anonymous account syncs progress across two devices', async ({ page, browser }) => {
+const expectNoHorizontalOverflow = async (page: import('@playwright/test').Page) => {
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+  expect(overflow).toBe(false);
+};
+
+test('desktop anonymous account syncs progress across two devices', async ({ page, browser }, testInfo) => {
   await page.goto('./');
   await page.getByTestId('account-trigger').click();
   await page.getByRole('button', { name: /Создать аккаунт/ }).click();
@@ -57,6 +62,23 @@ test('desktop anonymous account syncs progress across two devices', async ({ pag
   await secondPage.getByTestId('account-trigger').click();
   await expect(secondPage.getByText('Синхронизация активна')).toBeVisible();
   await expect(secondPage.locator('.device-row')).toHaveCount(2);
+  await expectNoHorizontalOverflow(secondPage);
+  await secondPage.screenshot({ path: testInfo.outputPath('desktop-account-center.png'), fullPage: true });
 
   await secondContext.close();
+});
+
+test('mobile anonymous account recovery onboarding is usable', async ({ page }, testInfo) => {
+  await page.goto('./');
+  await page.getByTestId('account-trigger').click();
+  await expect(page.getByTestId('account-modal')).toBeVisible();
+  await page.getByRole('button', { name: /Создать аккаунт/ }).click();
+
+  await expect(page.getByRole('heading', { name: 'Сохрани recovery-код' })).toBeVisible();
+  await expect(page.getByTestId('recovery-code')).toBeVisible();
+  await expect(page.getByText('Скачать файл')).toBeVisible();
+  await expect(page.getByLabel('Я сохранил recovery-код в безопасном месте')).not.toBeChecked();
+  await expectNoHorizontalOverflow(page);
+
+  await page.screenshot({ path: testInfo.outputPath('mobile-account-onboarding.png'), fullPage: true });
 });
