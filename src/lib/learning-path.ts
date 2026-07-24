@@ -207,10 +207,21 @@ export function buildDailySession(progress: Progress, targetMinutes = 25): Daily
   const checkpoint = phases.find(phase => phase.unlocked && !phase.checkpointPassed && phase.mastery >= 42)?.checkpointTask;
   uniquePush(items, checkpoint, 'checkpoint', 'Контрольная точка');
 
+  for (const module of mastery.filter(item => item.level !== 'locked' && item.level !== 'mastered')) {
+    uniquePush(items, module.recommendedTask || undefined, 'new', `Продолжить: ${module.title}`);
+  }
+
+  for (const task of tasks) {
+    if (items.length >= 10) break;
+    const module = mastery.find(item => item.id === task.module);
+    if (!completed.has(task.id) && module?.level !== 'locked') uniquePush(items, task, 'new', 'Добрать практику');
+  }
+
   const compact: SessionItem[] = [];
   let totalMinutes = 0;
   for (const item of items) {
     if (compact.length >= 6) break;
+    if (compact.length >= 2 && totalMinutes >= targetMinutes - 4) break;
     if (compact.length >= 3 && totalMinutes + item.minutes > targetMinutes + 6) continue;
     compact.push(item);
     totalMinutes += item.minutes;
