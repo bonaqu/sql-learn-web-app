@@ -47,6 +47,7 @@ import { AssessmentSqlEngine, AssessmentSqlTable, evaluateAssessmentSql } from '
 import { loadAuthSession } from '../lib/auth';
 import { overallReadiness } from '../lib/learning-path';
 import { loadProgress } from '../lib/progress';
+import { useDialogFocus } from '../lib/dialog-focus';
 
 const Editor = lazy(() => import('@monaco-editor/react'));
 type RunState = 'idle' | 'success' | 'error';
@@ -79,11 +80,11 @@ function mergeReports(local: AssessmentReport[], remote: AssessmentReport[]) {
   return Array.from(map.values()).sort((left, right) => new Date(right.completedAt).getTime() - new Date(left.completedAt).getTime()).slice(0, 20);
 }
 
-export default function AssessmentCenterPortal() {
+export default function AssessmentCenterPortal({ externalLauncher = false, openRequest = 0 }: { externalLauncher?: boolean; openRequest?: number }) {
   const auth = loadAuthSession();
   const [desktopSlot, setDesktopSlot] = useState<HTMLElement | null>(null);
   const [mobileSlot, setMobileSlot] = useState<HTMLElement | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(Boolean(openRequest));
   const [session, setSession] = useState<AssessmentSession | null>(() => loadAssessmentSession());
   const [report, setReport] = useState<AssessmentReport | null>(null);
   const [history, setHistory] = useState<AssessmentReport[]>(() => loadLocalAssessmentReports());
@@ -101,6 +102,7 @@ export default function AssessmentCenterPortal() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
   const previousOverflow = useRef('');
+  const shellRef = useRef<HTMLDivElement>(null);
   const persistTimer = useRef<number | null>(null);
   const elapsedTicks = useRef(0);
 
@@ -111,6 +113,7 @@ export default function AssessmentCenterPortal() {
   const config = session ? assessmentModes[session.mode] : null;
 
   useEffect(() => {
+    if (externalLauncher) return;
     const mount = () => {
       const sidebarNav = document.querySelector('.sidebar nav');
       const mobileNav = document.querySelector('.mobile-bottom-nav');
@@ -140,21 +143,18 @@ export default function AssessmentCenterPortal() {
     });
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, []);
+  }, [externalLauncher]);
+
+  useEffect(() => { if (openRequest > 0) setOpen(true); }, [openRequest]);
+
+  useDialogFocus(open, shellRef, () => { if (!session) setOpen(false); }, !session);
 
   useEffect(() => {
     if (!open) return;
     previousOverflow.current = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !session) setOpen(false);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow.current;
-      window.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open, session]);
+    return () => { document.body.style.overflow = previousOverflow.current; };
+  }, [open]);
 
   useEffect(() => {
     if (!open || !session || engine || engineError) return;
@@ -428,7 +428,7 @@ export default function AssessmentCenterPortal() {
     </section>
 
     <section className="assessment-history-card">
-      <div className="assessment-section-heading"><div><span>История</span><h2>Skill reports</h2></div><button onClick={() => void refreshHistory()} disabled={historyLoading}><RefreshCw className={historyLoading ? 'spin' : ''} /></button></div>
+      <div className="assessment-section-heading"><div><span>История</span><h2>Skill reports</h2></div><button onClick={() => void refreshHistory()} disabled={historyLoading} aria-label="Обновить историю assessment"><RefreshCw className={historyLoading ? 'spin' : ''} /></button></div>
       {!history.length && <div className="assessment-empty"><History /><p>Завершённые проверки появятся здесь и на других устройствах после входа.</p></div>}
       <div className="assessment-history-list">
         {history.map(item => <button key={item.id} onClick={() => setReport(item)}>
@@ -438,13 +438,13 @@ export default function AssessmentCenterPortal() {
         </button>)}
       </div>
     </section>
-    {syncMessage && <div className="assessment-notice">{syncMessage}</div>}
+    {syncMessage && <div className="assessment-notice" role="status" aria-live="polite">{syncMessage}</div>}
   </main>;
 
   const sessionView = session && activeTask && activeAnswer && config ? <main className="assessment-session" data-testid="assessment-session">
     <header className="assessment-session-header">
       <div><span className="assessment-mode-pill">{config.shortTitle}</span><strong>{session.currentIndex + 1}/{session.taskIds.length}</strong></div>
-      <div className={`assessment-timer ${secondsLeft <= 300 ? 'urgent' : ''}`} data-testid="assessment-timer"><Clock3 />{formatTimer(secondsLeft)}</div>
+      <div className={`assessment-timer ${secondsLeft <= 300 ? 'urgent' : ''}`} role="timer" aria-label={`Осталось ${formatTimer(secondsLeft)}`} data-testid="assessment-timer"><Clock3 />{formatTimer(secondsLeft)}</div>
       <button className="assessment-finish" onClick={() => void complete(session, 'completed')}>Завершить досрочно</button>
     </header>
 
@@ -461,14 +461,14 @@ export default function AssessmentCenterPortal() {
         <div className="assessment-integrity-note" data-testid="assessment-locked-tools"><LockKeyhole /><span><strong>Assessment integrity</strong><small>Подсказки, эталон и обычный AI Mentor недоступны до завершения.</small></span></div>
         {config.interviewer && <div className="assessment-interviewer" data-testid="assessment-interviewer">
           <div><BrainCircuit /><span><strong>AI Interviewer</strong><small>Осталось уточнений: {Math.max(0, 2 - activeAnswer.interviewerUses)}</small></span></div>
-          <textarea value={interviewerQuestion} onChange={event => setInterviewerQuestion(event.target.value)} placeholder="Задай уточняющий вопрос о требованиях…" maxLength={600} />
+          <textarea aria-label="Уточняющий вопрос AI Interviewer" value={interviewerQuestion} onChange={event => setInterviewerQuestion(event.target.value)} placeholder="Задай уточняющий вопрос о требованиях…" maxLength={600} />
           <button onClick={() => void askInterviewer()} disabled={interviewerLoading || activeAnswer.interviewerUses >= 2 || !interviewerQuestion.trim()}><Sparkles />{interviewerLoading ? 'Формулирую уточнение…' : 'Спросить'}</button>
           <p>{interviewerAnswer}</p>
         </div>}
       </article>
 
       <article className="assessment-editor-panel">
-        {engineError ? <div className="assessment-error"><AlertTriangle />{engineError}</div> : <Suspense fallback={<div className="assessment-loading">Загрузка Monaco Editor…</div>}>
+        {engineError ? <div className="assessment-error" role="alert"><AlertTriangle />{engineError}</div> : <Suspense fallback={<div className="assessment-loading">Загрузка Monaco Editor…</div>}>
           <Editor
             height="390px"
             language="sql"
@@ -483,7 +483,7 @@ export default function AssessmentCenterPortal() {
           <button onClick={skip}><SkipForward />Пропустить</button>
           <button onClick={nextTask} disabled={!activeAnswer.correct && !activeAnswer.skipped}>{session.currentIndex >= session.taskIds.length - 1 ? 'Завершить' : 'Следующая'}<ChevronRight /></button>
         </div>
-        <div className={`assessment-feedback ${runState}`}>{runState === 'success' ? <CheckCircle2 /> : runState === 'error' ? <AlertTriangle /> : <Target />}<span>{message}</span></div>
+        <div className={`assessment-feedback ${runState}`} role="status" aria-live="polite">{runState === 'success' ? <CheckCircle2 /> : runState === 'error' ? <AlertTriangle /> : <Target />}<span>{message}</span></div>
         {!!result.length && <div className="assessment-result-table" data-testid="assessment-result">
           {result.map((block, blockIndex) => <div className="result-table-wrap" key={blockIndex}><table><thead><tr>{block.columns.map(column => <th key={column}>{column}</th>)}</tr></thead><tbody>{block.values.map((row, rowIndex) => <tr key={rowIndex}>{row.map((value, columnIndex) => <td key={columnIndex}>{value === null ? 'NULL' : String(value)}</td>)}</tr>)}</tbody></table></div>)}
         </div>}
@@ -522,17 +522,17 @@ export default function AssessmentCenterPortal() {
     </section>
   </main> : null;
 
-  const shell = open ? <div className="assessment-shell" data-testid="assessment-center">
+  const shell = open ? <div ref={shellRef} tabIndex={-1} className="assessment-shell" role="dialog" aria-modal="true" aria-labelledby="assessment-dialog-title" data-testid="assessment-center">
     <header className="assessment-topbar">
-      <div className="assessment-brand"><div><ClipboardCheck /></div><span><strong>SQL Academy</strong><small>Assessment Center</small></span></div>
+      <div className="assessment-brand"><div><ClipboardCheck /></div><span><strong>SQL Academy</strong><small id="assessment-dialog-title">Assessment Center</small></span></div>
       <div className="assessment-top-actions"><span><ShieldCheck />{auth?.username}</span>{!session && <button onClick={() => setOpen(false)} aria-label="Закрыть Assessment Center"><X /></button>}</div>
     </header>
     {report ? reportView : session ? sessionView : landing}
   </div> : null;
 
   return <>
-    {desktopSlot && createPortal(desktopTrigger, desktopSlot)}
-    {mobileSlot && createPortal(mobileTrigger, mobileSlot)}
+    {!externalLauncher && desktopSlot && createPortal(desktopTrigger, desktopSlot)}
+    {!externalLauncher && mobileSlot && createPortal(mobileTrigger, mobileSlot)}
     {shell && createPortal(shell, document.body)}
   </>;
 }

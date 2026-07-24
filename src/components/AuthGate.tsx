@@ -46,6 +46,7 @@ import {
   UserDeviceSession,
   validateSession
 } from '../lib/auth';
+import { useDialogFocus } from '../lib/dialog-focus';
 
 const PENDING_REGISTRATION_KEY = 'sql-academy-pending-registration-v1';
 const PENDING_RECOVERY_KEY = 'sql-academy-pending-recovery-v1';
@@ -119,7 +120,7 @@ function RecoveryCodesPanel({
       <button type="button" onClick={() => void copyAll()}><Copy />Копировать все</button>
       <button type="button" onClick={() => recoveryCodesDownload(codes)}><Download />Скачать .txt</button>
     </div>
-    {message && <div className="auth-notice success"><Check />{message}</div>}
+    {message && <div className="auth-notice success" role="status"><Check />{message}</div>}
     <label className="auth-checkbox">
       <input type="checkbox" checked={saved} onChange={event => setSaved(event.target.checked)} />
       <span>Я сохранил все 8 кодов в безопасном месте и понимаю, что они больше не будут показаны</span>
@@ -201,9 +202,9 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (session: AuthSessio
     </section>
 
     <section className="auth-form-panel">
-      <div className="auth-tabs" role="tablist">
-        <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => switchMode('login')}>Вход</button>
-        <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => switchMode('register')}>Регистрация</button>
+      <div className="auth-tabs" role="tablist" aria-label="Режим авторизации">
+        <button type="button" role="tab" aria-selected={mode === 'login'} className={mode === 'login' ? 'active' : ''} onClick={() => switchMode('login')}>Вход</button>
+        <button type="button" role="tab" aria-selected={mode === 'register'} className={mode === 'register' ? 'active' : ''} onClick={() => switchMode('register')}>Регистрация</button>
       </div>
       <form className="auth-form" onSubmit={event => void submit(event)}>
         <div className="auth-hero-icon">{mode === 'register' ? <User /> : mode === 'reset' ? <KeyRound /> : <Lock />}</div>
@@ -245,8 +246,8 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (session: AuthSessio
           <input data-testid="auth-password-confirm" type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={15} maxLength={128} required />
         </label>}
 
-        {error && <div className="auth-notice error"><ShieldCheck />{error}</div>}
-        {message && <div className="auth-notice success"><Check />{message}</div>}
+        {error && <div className="auth-notice error" role="alert"><ShieldCheck />{error}</div>}
+        {message && <div className="auth-notice success" role="status"><Check />{message}</div>}
 
         <button data-testid="auth-submit" className="auth-primary" disabled={busy || (mode !== 'login' && (!passwordValid(password) || password !== confirmPassword))}>
           {busy ? <LoaderCircle className="spin" /> : mode === 'register' ? <User /> : mode === 'reset' ? <KeyRound /> : <LogIn />}
@@ -281,6 +282,7 @@ function ProfilePortal({ session, onSessionChange }: { session: AuthSession; onS
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const modalRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const mount = () => {
@@ -325,6 +327,8 @@ function ProfilePortal({ session, onSessionChange }: { session: AuthSession; onS
   useEffect(() => {
     if (open) void refresh();
   }, [open, refresh]);
+
+  useDialogFocus(open, modalRef, () => setOpen(false));
 
   useEffect(() => {
     if (!open) return;
@@ -411,15 +415,15 @@ function ProfilePortal({ session, onSessionChange }: { session: AuthSession; onS
   const modal = open ? <div className="profile-backdrop" onMouseDown={event => {
     if (event.currentTarget === event.target && !busy) setOpen(false);
   }}>
-    <section className="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-title" data-testid="profile-modal">
+    <section ref={modalRef} tabIndex={-1} className="profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-title" data-testid="profile-modal">
       <header className="profile-header">
         <div><span className="auth-kicker">Аккаунт · @{session.username}</span><h2 id="profile-title">Настройки профиля</h2></div>
-        <button type="button" className="icon" onClick={() => setOpen(false)} aria-label="Закрыть профиль"><X /></button>
+        <button type="button" className="icon" data-autofocus onClick={() => setOpen(false)} aria-label="Закрыть профиль"><X /></button>
       </header>
-      <nav className="profile-tabs">
-        <button className={tab === 'profile' ? 'active' : ''} onClick={() => setTab('profile')}><User />Профиль</button>
-        <button className={tab === 'security' ? 'active' : ''} onClick={() => setTab('security')}><ShieldCheck />Безопасность</button>
-        <button className={tab === 'sessions' ? 'active' : ''} onClick={() => setTab('sessions')}><MonitorSmartphone />Сессии</button>
+      <nav className="profile-tabs" role="tablist" aria-label="Разделы профиля">
+        <button role="tab" aria-selected={tab === 'profile'} className={tab === 'profile' ? 'active' : ''} onClick={() => setTab('profile')}><User />Профиль</button>
+        <button role="tab" aria-selected={tab === 'security'} className={tab === 'security' ? 'active' : ''} onClick={() => setTab('security')}><ShieldCheck />Безопасность</button>
+        <button role="tab" aria-selected={tab === 'sessions'} className={tab === 'sessions' ? 'active' : ''} onClick={() => setTab('sessions')}><MonitorSmartphone />Сессии</button>
       </nav>
       {error && <div className="auth-notice error profile-notice"><ShieldCheck />{error}</div>}
       {message && <div className="auth-notice success profile-notice"><Check />{message}</div>}
@@ -463,7 +467,7 @@ function ProfilePortal({ session, onSessionChange }: { session: AuthSession; onS
       </div>}
 
       {tab === 'sessions' && <div className="profile-body">
-        <div className="session-heading"><div><h3>Активные устройства</h3><p>Каждый вход получает отдельный отзываемый токен.</p></div><button className="icon" onClick={() => void refresh()}><RefreshCw /></button></div>
+        <div className="session-heading"><div><h3>Активные устройства</h3><p>Каждый вход получает отдельный отзываемый токен.</p></div><button className="icon" onClick={() => void refresh()} aria-label="Обновить список сессий"><RefreshCw /></button></div>
         <div className="session-list">
           {sessions.map(item => <article key={item.id}>
             <MonitorSmartphone /><span><strong>{item.deviceName}{item.current ? ' · это устройство' : ''}</strong><small>Активность: {formatDate(item.lastSeenAt)} · до {formatDate(item.expiresAt)}</small></span>
