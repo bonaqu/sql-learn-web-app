@@ -1,7 +1,7 @@
 {
   "name": "sql-academy",
   "private": true,
-  "version": "2.6.0",
+  "version": "2.6.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,8 +10,9 @@
     "validate:path": "tsx scripts/validate-learning-path.ts",
     "validate:assessment": "tsx scripts/validate-assessment.ts",
     "validate:curriculum": "tsx scripts/validate-curriculum.ts",
+    "validate:deployment-smoke": "node --check scripts/cloudflare-production-smoke.mjs && node scripts/validate-deployment-smoke.mjs",
     "validate:bundle": "node scripts/validate-bundle.mjs",
-    "check": "npm run types:worker && tsc -b --pretty false && npm run validate:course && npm run validate:path && npm run validate:assessment && npm run validate:curriculum",
+    "check": "npm run types:worker && tsc -b --pretty false && npm run validate:course && npm run validate:path && npm run validate:assessment && npm run validate:curriculum && npm run validate:deployment-smoke",
     "build": "npm run types:worker && tsc -b && vite build",
     "test:e2e": "playwright test",
     "preview": "vite preview",
