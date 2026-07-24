@@ -129,11 +129,12 @@ jobs:
           test -n "$DEPLOY_URL"
           echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
 
-      - name: Smoke-test Cloudflare frontend and API
+      - name: Smoke-test Cloudflare frontend, auth and API
         shell: bash
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
         run: |
+          set -euo pipefail
           test -n "$DEPLOY_URL"
           curl --fail --silent --show-error --location \
             --retry 6 --retry-delay 5 --retry-all-errors \
@@ -152,6 +153,71 @@ jobs:
           }
           NODE
 
+          UNAUTH_STATUS=$(curl --silent --output cloudflare-unauthorized.json --write-out '%{http_code}' \
+            "$DEPLOY_URL/api/auth/session")
+          test "$UNAUTH_STATUS" = "401"
+
+          SMOKE_USERNAME="smoke_$(date +%s)_${GITHUB_RUN_ATTEMPT}"
+          SMOKE_PASSWORD=$(node -e "process.stdout.write(require('crypto').randomBytes(28).toString('base64url') + '!aA1')")
+          export SMOKE_USERNAME SMOKE_PASSWORD
+          node - <<'NODE' > cloudflare-register-payload.json
+          process.stdout.write(JSON.stringify({
+            username: process.env.SMOKE_USERNAME,
+            password: process.env.SMOKE_PASSWORD,
+            displayName: 'Deployment Smoke',
+            deviceName: 'GitHub Actions'
+          }));
+          NODE
+
+          curl --fail --silent --show-error --location \
+            --request POST \
+            --header 'content-type: application/json' \
+            --data @cloudflare-register-payload.json \
+            "$DEPLOY_URL/api/auth/register" > cloudflare-register.json
+
+          AUTH_TOKEN=$(node -e "const x=require('./cloudflare-register.json'); if(x.session?.token) process.stdout.write(x.session.token)")
+          RECOVERY_CODE=$(node -e "const x=require('./cloudflare-register.json'); if(x.recoveryCodes?.[0]) process.stdout.write(x.recoveryCodes[0])")
+          test -n "$AUTH_TOKEN"
+          test -n "$RECOVERY_CODE"
+          export AUTH_TOKEN RECOVERY_CODE
+
+          curl --fail --silent --show-error --location \
+            --header "authorization: Bearer $AUTH_TOKEN" \
+            "$DEPLOY_URL/api/auth/session" > cloudflare-session.json
+          node - <<'NODE'
+          const session = require('./cloudflare-session.json');
+          if (session.user?.username !== process.env.SMOKE_USERNAME || !session.session?.id) {
+            console.error('Invalid authenticated session:', session);
+            process.exit(1);
+          }
+          NODE
+
+          curl --fail --silent --show-error --location \
+            --header "authorization: Bearer $AUTH_TOKEN" \
+            "$DEPLOY_URL/api/user/progress" > cloudflare-progress.json
+          node - <<'NODE'
+          const progress = require('./cloudflare-progress.json');
+          if (progress.revision !== 0 || progress.progress !== null) {
+            console.error('Unexpected initial progress:', progress);
+            process.exit(1);
+          }
+          NODE
+
+          node - <<'NODE' > cloudflare-delete-payload.json
+          process.stdout.write(JSON.stringify({
+            currentPassword: process.env.SMOKE_PASSWORD,
+            recoveryCode: process.env.RECOVERY_CODE,
+            confirm: 'DELETE'
+          }));
+          NODE
+          curl --fail --silent --show-error --location \
+            --request DELETE \
+            --header "authorization: Bearer $AUTH_TOKEN" \
+            --header 'content-type: application/json' \
+            --data @cloudflare-delete-payload.json \
+            "$DEPLOY_URL/api/profile" > cloudflare-delete.json
+          node -e "const x=require('./cloudflare-delete.json'); if(!x.ok) process.exit(1)"
+
       - name: Upload deployment diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
@@ -161,6 +227,11 @@ jobs:
             cloudflare-deploy.log
             cloudflare-index.html
             cloudflare-health.json
+            cloudflare-unauthorized.json
+            cloudflare-register.json
+            cloudflare-session.json
+            cloudflare-progress.json
+            cloudflare-delete.json
           if-no-files-found: ignore
           retention-days: 7
 
@@ -179,7 +250,7 @@ jobs:
               sha: context.sha,
               state: success ? 'success' : 'failure',
               context: 'deployment/cloudflare',
-              description: success ? 'Cloudflare Worker deployed and smoke-tested' : 'Cloudflare deployment failed'
+              description: success ? 'Cloudflare Worker deployed and auth smoke-tested' : 'Cloudflare deployment failed'
             };
             if (process.env.DEPLOY_URL) params.target_url = process.env.DEPLOY_URL;
             await github.rest.repos.createCommitStatus(params);
