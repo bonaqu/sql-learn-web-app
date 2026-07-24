@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import './lib/api-fetch';
 import App from './App';
+import AssessmentAutoResume from './components/AssessmentAutoResume';
 import AssessmentCenterPortal from './components/AssessmentCenterPortal';
 import AuthGate from './components/AuthGate';
 import LearningPathPortal from './components/LearningPathPortal';
@@ -20,6 +21,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <App />
       <LearningPathPortal />
       <AssessmentCenterPortal />
+      <AssessmentAutoResume />
     </AuthGate>
   </React.StrictMode>
 );
