@@ -145,7 +145,7 @@ export function assessmentEligibility(mode: AssessmentMode, progress: Progress) 
 `function moduleCoverage(progress: Progress, moduleId: string) {
   const moduleTasks = tasks.filter(task => task.module === moduleId);
   const completed = new Set(progress.completed);
-  return moduleTasks.length ? completed.size && moduleTasks.filter(task => completed.has(task.id)).length / moduleTasks.length : 0;
+  return moduleTasks.length ? moduleTasks.filter(task => completed.has(task.id)).length / moduleTasks.length : 0;
 }
 
 function completedModuleCount(progress: Progress) {
@@ -227,20 +227,9 @@ patch('src/components/AssessmentCenterPortal.tsx',
 `          <div className="assessment-mode-icon">{mode === 'quick' ? <AlarmClock /> : mode === 'interview' ? <BrainCircuit /> : mode === 'diagnostic' ? <Target /> : mode === 'production' ? <ShieldCheck /> : <Trophy />}</div>`,
 'assessment mode icons');
 patch('src/components/AssessmentCenterPortal.tsx',
-`            : <div className="assessment-locked"><LockKeyhole /><span>Нужно ещё {eligibility.missingCompleted} задач и {eligibility.missingModules} модулей</span></div>}`, 
+`            : <div className="assessment-locked"><LockKeyhole /><span>Нужно ещё {eligibility.missingCompleted} задач и {eligibility.missingModules} модулей</span></div>}`,
 `            : <div className="assessment-locked"><LockKeyhole /><span>Нужно ещё {eligibility.missingCompleted} задач, {eligibility.missingModules} модулей{eligibility.missingRequiredModules.length ? ' · prerequisites: ' + eligibility.missingRequiredModules.length : ''}</span></div>}`,
 'assessment prerequisite message');
-
-patch('scripts/validate-assessment.ts',
-`const practiced: Progress = {
-  ...defaultProgress,
-  completed: tasks.slice(0, 30).map(task => task.id),
-  taskStats: Object.fromEntries(tasks.slice(0, 30).map((task, index) => [task.id, {`,
-`const practiced: Progress = {
-  ...defaultProgress,
-  completed: tasks.slice(0, 30).map(task => task.id),
-  taskStats: Object.fromEntries(tasks.slice(0, 30).map((task, index) => [task.id, {`,
-'validator fixture anchor');
 
 patch('scripts/validate-assessment.ts',
 `};
@@ -278,3 +267,4 @@ patch('scripts/validate-assessment.ts',
 'validator fixed pools');
 
 console.log('Graded exam integration patch applied.');
+// Corrected literal-safe integration trigger.
