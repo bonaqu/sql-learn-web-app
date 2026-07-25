@@ -23,7 +23,11 @@ export type {
 
 export { capstoneProjects };
 
-export const curriculumLessons = [...coreLessons, ...advancedCurriculumLessons];
+const normalizedCoreLessons = coreLessons.map(lesson => lesson.id === 'lesson-cte'
+  ? { ...lesson, title: 'CTE и этапы запроса' }
+  : lesson);
+
+export const curriculumLessons = [...normalizedCoreLessons, ...advancedCurriculumLessons];
 export const curriculumCheckpoints = [...coreCheckpoints, ...advancedCurriculumCheckpoints];
 
 export function lessonById(id: string) {
