@@ -68,10 +68,12 @@
 }
 .syllabus-report-export:hover { border-color: rgb(167 139 250 / 55%); background: rgb(91 33 182 / 25%); }
 .syllabus-report-export svg { width: 1rem; }
+.syllabus-exam-grid article > header > span { color: #a1a1aa; }
 [data-theme="light"] .syllabus-readiness-components span,
 [data-theme="light"] .syllabus-certificate-criteria article { background: #fff; color: #52525b; }
 [data-theme="light"] .syllabus-readiness-components strong { color: #27272a; }
 [data-theme="light"] .syllabus-report-export { background: #ede9fe; color: #5b21b6; }
+[data-theme="light"] .syllabus-exam-grid article > header > span { color: #52525b; }
 @media (max-width: 900px) {
   .syllabus-readiness-components { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .syllabus-certificate-criteria { grid-template-columns: repeat(2, minmax(0, 1fr)); }
