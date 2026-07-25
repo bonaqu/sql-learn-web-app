@@ -94,6 +94,31 @@ test('desktop assessment resumes, scores SQL and syncs report to a second device
   await secondContext.close();
 });
 
+test('desktop diagnostic exam uses its fixed 12-task protected pool and resumes', async ({ page }) => {
+  const auth = await authenticatePage(page, 'diagnostic');
+  await page.goto('./');
+  await page.getByTestId('assessment-trigger').click();
+  await expect(page.getByTestId('assessment-mode-diagnostic')).toBeVisible();
+  await page.getByTestId('start-diagnostic').click();
+
+  await expect(page.getByTestId('assessment-session')).toBeVisible();
+  await expect(page.locator('.assessment-mode-pill')).toHaveText('Diagnostic');
+  await expect(page.locator('.assessment-progress-strip button')).toHaveCount(12);
+  await expect(page.getByTestId('assessment-timer')).toContainText(/^3[34]:|^35:/);
+  await expect(page.getByTestId('assessment-interviewer')).toHaveCount(0);
+  await expect(page.getByTestId('assessment-locked-tools')).toBeVisible();
+
+  const sessionKey = `sql-academy-assessment-session-v1:${String(auth.session.userId)}`;
+  await expect.poll(() => page.evaluate(key => {
+    const session = JSON.parse(localStorage.getItem(key) || 'null');
+    return session?.mode === 'diagnostic' && session?.taskIds?.length === 12;
+  }, sessionKey)).toBe(true);
+  await page.reload();
+  await expect(page.getByTestId('assessment-session')).toBeVisible();
+  await expect(page.locator('.assessment-mode-pill')).toHaveText('Diagnostic');
+  await expect(page.locator('.assessment-progress-strip button')).toHaveCount(12);
+});
+
 test('desktop assessment enforces exam integrity and restores an expired session as a report', async ({ page }) => {
   const auth = await authenticatePage(page, 'expiry');
   await page.addInitScript(({ key, value }) => localStorage.setItem(key, JSON.stringify(value)), {
@@ -148,7 +173,7 @@ test('mobile assessment landing and recovery-safe session UI fit Pixel 7', async
   await page.goto('./');
   await page.getByTestId('assessment-mobile-trigger').click();
   await expect(page.getByTestId('assessment-landing')).toBeVisible();
-  await expect(page.locator('.assessment-mode-card')).toHaveCount(3);
+  await expect(page.locator('.assessment-mode-card')).toHaveCount(6);
   await page.getByTestId('start-quick').click();
   await expect(page.getByTestId('assessment-session')).toBeVisible();
   await expect(page.getByTestId('assessment-locked-tools')).toBeVisible();
