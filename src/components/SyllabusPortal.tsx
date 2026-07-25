@@ -32,6 +32,7 @@ import { openDeferredFeature } from '../lib/deferred-features';
 import { moduleMastery } from '../lib/learning-path';
 import { loadProgress } from '../lib/progress';
 import { useDialogFocus } from '../lib/dialog-focus';
+import LearningReportButton from './LearningReportButton';
 import '../syllabus.css';
 import '../syllabus-readiness.css';
 
@@ -161,6 +162,7 @@ export default function SyllabusPortal({ openRequest = 0 }: { openRequest?: numb
         <span><strong>{item.title}</strong><small>{item.current} / {item.target}{item.unit === '%' ? '%' : ''}</small></span>
       </article>)}
     </section>
+    <LearningReportButton readiness={completeReadiness} mastery={mastery} curriculum={curriculumProgress} reports={reports} />
   </main>;
 
   const shell = <div ref={shellRef} tabIndex={-1} className="syllabus-shell" role="dialog" aria-modal="true" aria-labelledby="syllabus-dialog-title">
