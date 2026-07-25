@@ -1,13 +1,29 @@
-import { curriculumLessons, type CurriculumLesson } from '../data/complete-curriculum';
+import {
+  curriculumCheckpoints,
+  curriculumLessons,
+  type CurriculumLesson
+} from '../data/complete-curriculum';
 import { sqlExams } from '../data/sql-exams';
 import type { AssessmentReport } from './assessment';
+import {
+  bestCheckpointReport,
+  legacyCheckpointPassed,
+  loadLocalCheckpointReports,
+  type CheckpointReport
+} from './checkpoints';
 import type { CurriculumProgressV1 } from './curriculum-progress';
 import { moduleMastery } from './learning-path';
 import type { Progress } from './progress';
+import {
+  completedAssessmentReports,
+  prerequisiteEvidenceSource,
+  READINESS_POLICY,
+  type PrerequisiteEvidenceSource
+} from './readiness-policy';
 
-export const PREREQUISITE_MASTERY = 55;
-export const DIAGNOSTIC_MODULE_BYPASS = 70;
-export const DIAGNOSTIC_GLOBAL_BYPASS = 85;
+export const PREREQUISITE_MASTERY = READINESS_POLICY.thresholds.curriculumPrerequisite;
+export const DIAGNOSTIC_MODULE_BYPASS = READINESS_POLICY.thresholds.diagnosticModuleBypass;
+export const DIAGNOSTIC_GLOBAL_BYPASS = READINESS_POLICY.thresholds.diagnosticGlobalBypass;
 
 export type ModuleAccessEvidence = {
   moduleId: string;
@@ -15,9 +31,11 @@ export type ModuleAccessEvidence = {
   taskMastery: number;
   lessonsCompleted: number;
   lessonsTotal: number;
+  checkpointReportPassed: boolean;
+  checkpointLegacyPassed: boolean;
   diagnosticModuleScore: number;
   diagnosticGlobalScore: number;
-  source: 'tasks' | 'lessons' | 'diagnostic-module' | 'diagnostic-global' | 'missing';
+  source: PrerequisiteEvidenceSource;
 };
 
 export type LessonAccess = {
@@ -27,8 +45,8 @@ export type LessonAccess = {
 };
 
 function bestDiagnosticReports(reports: AssessmentReport[]) {
-  return reports
-    .filter(report => report.mode === 'diagnostic' && report.status === 'completed')
+  return completedAssessmentReports(reports)
+    .filter(report => report.mode === 'diagnostic')
     .sort((left, right) => right.score - left.score || right.completedAt.localeCompare(left.completedAt));
 }
 
@@ -36,7 +54,8 @@ export function moduleAccessEvidence(
   moduleId: string,
   progress: Progress,
   curriculum: CurriculumProgressV1,
-  reports: AssessmentReport[]
+  reports: AssessmentReport[],
+  checkpointReports: CheckpointReport[] = loadLocalCheckpointReports()
 ): ModuleAccessEvidence {
   const mastery = moduleMastery(progress).find(item => item.id === moduleId)?.mastery || 0;
   const lessons = curriculumLessons.filter(lesson => lesson.module === moduleId);
@@ -48,15 +67,24 @@ export function moduleAccessEvidence(
     return Math.max(best, score);
   }, 0);
 
-  const source = mastery >= PREREQUISITE_MASTERY
-    ? 'tasks'
-    : lessons.length > 0 && lessonsCompleted === lessons.length
-      ? 'lessons'
-      : diagnosticModuleScore >= DIAGNOSTIC_MODULE_BYPASS
-        ? 'diagnostic-module'
-        : diagnosticGlobalScore >= DIAGNOSTIC_GLOBAL_BYPASS
-          ? 'diagnostic-global'
-          : 'missing';
+  const relatedCheckpoints = curriculumCheckpoints.filter(checkpoint =>
+    checkpoint.moduleIds.some(candidate => candidate === moduleId)
+  );
+  const checkpointReportPassed = relatedCheckpoints.some(checkpoint =>
+    Boolean(bestCheckpointReport(checkpoint.id, checkpointReports)?.passed)
+  );
+  const checkpointLegacyPassed = !checkpointReportPassed && relatedCheckpoints.some(checkpoint =>
+    legacyCheckpointPassed(checkpoint.id, progress)
+  );
+
+  const source = prerequisiteEvidenceSource({
+    taskMastery: mastery,
+    lessonCompleted: lessons.length > 0 && lessonsCompleted === lessons.length,
+    checkpointReportPassed,
+    legacyCheckpointPassed: checkpointLegacyPassed,
+    diagnosticModuleScore,
+    diagnosticGlobalScore
+  });
 
   return {
     moduleId,
@@ -64,6 +92,8 @@ export function moduleAccessEvidence(
     taskMastery: mastery,
     lessonsCompleted,
     lessonsTotal: lessons.length,
+    checkpointReportPassed,
+    checkpointLegacyPassed,
     diagnosticModuleScore,
     diagnosticGlobalScore,
     source
@@ -74,22 +104,30 @@ export function lessonAccess(
   lesson: CurriculumLesson,
   progress: Progress,
   curriculum: CurriculumProgressV1,
-  reports: AssessmentReport[]
+  reports: AssessmentReport[],
+  checkpointReports: CheckpointReport[] = loadLocalCheckpointReports()
 ): LessonAccess {
-  const evidence = lesson.prerequisites.map(moduleId => moduleAccessEvidence(moduleId, progress, curriculum, reports));
+  const evidence = lesson.prerequisites.map(moduleId =>
+    moduleAccessEvidence(moduleId, progress, curriculum, reports, checkpointReports)
+  );
   return {
     unlocked: evidence.every(item => item.ready),
     missing: evidence.filter(item => !item.ready),
-    bypassed: evidence.filter(item => item.source === 'diagnostic-module' || item.source === 'diagnostic-global')
+    bypassed: evidence.filter(item =>
+      item.source === 'diagnostic-module' || item.source === 'diagnostic-global'
+    )
   };
 }
 
 export function unlockedLessons(
   progress: Progress,
   curriculum: CurriculumProgressV1,
-  reports: AssessmentReport[]
+  reports: AssessmentReport[],
+  checkpointReports: CheckpointReport[] = loadLocalCheckpointReports()
 ) {
-  return curriculumLessons.filter(lesson => lessonAccess(lesson, progress, curriculum, reports).unlocked);
+  return curriculumLessons.filter(lesson =>
+    lessonAccess(lesson, progress, curriculum, reports, checkpointReports).unlocked
+  );
 }
 
 export function diagnosticPassingScore() {
