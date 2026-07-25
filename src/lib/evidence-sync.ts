@@ -1,16 +1,11 @@
-import {
-  loadLocalAssessmentReports,
-  saveLocalAssessmentReport,
-  type AssessmentReport
-} from './assessment';
-import {
-  loadLocalCheckpointReports,
-  saveLocalCheckpointReport,
-  type CheckpointReport
-} from './checkpoints';
+import type { AssessmentReport } from './assessment';
+import { loadAuthSession } from './auth';
+import type { CheckpointReport } from './checkpoints';
 
 export type SyncableEvidenceReport = {
+  version?: number;
   id: string;
+  userId?: string;
   completedAt: string;
 };
 
@@ -20,6 +15,22 @@ export type EvidenceSyncResult = {
 };
 
 type SyncError = Error & { status?: number };
+type EvidenceKind = 'assessment' | 'checkpoint';
+
+const COLLECTIONS = {
+  assessment: {
+    endpoint: '/api/assessment/reports',
+    keyPrefix: 'sql-academy-assessment-reports-v1:',
+    event: 'sql-academy-assessment-reports-changed',
+    limit: 20
+  },
+  checkpoint: {
+    endpoint: '/api/checkpoints/reports',
+    keyPrefix: 'sql-academy-checkpoint-reports-v1:',
+    event: 'sql-academy-checkpoint-reports-changed',
+    limit: 50
+  }
+} as const;
 
 function serialized(value: unknown) {
   return JSON.stringify(value);
@@ -60,6 +71,49 @@ export function reportsToUpload<T extends SyncableEvidenceReport>(local: T[], re
   });
 }
 
+function currentUserId() {
+  return loadAuthSession()?.userId || null;
+}
+
+function validLocalReport<T extends SyncableEvidenceReport>(value: unknown, userId: string): value is T {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const report = value as Partial<SyncableEvidenceReport>;
+  return report.version === 1
+    && typeof report.id === 'string'
+    && report.id.length > 0
+    && typeof report.completedAt === 'string'
+    && report.completedAt.length > 0
+    && (!report.userId || report.userId === userId);
+}
+
+function localKey(kind: EvidenceKind, userId: string) {
+  return `${COLLECTIONS[kind].keyPrefix}${userId}`;
+}
+
+function readLocalReports<T extends SyncableEvidenceReport>(kind: EvidenceKind, userId: string) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(localKey(kind, userId)) || '[]') as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((report): report is T => validLocalReport<T>(report, userId)).slice(0, COLLECTIONS[kind].limit)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalReports<T extends SyncableEvidenceReport>(
+  kind: EvidenceKind,
+  userId: string,
+  reports: T[]
+) {
+  const key = localKey(kind, userId);
+  const next = serialized(reports);
+  if (localStorage.getItem(key) === next) return false;
+  localStorage.setItem(key, next);
+  window.dispatchEvent(new CustomEvent(COLLECTIONS[kind].event, { detail: reports }));
+  return true;
+}
+
 async function responseJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const error = new Error(`Evidence sync failed with ${response.status}`) as SyncError;
@@ -87,48 +141,42 @@ async function postReports<T extends SyncableEvidenceReport>(endpoint: string, r
   return uploaded;
 }
 
-function persistAssessmentReports(merged: AssessmentReport[], previous: AssessmentReport[]) {
-  const previousById = new Map(previous.map(report => [report.id, serialized(report)]));
-  const changed = merged
-    .filter(report => previousById.get(report.id) !== serialized(report))
-    .sort((left, right) => left.completedAt.localeCompare(right.completedAt));
-  for (const report of changed) saveLocalAssessmentReport(report);
-}
-
-function persistCheckpointReports(merged: CheckpointReport[], previous: CheckpointReport[]) {
-  const previousById = new Map(previous.map(report => [report.id, serialized(report)]));
-  const changed = merged
-    .filter(report => previousById.get(report.id) !== serialized(report))
-    .sort((left, right) => left.completedAt.localeCompare(right.completedAt));
-  for (const report of changed) saveLocalCheckpointReport(report);
-}
-
-export async function syncAssessmentEvidence() {
-  const local = loadLocalAssessmentReports();
-  const response = await fetch('/api/assessment/reports');
-  const payload = await responseJson<{ reports?: AssessmentReport[] }>(response);
-  const remote = Array.isArray(payload.reports) ? payload.reports : [];
-  const merged = mergeEvidenceReports(local, remote, 20);
-  persistAssessmentReports(merged, local);
-  const uploaded = await postReports('/api/assessment/reports', reportsToUpload(local, remote));
+async function syncCollection<T extends SyncableEvidenceReport>(kind: EvidenceKind, userId: string) {
+  const config = COLLECTIONS[kind];
+  const local = readLocalReports<T>(kind, userId);
+  const response = await fetch(config.endpoint);
+  const payload = await responseJson<{ reports?: T[] }>(response);
+  const remote = Array.isArray(payload.reports)
+    ? payload.reports.filter(report => validLocalReport<T>(report, userId))
+    : [];
+  const merged = mergeEvidenceReports(local, remote, config.limit);
+  writeLocalReports(kind, userId, merged);
+  const uploaded = await postReports(config.endpoint, reportsToUpload(local, remote));
   return { local: merged.length, remote: remote.length, uploaded };
 }
 
-export async function syncCheckpointEvidence() {
-  const local = loadLocalCheckpointReports();
-  const response = await fetch('/api/checkpoints/reports');
-  const payload = await responseJson<{ reports?: CheckpointReport[] }>(response);
-  const remote = Array.isArray(payload.reports) ? payload.reports : [];
-  const merged = mergeEvidenceReports(local, remote, 50);
-  persistCheckpointReports(merged, local);
-  const uploaded = await postReports('/api/checkpoints/reports', reportsToUpload(local, remote));
-  return { local: merged.length, remote: remote.length, uploaded };
+export async function syncAssessmentEvidence(userId = currentUserId()) {
+  if (!userId) return { local: 0, remote: 0, uploaded: 0 };
+  return syncCollection<AssessmentReport>('assessment', userId);
+}
+
+export async function syncCheckpointEvidence(userId = currentUserId()) {
+  if (!userId) return { local: 0, remote: 0, uploaded: 0 };
+  return syncCollection<CheckpointReport>('checkpoint', userId);
 }
 
 export async function reconcileEvidenceReports(): Promise<EvidenceSyncResult> {
+  const userId = currentUserId();
+  if (!userId) {
+    return {
+      assessment: { local: 0, remote: 0, uploaded: 0 },
+      checkpoint: { local: 0, remote: 0, uploaded: 0 }
+    };
+  }
+
   const [assessment, checkpoint] = await Promise.allSettled([
-    syncAssessmentEvidence(),
-    syncCheckpointEvidence()
+    syncAssessmentEvidence(userId),
+    syncCheckpointEvidence(userId)
   ]);
 
   const rejected = [assessment, checkpoint].find(result =>
@@ -139,9 +187,9 @@ export async function reconcileEvidenceReports(): Promise<EvidenceSyncResult> {
   return {
     assessment: assessment.status === 'fulfilled'
       ? assessment.value
-      : { local: loadLocalAssessmentReports().length, remote: 0, uploaded: 0 },
+      : { local: readLocalReports<AssessmentReport>('assessment', userId).length, remote: 0, uploaded: 0 },
     checkpoint: checkpoint.status === 'fulfilled'
       ? checkpoint.value
-      : { local: loadLocalCheckpointReports().length, remote: 0, uploaded: 0 }
+      : { local: readLocalReports<CheckpointReport>('checkpoint', userId).length, remote: 0, uploaded: 0 }
   };
 }
