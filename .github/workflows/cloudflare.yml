@@ -134,6 +134,11 @@ jobs:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
         run: node scripts/cloudflare-production-smoke.mjs
 
+      - name: Smoke-test full misconception answer history
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+        run: node scripts/concept-progress-production-smoke.mjs
+
       - name: Smoke-test executable checkpoint report lifecycle
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
@@ -172,7 +177,7 @@ jobs:
           script: |
             const success = process.env.JOB_STATUS === 'success';
             let description = success
-              ? 'Cloudflare deployed; curriculum, checkpoints, Mastery and onboarding verified'
+              ? 'Cloudflare deployed; concepts, curriculum, checkpoints, Mastery and onboarding verified'
               : 'Cloudflare deployment or production smoke failed';
             try {
               const fs = require('fs');
@@ -185,10 +190,13 @@ jobs:
               const checkpointStage = fs.existsSync('cloudflare-checkpoint-stage.txt')
                 ? fs.readFileSync('cloudflare-checkpoint-stage.txt', 'utf8').trim()
                 : '';
+              const conceptStage = fs.existsSync('cloudflare-concepts-stage.txt')
+                ? fs.readFileSync('cloudflare-concepts-stage.txt', 'utf8').trim()
+                : '';
               const curriculumStage = fs.existsSync('cloudflare-smoke-stage.txt')
                 ? fs.readFileSync('cloudflare-smoke-stage.txt', 'utf8').trim()
                 : '';
-              const stage = onboardingStage || masteryStage || checkpointStage || curriculumStage;
+              const stage = onboardingStage || masteryStage || checkpointStage || conceptStage || curriculumStage;
               if (!success && stage) description = `Cloudflare smoke failed at ${stage}`.slice(0, 140);
             } catch {}
             const params = {
