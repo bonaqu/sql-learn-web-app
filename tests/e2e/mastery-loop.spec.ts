@@ -16,7 +16,7 @@ async function solveConceptCard(card: Locator) {
   for (let index = 0; index < await options.count(); index += 1) {
     await options.nth(index).click();
     await card.getByRole('button', { name: /Проверить reasoning|Проверить ещё раз/ }).click();
-    if ((await card.getAttribute('class'))?.includes('correct')) return;
+    if (await card.evaluate(element => element.classList.contains('correct'))) return;
   }
   throw new Error('No correct concept-check option found');
 }
