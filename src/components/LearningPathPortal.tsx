@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowLeft,
   BrainCircuit,
   Check,
   CheckCircle2,
@@ -23,20 +22,37 @@ import {
   Trophy,
   X
 } from 'lucide-react';
-import { SqlTask } from '../data/course-catalog';
+import { tasks, type SqlTask } from '../data/course-catalog';
 import { openAcademyTask } from '../lib/academy-navigation';
+import {
+  ASSESSMENT_REPORTS_CHANGED_EVENT,
+  loadLocalAssessmentReports
+} from '../lib/assessment';
+import {
+  CHECKPOINT_REPORTS_CHANGED_EVENT,
+  loadLocalCheckpointReports
+} from '../lib/checkpoints';
+import {
+  CURRICULUM_PROGRESS_CHANGED_EVENT,
+  loadCurriculumProgress
+} from '../lib/curriculum-progress';
+import { openDeferredFeature } from '../lib/deferred-features';
 import {
   buildDailySession,
   learningPhases,
   mentorPlanContext,
   moduleMastery,
-  ModuleMastery,
-  overallReadiness,
+  type ModuleMastery,
   readinessLabel,
-  SessionItem
+  type SessionItem
 } from '../lib/learning-path';
-import { loadProgress, Progress, PROGRESS_CHANGED_EVENT } from '../lib/progress';
+import { loadProgress, type Progress, PROGRESS_CHANGED_EVENT } from '../lib/progress';
+import {
+  buildSkillEvidenceGraph,
+  type ModuleSkillEvidence
+} from '../lib/skill-evidence';
 import { useDialogFocus } from '../lib/dialog-focus';
+import { openCheckpointCenter } from './CheckpointLauncher';
 
 const TARGET_KEY = 'sql-academy-session-target-v1';
 const PROFILE_KEY = 'sql-academy-profile-id';
@@ -57,6 +73,15 @@ function levelLabel(module: ModuleMastery) {
   return 'Новый модуль';
 }
 
+function evidenceActionLabel(action: ModuleSkillEvidence['recommendedAction']) {
+  if (action === 'lesson') return 'следующий урок';
+  if (action === 'practice') return 'практика';
+  if (action === 'checkpoint') return 'checkpoint';
+  if (action === 'assessment') return 'assessment';
+  if (action === 'project') return 'capstone';
+  return 'повторение';
+}
+
 function reasonIcon(reason: SessionItem['reason']) {
   if (reason === 'review') return <RefreshCw />;
   if (reason === 'weakness') return <Target />;
@@ -67,16 +92,45 @@ function reasonIcon(reason: SessionItem['reason']) {
 function localPlan(progress: Progress) {
   const context = mentorPlanContext(progress);
   const weakest = context.weakest[0];
-  const items = context.session.slice(0, 4).map((item, index) => `${index + 1}. ${item.title} — ${item.topic}`).join('\n');
-  return `План на ближайшую сессию\n• Готовность: ${context.readiness}%\n• Главный фокус: ${weakest ? `${weakest.title} (${weakest.mastery}% mastery)` : 'закрепление пройденного'}\n${items}\n• После сессии повтори ошибочный запрос без подсказки.`;
+  const items = context.session
+    .slice(0, 4)
+    .map((item, index) => `${index + 1}. ${item.title} — ${item.topic}`)
+    .join('\n');
+  return `План на ближайшую сессию
+• Готовность: ${context.readiness}%
+• Главный фокус: ${weakest ? `${weakest.title} (${weakest.mastery}% mastery)` : 'закрепление пройденного'}
+${items}
+• После сессии повтори ошибочный запрос без подсказки.`;
 }
 
-export default function LearningPathPortal({ externalLauncher = false, openRequest = 0 }: { externalLauncher?: boolean; openRequest?: number }) {
+function openCurriculumTarget(target: 'lesson' | 'project', id: string) {
+  const params = new URLSearchParams();
+  params.set(target, id);
+  history.replaceState(
+    null,
+    '',
+    `${window.location.pathname}${window.location.search}#${params.toString()}`
+  );
+  openDeferredFeature('curriculum');
+}
+
+export default function LearningPathPortal({
+  externalLauncher = false,
+  openRequest = 0
+}: {
+  externalLauncher?: boolean;
+  openRequest?: number;
+}) {
   const [desktopSlot, setDesktopSlot] = useState<HTMLElement | null>(null);
   const [mobileSlot, setMobileSlot] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState(Boolean(openRequest));
   const [progress, setProgress] = useState<Progress>(() => loadProgress());
-  const [targetMinutes, setTargetMinutes] = useState(() => Math.max(15, Number(localStorage.getItem(TARGET_KEY)) || 25));
+  const [curriculumProgress, setCurriculumProgress] = useState(() => loadCurriculumProgress());
+  const [assessmentReports, setAssessmentReports] = useState(() => loadLocalAssessmentReports());
+  const [checkpointReports, setCheckpointReports] = useState(() => loadLocalCheckpointReports());
+  const [targetMinutes, setTargetMinutes] = useState(() =>
+    Math.max(15, Number(localStorage.getItem(TARGET_KEY)) || 25)
+  );
   const [expandedPhase, setExpandedPhase] = useState<string>('foundation');
   const [mentorAnswer, setMentorAnswer] = useState(() => localPlan(loadProgress()));
   const [mentorLoading, setMentorLoading] = useState(false);
@@ -85,11 +139,19 @@ export default function LearningPathPortal({ externalLauncher = false, openReque
   const shellRef = useRef<HTMLDivElement>(null);
 
   const mastery = useMemo(() => moduleMastery(progress), [progress]);
-  const phases = useMemo(() => learningPhases(progress, mastery), [mastery, progress]);
+  const legacyPhases = useMemo(() => learningPhases(progress, mastery), [mastery, progress]);
   const session = useMemo(() => buildDailySession(progress, targetMinutes), [progress, targetMinutes]);
-  const readiness = useMemo(() => overallReadiness(progress), [progress]);
-  const masteredModules = mastery.filter(module => module.level === 'mastered').length;
-  const nextPhase = phases.find(phase => phase.unlocked && !phase.checkpointPassed) || phases[phases.length - 1];
+  const evidenceGraph = useMemo(() => buildSkillEvidenceGraph(
+    progress,
+    curriculumProgress,
+    assessmentReports,
+    checkpointReports
+  ), [assessmentReports, checkpointReports, curriculumProgress, progress]);
+  const readiness = evidenceGraph.overallReadiness;
+  const masteredModules = evidenceGraph.modules.filter(module => module.readiness >= 82).length;
+  const passedCheckpoints = evidenceGraph.phases.filter(phase => phase.checkpointPassed).length;
+  const nextPhase = evidenceGraph.phases.find(phase => !phase.completed)
+    || evidenceGraph.phases[evidenceGraph.phases.length - 1];
 
   useEffect(() => {
     if (externalLauncher) return;
@@ -122,15 +184,33 @@ export default function LearningPathPortal({ externalLauncher = false, openReque
     return () => observer.disconnect();
   }, [externalLauncher]);
 
-  useEffect(() => { if (openRequest > 0) setOpen(true); }, [openRequest]);
+  useEffect(() => {
+    if (openRequest > 0) setOpen(true);
+  }, [openRequest]);
 
   useEffect(() => {
-    const update = () => setProgress(loadProgress());
-    window.addEventListener(PROGRESS_CHANGED_EVENT, update);
-    window.addEventListener('storage', update);
+    const updateProgress = () => setProgress(loadProgress());
+    const updateCurriculum = () => setCurriculumProgress(loadCurriculumProgress());
+    const updateAssessments = () => setAssessmentReports(loadLocalAssessmentReports());
+    const updateCheckpoints = () => setCheckpointReports(loadLocalCheckpointReports());
+    const updateAll = () => {
+      updateProgress();
+      updateCurriculum();
+      updateAssessments();
+      updateCheckpoints();
+    };
+
+    window.addEventListener(PROGRESS_CHANGED_EVENT, updateProgress);
+    window.addEventListener(CURRICULUM_PROGRESS_CHANGED_EVENT, updateCurriculum);
+    window.addEventListener(ASSESSMENT_REPORTS_CHANGED_EVENT, updateAssessments);
+    window.addEventListener(CHECKPOINT_REPORTS_CHANGED_EVENT, updateCheckpoints);
+    window.addEventListener('storage', updateAll);
     return () => {
-      window.removeEventListener(PROGRESS_CHANGED_EVENT, update);
-      window.removeEventListener('storage', update);
+      window.removeEventListener(PROGRESS_CHANGED_EVENT, updateProgress);
+      window.removeEventListener(CURRICULUM_PROGRESS_CHANGED_EVENT, updateCurriculum);
+      window.removeEventListener(ASSESSMENT_REPORTS_CHANGED_EVENT, updateAssessments);
+      window.removeEventListener(CHECKPOINT_REPORTS_CHANGED_EVENT, updateCheckpoints);
+      window.removeEventListener('storage', updateAll);
     };
   }, []);
 
@@ -143,9 +223,14 @@ export default function LearningPathPortal({ externalLauncher = false, openReque
   useEffect(() => {
     if (!open) return;
     setProgress(loadProgress());
+    setCurriculumProgress(loadCurriculumProgress());
+    setAssessmentReports(loadLocalAssessmentReports());
+    setCheckpointReports(loadLocalCheckpointReports());
     previousOverflow.current = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = previousOverflow.current; };
+    return () => {
+      document.body.style.overflow = previousOverflow.current;
+    };
   }, [open]);
 
   const startTask = (task: SqlTask) => {
@@ -155,23 +240,78 @@ export default function LearningPathPortal({ externalLauncher = false, openReque
     window.setTimeout(() => setActiveTask(null), 1000);
   };
 
+  const openCheckpoint = (checkpointId: string) => {
+    setOpen(false);
+    window.setTimeout(() => openCheckpointCenter(checkpointId), 40);
+  };
+
+  const openEvidenceAction = (evidence: ModuleSkillEvidence, fallbackTask: SqlTask | null) => {
+    const target = evidence.recommendedTargetId;
+    if (evidence.recommendedAction === 'lesson' && target) {
+      setOpen(false);
+      window.setTimeout(() => openCurriculumTarget('lesson', target), 40);
+      return;
+    }
+    if (evidence.recommendedAction === 'project' && target) {
+      setOpen(false);
+      window.setTimeout(() => openCurriculumTarget('project', target), 40);
+      return;
+    }
+    if (evidence.recommendedAction === 'checkpoint' && target) {
+      openCheckpoint(target);
+      return;
+    }
+    if (evidence.recommendedAction === 'assessment') {
+      setOpen(false);
+      window.setTimeout(() => openDeferredFeature('assessment'), 40);
+      return;
+    }
+    if (fallbackTask) startTask(fallbackTask);
+  };
+
+  const startSessionItem = (item: SessionItem) => {
+    if (item.reason === 'checkpoint') {
+      const checkpoint = evidenceGraph.phases.find(phase =>
+        !phase.checkpointPassed && phase.readiness >= 42
+      );
+      if (checkpoint) {
+        openCheckpoint(checkpoint.checkpointId);
+        return;
+      }
+    }
+    startTask(item.task);
+  };
+
   const askMentor = async () => {
     setMentorLoading(true);
     const fallback = localPlan(progress);
     setMentorAnswer(fallback);
     try {
       const context = mentorPlanContext(progress);
+      const evidenceContext = evidenceGraph.modules
+        .filter(module => module.blockers.length)
+        .sort((left, right) => left.readiness - right.readiness)
+        .slice(0, 5)
+        .map(module => ({
+          module: module.title,
+          readiness: module.readiness,
+          next: module.recommendedAction,
+          blockers: module.blockers
+        }));
       const response = await fetch('/api/mentor', {
         method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-profile-id': profileId() },
+        headers: {
+          'content-type': 'application/json',
+          'x-profile-id': profileId()
+        },
         body: JSON.stringify({
           mode: 'review',
-          question: `Составь персональный учебный план на ${targetMinutes} минут. Не давай готовые SQL-решения. Данные профиля: ${JSON.stringify(context)}`,
+          question: `Составь персональный учебный план на ${targetMinutes} минут. Не давай готовые SQL-решения. Учитывай пять видов evidence. Данные: ${JSON.stringify({ context, evidenceContext })}`,
           sql: '',
-          task: 'Персональный маршрут SQL Academy на основе mastery, ошибок, подсказок и контрольных точек.',
+          task: 'Персональный маршрут SQL Academy по lesson, practice, checkpoint, assessment и project evidence.',
           topic: 'Adaptive Learning Path',
           difficulty: 'Персональный план',
-          lastFeedback: `Текущая готовность ${readiness}%.`,
+          lastFeedback: `Evidence readiness ${readiness}%.`,
           attempts: context.weakest.reduce((sum, item) => sum + item.errors, 0),
           hintsUsed: context.weakest.reduce((sum, item) => sum + item.hints, 0),
           allowSolution: false
@@ -187,20 +327,38 @@ export default function LearningPathPortal({ externalLauncher = false, openReque
     }
   };
 
-  const desktopTrigger = <button className={open ? 'active' : ''} onClick={() => setOpen(true)} data-testid="learning-path-trigger">
+  const desktopTrigger = <button
+    className={open ? 'active' : ''}
+    onClick={() => setOpen(true)}
+    data-testid="learning-path-trigger"
+  >
     <Route /><span>Учебный путь</span>
   </button>;
 
-  const mobileTrigger = <button className={open ? 'active' : ''} onClick={() => setOpen(true)} data-testid="learning-path-mobile-trigger">
+  const mobileTrigger = <button
+    className={open ? 'active' : ''}
+    onClick={() => setOpen(true)}
+    data-testid="learning-path-mobile-trigger"
+  >
     <span className="mobile-nav-icon"><Map /></span><small>Путь</small>
   </button>;
 
-  const panel = open ? <div ref={shellRef} tabIndex={-1} className="learning-path-shell" role="dialog" aria-modal="true" aria-labelledby="learning-path-title" data-testid="learning-path">
+  const panel = open ? <div
+    ref={shellRef}
+    tabIndex={-1}
+    className="learning-path-shell"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="learning-path-title"
+    data-testid="learning-path"
+  >
     <header className="path-topbar">
-      <div className="path-brand"><div><Route /></div><span><strong>Adaptive Learning Path</strong><small>Персональный маршрут SQL Academy</small></span></div>
+      <div className="path-brand"><div><Route /></div><span><strong>Adaptive Learning Path</strong><small>Единый evidence graph SQL Academy</small></span></div>
       <div className="path-top-actions">
         <label><Clock3 />Сессия<select value={targetMinutes} onChange={event => setTargetMinutes(Number(event.target.value))}>
-          <option value={15}>15 минут</option><option value={25}>25 минут</option><option value={40}>40 минут</option>
+          <option value={15}>15 минут</option>
+          <option value={25}>25 минут</option>
+          <option value={40}>40 минут</option>
         </select></label>
         <button className="path-close" onClick={() => setOpen(false)} aria-label="Закрыть учебный путь"><X /></button>
       </div>
@@ -209,31 +367,31 @@ export default function LearningPathPortal({ externalLauncher = false, openReque
     <main className="learning-path-page">
       <section className="path-hero">
         <div className="path-hero-copy">
-          <span className="path-kicker"><Sparkles /> маршрут пересчитывается по реальным попыткам</span>
-          <h1 id="learning-path-title">Не просто список задач.<br />Понятный путь к рабочему SQL.</h1>
-          <p>{readinessLabel(readiness)}. Следующая цель — <strong>{nextPhase.title}</strong>.</p>
+          <span className="path-kicker"><Sparkles /> lesson + practice + checkpoint + assessment + project</span>
+          <h1 id="learning-path-title">Не просто список задач.<br />Доказуемый путь к рабочему SQL.</h1>
+          <p>{readinessLabel(readiness)}. Следующая цель — <strong>{nextPhase?.title || 'закрепление курса'}</strong>.</p>
           <div className="path-hero-actions">
-            <button className="path-primary" onClick={() => session.items[0] && startTask(session.items[0].task)} disabled={!session.items.length || Boolean(activeTask)}><Play />Начать сессию</button>
+            <button className="path-primary" onClick={() => session.items[0] && startSessionItem(session.items[0])} disabled={!session.items.length || Boolean(activeTask)}><Play />Начать сессию</button>
             <button onClick={() => void askMentor()} disabled={mentorLoading}><Sparkles />AI-план</button>
           </div>
         </div>
         <div className="readiness-ring" style={{ '--readiness': `${readiness * 3.6}deg` } as React.CSSProperties}>
-          <div><strong>{readiness}%</strong><span>готовность</span></div>
+          <div><strong>{readiness}%</strong><span>evidence readiness</span></div>
         </div>
       </section>
 
       <section className="path-metrics">
-        <article><Gauge /><span><small>Mastery модулей</small><strong>{masteredModules}<b>/20</b></strong></span></article>
-        <article><CheckCircle2 /><span><small>Решено задач</small><strong>{progress.completed.length}<b>/120</b></strong></span></article>
+        <article><Gauge /><span><small>Готовые модули</small><strong>{masteredModules}<b>/{mastery.length}</b></strong></span></article>
+        <article><CheckCircle2 /><span><small>Решено задач</small><strong>{progress.completed.length}<b>/{tasks.length}</b></strong></span></article>
         <article><Flame /><span><small>Текущий streak</small><strong>{progress.streak}<b> дней</b></strong></span></article>
-        <article><Flag /><span><small>Контрольные точки</small><strong>{phases.filter(phase => phase.checkpointPassed).length}<b>/4</b></strong></span></article>
+        <article><Flag /><span><small>Checkpoints</small><strong>{passedCheckpoints}<b>/{evidenceGraph.phases.length}</b></strong></span></article>
       </section>
 
       <section className="path-content-grid">
         <div className="today-session path-card">
           <div className="path-section-heading"><div><span className="path-eyebrow">Сегодня</span><h2>Сессия на {session.totalMinutes} минут</h2><p>{session.reviewCount} на закрепление · {session.newCount} новая</p></div><Clock3 /></div>
           <div className="session-list">
-            {session.items.map((item, index) => <button key={item.task.id} onClick={() => startTask(item.task)}>
+            {session.items.map((item, index) => <button key={item.task.id} onClick={() => startSessionItem(item)}>
               <span className={`session-reason ${item.reason}`}>{reasonIcon(item.reason)}</span>
               <span className="session-index">{String(index + 1).padStart(2, '0')}</span>
               <span className="session-copy"><strong>{item.task.title}</strong><small>{item.label} · {item.task.topic}</small></span>
@@ -244,37 +402,53 @@ export default function LearningPathPortal({ externalLauncher = false, openReque
         </div>
 
         <aside className="path-ai-card path-card">
-          <div className="path-section-heading"><div><span className="path-eyebrow">AI Coach</span><h2>План следующего шага</h2><p>Основан на mastery, а не на случайном совете.</p></div><BrainCircuit /></div>
-          <pre className={mentorLoading ? 'path-ai-answer loading' : 'path-ai-answer'} aria-live="polite">{mentorLoading ? 'Анализирую учебный профиль…' : mentorAnswer}</pre>
+          <div className="path-section-heading"><div><span className="path-eyebrow">AI Coach</span><h2>План следующего шага</h2><p>Основан на пяти видах evidence, а не случайном совете.</p></div><BrainCircuit /></div>
+          <pre className={mentorLoading ? 'path-ai-answer loading' : 'path-ai-answer'} aria-live="polite">{mentorLoading ? 'Анализирую evidence graph…' : mentorAnswer}</pre>
           <button className="path-ai-refresh" onClick={() => void askMentor()} disabled={mentorLoading}><RefreshCw className={mentorLoading ? 'spin' : ''} />Пересчитать AI-план</button>
           <small><ShieldCheck /> Без имени, email и данных работодателя.</small>
         </aside>
       </section>
 
       <section className="roadmap-section">
-        <div className="roadmap-heading"><div><span className="path-eyebrow">Roadmap</span><h2>Карта компетенций</h2><p>Mastery учитывает покрытие, точность и самостоятельность.</p></div><Trophy /></div>
+        <div className="roadmap-heading"><div><span className="path-eyebrow">Skill graph</span><h2>Карта доказательств</h2><p>Readiness объясняется уроками, практикой, контрольными, assessment и проектами.</p></div><Trophy /></div>
         <div className="phase-list">
-          {phases.map((phase, phaseIndex) => {
+          {legacyPhases.map((phase, phaseIndex) => {
+            const phaseEvidence = evidenceGraph.phases.find(item => item.phaseId === phase.id);
             const phaseModules = mastery.filter(module => phase.moduleIds.includes(module.id));
             const expanded = expandedPhase === phase.id;
+            const passed = Boolean(phaseEvidence?.checkpointPassed);
+            const phaseReadiness = phaseEvidence?.readiness ?? phase.mastery;
             return <article className={`phase-card ${phase.unlocked ? '' : 'locked'}`} key={phase.id}>
               <button className="phase-summary" onClick={() => phase.unlocked && setExpandedPhase(expanded ? '' : phase.id)}>
                 <span className="phase-number">{phase.unlocked ? String(phaseIndex + 1).padStart(2, '0') : <LockKeyhole />}</span>
                 <span className="phase-title"><strong>{phase.title}</strong><small>{phase.subtitle}</small></span>
-                <span className="phase-progress"><i><b style={{ width: `${phase.mastery}%` }} /></i><small>{phase.mastery}% mastery</small></span>
-                <span className={phase.checkpointPassed ? 'checkpoint passed' : 'checkpoint'}>{phase.checkpointPassed ? <Check /> : <Flag />}{phase.checkpointPassed ? 'Пройден' : 'Checkpoint'}</span>
+                <span className="phase-progress"><i><b style={{ width: `${phaseReadiness}%` }} /></i><small>{phaseReadiness}% evidence</small></span>
+                <span className={passed ? 'checkpoint passed' : 'checkpoint'}>{passed ? <Check /> : <Flag />}{passed ? 'Пройден' : 'Checkpoint'}</span>
                 <ChevronRight className={expanded ? 'rotated' : ''} />
               </button>
               {expanded && <div className="phase-modules">
-                {phaseModules.map(module => <button className={`module-node ${module.level}`} key={module.id} onClick={() => module.recommendedTask && startTask(module.recommendedTask)} disabled={module.level === 'locked'}>
-                  <span className="module-state">{module.level === 'mastered' ? <Check /> : module.level === 'locked' ? <LockKeyhole /> : <Circle />}</span>
-                  <span className="module-copy"><strong>{module.title}</strong><small>{levelLabel(module)} · {module.solved}/{module.total} задач</small></span>
-                  <span className="module-mastery"><strong>{module.mastery}%</strong><i><b style={{ width: `${module.mastery}%` }} /></i></span>
-                  {module.recommendedTask ? <ChevronRight /> : <GraduationCap />}
-                </button>)}
-                <button className={`checkpoint-card ${phase.checkpointPassed ? 'passed' : ''}`} onClick={() => startTask(phase.checkpointTask)}>
-                  <Flag /><span><strong>Контрольная точка этапа</strong><small>{phase.checkpointTask.title}</small></span><b>{phase.checkpointPassed ? 'Пройдено' : 'Проверить себя'}</b><ChevronRight />
-                </button>
+                {phaseEvidence?.blockers.length ? <div className="focus-explanation"><LockKeyhole /><div><strong>Что блокирует этап</strong><p>{phaseEvidence.blockers.join(' · ')}</p></div></div> : null}
+                {phaseModules.map(module => {
+                  const evidence = evidenceGraph.modules.find(item => item.moduleId === module.id);
+                  const readinessValue = evidence?.readiness ?? module.mastery;
+                  return <button
+                    className={`module-node ${module.level}`}
+                    key={module.id}
+                    onClick={() => evidence && openEvidenceAction(evidence, module.recommendedTask)}
+                    disabled={module.level === 'locked'}
+                  >
+                    <span className="module-state">{readinessValue >= 82 ? <Check /> : module.level === 'locked' ? <LockKeyhole /> : <Circle />}</span>
+                    <span className="module-copy"><strong>{module.title}</strong><small>{levelLabel(module)} · next: {evidence ? evidenceActionLabel(evidence.recommendedAction) : 'practice'}</small></span>
+                    <span className="module-mastery"><strong>{readinessValue}%</strong><i><b style={{ width: `${readinessValue}%` }} /></i></span>
+                    {evidence?.recommendedTargetId || module.recommendedTask ? <ChevronRight /> : <GraduationCap />}
+                  </button>;
+                })}
+                {phaseEvidence && <button
+                  className={`checkpoint-card ${passed ? 'passed' : ''}`}
+                  onClick={() => openCheckpoint(phaseEvidence.checkpointId)}
+                >
+                  <Flag /><span><strong>Исполняемая контрольная этапа</strong><small>{phaseEvidence.completionCriteria.join(' · ')}</small></span><b>{passed ? 'Открыть отчёт' : 'Проверить себя'}</b><ChevronRight />
+                </button>}
               </div>}
             </article>;
           })}
