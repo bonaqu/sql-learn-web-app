@@ -112,8 +112,10 @@ function writeLocalReports<T extends SyncableEvidenceReport>(
   reports: T[]
 ) {
   const key = localKey(kind, userId);
+  const existing = localStorage.getItem(key);
+  if (existing === null && reports.length === 0) return false;
   const next = serialized(reports);
-  if (localStorage.getItem(key) === next) return false;
+  if (existing === next) return false;
   localStorage.setItem(key, next);
   window.dispatchEvent(new CustomEvent(COLLECTIONS[kind].event, { detail: reports }));
   return true;
