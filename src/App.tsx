@@ -41,12 +41,14 @@ import {
 } from 'lucide-react';
 import { achievements, modules, SqlTask, tasks, TOTAL_TASK_COUNT } from './data/course-catalog';
 import { trainingSeedSql } from './data/training-dataset';
+import { classifySqlAttempt, type AttemptDiagnostic } from './lib/attempt-diagnostics';
 import { localMentor, MentorMode } from './lib/mentor';
 import {
   loadProgress,
   Progress,
   recordAttempt,
   recordHint,
+  recordSolutionView,
   reviewQueue,
   saveProgress,
   weakTopics as calculateWeakTopics
@@ -122,6 +124,8 @@ function App() {
   const [editorFullscreen, setEditorFullscreen] = useState(false);
   const [visibleHints, setVisibleHints] = useState(0);
   const [showSolution, setShowSolution] = useState(false);
+  const [solutionViewedThisSession, setSolutionViewedThisSession] = useState(false);
+  const [attemptDiagnostic, setAttemptDiagnostic] = useState<AttemptDiagnostic | null>(null);
   const [mentorMode, setMentorMode] = useState<MentorMode>('next-step');
   const [mentorAnswer, setMentorAnswer] = useState('Mentor готов дать следующий шаг, разобрать ошибку или объяснить концепт.');
   const [mentorLoading, setMentorLoading] = useState(false);
@@ -167,6 +171,7 @@ function App() {
   const completion = Math.round(progress.completed.length / tasks.length * 100);
   const currentStats = progress.taskStats[selected.id] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
   const solutionUnlocked = currentStats.attempts >= 3 || visibleHints >= selected.hints.length;
+  const guidedSession = visibleHints > 0 || solutionViewedThisSession;
 
   const filteredTasks = useMemo(() => {
     const source = view === 'review' ? queue : tasks;
@@ -193,6 +198,8 @@ function App() {
     setMessage('Задача открыта. Сначала опиши ожидаемый результат, затем пиши SQL.');
     setVisibleHints(0);
     setShowSolution(false);
+    setSolutionViewedThisSession(false);
+    setAttemptDiagnostic(null);
     setMentorAnswer('Mentor видит условие и текущий SQL, но не раскрывает решение без необходимости.');
     setProgress(current => ({ ...current, lastTask: task.id }));
     setMobileTaskOpen(true);
@@ -207,40 +214,55 @@ function App() {
       const output = execute(engine, sql);
       const expected = execute(engine, selected.solution);
       const correct = comparable(output) === comparable(expected);
+      const independent = correct && visibleHints === 0 && !solutionViewedThisSession;
+      const diagnostic = correct ? null : classifySqlAttempt({
+        task: selected,
+        sql,
+        actual: output,
+        expected
+      });
       setResult(output as SqlTable[]);
       setStatus(correct ? 'success' : 'error');
+      setAttemptDiagnostic(diagnostic);
       setMessage(correct
-        ? 'Верно. Столбцы, строки и порядок совпадают с контрольным результатом.'
-        : 'SQL выполнился, но результат отличается. Проверь форму результата, фильтр и сортировку.');
-      setProgress(current => recordAttempt(current, selected, correct));
+        ? independent
+          ? 'Верно. Independent mastery подтверждён: результат получен без подсказки и эталона.'
+          : 'Верно. Результат совпал, но эта сессия была guided. Повтори позже без подсказки и эталона для independent mastery.'
+        : `${diagnostic?.title || 'Результат отличается'}. ${diagnostic?.nextStep || 'Сравни контракт результата.'}`);
+      setProgress(current => recordAttempt(current, selected, correct, {
+        diagnostic: diagnostic || undefined,
+        independent
+      }));
       if (!correct) {
         setMentorMode('debug');
         setMentorAnswer(localMentor({
           mode: 'debug',
           sql,
           task: selected,
-          message: 'Результат отличается от контрольного.',
+          message: diagnostic?.nextStep || 'Результат отличается от контрольного.',
           attempts: currentStats.attempts + 1,
           hintsUsed: visibleHints
         }));
       }
     } catch (error) {
       const errorMessage = `Ошибка SQLite: ${error instanceof Error ? error.message : String(error)}`;
+      const diagnostic = classifySqlAttempt({ task: selected, sql, errorMessage });
       setResult([]);
       setStatus('error');
-      setMessage(errorMessage);
-      setProgress(current => recordAttempt(current, selected, false));
+      setAttemptDiagnostic(diagnostic);
+      setMessage(`${errorMessage} ${diagnostic.nextStep}`);
+      setProgress(current => recordAttempt(current, selected, false, { diagnostic }));
       setMentorMode('debug');
       setMentorAnswer(localMentor({
         mode: 'debug',
         sql,
         task: selected,
-        message: errorMessage,
+        message: `${errorMessage}. ${diagnostic.nextStep}`,
         attempts: currentStats.attempts + 1,
         hintsUsed: visibleHints
       }));
     }
-  }, [currentStats.attempts, engine, selected, sql, visibleHints]);
+  }, [currentStats.attempts, engine, selected, solutionViewedThisSession, sql, visibleHints]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -270,7 +292,12 @@ function App() {
       setStatus('idle');
       return;
     }
-    setShowSolution(value => !value);
+    const opening = !showSolution;
+    if (opening && !solutionViewedThisSession) {
+      setSolutionViewedThisSession(true);
+      setProgress(current => recordSolutionView(current, selected.id));
+    }
+    setShowSolution(opening);
   };
 
   const askMentor = async (mode: MentorMode) => {
@@ -447,7 +474,7 @@ function App() {
                   <span className="task-number">{task.id.replace('task-', '')}</span>
                   <span>
                     <strong>{task.title}</strong>
-                    <small>{task.difficulty} · {task.xp} XP{stats?.incorrect ? ` · ошибок ${stats.incorrect}` : ''}</small>
+                    <small>{task.difficulty} · {task.xp} XP{stats?.incorrect ? ` · ошибок ${stats.incorrect}` : ''}{stats?.independentPasses ? ' · independent ✓' : ''}</small>
                   </span>
                   {completed.has(task.id) ? <CheckCircle2 className="done" /> : <ChevronRight />}
                 </button>;
@@ -464,6 +491,7 @@ function App() {
             <div className="task-copy">
               <div className="task-meta">
                 <span>{selected.topic}</span><span>{selected.difficulty}</span><span>{selected.xp} XP</span>
+                <span className={guidedSession ? 'guided-attempt' : 'independent-attempt'}>{guidedSession ? 'Guided attempt' : 'Independent attempt'}</span>
               </div>
               <div className="task-title-row">
                 <div><h2>{selected.title}</h2><p>{selected.description}</p></div>
@@ -518,12 +546,16 @@ function App() {
 
             <div className="runner-actions">
               <button className="primary" onClick={runSql} disabled={!engine}><Code2 /> Проверить SQL <kbd>Ctrl ↵</kbd></button>
-              <button onClick={() => { setSql(selected.starter); setResult([]); setStatus('idle'); setMessage('Редактор сброшен.'); }}><RotateCcw /> Сбросить</button>
+              <button onClick={() => { setSql(selected.starter); setResult([]); setStatus('idle'); setAttemptDiagnostic(null); setMessage('Редактор сброшен.'); }}><RotateCcw /> Сбросить</button>
               <button onClick={toggleSolution}><Target /> {showSolution ? 'Скрыть решение' : solutionUnlocked ? 'Показать решение' : 'Решение заблокировано'}</button>
             </div>
 
             {showSolution && <div className="solution-card"><strong>Эталонный вариант</strong><pre>{selected.solution}</pre></div>}
-            <div className={`feedback ${status}`} role="status" aria-live="polite"><p>{message}</p><span>Попыток: {currentStats.attempts} · Ошибок: {currentStats.incorrect} · Подсказок: {currentStats.hintsUsed}</span></div>
+            <div className={`feedback ${status}`} role="status" aria-live="polite"><p>{message}</p><span>Попыток: {currentStats.attempts} · Ошибок: {currentStats.incorrect} · Подсказок: {currentStats.hintsUsed} · Independent: {currentStats.independentPasses || 0}</span></div>
+            {attemptDiagnostic && <section className="attempt-diagnostic" data-testid="attempt-diagnostic" aria-label="Диагностика попытки">
+              <Bug />
+              <div><small>Диагностика попытки · {attemptDiagnostic.kind}</small><h3>{attemptDiagnostic.title}</h3><p>{attemptDiagnostic.explanation}</p><strong>Следующий шаг: {attemptDiagnostic.nextStep}</strong></div>
+            </section>}
 
             <div className="output-mentor-grid">
               <section className="result-area">
@@ -626,7 +658,7 @@ function MentorDashboard({ progress, focusTopics, queue, selected, answer, loadi
   return <section className="page mentor-dashboard">
     <div className="mentor-hero"><div><h1>AI SQL Mentor</h1><p className="lead">Не отдельный чат, а наставник, который знает текущую тему, попытки и слабые места.</p></div><Sparkles /></div>
     <div className="mentor-dashboard-grid">
-      <article className="mentor-profile"><h2>Учебный профиль</h2><div className="profile-stats"><span><strong>{progress.completed.length}</strong> решено</span><span><strong>{progress.streak}</strong> streak</span><span><strong>{queue.length}</strong> на повтор</span></div><h3>Фокус</h3>{focusTopics.map(topic => <div className="focus-row" key={topic.id}><span>{topic.title}</span><b>{topic.solved}/{topic.total}</b></div>)}</article>
+      <article className="mentor-profile"><h2>Учебный профиль</h2><div className="profile-stats"><span><strong>{progress.completed.length}</strong> решено</span><span><strong>{progress.streak}</strong> streak</span><span><strong>{queue.length}</strong> на повтор</span></div><h3>Фокус</h3>{focusTopics.map(topic => <div className="focus-row" key={topic.id}><span>{topic.title}</span><b>{topic.independent}/{topic.total} independent</b></div>)}</article>
       <article className="mentor-workbench"><h2>Текущая задача</h2><strong>{selected.title}</strong><p>{selected.description}</p><div className="mentor-big-actions"><button onClick={() => onAsk('concept')}><GraduationCap /> Объяснить концепт</button><button onClick={() => onAsk('review')}><Repeat2 /> Составить повторение</button></div><div className="mentor-answer">{loading ? 'Анализирую…' : answer}</div></article>
       <article className="review-preview"><h2>Следующие задачи</h2>{queue.slice(0, 5).map(task => <button key={task.id} onClick={() => onOpenTask(task)}><span>{task.id.replace('task-', '#')}</span><p><strong>{task.title}</strong><small>{task.topic}</small></p><ChevronRight /></button>)}</article>
     </div>
@@ -645,7 +677,7 @@ function HomeView({ progress, completion, focusTopics, reviewCount, onStart, onR
   return <>
     <section className="hero"><div><h1>SQL, который работает<br />в реальной поддержке.</h1><p>Практическая академия для 2nd Support Engineer: точная проверка результата, адаптивное повторение и Mentor в каждой задаче.</p><div className="hero-actions"><button className="primary" onClick={onStart}>Продолжить обучение <ChevronRight /></button>{reviewCount > 0 && <button onClick={onReview}><Repeat2 /> Повторить {reviewCount}</button>}</div><div className="hero-proof"><span><ShieldCheck /> без персональных данных</span><span><BrainCircuit /> {TOTAL_TASK_COUNT} задач</span><span><Sparkles /> AI + local fallback</span></div></div><div className="terminal"><div className="terminal-bar"><i /><i /><i /><span>support_analytics.sql</span></div><pre><b>WITH</b> service_stats <b>AS</b> ({'\n'}  <b>SELECT</b> service, COUNT(*) tickets,{'\n'}         AVG(resolution_minutes) avg_time{'\n'}  <b>FROM</b> tickets <b>GROUP BY</b> service{'\n'}){'\n'}<b>SELECT</b> *, RANK() <b>OVER</b> ({'\n'}  <b>ORDER BY</b> tickets <b>DESC</b>{'\n'}) load_rank <b>FROM</b> service_stats;</pre><div className="terminal-success">✓ Query completed · 5 rows</div></div></section>
     <section className="stats"><article><small>Общий прогресс</small><strong>{completion}%</strong><div className="progress"><i style={{ width: `${completion}%` }} /></div></article><article><small>Решено задач</small><strong>{progress.completed.length}<span>/{TOTAL_TASK_COUNT}</span></strong></article><article><small>Текущий streak</small><strong>{progress.streak}<span> дней</span></strong></article><article><small>На повторение</small><strong>{reviewCount}</strong></article></section>
-    <section className="dashboard-grid"><article className="chart-card"><div><h2>Активность</h2><p>Правильно решённые задачи за неделю</p></div><Suspense fallback={<div className="loading" role="status">Загрузка графика активности…</div>}><ActivityChart data={progress.history} /></Suspense></article><article className="modules-card"><h2>Фокус повторения</h2><div>{focusTopics.map((topic, index) => <button className="weak-topic" key={topic.id} onClick={() => onOpenTopic(topic.id)}><span>{String(index + 1).padStart(2, '0')}</span><p><strong>{topic.title}</strong><small>{topic.solved}/{topic.total} решено</small></p><ChevronRight /></button>)}</div></article></section>
+    <section className="dashboard-grid"><article className="chart-card"><div><h2>Активность</h2><p>Правильно решённые задачи за неделю</p></div><Suspense fallback={<div className="loading" role="status">Загрузка графика активности…</div>}><ActivityChart data={progress.history} /></Suspense></article><article className="modules-card"><h2>Фокус повторения</h2><div>{focusTopics.map((topic, index) => <button className="weak-topic" key={topic.id} onClick={() => onOpenTopic(topic.id)}><span>{String(index + 1).padStart(2, '0')}</span><p><strong>{topic.title}</strong><small>{topic.independent}/{topic.total} independently solved</small></p><ChevronRight /></button>)}</div></article></section>
   </>;
 }
 
