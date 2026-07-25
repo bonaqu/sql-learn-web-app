@@ -8,6 +8,7 @@ import {
 } from './checkpoints';
 import type { CurriculumProgressV1 } from './curriculum-progress';
 import { overallReadiness } from './learning-path';
+import { masterySummary } from './mastery-loop';
 import type { Progress } from './progress';
 import {
   bestCompletedAssessmentScore,
@@ -59,8 +60,9 @@ export function calculateCompleteReadiness(
 ): CompleteReadiness {
   const thresholds = READINESS_POLICY.thresholds;
   const taskReadiness = overallReadiness(progress);
+  const lessonMastery = masterySummary(progress, curriculum);
   const lessonCompletion = clamp(
-    curriculum.completedLessons.length / Math.max(1, curriculumLessons.length) * 100
+    lessonMastery.applied / Math.max(1, curriculumLessons.length) * 100
   );
 
   const checkpointEvidence = curriculumCheckpoints.map(checkpoint => {
@@ -103,8 +105,8 @@ export function calculateCompleteReadiness(
     },
     {
       id: 'lessons',
-      title: 'Структурированные уроки',
-      current: curriculum.completedLessons.length,
+      title: 'Applied lesson mastery',
+      current: lessonMastery.applied,
       target: Math.ceil(curriculumLessons.length * thresholds.certificateLessonCompletion / 100),
       passed: lessonCompletion >= thresholds.certificateLessonCompletion,
       unit: 'count'

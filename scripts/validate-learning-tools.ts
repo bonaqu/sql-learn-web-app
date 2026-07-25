@@ -6,7 +6,11 @@ import { errorAtlas, type ErrorAtlasCategory } from '../src/data/sql-error-atlas
 import { reviewCards } from '../src/data/review-cards.ts';
 import { schemaTables } from '../src/data/schema-explorer.ts';
 import { trainingSeedSql } from '../src/data/training-dataset.ts';
-import { gradeReviewCard } from '../src/lib/spaced-repetition.ts';
+import {
+  gradeReviewSchedule,
+  initialReviewSchedule,
+  introduceReviewSchedule
+} from '../src/lib/spaced-repetition.ts';
 
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(currentDirectory, '..');
@@ -91,17 +95,23 @@ for (const card of reviewCards) {
 
 const now = Date.UTC(2026, 6, 25, 10, 0, 0);
 const cardId = reviewCards[0].id;
-const again = gradeReviewCard(cardId, 'again', 'validator-again', now).schedules[cardId];
-const hard = gradeReviewCard(cardId, 'hard', 'validator-hard', now).schedules[cardId];
-const good = gradeReviewCard(cardId, 'good', 'validator-good', now).schedules[cardId];
-const easy = gradeReviewCard(cardId, 'easy', 'validator-easy', now).schedules[cardId];
+const locked = initialReviewSchedule(cardId);
+assert(gradeReviewSchedule(locked, 'good', now) === locked, 'Locked card must ignore grades');
+const introduced = introduceReviewSchedule(locked, {
+  source: 'independent-practice',
+  at: new Date(now - 60 * 60_000).toISOString()
+}, now);
+const again = gradeReviewSchedule(introduced, 'again', now);
+const hard = gradeReviewSchedule(introduced, 'hard', now);
+const good = gradeReviewSchedule(introduced, 'good', now);
+const easy = gradeReviewSchedule(introduced, 'easy', now);
 assert(new Date(again.dueAt).getTime() === now + 10 * 60_000, 'Again grade must schedule a 10-minute retry');
 assert(hard.intervalDays === 1, 'First Hard grade must schedule one day');
 assert(good.intervalDays === 1, 'First Good grade must schedule one day');
 assert(easy.intervalDays === 4, 'First Easy grade must schedule four days');
 assert(easy.ease > good.ease && again.ease < good.ease, 'Review ease must respond to grades');
 
-database.close();
+ database.close();
 
 if (failures.length) {
   console.error(`Learning tools validation failed with ${failures.length} issue(s):`);
@@ -109,4 +119,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Learning tools validated: ${schemaTables.length} schema tables, ${errorAtlas.length} error patterns and ${reviewCards.length} spaced-review cards.`);
+console.log(`Learning tools validated: ${schemaTables.length} schema tables, ${errorAtlas.length} error patterns and ${reviewCards.length} evidence-gated review cards.`);

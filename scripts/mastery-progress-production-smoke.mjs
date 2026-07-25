@@ -1,0 +1,162 @@
+import fs from 'node:fs/promises';
+
+const base = String(process.env.DEPLOY_URL || '').replace(/\/$/, '');
+if (!base) throw new Error('DEPLOY_URL is required');
+
+const stageFile = 'cloudflare-mastery-stage.txt';
+const failureFile = 'cloudflare-mastery-failure.txt';
+const username = `mastery_${Date.now().toString(36)}`.slice(0, 30);
+const password = `Mastery-${crypto.randomUUID()}-9a!`;
+let token = '';
+let recoveryCode = '';
+let stage = 'register';
+
+async function mark(next) {
+  stage = next;
+  await fs.writeFile(stageFile, `${next}\n`);
+}
+
+async function request(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+  if (token) headers.set('authorization', `Bearer ${token}`);
+  const response = await fetch(`${base}${path}`, { ...options, headers });
+  const text = await response.text();
+  let body;
+  try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+  return { response, body, text };
+}
+
+function expectStatus(result, status, label) {
+  if (result.response.status !== status) {
+    throw new Error(`${label}: expected ${status}, got ${result.response.status}: ${result.text.slice(0, 800)}`);
+  }
+}
+
+const diagnostic = {
+  kind: 'join-cardinality',
+  title: 'JOIN размножил или потерял строки',
+  explanation: 'Кардинальность связи не соответствует ожидаемой гранулярности результата.',
+  nextStep: 'Посчитай строки на join key с обеих сторон и проверь условие ON.',
+  atlasId: 'logical-join-multiplication'
+};
+
+const progress = {
+  version: 4,
+  completed: ['task-001'],
+  taskStats: {
+    'task-001': {
+      attempts: 4,
+      incorrect: 3,
+      hintsUsed: 1,
+      solutionViews: 1,
+      independentPasses: 1,
+      lastIndependentAt: '2026-07-25T18:00:00.000Z',
+      errorKinds: { syntax: 1, 'join-cardinality': 2 },
+      lastDiagnostic: diagnostic,
+      lastAttemptAt: '2026-07-25T18:00:00.000Z',
+      completedAt: '2026-07-25T17:00:00.000Z'
+    }
+  },
+  xp: 60,
+  streak: 1,
+  history: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => ({ day, solved: 0 })),
+  lastTask: 'task-001',
+  lastStudyDate: '2026-07-25'
+};
+
+try {
+  await mark('register');
+  const registered = await request('/api/auth/register', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username, password, displayName: 'Mastery smoke', deviceName: 'GitHub Actions' })
+  });
+  expectStatus(registered, 201, 'register');
+  token = String(registered.body?.session?.token || '');
+  recoveryCode = String(registered.body?.recoveryCodes?.[0] || '');
+  if (!token || !recoveryCode) throw new Error('register: token or recovery code is missing');
+
+  await mark('initial-progress');
+  const initial = await request('/api/user/progress');
+  expectStatus(initial, 200, 'initial progress');
+  if (initial.body?.progress !== null || initial.body?.revision !== 0) {
+    throw new Error(`initial progress contract mismatch: ${initial.text}`);
+  }
+
+  await mark('put-mastery-evidence');
+  const stored = await request('/api/user/progress', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ progress, baseRevision: 0 })
+  });
+  expectStatus(stored, 200, 'put mastery evidence');
+  if (stored.body?.revision !== 1) throw new Error(`expected revision 1, got ${stored.text}`);
+
+  await mark('get-mastery-evidence');
+  const fetched = await request('/api/user/progress');
+  expectStatus(fetched, 200, 'get mastery evidence');
+  const stats = fetched.body?.progress?.taskStats?.['task-001'];
+  if (fetched.body?.revision !== 1
+    || stats?.independentPasses !== 1
+    || stats?.solutionViews !== 1
+    || stats?.errorKinds?.['join-cardinality'] !== 2
+    || stats?.lastDiagnostic?.kind !== 'join-cardinality') {
+    throw new Error(`mastery evidence round-trip mismatch: ${fetched.text}`);
+  }
+
+  await mark('reject-invalid-diagnostic');
+  const invalid = structuredClone(progress);
+  invalid.taskStats['task-001'].lastDiagnostic.kind = 'made-up-kind';
+  const rejected = await request('/api/user/progress', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ progress: invalid, baseRevision: 1 })
+  });
+  expectStatus(rejected, 400, 'invalid diagnostic');
+
+  await mark('reject-stale-revision');
+  const conflict = await request('/api/user/progress', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ progress, baseRevision: 0 })
+  });
+  expectStatus(conflict, 409, 'stale revision');
+
+  await mark('update-independent-evidence');
+  const nextProgress = structuredClone(progress);
+  nextProgress.taskStats['task-001'].attempts = 5;
+  nextProgress.taskStats['task-001'].independentPasses = 2;
+  nextProgress.taskStats['task-001'].lastIndependentAt = '2026-07-25T19:00:00.000Z';
+  const updated = await request('/api/user/progress', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ progress: nextProgress, baseRevision: 1 })
+  });
+  expectStatus(updated, 200, 'update mastery evidence');
+  if (updated.body?.revision !== 2) throw new Error(`expected revision 2, got ${updated.text}`);
+
+  await mark('verify-updated-evidence');
+  const verified = await request('/api/user/progress');
+  expectStatus(verified, 200, 'verify mastery evidence');
+  if (verified.body?.progress?.taskStats?.['task-001']?.independentPasses !== 2) {
+    throw new Error(`updated independent evidence is missing: ${verified.text}`);
+  }
+
+  await mark('delete-account');
+  const deleted = await request('/api/profile', {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ currentPassword: password, recoveryCode, confirm: 'DELETE' })
+  });
+  expectStatus(deleted, 200, 'delete account');
+
+  await mark('verify-revoked');
+  const revoked = await request('/api/user/progress');
+  expectStatus(revoked, 401, 'revoked progress session');
+
+  await mark('complete');
+  console.log('Mastery progress production smoke passed: validated evidence, revision conflict and account cleanup.');
+} catch (error) {
+  await fs.writeFile(failureFile, `stage=${stage}\n${error instanceof Error ? error.stack || error.message : String(error)}\n`);
+  throw error;
+}

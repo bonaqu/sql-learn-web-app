@@ -13,6 +13,7 @@ import {
 } from './checkpoints';
 import type { CurriculumProgressV1 } from './curriculum-progress';
 import { moduleMastery, phaseDefinitions } from './learning-path';
+import { moduleAppliedLessonScore } from './mastery-loop';
 import type { Progress } from './progress';
 import {
   bestCompletedModuleAssessmentScore,
@@ -101,7 +102,6 @@ export function buildSkillEvidenceGraph(
 ): SkillEvidenceGraph {
   const thresholds = READINESS_POLICY.thresholds;
   const mastery = moduleMastery(progress);
-  const completedLessons = new Set(curriculum.completedLessons);
   const completedProjects = new Set(curriculum.completedProjects);
   const validAssessmentReports = completedAssessmentReports(assessmentReports);
   const validCheckpointReports = completedCheckpointReports(checkpointReports);
@@ -109,7 +109,7 @@ export function buildSkillEvidenceGraph(
   const moduleEvidence = modules.map(([moduleId, title]) => {
     const masteryState = mastery.find(item => item.id === moduleId);
     const moduleLessons = curriculumLessons.filter(lesson => lesson.module === moduleId);
-    const completedModuleLessons = moduleLessons.filter(lesson => completedLessons.has(lesson.id));
+    const appliedLessons = moduleAppliedLessonScore(moduleId, progress, curriculum);
     const moduleTasks = tasks.filter(task => task.module === moduleId);
     const solvedTasks = moduleTasks.filter(task => progress.completed.includes(task.id));
     const moduleCheckpoints = curriculumCheckpoints.filter(checkpoint =>
@@ -139,9 +139,7 @@ export function buildSkillEvidenceGraph(
     const relatedProjects = capstoneProjects.filter(project => project.moduleIds.some(candidate => candidate === moduleId));
     const completedRelatedProjects = relatedProjects.filter(project => completedProjects.has(project.id));
 
-    const lessonScore = moduleLessons.length
-      ? completedModuleLessons.length / moduleLessons.length * 100
-      : 0;
+    const lessonScore = appliedLessons.score;
     const practiceScore = masteryState?.mastery || 0;
     const projectScore = relatedProjects.length
       ? completedRelatedProjects.length / relatedProjects.length * 100
@@ -160,11 +158,11 @@ export function buildSkillEvidenceGraph(
       lesson: metric(
         'lesson',
         lessonScore,
-        completedModuleLessons.length,
-        moduleLessons.length,
+        appliedLessons.completed,
+        appliedLessons.total,
         moduleLessons.length > 0,
-        completedModuleLessons.map(lesson => lesson.id),
-        completedModuleLessons.length ? ['lesson-progress'] : []
+        appliedLessons.lessonIds,
+        appliedLessons.completed ? ['lesson-progress'] : []
       ),
       practice: metric(
         'practice',
@@ -212,14 +210,14 @@ export function buildSkillEvidenceGraph(
       }))
     );
     const blockers: string[] = [];
-    if (evidence.lesson.available && evidence.lesson.score < 100) blockers.push('Не завершены структурированные уроки');
+    if (evidence.lesson.available && evidence.lesson.score < 100) blockers.push('Не завершён lesson mastery loop: теория, check и independent SQL');
     if (evidence.practice.available && evidence.practice.score < thresholds.curriculumPrerequisite) blockers.push('Недостаточно самостоятельной практики');
     if (evidence.checkpoint.available && evidence.checkpoint.completed < evidence.checkpoint.total) blockers.push('Нет passed checkpoint evidence');
     if (evidence.assessment.available && assessmentScore < thresholds.assessmentEvidence) blockers.push('Нет устойчивого completed assessment evidence');
 
     let recommendedAction: RecommendedEvidenceAction = 'review';
     let recommendedTargetId: string | null = null;
-    const nextLesson = moduleLessons.find(lesson => !completedLessons.has(lesson.id));
+    const nextLesson = moduleLessons.find(lesson => !appliedLessons.lessonIds.includes(lesson.id));
     const nextTask = masteryState?.recommendedTask || null;
     const nextCheckpoint = moduleCheckpoints.find(checkpoint =>
       !checkpointPassed(checkpoint.id, progress, validCheckpointReports)

@@ -1,7 +1,32 @@
+type AttemptErrorKind =
+  | 'syntax'
+  | 'schema'
+  | 'runtime'
+  | 'result-shape'
+  | 'row-set'
+  | 'ordering'
+  | 'values'
+  | 'null-filter'
+  | 'aggregation'
+  | 'join-cardinality';
+
+type AttemptDiagnosticPayload = {
+  kind: AttemptErrorKind;
+  title: string;
+  explanation: string;
+  nextStep: string;
+  atlasId?: string;
+};
+
 type TaskStatsPayload = {
   attempts: number;
   incorrect: number;
   hintsUsed: number;
+  solutionViews?: number;
+  independentPasses?: number;
+  lastIndependentAt?: string;
+  errorKinds?: Partial<Record<AttemptErrorKind, number>>;
+  lastDiagnostic?: AttemptDiagnosticPayload;
   lastAttemptAt?: string;
   completedAt?: string;
 };
@@ -40,6 +65,18 @@ const MENTOR_GLOBAL_DAILY_LIMIT = 100;
 const PROFILE_PATTERN = /^[a-zA-Z0-9_-]{8,80}$/;
 const TASK_ID_PATTERN = /^task-[0-9]{3}$/;
 const MENTOR_MODES = new Set<MentorMode>(['next-step', 'debug', 'concept', 'review']);
+const ATTEMPT_ERROR_KINDS = new Set<AttemptErrorKind>([
+  'syntax',
+  'schema',
+  'runtime',
+  'result-shape',
+  'row-set',
+  'ordering',
+  'values',
+  'null-filter',
+  'aggregation',
+  'join-cardinality'
+]);
 
 const json = (data: unknown, status = 200, extraHeaders: Record<string, string> = {}) => new Response(JSON.stringify(data), {
   status,
@@ -64,14 +101,39 @@ const bodyTooLarge = (request: Request, maxBytes: number) => {
 const boundedInteger = (value: unknown, max = 1_000_000) =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max;
 
+const boundedString = (value: unknown, max: number) =>
+  typeof value === 'string' && value.length <= max;
+
+const validAttemptDiagnostic = (value: unknown): value is AttemptDiagnosticPayload => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const diagnostic = value as Partial<AttemptDiagnosticPayload>;
+  return ATTEMPT_ERROR_KINDS.has(diagnostic.kind as AttemptErrorKind)
+    && boundedString(diagnostic.title, 160)
+    && boundedString(diagnostic.explanation, 1_200)
+    && boundedString(diagnostic.nextStep, 1_200)
+    && (diagnostic.atlasId === undefined || boundedString(diagnostic.atlasId, 120));
+};
+
+const validErrorKinds = (value: unknown) => {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.entries(value).every(([kind, count]) =>
+    ATTEMPT_ERROR_KINDS.has(kind as AttemptErrorKind) && boundedInteger(count, 10_000));
+};
+
 const validTaskStats = (value: unknown): value is TaskStatsPayload => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const stats = value as Partial<TaskStatsPayload>;
   return boundedInteger(stats.attempts, 10_000)
     && boundedInteger(stats.incorrect, 10_000)
     && boundedInteger(stats.hintsUsed, 10_000)
-    && (stats.lastAttemptAt === undefined || typeof stats.lastAttemptAt === 'string')
-    && (stats.completedAt === undefined || typeof stats.completedAt === 'string');
+    && (stats.solutionViews === undefined || boundedInteger(stats.solutionViews, 10_000))
+    && (stats.independentPasses === undefined || boundedInteger(stats.independentPasses, 10_000))
+    && (stats.lastIndependentAt === undefined || boundedString(stats.lastIndependentAt, 80))
+    && validErrorKinds(stats.errorKinds)
+    && (stats.lastDiagnostic === undefined || validAttemptDiagnostic(stats.lastDiagnostic))
+    && (stats.lastAttemptAt === undefined || boundedString(stats.lastAttemptAt, 80))
+    && (stats.completedAt === undefined || boundedString(stats.completedAt, 80));
 };
 
 const validProgress = (payload: unknown): payload is ProgressPayload => {
@@ -98,7 +160,7 @@ const validProgress = (payload: unknown): payload is ProgressPayload => {
   return validHistory
     && validStats
     && (value.lastTask === undefined || TASK_ID_PATTERN.test(value.lastTask))
-    && (value.lastStudyDate === undefined || typeof value.lastStudyDate === 'string');
+    && (value.lastStudyDate === undefined || boundedString(value.lastStudyDate, 80));
 };
 
 const mentorFallback = (sql: string, mode: MentorMode, feedback: string) => {

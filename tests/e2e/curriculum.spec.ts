@@ -29,7 +29,9 @@ test('desktop curriculum studio gates advanced lessons and syncs project draft a
 
   await page.getByLabel('Описать одну строку и столбцы результата').check();
   await page.getByRole('button', { name: 'Проверить ответ' }).click();
-  await expect(page.getByText('Урок завершён')).toBeVisible();
+  await expect(page.getByText('Теория пройдена · нужна практика')).toBeVisible();
+  await expect(page.getByTestId('lesson-mastery-loop')).toContainText('Применить самостоятельно');
+  await expect(page.getByTestId('lesson-mastery-loop')).toContainText('Реши связанную SQL-задачу');
 
   await page.getByLabel('Поиск по урокам').fill('DML');
   await page.getByRole('button', { name: /DML и безопасные изменения: основа, закрыто/i }).click();
@@ -76,6 +78,7 @@ test('mobile curriculum reader remains accessible without horizontal overflow', 
   const studio = page.getByRole('dialog', { name: /Curriculum Studio/i });
   await expect(studio).toBeVisible();
   await expect(page.getByTestId('curriculum-reader')).toBeVisible();
+  await expect(page.getByTestId('lesson-mastery-loop')).toBeVisible();
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(overflow).toBe(false);

@@ -1,10 +1,16 @@
 import { modules, SqlTask, tasks } from '../data/course-catalog';
+import type { AttemptDiagnostic, AttemptErrorKind } from './attempt-diagnostics';
 
 export type ActivityPoint = { day: string; solved: number };
 export type TaskStats = {
   attempts: number;
   incorrect: number;
   hintsUsed: number;
+  solutionViews?: number;
+  independentPasses?: number;
+  lastIndependentAt?: string;
+  errorKinds?: Partial<Record<AttemptErrorKind, number>>;
+  lastDiagnostic?: AttemptDiagnostic;
   lastAttemptAt?: string;
   completedAt?: string;
 };
@@ -18,6 +24,11 @@ export type Progress = {
   history: ActivityPoint[];
   lastTask?: string;
   lastStudyDate?: string;
+};
+
+export type AttemptEvidence = {
+  diagnostic?: AttemptDiagnostic;
+  independent?: boolean;
 };
 
 export const STORAGE_KEY = 'sql-academy-progress-v4';
@@ -55,17 +66,39 @@ function normalizeHistory(history: unknown): ActivityPoint[] {
   });
 }
 
+function normalizeStats(raw: unknown): Record<string, TaskStats> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const result: Record<string, TaskStats> = {};
+  for (const [taskId, candidate] of Object.entries(raw)) {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue;
+    const value = candidate as Partial<TaskStats>;
+    result[taskId] = {
+      attempts: Math.max(0, Number(value.attempts) || 0),
+      incorrect: Math.max(0, Number(value.incorrect) || 0),
+      hintsUsed: Math.max(0, Number(value.hintsUsed) || 0),
+      solutionViews: value.solutionViews === undefined ? undefined : Math.max(0, Number(value.solutionViews) || 0),
+      independentPasses: value.independentPasses === undefined ? undefined : Math.max(0, Number(value.independentPasses) || 0),
+      lastIndependentAt: typeof value.lastIndependentAt === 'string' ? value.lastIndependentAt : undefined,
+      errorKinds: value.errorKinds && typeof value.errorKinds === 'object' ? value.errorKinds : undefined,
+      lastDiagnostic: value.lastDiagnostic && typeof value.lastDiagnostic === 'object' ? value.lastDiagnostic : undefined,
+      lastAttemptAt: typeof value.lastAttemptAt === 'string' ? value.lastAttemptAt : undefined,
+      completedAt: typeof value.completedAt === 'string' ? value.completedAt : undefined
+    };
+  }
+  return result;
+}
+
 function migrate(raw: unknown): Progress {
   if (!raw || typeof raw !== 'object') return defaultProgress;
   const value = raw as Partial<Progress> & { attempts?: Record<string, number> };
   const completed = Array.isArray(value.completed) ? value.completed.filter(item => typeof item === 'string') : [];
   const taskStats = value.taskStats && typeof value.taskStats === 'object'
-    ? value.taskStats
+    ? normalizeStats(value.taskStats)
     : Object.fromEntries(Object.entries(value.attempts || {}).map(([id, attempts]) => [id, {
-      attempts: Math.max(0, Number(attempts) || 0),
-      incorrect: Math.max(0, (Number(attempts) || 0) - (completed.includes(id) ? 1 : 0)),
-      hintsUsed: 0
-    }]));
+        attempts: Math.max(0, Number(attempts) || 0),
+        incorrect: Math.max(0, (Number(attempts) || 0) - (completed.includes(id) ? 1 : 0)),
+        hintsUsed: 0
+      }]));
 
   return {
     version: 4,
@@ -98,12 +131,18 @@ export function saveProgress(progress: Progress) {
   window.dispatchEvent(new CustomEvent(PROGRESS_CHANGED_EVENT, { detail: progress }));
 }
 
-export function recordAttempt(progress: Progress, task: SqlTask, correct: boolean): Progress {
+export function recordAttempt(
+  progress: Progress,
+  task: SqlTask,
+  correct: boolean,
+  evidence: AttemptEvidence = {}
+): Progress {
   const now = new Date();
   const today = localDateKey(now);
   const previous = progress.taskStats[task.id] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
   const alreadyCompleted = progress.completed.includes(task.id);
   const newlyCompleted = correct && !alreadyCompleted;
+  const independentPass = Boolean(correct && evidence.independent);
   const weekdayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1;
   const streak = newlyCompleted
     ? progress.lastStudyDate === today
@@ -112,6 +151,10 @@ export function recordAttempt(progress: Progress, task: SqlTask, correct: boolea
         ? progress.streak + 1
         : 1
     : progress.streak;
+  const errorKinds = { ...(previous.errorKinds || {}) };
+  if (!correct && evidence.diagnostic) {
+    errorKinds[evidence.diagnostic.kind] = (errorKinds[evidence.diagnostic.kind] || 0) + 1;
+  }
 
   return {
     ...progress,
@@ -129,6 +172,10 @@ export function recordAttempt(progress: Progress, task: SqlTask, correct: boolea
         ...previous,
         attempts: previous.attempts + 1,
         incorrect: previous.incorrect + (correct ? 0 : 1),
+        independentPasses: (previous.independentPasses || 0) + (independentPass ? 1 : 0),
+        lastIndependentAt: independentPass ? now.toISOString() : previous.lastIndependentAt,
+        errorKinds,
+        lastDiagnostic: !correct && evidence.diagnostic ? evidence.diagnostic : previous.lastDiagnostic,
         lastAttemptAt: now.toISOString(),
         completedAt: newlyCompleted ? now.toISOString() : previous.completedAt
       }
@@ -147,6 +194,40 @@ export function recordHint(progress: Progress, taskId: string): Progress {
   };
 }
 
+export function recordSolutionView(progress: Progress, taskId: string): Progress {
+  const previous = progress.taskStats[taskId] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
+  return {
+    ...progress,
+    taskStats: {
+      ...progress.taskStats,
+      [taskId]: { ...previous, solutionViews: (previous.solutionViews || 0) + 1 }
+    }
+  };
+}
+
+export function hasIndependentTaskEvidence(progress: Progress, taskId: string) {
+  const stats = progress.taskStats[taskId];
+  if (!stats || !progress.completed.includes(taskId)) return false;
+  if ((stats.independentPasses || 0) > 0) return true;
+  return stats.independentPasses === undefined
+    && stats.solutionViews === undefined
+    && stats.attempts > 0
+    && stats.attempts <= 2
+    && stats.hintsUsed === 0;
+}
+
+export function moduleErrorSummary(progress: Progress, moduleId: string) {
+  const totals = new Map<AttemptErrorKind, number>();
+  for (const task of tasks.filter(item => item.module === moduleId)) {
+    const kinds = progress.taskStats[task.id]?.errorKinds || {};
+    for (const [kind, count] of Object.entries(kinds) as Array<[AttemptErrorKind, number | undefined]>) {
+      totals.set(kind, (totals.get(kind) || 0) + (count || 0));
+    }
+  }
+  return Array.from(totals, ([kind, count]) => ({ kind, count }))
+    .sort((left, right) => right.count - left.count || left.kind.localeCompare(right.kind));
+}
+
 export function reviewQueue(progress: Progress, limit = 24): SqlTask[] {
   return tasks
     .map(task => {
@@ -155,7 +236,14 @@ export function reviewQueue(progress: Progress, limit = 24): SqlTask[] {
       const ageDays = stats.lastAttemptAt
         ? Math.max(0, (Date.now() - new Date(stats.lastAttemptAt).getTime()) / 86_400_000)
         : 0;
-      const score = stats.incorrect * 5 + stats.hintsUsed * 2 + Math.min(stats.attempts, 5) + (completed ? Math.min(ageDays / 3, 4) : stats.attempts ? 6 : 0);
+      const diagnosed = Object.values(stats.errorKinds || {}).reduce((sum, count) => sum + (count || 0), 0);
+      const independentGap = completed && !hasIndependentTaskEvidence(progress, task.id) ? 4 : 0;
+      const score = stats.incorrect * 5
+        + stats.hintsUsed * 2
+        + diagnosed
+        + independentGap
+        + Math.min(stats.attempts, 5)
+        + (completed ? Math.min(ageDays / 3, 4) : stats.attempts ? 6 : 0);
       return { task, score };
     })
     .filter(item => item.score > 0)
@@ -170,10 +258,18 @@ export function weakTopics(progress: Progress, limit = 3) {
     .map(([id, title]) => {
       const moduleTasks = tasks.filter(task => task.module === id);
       const solved = moduleTasks.filter(task => completed.has(task.id)).length;
+      const independent = moduleTasks.filter(task => hasIndependentTaskEvidence(progress, task.id)).length;
       const incorrect = moduleTasks.reduce((sum, task) => sum + (progress.taskStats[task.id]?.incorrect || 0), 0);
       const hints = moduleTasks.reduce((sum, task) => sum + (progress.taskStats[task.id]?.hintsUsed || 0), 0);
-      return { id, title, solved, total: moduleTasks.length, score: incorrect * 3 + hints + (moduleTasks.length - solved) * 0.25 };
+      return {
+        id,
+        title,
+        solved,
+        independent,
+        total: moduleTasks.length,
+        score: incorrect * 3 + hints + (moduleTasks.length - solved) * 0.25 + (solved - independent) * 0.5
+      };
     })
-    .sort((a, b) => b.score - a.score || a.solved - b.solved)
+    .sort((a, b) => b.score - a.score || a.independent - b.independent || a.solved - b.solved)
     .slice(0, limit);
 }

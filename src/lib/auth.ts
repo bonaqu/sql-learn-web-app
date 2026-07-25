@@ -1,5 +1,6 @@
 import { tasks } from '../data/course-catalog';
 import { loadProgress, Progress, STORAGE_KEY, TaskStats } from './progress';
+import type { AttemptErrorKind } from './attempt-diagnostics';
 
 export const AUTH_SESSION_KEY = 'sql-academy-auth-session-v2';
 export const AUTH_CHANGED_EVENT = 'sql-academy-auth-changed';
@@ -308,11 +309,42 @@ function earliestTimestamp(left?: string, right?: string) {
   return new Date(left).getTime() <= new Date(right).getTime() ? left : right;
 }
 
-function mergeTaskStats(left: TaskStats = { attempts: 0, incorrect: 0, hintsUsed: 0 }, right: TaskStats = { attempts: 0, incorrect: 0, hintsUsed: 0 }): TaskStats {
+function mergeCounters<T extends string>(left?: Partial<Record<T, number>>, right?: Partial<Record<T, number>>) {
+  const keys = new Set<T>([
+    ...Object.keys(left || {}) as T[],
+    ...Object.keys(right || {}) as T[]
+  ]);
+  if (!keys.size) return undefined;
+  return Object.fromEntries(Array.from(keys, key => [key, Math.max(left?.[key] || 0, right?.[key] || 0)])) as Partial<Record<T, number>>;
+}
+
+function latestDiagnostic(left: TaskStats, right: TaskStats) {
+  const leftTime = new Date(left.lastAttemptAt || 0).getTime();
+  const rightTime = new Date(right.lastAttemptAt || 0).getTime();
+  if (rightTime > leftTime) return right.lastDiagnostic || left.lastDiagnostic;
+  if (leftTime > rightTime) return left.lastDiagnostic || right.lastDiagnostic;
+  const leftValue = JSON.stringify(left.lastDiagnostic || null);
+  const rightValue = JSON.stringify(right.lastDiagnostic || null);
+  return rightValue.length > leftValue.length ? right.lastDiagnostic : left.lastDiagnostic;
+}
+
+function mergeTaskStats(
+  left: TaskStats = { attempts: 0, incorrect: 0, hintsUsed: 0 },
+  right: TaskStats = { attempts: 0, incorrect: 0, hintsUsed: 0 }
+): TaskStats {
   return {
     attempts: Math.max(left.attempts, right.attempts),
     incorrect: Math.max(left.incorrect, right.incorrect),
     hintsUsed: Math.max(left.hintsUsed, right.hintsUsed),
+    solutionViews: left.solutionViews === undefined && right.solutionViews === undefined
+      ? undefined
+      : Math.max(left.solutionViews || 0, right.solutionViews || 0),
+    independentPasses: left.independentPasses === undefined && right.independentPasses === undefined
+      ? undefined
+      : Math.max(left.independentPasses || 0, right.independentPasses || 0),
+    lastIndependentAt: latestTimestamp(left.lastIndependentAt, right.lastIndependentAt),
+    errorKinds: mergeCounters<AttemptErrorKind>(left.errorKinds, right.errorKinds),
+    lastDiagnostic: latestDiagnostic(left, right),
     lastAttemptAt: latestTimestamp(left.lastAttemptAt, right.lastAttemptAt),
     completedAt: earliestTimestamp(left.completedAt, right.completedAt)
   };

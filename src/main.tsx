@@ -14,6 +14,7 @@ import './enhancements.css';
 import './auth.css';
 import './learning-path.css';
 import './assessment.css';
+import './mastery-loop.css';
 import './accessibility.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

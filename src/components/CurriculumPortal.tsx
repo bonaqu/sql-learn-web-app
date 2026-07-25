@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import CurriculumSyncButton from './CurriculumSyncButton';
+import LessonMasteryPanel from './LessonMasteryPanel';
 import type { QueryExecResult, SqlJsStatic } from 'sql.js';
 import {
   ArrowLeft,
@@ -55,11 +56,13 @@ import {
 } from '../lib/curriculum-progress';
 import { useDialogFocus } from '../lib/dialog-focus';
 import { openDeferredFeature } from '../lib/deferred-features';
-import { loadProgress } from '../lib/progress';
+import { lessonMasteryState } from '../lib/mastery-loop';
+import { loadProgress, PROGRESS_CHANGED_EVENT } from '../lib/progress';
+import { loadReviewState, REVIEW_CHANGED_EVENT } from '../lib/spaced-repetition';
 import '../styles-curriculum.css';
 import '../curriculum-access.css';
 
-type CurriculumTab = 'lessons' | 'projects';
+ type CurriculumTab = 'lessons' | 'projects';
 type SqlEngine = SqlJsStatic;
 type SqlTable = { columns: string[]; values: unknown[][] };
 
@@ -110,6 +113,7 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
   const [projectId, setProjectId] = useState(initialProject.id);
   const [progress, setProgress] = useState<CurriculumProgressV1>(initialProgress);
   const [taskProgress, setTaskProgress] = useState(() => loadProgress());
+  const [reviewState, setReviewState] = useState(() => loadReviewState());
   const [reports, setReports] = useState(() => loadLocalAssessmentReports());
   const [choice, setChoice] = useState<number | null>(initialProgress.answers[initialLesson.check.id]?.optionIndex ?? null);
   const [engine, setEngine] = useState<SqlEngine | null>(null);
@@ -126,7 +130,12 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
     item.id,
     lessonAccess(item, taskProgress, progress, reports)
   ])), [progress, reports, taskProgress]);
+  const masteryByLesson = useMemo(() => new Map(curriculumLessons.map(item => [
+    item.id,
+    lessonMasteryState(item, taskProgress, progress, reviewState)
+  ])), [progress, reviewState, taskProgress]);
   const access = accessByLesson.get(lesson.id) || { unlocked: true, missing: [], bypassed: [] };
+  const currentMastery = masteryByLesson.get(lesson.id);
   const completedSections = new Set(progress.completedSections);
   const completedLessons = new Set(progress.completedLessons);
   const completedProjects = new Set(progress.completedProjects);
@@ -142,6 +151,7 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
     const freshProgress = loadCurriculumProgress();
     setProgress(freshProgress);
     setTaskProgress(loadProgress());
+    setReviewState(loadReviewState());
     setReports(loadLocalAssessmentReports());
     if (requestedLesson) {
       setTab('lessons');
@@ -156,6 +166,18 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
   }, [openRequest]);
 
   useDialogFocus(open, shellRef, () => setOpen(false));
+
+  useEffect(() => {
+    if (!open) return;
+    const updateTasks = () => setTaskProgress(loadProgress());
+    const updateReview = () => setReviewState(loadReviewState());
+    window.addEventListener(PROGRESS_CHANGED_EVENT, updateTasks);
+    window.addEventListener(REVIEW_CHANGED_EVENT, updateReview);
+    return () => {
+      window.removeEventListener(PROGRESS_CHANGED_EVENT, updateTasks);
+      window.removeEventListener(REVIEW_CHANGED_EVENT, updateReview);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -240,13 +262,23 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
     window.setTimeout(() => openDeferredFeature('assessment'), 50);
   };
 
+  const openMasteryTask = (taskId: string) => {
+    close();
+    window.setTimeout(() => openAcademyTask(taskId), 50);
+  };
+
+  const openReviewDeck = () => {
+    close();
+    window.setTimeout(() => openDeferredFeature('syllabus'), 50);
+  };
+
   if (!open) return null;
 
   const lessonBody = !access.unlocked ? <section className="curriculum-access-gate" data-testid="curriculum-access-gate">
     <div className="curriculum-access-icon"><LockKeyhole /></div>
     <small>Prerequisite readiness</small>
     <h2>Эта advanced-тема пока закрыта</h2>
-    <p>Доступ открывается не по клику, а после подтверждённого понимания базовых модулей. Для каждого prerequisite подходит один из трёх путей: mastery задач, завершённые уроки или результат диагностики.</p>
+    <p>Доступ открывается не по клику, а после подтверждённого понимания базовых модулей. Для каждого prerequisite подходит один из путей: task mastery, applied lesson, checkpoint или сильная диагностика.</p>
     <div className="curriculum-access-thresholds">
       <span><strong>{PREREQUISITE_MASTERY}%</strong><small>task mastery</small></span>
       <span><strong>{DIAGNOSTIC_MODULE_BYPASS}%</strong><small>score по модулю</small></span>
@@ -317,11 +349,21 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
       </div>}
     </section>
 
+    <LessonMasteryPanel
+      lesson={lesson}
+      progress={taskProgress}
+      curriculum={progress}
+      reviewState={reviewState}
+      onOpenTask={openMasteryTask}
+      onOpenReview={openReviewDeck}
+    />
+
     <section className="curriculum-practice-links">
-      <div><small>Закрепление</small><h2>Связанные задачи</h2><p>После теории реши несколько задач без подсказки.</p></div>
+      <div><small>Закрепление</small><h2>Связанные задачи</h2><p>Зелёная галочка означает completion. Applied mastery требует хотя бы одного решения без подсказки и эталона.</p></div>
       <div>{lesson.practiceTaskIds.map(taskId => {
         const task = tasks.find(item => item.id === taskId);
-        return task ? <button key={taskId} onClick={() => { close(); openAcademyTask(taskId); }}><Play /><span><strong>{task.title}</strong><small>{task.difficulty} · {task.xp} XP</small></span><ChevronRight /></button> : null;
+        const independent = taskProgress.taskStats[taskId]?.independentPasses || 0;
+        return task ? <button key={taskId} onClick={() => openMasteryTask(taskId)}><Play /><span><strong>{task.title}</strong><small>{task.difficulty} · {task.xp} XP{independent ? ' · independent ✓' : ''}</small></span><ChevronRight /></button> : null;
       })}</div>
     </section>
 
@@ -341,7 +383,15 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
       <div className="curriculum-lesson-list">
         {filteredLessons.map(item => {
           const itemAccess = accessByLesson.get(item.id);
+          const itemMastery = masteryByLesson.get(item.id);
           const locked = itemAccess && !itemAccess.unlocked;
+          const status = itemMastery?.durableMastery
+            ? 'durable mastery'
+            : itemMastery?.mastered
+              ? 'applied mastery'
+              : completedLessons.has(item.id)
+                ? 'теория пройдена'
+                : `${item.minutes} мин · ${item.sections.length} раздела`;
           return <button
             key={item.id}
             type="button"
@@ -351,8 +401,8 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
             aria-label={`${item.title}${locked ? ', закрыто: нужны prerequisites' : ''}`}
           >
             <span>{String(curriculumLessons.indexOf(item) + 1).padStart(2, '0')}</span>
-            <div><strong>{item.title}</strong><small>{locked ? `${itemAccess.missing.length} prerequisite` : `${item.minutes} мин · ${item.sections.length} раздела`}</small></div>
-            {locked ? <LockKeyhole className="locked-icon" /> : completedLessons.has(item.id) ? <CheckCircle2 className="complete" /> : <ChevronRight />}
+            <div><strong>{item.title}</strong><small>{locked ? `${itemAccess.missing.length} prerequisite` : status}</small></div>
+            {locked ? <LockKeyhole className="locked-icon" /> : itemMastery?.mastered ? <CheckCircle2 className="complete" /> : <ChevronRight />}
           </button>;
         })}
         {!filteredLessons.length && <div className="curriculum-empty"><Search /><strong>Ничего не найдено</strong><small>Попробуй термин из SQL или название ошибки.</small></div>}
@@ -367,7 +417,15 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
         <div className="curriculum-lesson-meta">
           <span><BookOpen />{lesson.minutes} минут</span>
           <span><Target />{lesson.objectives.length} результата</span>
-          <span className={completedLessons.has(lesson.id) ? 'done' : ''}>{access.unlocked ? <CheckCircle2 /> : <LockKeyhole />}{access.unlocked ? completedLessons.has(lesson.id) ? 'Урок завершён' : `${lesson.sections.filter(section => completedSections.has(section.id)).length}/${lesson.sections.length} раздела` : 'Закрыто prerequisites'}</span>
+          <span className={currentMastery?.mastered ? 'done' : ''}>{access.unlocked ? <CheckCircle2 /> : <LockKeyhole />}{access.unlocked
+            ? currentMastery?.durableMastery
+              ? 'Durable mastery'
+              : currentMastery?.mastered
+                ? 'Applied mastery'
+                : completedLessons.has(lesson.id)
+                  ? 'Теория пройдена · нужна практика'
+                  : `${lesson.sections.filter(section => completedSections.has(section.id)).length}/${lesson.sections.length} раздела`
+            : 'Закрыто prerequisites'}</span>
         </div>
         <div className="curriculum-objectives">
           <strong>После урока ты сможешь</strong>
@@ -443,7 +501,7 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
 
   const shell = <div ref={shellRef} tabIndex={-1} className="curriculum-shell" role="dialog" aria-modal="true" aria-labelledby="curriculum-dialog-title" data-testid="curriculum-studio">
     <header className="curriculum-topbar">
-      <div className="curriculum-brand"><span><GraduationCap /></span><div><strong id="curriculum-dialog-title">Curriculum Studio</strong><small>Теория, примеры и capstone-проекты</small></div></div>
+      <div className="curriculum-brand"><span><GraduationCap /></span><div><strong id="curriculum-dialog-title">Curriculum Studio</strong><small>Теория, independent practice и capstone-проекты</small></div></div>
       <div className="curriculum-tabs" role="tablist" aria-label="Режим Curriculum Studio">
         <button role="tab" aria-selected={tab === 'lessons'} className={tab === 'lessons' ? 'active' : ''} onClick={() => switchTab('lessons')}><BookOpen />Уроки</button>
         <button role="tab" aria-selected={tab === 'projects'} className={tab === 'projects' ? 'active' : ''} onClick={() => switchTab('projects')}><Sparkles />Project Lab</button>
