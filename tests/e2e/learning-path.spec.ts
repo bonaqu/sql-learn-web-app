@@ -20,7 +20,7 @@ test('desktop adaptive learning path builds a session and opens a task', async (
   await page.getByTestId('learning-path-trigger').click();
   await expect(page.getByTestId('learning-path')).toBeVisible();
   await expect(page.getByRole('heading', { name: /Понятный путь к рабочему SQL/ })).toBeVisible();
-  await expect(page.locator('.phase-card')).toHaveCount(4);
+  await expect(page.locator('.phase-card')).toHaveCount(8);
   const sessionTasks = await page.locator('.session-list > button').count();
   expect(sessionTasks).toBeGreaterThanOrEqual(2);
   expect(sessionTasks).toBeLessThanOrEqual(6);
@@ -48,7 +48,7 @@ test('mobile adaptive learning path remains usable and responsive', async ({ pag
   await page.getByTestId('learning-path-mobile-trigger').click();
   await expect(page.getByTestId('learning-path')).toBeVisible();
   await expect(page.locator('.readiness-ring')).toBeVisible();
-  await expect(page.locator('.phase-card')).toHaveCount(4);
+  await expect(page.locator('.phase-card')).toHaveCount(8);
   await expect(page.locator('.session-list > button').first()).toBeVisible();
 
   await page.locator('.path-top-actions select').selectOption('15');
