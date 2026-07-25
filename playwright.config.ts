@@ -27,7 +27,7 @@ export default defineConfig({
       timeout: 30_000
     },
     {
-      command: 'npx wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.jsonc',
+      command: "bash -lc 'set -o pipefail; npx wrangler dev --local --ip 127.0.0.1 --port 8787 --config wrangler.jsonc 2>&1 | tee wrangler-playwright.log'",
       url: workerUrl,
       reuseExistingServer: !process.env.CI,
       timeout: 45_000
