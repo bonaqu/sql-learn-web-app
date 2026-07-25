@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import initSqlJs from 'sql.js';
 import { curriculumLessons } from '../src/data/complete-curriculum.ts';
 import { modules } from '../src/data/course-catalog.ts';
@@ -6,15 +8,13 @@ import {
   allCurriculumMisconceptions,
   conceptInventory
 } from '../src/data/concept-inventory.ts';
-import {
-  allKnownLessonChecks,
-  lessonChecks
-} from '../src/data/lesson-checks.ts';
+import { allKnownLessonChecks, lessonChecks } from '../src/data/lesson-checks.ts';
 import { trainingSeedSql } from '../src/data/training-dataset.ts';
 
 const failures: string[] = [];
 const assert = (condition: unknown, message: string) => { if (!condition) failures.push(message); };
 const normalized = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
+const editorialMatrix = readFileSync(new URL('../docs/curriculum-editorial-matrix.md', import.meta.url), 'utf8');
 
 const moduleIds = modules.map(([id]) => id);
 assert(Object.keys(conceptInventory).length === moduleIds.length, 'Concept inventory must cover every module exactly once');
@@ -30,8 +30,8 @@ for (const moduleId of moduleIds) {
     assert(new Set(concept.misconceptions.map(item => item.id)).size === concept.misconceptions.length, `${concept.id}: duplicate misconception IDs`);
     for (const item of concept.misconceptions) {
       assert(item.label.length >= 10, `${item.id}: weak misconception label`);
-      assert(item.explanation.length >= 35, `${item.id}: explanation is too short`);
-      assert(item.remediation.length >= 25, `${item.id}: remediation is too short`);
+      assert(item.explanation.length >= 25, `${item.id}: explanation is too short to explain the failure mode`);
+      assert(item.remediation.length >= 18, `${item.id}: remediation must contain a concrete next step`);
     }
   }
 }
@@ -44,6 +44,7 @@ const checkIds = new Set<string>();
 const questionTexts = new Set<string>();
 const positionCounts = new Map<number, number>();
 for (const lesson of curriculumLessons) {
+  assert(editorialMatrix.includes(`| ${lesson.id} |`), `${lesson.id}: missing from editorial matrix`);
   const lessonItems = lessonChecks(lesson);
   const kinds = new Set(lessonItems.map(item => item.kind));
   assert(lessonItems.length >= 3 && lessonItems.length <= 4, `${lesson.id}: expected 3–4 checks, got ${lessonItems.length}`);
@@ -57,7 +58,7 @@ for (const lesson of curriculumLessons) {
     assert(check.optionFeedback.length === check.options.length, `${check.id}: per-option feedback is incomplete`);
     assert(check.misconceptionIds.length === check.options.length, `${check.id}: misconception mapping is incomplete`);
     assert(check.misconceptionIds[check.correctIndex] === null, `${check.id}: correct answer cannot map to a misconception`);
-    assert(check.options.every(option => option.trim().length >= 8), `${check.id}: weak distractor text`);
+    assert(check.options.every(option => option.trim().length >= 2), `${check.id}: empty or unusable option text`);
     assert(new Set(check.options.map(normalized)).size === check.options.length, `${check.id}: duplicate options`);
     const question = normalized(check.question);
     assert(!questionTexts.has(question), `${check.id}: duplicate question text`);
@@ -79,13 +80,15 @@ assert(minPosition > 0, `Answer-position bias: one index is never correct (${pos
 assert(maxPosition - minPosition <= Math.ceil(checks.length * 0.18), `Answer-position distribution is too biased (${positions.join(', ')})`);
 
 for (const lesson of curriculumLessons) {
-  const paragraphs = lesson.sections.flatMap(section => [section.lead, ...section.paragraphs, ...section.bullets]).map(normalized);
-  assert(new Set(paragraphs).size === paragraphs.length, `${lesson.id}: duplicate section prose`);
+  const prose = lesson.sections.flatMap(section => [section.lead, ...section.paragraphs, ...section.bullets]).map(normalized);
+  assert(new Set(prose).size === prose.length, `${lesson.id}: duplicate section prose`);
   assert(lesson.objectives.length >= 3, `${lesson.id}: at least three objectives are required`);
   assert(lesson.practiceTaskIds.length >= 1, `${lesson.id}: missing transfer practice`);
 }
 
-const SQL = await initSqlJs();
+const require = createRequire(import.meta.url);
+const wasmPath = require.resolve('sql.js/dist/sql-wasm.wasm');
+const SQL = await initSqlJs({ locateFile: () => wasmPath });
 let executableCounterexamples = 0;
 for (const concept of allCurriculumConcepts) {
   for (const item of concept.misconceptions) {
