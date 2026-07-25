@@ -1,4 +1,4 @@
-import { tasks } from '../data/course';
+import { tasks } from '../data/course-catalog';
 import { loadProgress, Progress, STORAGE_KEY, TaskStats } from './progress';
 
 export const AUTH_SESSION_KEY = 'sql-academy-auth-session-v2';

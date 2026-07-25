@@ -185,7 +185,7 @@ export const advancedCurriculumLessons: CurriculumLesson[] = advancedModules.fla
       title: `${title}: production patterns`,
       subtitle: `Failure modes, диагностика и применение · ${subtitle}`,
       minutes: 22 + (moduleIndex % 4) * 4,
-      prerequisites: [module] as CurriculumLesson['prerequisites'],
+      prerequisites: basePrerequisites,
       objectives: [
         `Применять ${title.toLowerCase()} в рабочем сценарии`,
         'Диагностировать логически корректный, но неверный результат',

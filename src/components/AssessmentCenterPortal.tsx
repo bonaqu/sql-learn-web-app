@@ -24,7 +24,7 @@ import {
   Trophy,
   X
 } from 'lucide-react';
-import { tasks } from '../data/course';
+import { tasks } from '../data/course-catalog';
 import {
   advanceAssessment,
   assessmentEligibility,

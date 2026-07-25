@@ -1,4 +1,4 @@
-import { tasks } from '../src/data/course.ts';
+import { tasks } from '../src/data/course-catalog.ts';
 import {
   buildDailySession,
   learningPhases,

@@ -23,7 +23,7 @@ import {
   Trophy,
   X
 } from 'lucide-react';
-import { SqlTask } from '../data/course';
+import { SqlTask } from '../data/course-catalog';
 import { openAcademyTask } from '../lib/academy-navigation';
 import {
   buildDailySession,

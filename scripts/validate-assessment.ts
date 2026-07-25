@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { tasks } from '../src/data/course';
+import { tasks } from '../src/data/course-catalog';
 import {
   assessmentEligibility,
   assessmentModes,

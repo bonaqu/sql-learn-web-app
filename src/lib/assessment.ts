@@ -1,4 +1,4 @@
-import { modules, SqlTask, tasks } from '../data/course';
+import { modules, SqlTask, tasks } from '../data/course-catalog';
 import { loadAuthSession } from './auth';
 import { Progress } from './progress';
 

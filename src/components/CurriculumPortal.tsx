@@ -30,8 +30,8 @@ import {
   curriculumSearch,
   lessonById,
   lessonForModule
-} from '../data/curriculum';
-import { tasks } from '../data/course';
+} from '../data/complete-curriculum';
+import { tasks } from '../data/course-catalog';
 import { trainingSeedSql } from '../data/training-dataset';
 import { openAcademyTask } from '../lib/academy-navigation';
 import {

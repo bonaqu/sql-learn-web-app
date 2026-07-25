@@ -1,8 +1,8 @@
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import initSqlJs from 'sql.js';
-import { capstoneProjects, curriculumCheckpoints, curriculumLessons } from '../src/data/curriculum';
-import { modules, tasks } from '../src/data/course';
+import { capstoneProjects, curriculumCheckpoints, curriculumLessons } from '../src/data/complete-curriculum';
+import { modules, tasks } from '../src/data/course-catalog';
 import { trainingSeedSql } from '../src/data/training-dataset';
 
 const require = createRequire(import.meta.url);

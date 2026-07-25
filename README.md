@@ -115,7 +115,7 @@ Readiness использует mastery модулей, пройденные chec
 
 ## Curriculum Studio и Project Lab
 
-Curriculum Studio добавляет к существующим 120 задачам полноценный цикл обучения:
+Curriculum Studio добавляет к существующим 240 задачам полноценный цикл обучения:
 
 1. learning objectives и prerequisites;
 2. три theory sections: модель, рабочий алгоритм и диагностика;
@@ -180,7 +180,7 @@ npm run validate:bundle
 
 Полный integration gate в Pull Request дополнительно поднимает локальный Wrangler runtime, применяет все D1 migrations и запускает Chromium на desktop и Pixel-sized mobile viewport.
 
-`npm run check` проверяет TypeScript, 120 SQL-решений, инварианты Adaptive Learning Path и Assessment Center, а также curriculum graph: 20 lessons, prerequisite DAG, 20 runnable SQLite examples, task/checkpoint/project references, rubric weights и D1 cascade foreign key.
+`npm run check` проверяет TypeScript, 240 SQL-решений, инварианты Adaptive Learning Path и Assessment Center, а также curriculum graph: 20 lessons, prerequisite DAG, 20 runnable SQLite examples, task/checkpoint/project references, rubric weights и D1 cascade foreign key.
 
 Bundle gate ограничивает initial entry, общий CSS и каждый крупный chunk одновременно в raw и gzip представлении. Он также требует отдельные lazy boundaries для Curriculum Studio, Assessment Center, Learning Path, SQLite, ActivityChart и SqlEditor и запрещает ссылаться на них из `dist/index.html`.
 
