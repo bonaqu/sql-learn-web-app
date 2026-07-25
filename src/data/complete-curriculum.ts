@@ -4,7 +4,8 @@ import {
   curriculumLessons as coreLessons,
   curriculumSearch as coreSearch,
   lessonById as coreLessonById,
-  lessonForModule as coreLessonForModule
+  lessonForModule as coreLessonForModule,
+  type CurriculumLesson
 } from './curriculum';
 import { advancedCurriculumCheckpoints, advancedCurriculumLessons } from './advanced-curriculum';
 
@@ -27,7 +28,23 @@ const normalizedCoreLessons = coreLessons.map(lesson => lesson.id === 'lesson-ct
   ? { ...lesson, title: 'CTE и этапы запроса' }
   : lesson);
 
-export const curriculumLessons = [...normalizedCoreLessons, ...advancedCurriculumLessons];
+function diversifyAdvancedLesson(lesson: CurriculumLesson): CurriculumLesson {
+  return {
+    ...lesson,
+    sections: lesson.sections.map(section => ({
+      ...section,
+      bullets: section.bullets.map(item => section.kind === 'concept'
+        ? `Объясни модель: ${item}`
+        : section.kind === 'workflow'
+          ? `Проверь на данных: ${item}`
+          : `Диагностируй failure mode: ${item}`)
+    }))
+  };
+}
+
+const normalizedAdvancedLessons = advancedCurriculumLessons.map(diversifyAdvancedLesson);
+
+export const curriculumLessons = [...normalizedCoreLessons, ...normalizedAdvancedLessons];
 export const curriculumCheckpoints = [...coreCheckpoints, ...advancedCurriculumCheckpoints];
 
 export function lessonById(id: string) {
