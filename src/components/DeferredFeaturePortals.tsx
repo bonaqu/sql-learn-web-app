@@ -33,21 +33,6 @@ function preload(feature: DeferredFeature) {
   return void import('./CurriculumPortal');
 }
 
-async function prepareOnboardingAssessment() {
-  if (sessionStorage.getItem(ONBOARDING_ASSESSMENT_INTENT_KEY) !== 'diagnostic') return;
-  const [assessment, path, progressStore] = await Promise.all([
-    import('../lib/assessment'),
-    import('../lib/learning-path'),
-    import('../lib/progress')
-  ]);
-  if (!assessment.loadAssessmentSession()) {
-    const progress = progressStore.loadProgress();
-    const session = assessment.createAssessmentSession('diagnostic', progress, path.overallReadiness(progress));
-    assessment.saveAssessmentSession(session);
-  }
-  sessionStorage.removeItem(ONBOARDING_ASSESSMENT_INTENT_KEY);
-}
-
 export default function DeferredFeaturePortals() {
   const activeAssessment = activeSessionExists('sql-academy-assessment-session-v1:');
   const activeCheckpoint = activeSessionExists('sql-academy-checkpoint-session-v1:');
@@ -75,10 +60,9 @@ export default function DeferredFeaturePortals() {
         setPathLoaded(true);
         setPathRequest(value => value + 1);
       } else if (feature === 'assessment') {
-        void prepareOnboardingAssessment().catch(() => undefined).finally(() => {
-          setAssessmentLoaded(true);
-          setAssessmentRequest(value => value + 1);
-        });
+        sessionStorage.removeItem(ONBOARDING_ASSESSMENT_INTENT_KEY);
+        setAssessmentLoaded(true);
+        setAssessmentRequest(value => value + 1);
       } else if (feature === 'curriculum') {
         setCurriculumLoaded(true);
         setCurriculumRequest(value => value + 1);
