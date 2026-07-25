@@ -112,6 +112,10 @@ test('desktop checkpoint retries offline evidence sync and hydrates Learning Pat
     const reports = JSON.parse(localStorage.getItem(key) || '[]');
     return Array.isArray(reports) ? reports.length : 0;
   }, reportsKey), { timeout: 30_000 }).toBeGreaterThan(0);
+  const evidenceModule = await secondPage.evaluate(key => {
+    const reports = JSON.parse(localStorage.getItem(key) || '[]');
+    return String(reports?.[0]?.moduleScores?.[0]?.module || 'sql-thinking');
+  }, reportsKey);
 
   await secondPage.getByTestId('learning-path-trigger').click();
   const learningPath = secondPage.getByTestId('learning-path');
@@ -119,6 +123,7 @@ test('desktop checkpoint retries offline evidence sync and hydrates Learning Pat
   await learningPath.locator('.roadmap-section').scrollIntoViewIfNeeded();
   const explainer = learningPath.getByTestId('readiness-explainer');
   await explainer.getByRole('button', { name: /Как считается readiness/i }).click();
+  await explainer.locator('select').selectOption(evidenceModule);
   await expect(explainer.getByText(/completed checkpoint report/).first()).toBeVisible();
   await learningPath.getByRole('button', { name: 'Закрыть учебный путь' }).click();
 
