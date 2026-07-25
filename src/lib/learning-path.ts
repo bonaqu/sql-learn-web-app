@@ -1,4 +1,4 @@
-import { modules, SqlTask, tasks } from '../data/course';
+import { modules, SqlTask, tasks } from '../data/course-catalog';
 import { Progress, reviewQueue } from './progress';
 
 export type MasteryLevel = 'locked' | 'new' | 'learning' | 'practice' | 'mastered';
@@ -53,26 +53,50 @@ export const phaseDefinitions = [
   {
     id: 'foundation',
     title: 'I. Надёжная база',
-    subtitle: 'От формы результата до групповых отчётов',
+    subtitle: 'Контракт результата, фильтры, сортировка и агрегаты',
     moduleIds: ['sql-thinking', 'select', 'filtering', 'sorting', 'aggregates', 'grouping']
   },
   {
     id: 'composition',
-    title: 'II. Сложные запросы',
-    subtitle: 'Связи, подзапросы, CTE, окна, даты и множества',
+    title: 'II. Конструирование запросов',
+    subtitle: 'JOIN, подзапросы, CTE, окна, даты, текст и множества',
     moduleIds: ['joins', 'subqueries', 'cte', 'windows', 'dates', 'text', 'set-ops']
   },
   {
-    id: 'production',
-    title: 'III. Production SQL',
-    subtitle: 'Качество, производительность, транзакции и схема',
+    id: 'production-core',
+    title: 'III. Production core',
+    subtitle: 'Качество, индексы, планы, транзакции и схема',
     moduleIds: ['data-quality', 'indexes', 'explain', 'transactions', 'schema']
   },
   {
     id: 'support-track',
     title: 'IV. Support Analytics',
-    subtitle: 'SLA, операционные метрики и финальный проект T-Bonk',
+    subtitle: 'SLA, операционные метрики и базовая витрина T-Bonk',
     moduleIds: ['support', 'final']
+  },
+  {
+    id: 'data-change',
+    title: 'V. Изменения и целостность',
+    subtitle: 'DML, schema evolution и продвинутая NULL-логика',
+    moduleIds: ['dml', 'schema-evolution', 'null-logic-advanced']
+  },
+  {
+    id: 'advanced-querying',
+    title: 'VI. Advanced querying',
+    subtitle: 'Условные метрики, existence patterns и рекурсивные CTE',
+    moduleIds: ['conditional-aggregation', 'advanced-joins', 'recursive-cte']
+  },
+  {
+    id: 'modern-sql',
+    title: 'VII. Modern SQL',
+    subtitle: 'Window frames, JSON и безопасная параметризация',
+    moduleIds: ['window-frames', 'json-sql', 'sql-security']
+  },
+  {
+    id: 'production-operations',
+    title: 'VIII. Production operations',
+    subtitle: 'Concurrency, keyset pagination и SQL-расследования',
+    moduleIds: ['concurrency', 'pagination-patterns', 'incident-investigation']
   }
 ] as const;
 

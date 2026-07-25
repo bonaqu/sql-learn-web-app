@@ -1,4 +1,4 @@
-import { SqlTask, tasks } from '../data/course';
+import { SqlTask, tasks } from '../data/course-catalog';
 
 function navLabel(task: SqlTask) {
   if (task.mode === 'interview') return 'Interview';

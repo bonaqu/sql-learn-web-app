@@ -1,4 +1,4 @@
-import { SqlTask } from '../data/course';
+import { SqlTask } from '../data/course-catalog';
 
 export type MentorMode = 'next-step' | 'debug' | 'concept' | 'review';
 

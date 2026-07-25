@@ -1,4 +1,4 @@
-import { modules, SqlTask, tasks } from '../data/course';
+import { modules, SqlTask, tasks } from '../data/course-catalog';
 
 export type ActivityPoint = { day: string; solved: number };
 export type TaskStats = {

@@ -1,6 +1,8 @@
 import { moduleGuides, modules, tasks } from './course';
+import type { AdvancedModuleId } from './advanced-syllabus';
 
-export type CourseModuleId = typeof modules[number][0];
+type CoreModuleId = typeof modules[number][0];
+export type CourseModuleId = CoreModuleId | AdvancedModuleId;
 export type CurriculumSectionKind = 'concept' | 'workflow' | 'pitfalls';
 
 export interface CurriculumSection {
@@ -88,7 +90,7 @@ type Blueprint = {
   explanation: string;
 };
 
-const blueprints: Record<CourseModuleId, Blueprint> = {
+const blueprints: Record<CoreModuleId, Blueprint> = {
   'sql-thinking': {
     prerequisites: [],
     objectives: ['Формулировать форму результата до написания SQL', 'Выбирать сущность одной строки', 'Добавлять проверяемую сортировку'],

@@ -10,7 +10,7 @@ async function expectNoSeriousAxeViolations(page: import('@playwright/test').Pag
   expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
 }
 
-test('desktop curriculum studio completes a lesson and syncs project draft across devices', async ({ page, browser }, testInfo) => {
+test('desktop curriculum studio gates advanced lessons and syncs project draft across devices', async ({ page, browser }, testInfo) => {
   const auth = await authenticatePage(page, 'curriculum');
   await page.goto('./');
 
@@ -30,6 +30,13 @@ test('desktop curriculum studio completes a lesson and syncs project draft acros
   await page.getByLabel('Описать одну строку и столбцы результата').check();
   await page.getByRole('button', { name: 'Проверить ответ' }).click();
   await expect(page.getByText('Урок завершён')).toBeVisible();
+
+  await page.getByLabel('Поиск по урокам').fill('DML');
+  await page.getByRole('button', { name: /DML и безопасные изменения: основа, закрыто/i }).click();
+  await expect(page.getByTestId('curriculum-access-gate')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Эта advanced-тема пока закрыта' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Diagnostic SQL Check/i })).toBeVisible();
+  await expectNoSeriousAxeViolations(page);
 
   await page.getByRole('tab', { name: /Project Lab/i }).click();
   await expect(page.getByTestId('project-lab')).toBeVisible();

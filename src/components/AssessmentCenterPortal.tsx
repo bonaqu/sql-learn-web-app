@@ -24,7 +24,7 @@ import {
   Trophy,
   X
 } from 'lucide-react';
-import { tasks } from '../data/course';
+import { tasks } from '../data/course-catalog';
 import {
   advanceAssessment,
   assessmentEligibility,
@@ -411,7 +411,7 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
         const modeConfig = assessmentModes[mode];
         const eligibility = assessmentEligibility(mode, progress);
         return <article className={`assessment-mode-card ${mode}`} key={mode} data-testid={`assessment-mode-${mode}`}>
-          <div className="assessment-mode-icon">{mode === 'quick' ? <AlarmClock /> : mode === 'interview' ? <BrainCircuit /> : <Trophy />}</div>
+          <div className="assessment-mode-icon">{mode === 'quick' ? <AlarmClock /> : mode === 'interview' ? <BrainCircuit /> : mode === 'diagnostic' ? <Target /> : mode === 'production' ? <ShieldCheck /> : <Trophy />}</div>
           <span className="assessment-duration"><Clock3 />{modeConfig.durationMinutes} минут</span>
           <h2>{modeConfig.title}</h2>
           <p>{modeConfig.description}</p>
@@ -422,7 +422,7 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
           </ul>
           {eligibility.eligible
             ? <button onClick={() => start(mode)} data-testid={`start-${mode}`}><Play />Начать</button>
-            : <div className="assessment-locked"><LockKeyhole /><span>Нужно ещё {eligibility.missingCompleted} задач и {eligibility.missingModules} модулей</span></div>}
+            : <div className="assessment-locked"><LockKeyhole /><span>Нужно ещё {eligibility.missingCompleted} задач, {eligibility.missingModules} модулей{eligibility.missingRequiredModules.length ? ' · prerequisites: ' + eligibility.missingRequiredModules.length : ''}</span></div>}
         </article>;
       })}
     </section>

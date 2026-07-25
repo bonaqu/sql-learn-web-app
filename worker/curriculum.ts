@@ -64,7 +64,7 @@ function validIdList(value: unknown, pattern: RegExp, max: number) {
 function validAnswers(value: unknown): value is Record<string, CurriculumAnswer> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const entries = Object.entries(value);
-  if (entries.length > 60) return false;
+  if (entries.length > 120) return false;
   return entries.every(([id, raw]) => {
     if (!ID_PATTERN.test(id) || !raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
     const answer = raw as Partial<CurriculumAnswer>;
@@ -108,8 +108,8 @@ function validCurriculum(payload: unknown): payload is CurriculumPayload {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
   const value = payload as Partial<CurriculumPayload>;
   return value.version === 1
-    && validIdList(value.completedSections, ID_PATTERN, 120)
-    && validIdList(value.completedLessons, LESSON_PATTERN, 40)
+    && validIdList(value.completedSections, ID_PATTERN, 240)
+    && validIdList(value.completedLessons, LESSON_PATTERN, 80)
     && validIdList(value.completedProjects, PROJECT_PATTERN, 12)
     && validAnswers(value.answers)
     && validDrafts(value.projectDrafts)

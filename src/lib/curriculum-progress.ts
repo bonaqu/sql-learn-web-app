@@ -1,4 +1,4 @@
-import { capstoneProjects, curriculumLessons } from '../data/curriculum';
+import { capstoneProjects, curriculumLessons } from '../data/complete-curriculum';
 
 export const CURRICULUM_PROGRESS_CHANGED_EVENT = 'sql-academy-curriculum-progress-changed';
 const STORAGE_PREFIX = 'sql-academy-curriculum-progress-v1';

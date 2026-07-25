@@ -1,4 +1,4 @@
-import { tasks } from '../src/data/course.ts';
+import { modules, tasks } from '../src/data/course-catalog.ts';
 import {
   buildDailySession,
   learningPhases,
@@ -33,12 +33,37 @@ const failures: string[] = [];
 const mastery = moduleMastery(practicedProgress);
 const phases = learningPhases(practicedProgress, mastery);
 const session = buildDailySession(practicedProgress, 25);
+const moduleIds = modules.map(([id]) => id);
+const phaseModuleIds = phaseDefinitions.flatMap(phase => [...phase.moduleIds]);
+const phaseModuleCounts = new Map<string, number>();
 
-if (mastery.length !== 20) failures.push(`Expected 20 mastery modules, received ${mastery.length}`);
-if (phaseDefinitions.length !== 4 || phases.length !== 4) failures.push('Learning path must contain four phases');
-if (new Set(phaseDefinitions.flatMap(phase => [...phase.moduleIds])).size !== 20) failures.push('Every course module must appear in exactly one phase');
+for (const moduleId of phaseModuleIds) {
+  phaseModuleCounts.set(moduleId, (phaseModuleCounts.get(moduleId) ?? 0) + 1);
+}
+
+if (mastery.length !== modules.length) {
+  failures.push(`Expected ${modules.length} mastery modules, received ${mastery.length}`);
+}
+if (phases.length !== phaseDefinitions.length) {
+  failures.push(`Expected ${phaseDefinitions.length} learning phases, received ${phases.length}`);
+}
+if (new Set(phaseDefinitions.map(phase => phase.id)).size !== phaseDefinitions.length) {
+  failures.push('Learning phase IDs must be unique');
+}
+
+const missingModules = moduleIds.filter(moduleId => !phaseModuleCounts.has(moduleId));
+const duplicatedModules = moduleIds.filter(moduleId => (phaseModuleCounts.get(moduleId) ?? 0) > 1);
+const unknownModules = [...phaseModuleCounts.keys()].filter(moduleId => !moduleIds.includes(moduleId as never));
+
+if (missingModules.length) failures.push(`Modules missing from learning phases: ${missingModules.join(', ')}`);
+if (duplicatedModules.length) failures.push(`Modules assigned to multiple phases: ${duplicatedModules.join(', ')}`);
+if (unknownModules.length) failures.push(`Unknown modules referenced by learning phases: ${unknownModules.join(', ')}`);
+if (phaseModuleIds.length !== moduleIds.length) {
+  failures.push(`Learning phases reference ${phaseModuleIds.length} module slots for ${moduleIds.length} course modules`);
+}
 if (mastery.some(item => item.mastery < 0 || item.mastery > 100)) failures.push('Mastery must stay inside 0..100');
 if (phases.some(phase => !phase.checkpointTask || !tasks.some(task => task.id === phase.checkpointTask.id))) failures.push('Every phase needs a real checkpoint task');
+if (new Set(phases.map(phase => phase.checkpointTask.id)).size !== phases.length) failures.push('Each phase must use a distinct checkpoint task');
 if (!session.items.length || session.items.length > 6) failures.push('Daily session must contain 1..6 tasks');
 if (new Set(session.items.map(item => item.task.id)).size !== session.items.length) failures.push('Daily session contains duplicate tasks');
 if (session.totalMinutes <= 0 || session.totalMinutes > 46) failures.push(`Unexpected session duration: ${session.totalMinutes}`);

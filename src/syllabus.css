@@ -1,0 +1,242 @@
+.syllabus-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 1250;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  background: radial-gradient(circle at 78% -10%, rgb(99 102 241 / 16%), transparent 34rem), #09090b;
+  color: #f4f4f5;
+}
+.syllabus-topbar {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1fr) auto minmax(12rem, 1fr);
+  align-items: center;
+  gap: 1rem;
+  min-height: 4.5rem;
+  padding: .75rem 1rem;
+  border-bottom: 1px solid rgb(148 163 184 / 14%);
+  background: rgb(9 9 11 / 92%);
+  backdrop-filter: blur(18px);
+}
+.syllabus-brand,
+.syllabus-brand > span,
+.syllabus-tabs,
+.syllabus-top-stats,
+.syllabus-track-list header,
+.dialect-pattern-list header,
+.syllabus-section-title,
+.syllabus-outcomes > div,
+.syllabus-checkpoint-summary,
+.dialect-rule,
+.syllabus-certificate,
+.syllabus-exam-stats span { display: flex; align-items: center; }
+.syllabus-brand { gap: .65rem; }
+.syllabus-brand > span { justify-content: center; width: 2.25rem; height: 2.25rem; border-radius: .7rem; background: linear-gradient(135deg, #6366f1, #7c3aed); }
+.syllabus-brand svg { width: 1.15rem; }
+.syllabus-brand strong,
+.syllabus-brand small { display: block; }
+.syllabus-brand small { margin-top: .16rem; color: #a1a1aa; font-size: .7rem; }
+.syllabus-tabs { justify-content: center; gap: .25rem; padding: .25rem; border: 1px solid rgb(148 163 184 / 14%); border-radius: .8rem; background: #18181b; }
+.syllabus-tabs button,
+.syllabus-top-stats button { display: inline-flex; align-items: center; justify-content: center; border: 0; color: #a1a1aa; font: inherit; cursor: pointer; }
+.syllabus-tabs button { gap: .42rem; min-height: 2.35rem; padding: .45rem .7rem; border-radius: .58rem; background: transparent; font-size: .74rem; font-weight: 850; }
+.syllabus-tabs button.active { background: #27272a; color: #f4f4f5; box-shadow: 0 1px 8px rgb(0 0 0 / 30%); }
+.syllabus-tabs svg { width: .95rem; }
+.syllabus-top-stats { justify-content: flex-end; gap: .75rem; color: #c4b5fd; font-size: .75rem; font-weight: 850; }
+.syllabus-top-stats span { display: inline-flex; align-items: center; gap: .35rem; }
+.syllabus-top-stats svg { width: .95rem; }
+.syllabus-top-stats button { width: 2.35rem; height: 2.35rem; border-radius: .65rem; background: #18181b; }
+.syllabus-top-stats button:hover { color: #fff; background: #27272a; }
+
+.syllabus-map-layout,
+.dialect-lab { display: grid; grid-template-columns: 18rem minmax(0, 1fr); min-height: 0; }
+.syllabus-track-list,
+.dialect-pattern-list { overflow-y: auto; padding: .9rem .7rem 4rem; border-right: 1px solid rgb(148 163 184 / 14%); background: rgb(12 12 15 / 82%); }
+.syllabus-track-list header,
+.dialect-pattern-list header { gap: .6rem; padding: .45rem .55rem 1rem; }
+.syllabus-track-list header > svg,
+.dialect-pattern-list header > svg { width: 1.15rem; color: #a78bfa; }
+.syllabus-track-list header strong,
+.syllabus-track-list header small,
+.dialect-pattern-list header strong,
+.dialect-pattern-list header small { display: block; }
+.syllabus-track-list header small,
+.dialect-pattern-list header small { margin-top: .18rem; color: #a1a1aa; font-size: .68rem; }
+.syllabus-track-list > button,
+.dialect-pattern-list > button { width: 100%; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.syllabus-track-list > button { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .65rem; align-items: center; margin-bottom: .35rem; padding: .7rem; border-radius: .75rem; background: transparent; }
+.syllabus-track-list > button:hover,
+.syllabus-track-list > button.active { background: #18181b; }
+.syllabus-track-list > button > span { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: .6rem; background: #27272a; color: #a78bfa; }
+.syllabus-track-list > button > span svg { width: 1rem; }
+.syllabus-track-list button strong,
+.syllabus-track-list button small { display: block; }
+.syllabus-track-list button strong { font-size: .78rem; }
+.syllabus-track-list button small { margin-top: .15rem; color: #a1a1aa; font-size: .65rem; }
+.syllabus-track-list button i { display: block; height: .25rem; margin-top: .55rem; overflow: hidden; border-radius: 999px; background: #27272a; }
+.syllabus-track-list button i b { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #6366f1, #8b5cf6); }
+.syllabus-track-list button em { color: #c4b5fd; font-size: .68rem; font-style: normal; font-weight: 900; }
+
+.syllabus-track-workspace,
+.dialect-workspace,
+.syllabus-exams { overflow-y: auto; padding: clamp(1.5rem, 4vw, 3.75rem) clamp(1.2rem, 5vw, 5rem) 6rem; }
+.syllabus-track-workspace > *,
+.dialect-workspace > *,
+.syllabus-exams > * { width: min(72rem, 100%); margin-left: auto; margin-right: auto; }
+.syllabus-track-hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 2rem; }
+.syllabus-track-hero small,
+.dialect-workspace > header small,
+.syllabus-exam-hero small { color: #a78bfa; font-size: .68rem; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+.syllabus-track-hero h1,
+.dialect-workspace > header h1,
+.syllabus-exam-hero h1 { margin: .55rem 0 .7rem; font-size: clamp(2.1rem, 5vw, 4.2rem); line-height: .98; letter-spacing: -.05em; }
+.syllabus-track-hero p,
+.dialect-workspace > header p,
+.syllabus-exam-hero p { max-width: 46rem; color: #a1a1aa; line-height: 1.7; }
+.syllabus-track-score { display: grid; place-items: center; flex: 0 0 9rem; min-height: 9rem; border: 1px solid rgb(139 92 246 / 24%); border-radius: 1rem; background: linear-gradient(145deg, rgb(91 33 182 / 22%), #18181b); }
+.syllabus-track-score svg { width: 1.3rem; color: #a78bfa; }
+.syllabus-track-score strong { margin-top: .3rem; font-size: 2.3rem; }
+.syllabus-track-score span { color: #a1a1aa; font-size: .67rem; }
+.syllabus-outcomes { margin-top: 2rem; padding: 1.1rem; border: 1px solid rgb(148 163 184 / 14%); border-radius: .9rem; background: #18181b; }
+.syllabus-outcomes > div { gap: .65rem; }
+.syllabus-outcomes > div > svg { width: 1.2rem; color: #a78bfa; }
+.syllabus-outcomes strong,
+.syllabus-outcomes small { display: block; }
+.syllabus-outcomes small { color: #a1a1aa; font-size: .68rem; }
+.syllabus-outcomes ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; margin: 1rem 0 0; padding: 0; list-style: none; }
+.syllabus-outcomes li { display: flex; gap: .45rem; align-items: flex-start; color: #d4d4d8; font-size: .78rem; line-height: 1.5; }
+.syllabus-outcomes li svg { flex: 0 0 auto; width: .95rem; color: #34d399; }
+.syllabus-module-roadmap { margin-top: 3rem; }
+.syllabus-section-title { gap: .65rem; margin-bottom: 1rem; }
+.syllabus-section-title > svg { width: 1.3rem; color: #a78bfa; }
+.syllabus-section-title small,
+.syllabus-section-title h2 { display: block; }
+.syllabus-section-title small { color: #a1a1aa; font-size: .68rem; }
+.syllabus-section-title h2 { margin: .1rem 0 0; }
+.syllabus-module-roadmap > div:last-child { display: grid; gap: .6rem; }
+.syllabus-module-roadmap article { display: grid; grid-template-columns: 3rem minmax(0, 1fr) .45rem; gap: 1rem; align-items: stretch; padding: 1rem; border: 1px solid rgb(148 163 184 / 12%); border-radius: .85rem; background: rgb(24 24 27 / 72%); }
+.syllabus-module-roadmap article.mastered { border-color: rgb(52 211 153 / 28%); }
+.syllabus-module-index { color: #71717a; font: 800 .75rem/1 ui-monospace, monospace; }
+.syllabus-module-copy > small { color: #a78bfa; font-size: .65rem; font-weight: 900; text-transform: uppercase; }
+.syllabus-module-copy h3 { margin: .22rem 0 .35rem; font-size: 1rem; }
+.syllabus-module-copy p { margin: 0; color: #a1a1aa; font-size: .75rem; line-height: 1.5; }
+.syllabus-module-copy > div { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: .75rem; }
+.syllabus-module-copy > div span { display: inline-flex; align-items: center; gap: .3rem; color: #d4d4d8; font-size: .67rem; }
+.syllabus-module-copy > div svg { width: .85rem; color: #8b5cf6; }
+.syllabus-module-meter { display: flex; align-items: flex-end; overflow: hidden; border-radius: 999px; background: #27272a; }
+.syllabus-module-meter i { width: 100%; border-radius: inherit; background: linear-gradient(#8b5cf6, #34d399); }
+.syllabus-checkpoint-summary,
+.dialect-rule,
+.syllabus-certificate { gap: .8rem; margin-top: 2rem; padding: 1rem; border: 1px solid rgb(139 92 246 / 22%); border-radius: .9rem; background: rgb(91 33 182 / 13%); }
+.syllabus-checkpoint-summary > svg,
+.dialect-rule > svg,
+.syllabus-certificate > svg { flex: 0 0 auto; width: 1.25rem; color: #a78bfa; }
+.syllabus-checkpoint-summary p,
+.dialect-rule p,
+.syllabus-certificate p { margin: .2rem 0 0; color: #c4b5fd; font-size: .75rem; line-height: 1.5; }
+
+.dialect-pattern-list > button { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .65rem; align-items: center; margin-bottom: .3rem; padding: .75rem; border-radius: .72rem; background: transparent; }
+.dialect-pattern-list > button:hover,
+.dialect-pattern-list > button.active { background: #18181b; }
+.dialect-pattern-list > button > svg:first-child { width: 1rem; color: #8b5cf6; }
+.dialect-pattern-list > button > svg:last-child { width: .9rem; color: #71717a; }
+.dialect-pattern-list button strong,
+.dialect-pattern-list button small { display: block; }
+.dialect-pattern-list button strong { font-size: .76rem; }
+.dialect-pattern-list button small { display: -webkit-box; margin-top: .18rem; overflow: hidden; color: #a1a1aa; font-size: .63rem; line-height: 1.35; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.dialect-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin-top: 2rem; }
+.dialect-grid article { overflow: hidden; border: 1px solid rgb(148 163 184 / 14%); border-radius: .9rem; background: #18181b; }
+.dialect-card-heading { display: flex; align-items: center; gap: .65rem; padding: .85rem; }
+.dialect-card-heading > span { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: .58rem; background: #27272a; color: #c4b5fd; font: 900 .65rem/1 ui-monospace, monospace; }
+.dialect-card-heading h2 { margin: 0; font-size: .9rem; }
+.dialect-card-heading small { color: #a1a1aa; font-size: .62rem; }
+.dialect-grid pre { min-height: 8rem; margin: 0; overflow: auto; padding: 1rem; border-top: 1px solid rgb(148 163 184 / 12%); background: #0c0c0f; color: #e4e4e7; font: 500 .73rem/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre-wrap; }
+.dialect-grid article > p { display: flex; align-items: flex-start; gap: .4rem; margin: 0; padding: .8rem; border-top: 1px solid rgb(148 163 184 / 12%); color: #d4d4d8; font-size: .69rem; line-height: 1.45; }
+.dialect-grid article > p svg { flex: 0 0 auto; width: .9rem; color: #34d399; }
+
+.syllabus-exam-hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 2rem; }
+.syllabus-exam-hero > svg { width: 6rem; height: 6rem; color: rgb(167 139 250 / 42%); }
+.syllabus-exam-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; margin-top: 2rem; }
+.syllabus-exam-grid article { display: flex; flex-direction: column; padding: 1.1rem; border: 1px solid rgb(148 163 184 / 14%); border-radius: 1rem; background: #18181b; }
+.syllabus-exam-grid article.unlocked { border-color: rgb(139 92 246 / 34%); }
+.syllabus-exam-grid article > header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .65rem; align-items: start; }
+.syllabus-exam-grid article > header > span { color: #71717a; font: 900 .72rem/1 ui-monospace, monospace; }
+.syllabus-exam-grid article > header > svg { width: 1.1rem; color: #a78bfa; }
+.syllabus-exam-grid h2 { margin: .2rem 0 0; font-size: 1rem; }
+.syllabus-exam-grid header small { color: #a1a1aa; font-size: .62rem; }
+.syllabus-exam-grid article > p { color: #a1a1aa; font-size: .75rem; line-height: 1.55; }
+.syllabus-exam-stats { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+.syllabus-exam-stats span { gap: .4rem; padding: .65rem; border-radius: .65rem; background: #27272a; color: #d4d4d8; font-size: .62rem; }
+.syllabus-exam-stats svg { width: .9rem; color: #a78bfa; }
+.syllabus-exam-stats strong { font-size: .8rem; }
+.syllabus-exam-grid ul { display: grid; gap: .45rem; padding: 0; list-style: none; }
+.syllabus-exam-grid li { display: flex; gap: .4rem; align-items: flex-start; color: #d4d4d8; font-size: .68rem; line-height: 1.45; }
+.syllabus-exam-grid li svg { flex: 0 0 auto; width: .85rem; color: #34d399; }
+.syllabus-exam-required { margin-top: auto; padding-top: .8rem; }
+.syllabus-exam-required > strong { font-size: .68rem; }
+.syllabus-exam-required > div { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .45rem; }
+.syllabus-exam-required span { padding: .25rem .4rem; border-radius: .4rem; background: #27272a; color: #c4b5fd; font-size: .58rem; }
+.syllabus-exam-grid article > button { display: flex; align-items: center; justify-content: center; gap: .4rem; min-height: 2.6rem; margin-top: 1rem; border: 0; border-radius: .7rem; background: #7c3aed; color: #fff; font: inherit; font-size: .72rem; font-weight: 900; cursor: pointer; }
+.syllabus-exam-grid article > button svg { width: .95rem; }
+
+[data-theme="light"] .syllabus-shell { background: radial-gradient(circle at 78% -10%, rgb(99 102 241 / 12%), transparent 34rem), #f8fafc; color: #18181b; }
+[data-theme="light"] .syllabus-topbar,
+[data-theme="light"] .syllabus-track-list,
+[data-theme="light"] .dialect-pattern-list { background: rgb(255 255 255 / 94%); }
+[data-theme="light"] .syllabus-tabs,
+[data-theme="light"] .syllabus-top-stats button,
+[data-theme="light"] .syllabus-track-list > button:hover,
+[data-theme="light"] .syllabus-track-list > button.active,
+[data-theme="light"] .dialect-pattern-list > button:hover,
+[data-theme="light"] .dialect-pattern-list > button.active,
+[data-theme="light"] .syllabus-outcomes,
+[data-theme="light"] .syllabus-module-roadmap article,
+[data-theme="light"] .dialect-grid article,
+[data-theme="light"] .syllabus-exam-grid article { background: #fff; color: #27272a; }
+[data-theme="light"] .dialect-grid pre { background: #f4f4f5; color: #27272a; }
+[data-theme="light"] .syllabus-tabs button.active { background: #e4e4e7; color: #18181b; }
+[data-theme="light"] .syllabus-track-hero p,
+[data-theme="light"] .dialect-workspace > header p,
+[data-theme="light"] .syllabus-exam-hero p,
+[data-theme="light"] .syllabus-module-copy p,
+[data-theme="light"] .syllabus-exam-grid article > p { color: #52525b; }
+
+@media (max-width: 1050px) {
+  .syllabus-topbar { grid-template-columns: minmax(0, 1fr) auto; }
+  .syllabus-tabs { order: 3; grid-column: 1 / -1; justify-self: center; }
+  .syllabus-map-layout,
+  .dialect-lab { grid-template-columns: 15.5rem minmax(0, 1fr); }
+  .syllabus-exam-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .syllabus-shell { display: block; overflow-y: auto; }
+  .syllabus-topbar { position: sticky; top: 0; z-index: 10; grid-template-columns: minmax(0, 1fr) auto; min-height: auto; padding: .65rem .75rem; }
+  .syllabus-brand small,
+  .syllabus-top-stats > span { display: none; }
+  .syllabus-tabs { width: 100%; grid-column: 1 / -1; }
+  .syllabus-tabs button { flex: 1; padding-inline: .4rem; }
+  .syllabus-map-layout,
+  .dialect-lab { display: block; }
+  .syllabus-track-list,
+  .dialect-pattern-list { display: flex; gap: .4rem; overflow-x: auto; padding: .7rem; border-right: 0; border-bottom: 1px solid rgb(148 163 184 / 14%); }
+  .syllabus-track-list header,
+  .dialect-pattern-list header { display: none; }
+  .syllabus-track-list > button { flex: 0 0 14rem; margin: 0; }
+  .dialect-pattern-list > button { flex: 0 0 15rem; margin: 0; }
+  .syllabus-track-workspace,
+  .dialect-workspace,
+  .syllabus-exams { overflow: visible; padding: 1.25rem .9rem 6rem; }
+  .syllabus-track-hero,
+  .syllabus-exam-hero { display: block; }
+  .syllabus-track-score { display: flex; justify-content: flex-start; gap: .5rem; width: fit-content; min-height: auto; margin-top: 1rem; padding: .65rem .8rem; }
+  .syllabus-track-score strong { margin: 0; font-size: 1.2rem; }
+  .syllabus-outcomes ul,
+  .dialect-grid { grid-template-columns: 1fr; }
+  .syllabus-exam-hero > svg { display: none; }
+}
+@media (max-width: 430px) {
+  .syllabus-brand > span { display: none; }
+  .syllabus-tabs button { font-size: .65rem; }
+  .syllabus-module-roadmap article { grid-template-columns: 2rem minmax(0, 1fr) .35rem; gap: .65rem; }
+}
