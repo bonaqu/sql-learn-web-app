@@ -25,9 +25,11 @@ import { curriculumCheckpoints, curriculumLessons } from '../data/complete-curri
 import { modules, tasks } from '../data/course-catalog';
 import { dialectPatterns, dialects, type SqlDialect } from '../data/sql-dialects';
 import { sqlExams, sqlTracks, type SqlTrackId } from '../data/sql-exams';
+import { loadLocalAssessmentReports } from '../lib/assessment';
+import { calculateCompleteReadiness } from '../lib/complete-readiness';
 import { loadCurriculumProgress } from '../lib/curriculum-progress';
 import { openDeferredFeature } from '../lib/deferred-features';
-import { moduleMastery, overallReadiness } from '../lib/learning-path';
+import { moduleMastery } from '../lib/learning-path';
 import { loadProgress } from '../lib/progress';
 import { useDialogFocus } from '../lib/dialog-focus';
 import '../syllabus.css';
@@ -51,8 +53,12 @@ export default function SyllabusPortal({ openRequest = 0 }: { openRequest?: numb
 
   const progress = useMemo(() => loadProgress(), [openRequest, open]);
   const curriculumProgress = useMemo(() => loadCurriculumProgress(), [openRequest, open]);
+  const reports = useMemo(() => loadLocalAssessmentReports(), [openRequest, open]);
   const mastery = useMemo(() => moduleMastery(progress), [progress]);
-  const readiness = useMemo(() => overallReadiness(progress), [progress]);
+  const completeReadiness = useMemo(
+    () => calculateCompleteReadiness(progress, curriculumProgress, reports),
+    [curriculumProgress, progress, reports]
+  );
   const activeTrack = sqlTracks.find(track => track.id === trackId) || sqlTracks[0];
   const activePattern = dialectPatterns.find(pattern => pattern.id === patternId) || dialectPatterns[0];
 
@@ -84,8 +90,15 @@ export default function SyllabusPortal({ openRequest = 0 }: { openRequest?: numb
     <main className="syllabus-track-workspace">
       <header className="syllabus-track-hero">
         <div><small>Учебный трек</small><h1>{activeTrack.title}</h1><p>{activeTrack.purpose}</p></div>
-        <div className="syllabus-track-score"><Gauge /><strong>{readiness}%</strong><span>общая готовность</span></div>
+        <div className="syllabus-track-score"><Gauge /><strong>{completeReadiness.total}%</strong><span>complete readiness</span></div>
       </header>
+      <section className="syllabus-readiness-components" aria-label="Состав полной готовности">
+        <span><strong>{completeReadiness.taskReadiness}%</strong> task mastery</span>
+        <span><strong>{completeReadiness.lessonCompletion}%</strong> lessons</span>
+        <span><strong>{completeReadiness.checkpointCompletion}%</strong> checkpoints</span>
+        <span><strong>{completeReadiness.projectCompletion}%</strong> projects</span>
+        <span><strong>{completeReadiness.examReadiness}%</strong> exams</span>
+      </section>
       <section className="syllabus-outcomes"><div><Target /><span><strong>Результаты трека</strong><small>Что должно стать самостоятельным навыком</small></span></div><ul>{activeTrack.outcomes.map(outcome => <li key={outcome}><CheckCircle2 />{outcome}</li>)}</ul></section>
       <section className="syllabus-module-roadmap">
         <div className="syllabus-section-title"><Layers3 /><div><small>{activeTrack.estimatedHours} часов fast-track</small><h2>Модули маршрута</h2></div></div>
@@ -125,16 +138,28 @@ export default function SyllabusPortal({ openRequest = 0 }: { openRequest?: numb
     <header className="syllabus-exam-hero"><div><small>Graded assessment</small><h1>Экзамены SQL Academy</h1><p>Три уровня проверки: входная диагностика, production-надежность и финальная смешанная готовность.</p></div><ClipboardCheck /></header>
     <div className="syllabus-exam-grid">{sqlExams.map((exam, index) => {
       const unlocked = exam.requiredModuleIds.every(moduleId => (mastery.find(item => item.id === moduleId)?.mastery || 0) >= 45);
-      return <article key={exam.id} className={unlocked ? 'unlocked' : ''}>
-        <header><span>0{index + 1}</span><div><small>{exam.durationMinutes} минут · проходной {exam.passingScore}%</small><h2>{exam.title}</h2></div>{unlocked ? <CheckCircle2 /> : <LockKeyhole />}</header>
+      const score = completeReadiness.examScores[exam.id] || 0;
+      const passed = score >= exam.passingScore;
+      return <article key={exam.id} className={unlocked || exam.id === 'diagnostic' ? 'unlocked' : ''}>
+        <header><span>0{index + 1}</span><div><small>{exam.durationMinutes} минут · проходной {exam.passingScore}%</small><h2>{exam.title}</h2></div>{passed ? <CheckCircle2 /> : unlocked || exam.id === 'diagnostic' ? <Gauge /> : <LockKeyhole />}</header>
         <p>{exam.description}</p>
-        <div className="syllabus-exam-stats"><span><Code2 /><strong>{exam.taskIds.length}</strong> задач</span><span><Gauge /><strong>{exam.readinessWeight}%</strong> readiness weight</span></div>
+        <div className="syllabus-exam-stats"><span><Code2 /><strong>{exam.taskIds.length}</strong> задач</span><span><Gauge /><strong>{score || '—'}</strong> лучший score</span></div>
         <ul>{exam.rules.map(rule => <li key={rule}><ShieldCheck />{rule}</li>)}</ul>
         {!!exam.requiredModuleIds.length && <div className="syllabus-exam-required"><strong>Prerequisites</strong><div>{exam.requiredModuleIds.map(moduleId => <span key={moduleId}>{modules.find(([id]) => id === moduleId)?.[1] || moduleId}</span>)}</div></div>}
-        <button onClick={() => { setOpen(false); window.setTimeout(() => openDeferredFeature('assessment'), 50); }}><Play />Открыть Assessment Center</button>
+        <button onClick={() => { setOpen(false); window.setTimeout(() => openDeferredFeature('assessment'), 50); }}><Play />{passed ? 'Открыть отчёт или пересдать' : 'Открыть Assessment Center'}</button>
       </article>;
     })}</div>
-    <section className="syllabus-certificate"><Trophy /><div><strong>Readiness certificate</strong><p>Финальный статус учитывает задачи, уроки, checkpoints, экзамены и capstone. Сейчас завершено уроков: {curriculumProgress.completedLessons.length}/{curriculumLessons.length}, проектов: {curriculumProgress.completedProjects.length}/3.</p></div></section>
+    <section className={`syllabus-certificate ${completeReadiness.certificateEligible ? 'eligible' : ''}`} data-testid="readiness-certificate">
+      <Trophy />
+      <div><strong>{completeReadiness.certificateEligible ? 'SQL Academy Complete — критерии выполнены' : 'Readiness certificate'}</strong><p>Сертификат не выдаётся только за задачи: нужны теория, все checkpoints, три capstone и проходные Production + Final exams.</p></div>
+      <span>{completeReadiness.total}%</span>
+    </section>
+    <section className="syllabus-certificate-criteria" aria-label="Критерии сертификата">
+      {completeReadiness.criteria.map(item => <article key={item.id} className={item.passed ? 'passed' : ''}>
+        {item.passed ? <CheckCircle2 /> : <LockKeyhole />}
+        <span><strong>{item.title}</strong><small>{item.current} / {item.target}{item.unit === '%' ? '%' : ''}</small></span>
+      </article>)}
+    </section>
   </main>;
 
   const shell = <div ref={shellRef} tabIndex={-1} className="syllabus-shell" role="dialog" aria-modal="true" aria-labelledby="syllabus-dialog-title">
