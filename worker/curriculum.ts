@@ -36,6 +36,31 @@ type CurriculumWrite = {
 type CurriculumRow = { payload: string; updated_at: string };
 type MutationRow = { updated_at: string };
 
+type ValidationCode =
+  | 'payload'
+  | 'version'
+  | 'completedSections'
+  | 'completedLessons'
+  | 'completedProjects'
+  | 'answers.object'
+  | 'answers.count'
+  | 'answers.id'
+  | 'answers.optionIndex'
+  | 'answers.correct'
+  | 'answers.answeredAt'
+  | 'projectDrafts.object'
+  | 'projectDrafts.count'
+  | 'projectDrafts.id'
+  | 'projectDrafts.sql'
+  | 'projectDrafts.notes'
+  | 'projectDrafts.completedDeliverables'
+  | 'projectDrafts.updatedAt'
+  | 'bookmark'
+  | 'bookmark.lessonId'
+  | 'bookmark.sectionId'
+  | 'bookmark.updatedAt'
+  | 'updatedAt';
+
 const json = (data: unknown, status = 200, extraHeaders: Record<string, string> = {}) => new Response(JSON.stringify(data), {
   status,
   headers: {
@@ -62,60 +87,69 @@ function validIdList(value: unknown, pattern: RegExp, max: number) {
     && value.every(item => typeof item === 'string' && pattern.test(item));
 }
 
-function validAnswers(value: unknown): value is Record<string, CurriculumAnswer> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+function answersValidationCode(value: unknown): ValidationCode | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return 'answers.object';
   const entries = Object.entries(value);
-  if (entries.length > MAX_ANSWERS) return false;
-  return entries.every(([id, raw]) => {
-    if (!ID_PATTERN.test(id) || !raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+  if (entries.length > MAX_ANSWERS) return 'answers.count';
+  for (const [id, raw] of entries) {
+    if (!ID_PATTERN.test(id)) return 'answers.id';
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return 'answers.object';
     const answer = raw as Partial<CurriculumAnswer>;
-    return typeof answer.optionIndex === 'number'
-      && Number.isInteger(answer.optionIndex)
-      && answer.optionIndex >= 0
-      && answer.optionIndex <= 12
-      && typeof answer.correct === 'boolean'
-      && safeTimestamp(answer.answeredAt);
-  });
+    if (typeof answer.optionIndex !== 'number'
+      || !Number.isInteger(answer.optionIndex)
+      || answer.optionIndex < 0
+      || answer.optionIndex > 12) return 'answers.optionIndex';
+    if (typeof answer.correct !== 'boolean') return 'answers.correct';
+    if (!safeTimestamp(answer.answeredAt)) return 'answers.answeredAt';
+  }
+  return null;
 }
 
-function validDrafts(value: unknown): value is Record<string, CurriculumDraft> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+function draftsValidationCode(value: unknown): ValidationCode | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return 'projectDrafts.object';
   const entries = Object.entries(value);
-  if (entries.length > 12) return false;
-  return entries.every(([id, raw]) => {
-    if (!PROJECT_PATTERN.test(id) || !raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+  if (entries.length > 12) return 'projectDrafts.count';
+  for (const [id, raw] of entries) {
+    if (!PROJECT_PATTERN.test(id)) return 'projectDrafts.id';
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return 'projectDrafts.object';
     const draft = raw as Partial<CurriculumDraft>;
-    return typeof draft.sql === 'string'
-      && draft.sql.length <= 40_000
-      && typeof draft.notes === 'string'
-      && draft.notes.length <= 12_000
-      && validIdList(draft.completedDeliverables, ID_PATTERN, 24)
-      && safeTimestamp(draft.updatedAt);
-  });
+    if (typeof draft.sql !== 'string' || draft.sql.length > 40_000) return 'projectDrafts.sql';
+    if (typeof draft.notes !== 'string' || draft.notes.length > 12_000) return 'projectDrafts.notes';
+    if (!validIdList(draft.completedDeliverables, ID_PATTERN, 24)) return 'projectDrafts.completedDeliverables';
+    if (!safeTimestamp(draft.updatedAt)) return 'projectDrafts.updatedAt';
+  }
+  return null;
 }
 
-function validBookmark(value: unknown): value is CurriculumPayload['bookmark'] {
-  if (value === null) return true;
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+function bookmarkValidationCode(value: unknown): ValidationCode | null {
+  if (value === null) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return 'bookmark';
   const bookmark = value as { lessonId?: unknown; sectionId?: unknown; updatedAt?: unknown };
-  return typeof bookmark.lessonId === 'string'
-    && LESSON_PATTERN.test(bookmark.lessonId)
-    && typeof bookmark.sectionId === 'string'
-    && ID_PATTERN.test(bookmark.sectionId)
-    && safeTimestamp(bookmark.updatedAt);
+  if (typeof bookmark.lessonId !== 'string' || !LESSON_PATTERN.test(bookmark.lessonId)) return 'bookmark.lessonId';
+  if (typeof bookmark.sectionId !== 'string' || !ID_PATTERN.test(bookmark.sectionId)) return 'bookmark.sectionId';
+  if (!safeTimestamp(bookmark.updatedAt)) return 'bookmark.updatedAt';
+  return null;
+}
+
+function curriculumValidationCode(payload: unknown): ValidationCode | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return 'payload';
+  const value = payload as Partial<CurriculumPayload>;
+  if (value.version !== 1) return 'version';
+  if (!validIdList(value.completedSections, ID_PATTERN, 240)) return 'completedSections';
+  if (!validIdList(value.completedLessons, LESSON_PATTERN, 80)) return 'completedLessons';
+  if (!validIdList(value.completedProjects, PROJECT_PATTERN, 12)) return 'completedProjects';
+  const answersCode = answersValidationCode(value.answers);
+  if (answersCode) return answersCode;
+  const draftsCode = draftsValidationCode(value.projectDrafts);
+  if (draftsCode) return draftsCode;
+  const bookmarkCode = bookmarkValidationCode(value.bookmark);
+  if (bookmarkCode) return bookmarkCode;
+  if (!safeTimestamp(value.updatedAt)) return 'updatedAt';
+  return null;
 }
 
 function validCurriculum(payload: unknown): payload is CurriculumPayload {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
-  const value = payload as Partial<CurriculumPayload>;
-  return value.version === 1
-    && validIdList(value.completedSections, ID_PATTERN, 240)
-    && validIdList(value.completedLessons, LESSON_PATTERN, 80)
-    && validIdList(value.completedProjects, PROJECT_PATTERN, 12)
-    && validAnswers(value.answers)
-    && validDrafts(value.projectDrafts)
-    && validBookmark(value.bookmark)
-    && safeTimestamp(value.updatedAt);
+  return curriculumValidationCode(payload) === null;
 }
 
 async function readRow(env: Cloudflare.Env, userId: string) {
@@ -155,12 +189,14 @@ export async function handleCurriculumRequest(request: Request, env: Cloudflare.
   if (request.method === 'PUT') {
     if (bodyTooLarge(request)) return json({ error: 'Curriculum payload is too large' }, 413);
     const body = await request.json<CurriculumWrite>();
-    if (!validCurriculum(body.progress)) return json({ error: 'Invalid curriculum payload' }, 400);
+    const validationCode = curriculumValidationCode(body.progress);
+    if (validationCode) return json({ error: 'Invalid curriculum payload', validationCode }, 400);
     if (body.baseUpdatedAt !== null && body.baseUpdatedAt !== undefined && !safeTimestamp(body.baseUpdatedAt)) {
-      return json({ error: 'Invalid baseUpdatedAt' }, 400);
+      return json({ error: 'Invalid baseUpdatedAt', validationCode: 'updatedAt' }, 400);
     }
 
-    const serialized = JSON.stringify(body.progress);
+    const progress = body.progress as CurriculumPayload;
+    const serialized = JSON.stringify(progress);
     if (new TextEncoder().encode(serialized).byteLength > MAX_CURRICULUM_BYTES) {
       return json({ error: 'Curriculum payload is too large' }, 413);
     }
@@ -174,7 +210,7 @@ export async function handleCurriculumRequest(request: Request, env: Cloudflare.
         .bind(serialized, updatedAt, userId, body.baseUpdatedAt)
         .first<MutationRow>();
       if (!updated) return conflict(env, userId);
-      return json({ ok: true, version: body.progress.version, updatedAt: updated.updated_at });
+      return json({ ok: true, version: progress.version, updatedAt: updated.updated_at });
     }
 
     const inserted = await env.DB.prepare(`INSERT INTO curriculum_progress(user_id, payload, updated_at)
@@ -184,7 +220,7 @@ export async function handleCurriculumRequest(request: Request, env: Cloudflare.
       .bind(userId, serialized, updatedAt)
       .first<MutationRow>();
     if (!inserted) return conflict(env, userId);
-    return json({ ok: true, version: body.progress.version, updatedAt: inserted.updated_at });
+    return json({ ok: true, version: progress.version, updatedAt: inserted.updated_at });
   }
 
   return json({ error: 'Method not allowed' }, 405, { allow: 'GET, PUT' });
