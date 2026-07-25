@@ -1,5 +1,4 @@
 import type { AssessmentReport } from './assessment';
-import { loadAuthSession } from './auth';
 import type { CheckpointReport } from './checkpoints';
 
 export type SyncableEvidenceReport = {
@@ -17,6 +16,7 @@ export type EvidenceSyncResult = {
 type SyncError = Error & { status?: number };
 type EvidenceKind = 'assessment' | 'checkpoint';
 
+const AUTH_SESSION_KEY = 'sql-academy-auth-session-v2';
 const COLLECTIONS = {
   assessment: {
     endpoint: '/api/assessment/reports',
@@ -72,7 +72,12 @@ export function reportsToUpload<T extends SyncableEvidenceReport>(local: T[], re
 }
 
 function currentUserId() {
-  return loadAuthSession()?.userId || null;
+  try {
+    const session = JSON.parse(localStorage.getItem(AUTH_SESSION_KEY) || 'null') as { userId?: unknown } | null;
+    return typeof session?.userId === 'string' && session.userId ? session.userId : null;
+  } catch {
+    return null;
+  }
 }
 
 function validLocalReport<T extends SyncableEvidenceReport>(value: unknown, userId: string): value is T {
@@ -107,8 +112,10 @@ function writeLocalReports<T extends SyncableEvidenceReport>(
   reports: T[]
 ) {
   const key = localKey(kind, userId);
+  const existing = localStorage.getItem(key);
+  if (existing === null && reports.length === 0) return false;
   const next = serialized(reports);
-  if (localStorage.getItem(key) === next) return false;
+  if (existing === next) return false;
   localStorage.setItem(key, next);
   window.dispatchEvent(new CustomEvent(COLLECTIONS[kind].event, { detail: reports }));
   return true;
