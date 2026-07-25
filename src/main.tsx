@@ -7,6 +7,7 @@ import CheckpointLauncher from './components/CheckpointLauncher';
 import ChunkErrorBoundary from './components/ChunkErrorBoundary';
 import CurriculumSyncAgent from './components/CurriculumSyncAgent';
 import DeferredFeaturePortals from './components/DeferredFeaturePortals';
+import EvidenceSyncAgent from './components/EvidenceSyncAgent';
 import PwaStatus from './components/PwaStatus';
 import './styles.css';
 import './enhancements.css';
@@ -23,6 +24,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <CheckpointLauncher />
         <DeferredFeaturePortals />
         <CurriculumSyncAgent />
+        <EvidenceSyncAgent />
       </AuthGate>
       <PwaStatus />
     </ChunkErrorBoundary>
