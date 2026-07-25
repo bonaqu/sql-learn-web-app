@@ -68,6 +68,8 @@ test('mobile mastery diagnostics remain readable without horizontal overflow', a
   await authenticatePage(page, 'mobilemastery');
   await page.goto('./');
   await page.getByRole('button', { name: 'Практика', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Practice Mode' })).toBeVisible();
+  await page.getByRole('button', { name: /001 Контракт результата: VPN/ }).click();
   await replaceEditorSql(page, 'SELECT missing_column FROM tickets;');
   await page.getByRole('button', { name: /Проверить SQL/i }).click();
   const diagnostic = page.getByTestId('attempt-diagnostic');
