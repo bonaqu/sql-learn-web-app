@@ -33,6 +33,7 @@ export default function LessonMasteryPanel({
 }) {
   const mastery = lessonMasteryState(lesson, progress, curriculum, reviewState);
   const remediation = lessonRemediation(progress, lesson);
+  const nextPracticeTaskId = mastery.nextTaskId;
   const steps = [
     {
       id: 'study',
@@ -85,7 +86,7 @@ export default function LessonMasteryPanel({
 
     {!mastery.mastered && <div className="lesson-mastery-next">
       <Circle /><div><strong>Следующий обязательный шаг</strong><p>{mastery.blocker}</p></div>
-      {mastery.nextAction === 'practice' && mastery.nextTaskId && <button onClick={() => onOpenTask(mastery.nextTaskId)}><Code2 />Открыть independent practice</button>}
+      {mastery.nextAction === 'practice' && nextPracticeTaskId && <button onClick={() => onOpenTask(nextPracticeTaskId)}><Code2 />Открыть independent practice</button>}
     </div>}
 
     {mastery.mastered && !mastery.retained && <div className="lesson-mastery-next review">
