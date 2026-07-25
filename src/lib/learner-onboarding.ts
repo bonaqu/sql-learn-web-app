@@ -1,4 +1,4 @@
-import { modules } from '../data/course-catalog';
+import { onboardingModuleTitle } from '../data/onboarding-module-titles';
 import type { AssessmentReport } from './assessment';
 import { loadAuthSession } from './auth';
 
@@ -226,10 +226,6 @@ function goalTrack(goal: LearnerGoal | null): RecommendedTrack {
   return goalOptions.find(item => item.id === goal)?.track || 'fundamentals';
 }
 
-function moduleTitle(moduleId: string) {
-  return modules.find(([id]) => id === moduleId)?.[1] || moduleId;
-}
-
 export function calculatePlacement(profile: LearnerOnboardingProfile, report: AssessmentReport): PlacementResult {
   const scores = [...report.moduleScores].sort((left, right) => right.score - left.score || left.module.localeCompare(right.module));
   const strongModuleIds = scores.filter(item => item.score >= 80).map(item => item.module);
@@ -268,7 +264,7 @@ function planTemplate(kind: WeekPlanItem['kind'], moduleId: string | null) {
     title: 'Executable placement',
     detail: 'Пройди Diagnostic SQL Check. Self-report не открывает advanced-модули без исполняемого evidence.'
   };
-  const title = moduleId ? moduleTitle(moduleId) : 'SQL foundation';
+  const title = moduleId ? onboardingModuleTitle(moduleId) : 'SQL foundation';
   return kind === 'lesson'
     ? { title: `Урок: ${title}`, detail: 'Изучи mental model, пройди knowledge check и сразу перейди к связанной практике.' }
     : { title: `Independent practice: ${title}`, detail: 'Реши задачу без подсказки и эталона. При ошибке следуй remediation, а не перебирай SQL наугад.' };
