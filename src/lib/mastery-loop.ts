@@ -2,8 +2,10 @@ import {
   curriculumLessons,
   type CurriculumLesson
 } from '../data/complete-curriculum';
+import { conceptsForModule } from '../data/concept-inventory';
+import { lessonCheckProgress } from '../data/lesson-checks';
 import type { CurriculumProgressV1 } from './curriculum-progress';
-import { diagnosticForKind } from './attempt-diagnostics';
+import { diagnosticForKind, type AttemptErrorKind } from './attempt-diagnostics';
 import {
   hasIndependentTaskEvidence,
   moduleErrorSummary,
@@ -19,6 +21,8 @@ export type LessonMasteryState = {
   sectionsCompleted: number;
   sectionsTotal: number;
   theoryComplete: boolean;
+  checksCompleted: number;
+  checksTotal: number;
   checkCorrect: boolean;
   independentTaskIds: string[];
   requiredTaskIds: string[];
@@ -40,9 +44,9 @@ export function lessonMasteryState(
   reviewState?: ReviewState
 ): LessonMasteryState {
   const sectionsCompleted = lesson.sections.filter(section => curriculum.completedSections.includes(section.id)).length;
-  const validCompletedLesson = curriculum.completedLessons.includes(lesson.id);
-  const theoryComplete = validCompletedLesson || sectionsCompleted === lesson.sections.length;
-  const checkCorrect = validCompletedLesson || Boolean(curriculum.answers[lesson.check.id]?.correct);
+  const theoryComplete = sectionsCompleted === lesson.sections.length;
+  const checks = lessonCheckProgress(lesson, curriculum.answers);
+  const checkCorrect = checks.complete;
   const independentTaskIds = lesson.practiceTaskIds.filter(taskId => hasIndependentTaskEvidence(progress, taskId));
   const applied = independentTaskIds.length > 0;
   const review = reviewState?.schedules[`review-${lesson.module}`];
@@ -59,7 +63,7 @@ export function lessonMasteryState(
     blocker = `Изучи все разделы урока (${sectionsCompleted}/${lesson.sections.length}).`;
   } else if (!checkCorrect) {
     nextAction = 'check';
-    blocker = 'Пройди knowledge check без угадывания.';
+    blocker = `Пройди concept checks без угадывания (${checks.completed}/${checks.total}).`;
   } else if (!applied) {
     nextAction = 'practice';
     blocker = 'Реши связанную SQL-задачу без подсказки и открытого решения.';
@@ -76,6 +80,8 @@ export function lessonMasteryState(
     sectionsCompleted,
     sectionsTotal: lesson.sections.length,
     theoryComplete,
+    checksCompleted: checks.completed,
+    checksTotal: checks.total,
     checkCorrect,
     independentTaskIds,
     requiredTaskIds: [...lesson.practiceTaskIds],
@@ -109,10 +115,37 @@ export function moduleAppliedLessonScore(
   };
 }
 
+const diagnosticKeywords: Record<AttemptErrorKind, string[]> = {
+  syntax: ['syntax', 'clause', 'operator'],
+  schema: ['schema', 'alias', 'column', 'key'],
+  runtime: ['runtime', 'type', 'state'],
+  'result-shape': ['contract', 'shape', 'projection', 'column', 'grain'],
+  'row-set': ['filter', 'where', 'exists', 'set', 'population'],
+  ordering: ['order', 'sort', 'tie', 'cursor', 'offset'],
+  values: ['expression', 'value', 'type', 'calculation', 'denominator'],
+  'null-filter': ['null', 'unknown', 'not-in', 'nullable'],
+  aggregation: ['group', 'aggregate', 'count', 'denominator', 'grain', 'frame'],
+  'join-cardinality': ['join', 'cardinality', 'multiplication', 'distinct']
+};
+
+function misconceptionForDiagnostic(lesson: CurriculumLesson, kind: AttemptErrorKind) {
+  const concepts = conceptsForModule(lesson.module);
+  const keywords = diagnosticKeywords[kind];
+  const candidates = concepts.flatMap(concept => concept.misconceptions.map(item => ({ concept, item })));
+  return candidates
+    .map(candidate => {
+      const text = `${candidate.item.id} ${candidate.item.label} ${candidate.item.explanation}`.toLowerCase();
+      const score = keywords.reduce((sum, keyword) => sum + (text.includes(keyword) ? 1 : 0), 0);
+      return { ...candidate, score };
+    })
+    .sort((left, right) => right.score - left.score || left.item.id.localeCompare(right.item.id))[0] || null;
+}
+
 export function lessonRemediation(progress: Progress, lesson: CurriculumLesson) {
   const [top] = moduleErrorSummary(progress, lesson.module);
   if (!top) return null;
   const diagnostic = diagnosticForKind(top.kind);
+  const targeted = misconceptionForDiagnostic(lesson, top.kind);
   const taskId = lesson.practiceTaskIds
     .map(id => ({ id, count: progress.taskStats[id]?.errorKinds?.[top.kind] || 0 }))
     .sort((left, right) => right.count - left.count || left.id.localeCompare(right.id))[0]?.id
@@ -121,10 +154,13 @@ export function lessonRemediation(progress: Progress, lesson: CurriculumLesson) 
   return {
     kind: top.kind,
     count: top.count,
-    title: diagnostic.title,
-    explanation: diagnostic.explanation,
-    nextStep: diagnostic.nextStep,
+    title: targeted?.item.label || diagnostic.title,
+    explanation: targeted?.item.explanation || diagnostic.explanation,
+    nextStep: targeted?.item.remediation || diagnostic.nextStep,
     atlasId: diagnostic.atlasId,
+    misconceptionId: targeted?.item.id || null,
+    conceptTitle: targeted?.concept.title || null,
+    counterexample: targeted?.item.counterexample || null,
     taskId
   };
 }
