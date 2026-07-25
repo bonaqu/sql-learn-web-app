@@ -11,15 +11,9 @@ import {
   latestCompletedDiagnostic,
   loadOnboardingProfile,
   ONBOARDING_CHANGED_EVENT,
-  onboardingReady,
   saveOnboardingProfile
 } from '../lib/learner-onboarding';
 import { syncOnboardingProfile } from '../lib/onboarding-sync';
-import { loadProgress } from '../lib/progress';
-
-function autoOpenedKey(userId: string) {
-  return `sql-academy-onboarding-auto-opened:${userId}`;
-}
 
 export default function OnboardingAgent() {
   const timer = useRef<number | null>(null);
@@ -37,23 +31,9 @@ export default function OnboardingAgent() {
       }
       running.current = true;
       try {
-        const synced = await syncOnboardingProfile();
-        const profile = synced.profile;
-        const progress = loadProgress();
-        if (!onboardingReady(profile)
-          && progress.completed.length === 0
-          && !sessionStorage.getItem(autoOpenedKey(auth.userId))) {
-          sessionStorage.setItem(autoOpenedKey(auth.userId), '1');
-          window.setTimeout(() => openDeferredFeature('onboarding'), 180);
-        }
+        await syncOnboardingProfile();
       } catch {
-        const profile = loadOnboardingProfile(auth.userId);
-        if (!onboardingReady(profile)
-          && loadProgress().completed.length === 0
-          && !sessionStorage.getItem(autoOpenedKey(auth.userId))) {
-          sessionStorage.setItem(autoOpenedKey(auth.userId), '1');
-          window.setTimeout(() => openDeferredFeature('onboarding'), 180);
-        }
+        // The local profile remains authoritative offline. Retry is event-driven.
       } finally {
         running.current = false;
         if (queued.current) {
@@ -85,7 +65,6 @@ export default function OnboardingAgent() {
         updatedAt: report.completedAt
       }, auth.userId);
       void syncOnboardingProfile(next).catch(() => undefined);
-      sessionStorage.setItem(autoOpenedKey(auth.userId), '1');
       window.setTimeout(() => openDeferredFeature('onboarding'), 140);
     };
 
