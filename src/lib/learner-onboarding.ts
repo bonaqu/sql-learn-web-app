@@ -79,6 +79,15 @@ const defaultPlacement: PlacementResult = {
   completedAt: null
 };
 
+const validGoals = new Set<LearnerGoal>(goalOptions.map(item => item.id));
+const validExperience = new Set<ExperienceLevel>(['none', 'basics', 'regular', 'advanced']);
+const validPaces = new Set<StudyPace>(['gentle', 'steady', 'intensive']);
+const validDays = new Set<StudyDay>(dayOrder);
+const validPlacementStatuses = new Set<PlacementStatus>(['not-started', 'pending', 'completed', 'deferred']);
+const validPlacementLevels = new Set<PlacementLevel>(['foundation', 'developing', 'working', 'advanced']);
+const validTracks = new Set<RecommendedTrack>(['fundamentals', 'analytics', 'support', 'performance', 'interview']);
+const validPlanKinds = new Set<WeekPlanItem['kind']>(['orientation', 'lesson', 'practice', 'review', 'placement']);
+
 function now() {
   return new Date().toISOString();
 }
@@ -103,18 +112,10 @@ function storageKey(userId = loadAuthSession()?.userId || 'guest') {
   return `sql-academy-onboarding-v1:${userId}`;
 }
 
-const validGoals = new Set<LearnerGoal>(goalOptions.map(item => item.id));
-const validExperience = new Set<ExperienceLevel>(['none', 'basics', 'regular', 'advanced']);
-const validPaces = new Set<StudyPace>(['gentle', 'steady', 'intensive']);
-const validDays = new Set<StudyDay>(dayOrder);
-const validPlacementStatuses = new Set<PlacementStatus>(['not-started', 'pending', 'completed', 'deferred']);
-const validPlacementLevels = new Set<PlacementLevel>(['foundation', 'developing', 'working', 'advanced']);
-const validTracks = new Set<RecommendedTrack>(['fundamentals', 'analytics', 'support', 'performance', 'interview']);
-
 function uniqueStudyDays(value: unknown): StudyDay[] {
   if (!Array.isArray(value)) return ['MO', 'WE', 'FR'];
-  const days = Array.from(new Set(value.filter((item): item is StudyDay => typeof item === 'string' && validDays.has(item as StudyDay))));
-  return dayOrder.filter(day => days.includes(day));
+  const selected = new Set(value.filter((item): item is StudyDay => typeof item === 'string' && validDays.has(item as StudyDay)));
+  return dayOrder.filter(day => selected.has(day));
 }
 
 function sanitizePlan(value: unknown): WeekPlanItem[] {
@@ -124,7 +125,7 @@ function sanitizePlan(value: unknown): WeekPlanItem[] {
     const source = item as Partial<WeekPlanItem>;
     if (!source.day || !validDays.has(source.day)
       || (source.minutes !== 15 && source.minutes !== 25 && source.minutes !== 40)
-      || !source.kind || !['orientation', 'lesson', 'practice', 'review', 'placement'].includes(source.kind)
+      || !source.kind || !validPlanKinds.has(source.kind)
       || typeof source.title !== 'string'
       || typeof source.detail !== 'string') return [];
     return [{
@@ -149,8 +150,11 @@ export function sanitizeOnboardingProfile(value: unknown): LearnerOnboardingProf
   const goal = source.goal && validGoals.has(source.goal) ? source.goal : null;
   const experience = source.experience && validExperience.has(source.experience) ? source.experience : null;
   const dailyMinutes = source.dailyMinutes === 15 || source.dailyMinutes === 40 ? source.dailyMinutes : 25;
-  const studyDays = uniqueStudyDays(source.studyDays);
-  const pace = source.pace && validPaces.has(source.pace) ? source.pace : dailyMinutes === 15 ? 'gentle' : dailyMinutes === 40 ? 'intensive' : 'steady';
+  const selectedDays = uniqueStudyDays(source.studyDays);
+  const studyDays = selectedDays.length >= 2 ? selectedDays : fallback.studyDays;
+  const pace = source.pace && validPaces.has(source.pace)
+    ? source.pace
+    : dailyMinutes === 15 ? 'gentle' : dailyMinutes === 40 ? 'intensive' : 'steady';
   const placementStatus = placementSource.status && validPlacementStatuses.has(placementSource.status)
     ? placementSource.status
     : 'not-started';
@@ -158,12 +162,13 @@ export function sanitizeOnboardingProfile(value: unknown): LearnerOnboardingProf
   const track = placementSource.recommendedTrack && validTracks.has(placementSource.recommendedTrack)
     ? placementSource.recommendedTrack
     : goalOptions.find(item => item.id === goal)?.track || 'fundamentals';
+
   return {
     version: 1,
     goal,
     experience,
     dailyMinutes,
-    studyDays: studyDays.length >= 2 ? studyDays : fallback.studyDays,
+    studyDays,
     pace,
     placement: {
       status: placementStatus,
@@ -234,32 +239,26 @@ export function calculatePlacement(profile: LearnerOnboardingProfile, report: As
     .slice(0, 4)
     .map(item => item.module);
   const level = placementLevel(report.score);
-  const desiredTrack = goalTrack(profile.goal);
-  const recommendedTrack = report.score >= 65 ? desiredTrack : 'fundamentals';
   return {
     status: 'completed',
     reportId: report.id,
     score: report.score,
     level,
-    recommendedTrack,
+    recommendedTrack: report.score >= 65 ? goalTrack(profile.goal) : 'fundamentals',
     strongModuleIds,
     focusModuleIds,
     completedAt: report.completedAt
   };
 }
 
-export function deferredPlacement(profile: LearnerOnboardingProfile): PlacementResult {
-  return {
-    ...defaultPlacement,
-    status: 'deferred',
-    recommendedTrack: 'fundamentals'
-  };
+export function deferredPlacement(_profile: LearnerOnboardingProfile): PlacementResult {
+  return { ...defaultPlacement, status: 'deferred', recommendedTrack: 'fundamentals' };
 }
 
-function planTemplate(kind: WeekPlanItem['kind'], moduleId: string | null, profile: LearnerOnboardingProfile) {
+function planTemplate(kind: WeekPlanItem['kind'], moduleId: string | null) {
   if (kind === 'orientation') return {
     title: 'Контракт результата и рабочая среда',
-    detail: 'Открой первый урок, сформулируй grain результата и реши одну короткую задачу без подсказки.'
+    detail: 'Сформулируй grain результата и проверь одну короткую задачу без подсказки. Orientation не заменяет отдельный retrieval review.'
   };
   if (kind === 'review') return {
     title: 'Retrieval review без перечитывания',
@@ -275,17 +274,43 @@ function planTemplate(kind: WeekPlanItem['kind'], moduleId: string | null, profi
     : { title: `Independent practice: ${title}`, detail: 'Реши задачу без подсказки и эталона. При ошибке следуй remediation, а не перебирай SQL наугад.' };
 }
 
+function weekKinds(profile: LearnerOnboardingProfile, count: number): WeekPlanItem['kind'][] {
+  const pending = profile.placement.status === 'not-started' || profile.placement.status === 'pending';
+  if (pending) {
+    if (count === 2) return ['placement', 'practice'];
+    if (count === 3) return ['placement', 'practice', 'review'];
+    return Array.from({ length: count }, (_, index) => {
+      if (index === 0) return 'placement';
+      if (index === 1) return 'lesson';
+      if (index === 2) return 'practice';
+      if (index === 3) return 'review';
+      return index % 2 === 0 ? 'practice' : 'review';
+    });
+  }
+  if (count === 2) return ['practice', 'review'];
+  if (count === 3) return ['orientation', 'practice', 'review'];
+  return Array.from({ length: count }, (_, index) => {
+    if (index === 0) return 'orientation';
+    if (index === 1) return 'lesson';
+    if (index === 2) return 'practice';
+    if (index === 3) return 'review';
+    return index % 2 === 0 ? 'practice' : 'review';
+  });
+}
+
 export function buildFirstWeekPlan(profile: LearnerOnboardingProfile): WeekPlanItem[] {
-  const selectedDays = profile.studyDays.length >= 2 ? profile.studyDays : ['MO', 'WE', 'FR'] as StudyDay[];
+  const selectedDays = (profile.studyDays.length >= 2 ? profile.studyDays : ['MO', 'WE', 'FR'] as StudyDay[]).slice(0, 7);
   const focus = profile.placement.focusModuleIds.length
     ? profile.placement.focusModuleIds
     : ['sql-thinking', 'select', 'filtering'];
-  return selectedDays.slice(0, 7).map((day, index) => {
-    const kind: WeekPlanItem['kind'] = profile.placement.status === 'not-started' || profile.placement.status === 'pending'
-      ? index === 0 ? 'placement' : index % 3 === 0 ? 'review' : index % 2 === 0 ? 'practice' : 'lesson'
-      : index === 0 ? 'orientation' : index % 3 === 0 ? 'review' : index % 2 === 0 ? 'practice' : 'lesson';
-    const moduleId = kind === 'lesson' || kind === 'practice' ? focus[(index - 1 + focus.length) % focus.length] : null;
-    const template = planTemplate(kind, moduleId, profile);
+  const kinds = weekKinds(profile, selectedDays.length);
+  let focusIndex = 0;
+  return selectedDays.map((day, index) => {
+    const kind = kinds[index];
+    const moduleId = kind === 'lesson' || kind === 'practice'
+      ? focus[focusIndex++ % focus.length]
+      : null;
+    const template = planTemplate(kind, moduleId);
     return {
       id: `week-${index + 1}-${day.toLowerCase()}`,
       day,
@@ -309,10 +334,7 @@ export function completeOnboarding(
     completedAt,
     updatedAt: completedAt
   });
-  return {
-    ...next,
-    firstWeekPlan: buildFirstWeekPlan(next)
-  };
+  return { ...next, firstWeekPlan: buildFirstWeekPlan(next) };
 }
 
 export function onboardingReady(profile: LearnerOnboardingProfile) {
