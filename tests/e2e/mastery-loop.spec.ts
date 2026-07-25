@@ -66,7 +66,9 @@ test('desktop mastery loop distinguishes guided success, independent retry and r
   const studio = page.getByRole('dialog', { name: /Curriculum Studio/i });
   await expect(studio.getByText('Applied mastery', { exact: true }).first()).toBeVisible();
   await expect(studio.getByTestId('lesson-mastery-loop')).toContainText('independent SQL evidence');
-  await expect(studio.getByTestId('lesson-remediation')).toContainText('Синтаксис не разобран');
+  const remediation = studio.getByTestId('lesson-remediation');
+  await expect(remediation).toContainText('SQL начинается с синтаксиса');
+  await expect(remediation).toContainText('Сначала запиши');
   await page.screenshot({ path: testInfo.outputPath('desktop-mastery-loop.png'), fullPage: true });
   await studio.getByRole('button', { name: 'Закрыть Curriculum Studio' }).click();
 
