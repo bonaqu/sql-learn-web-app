@@ -33,7 +33,7 @@ export const modules = [
   ['grouping', 'GROUP BY и HAVING', 'Группы, фильтрация групп и отчёты'],
   ['joins', 'Связи таблиц', 'INNER, LEFT, self join и анти-join'],
   ['subqueries', 'Подзапросы', 'Скалярные, коррелированные и EXISTS'],
-  ['cte', 'CTE и этапы запроса', 'Читаемые этапы и рекурсивные запросы'],
+  ['cte', 'CTE', 'Читаемые этапы и рекурсивные запросы'],
   ['windows', 'Оконные функции', 'RANK, LAG, LEAD и накопительные итоги'],
   ['dates', 'Дата и время', 'Периоды, интервалы и временные отчёты'],
   ['text', 'Строки и очистка', 'CASE, COALESCE и нормализация данных'],
@@ -120,276 +120,286 @@ export const moduleGuides: Record<string, ModuleGuide> = {
     ['CTE без пользы для читаемости', 'Ссылки на несуществующие алиасы', 'Слишком много логики в одном этапе']
   ),
   windows: guide(
-    'Считаем показатели по соседним строкам, не теряя детализацию.',
-    'Оконная функция видит набор строк, но возвращает значение для каждой строки. PARTITION BY задаёт независимые окна.',
-    'ROW_NUMBER() OVER (PARTITION BY service ORDER BY resolution_minutes DESC)',
-    ['Определи раздел', 'Задай порядок внутри окна', 'Выбери ROW_NUMBER, RANK, LAG или SUM', 'Проверь tie-breaker'],
-    ['Путать GROUP BY и окно', 'Окно без ORDER BY там, где важна последовательность', 'Фильтровать оконную функцию в WHERE того же уровня']
+    'Считаем показатели, не схлопывая строки.',
+    'Оконная функция видит соседние строки или группу, но сохраняет каждую исходную строку.',
+    'RANK() OVER (ORDER BY COUNT(*) DESC)',
+    ['Определи окно', 'Выбери PARTITION BY', 'Задай ORDER BY внутри OVER', 'Отделяй сортировку окна от итоговой'],
+    ['Путать GROUP BY и окно', 'Забывать порядок внутри OVER', 'Ожидать уникальные номера от RANK']
   ),
   dates: guide(
-    'Работаем с периодами и временной гранулярностью.',
-    'Дата отвечает на вопросы «когда» и «за какой период». Сначала выбери единицу анализа: день, неделя, месяц или скользящее окно.',
-    "date(created_at), datetime(created_at, '+3 hours')",
-    ['Определи timezone', 'Выбери границы периода', 'Сгруппируй по нужной гранулярности', 'Проверь включительность границ'],
-    ['Сравнивать строки дат разных форматов', 'Забывать timezone', 'Использовать BETWEEN для полуоткрытых интервалов']
+    'Строим отчёты по календарным периодам.',
+    'Дата хранится как значение, а функции date/strftime преобразуют её в день, неделю или месяц.',
+    "SELECT strftime('%Y-%m', created_at) AS month FROM tickets;",
+    ['Определи нужную гранулярность', 'Нормализуй дату', 'Группируй по тому же выражению', 'Сортируй хронологически'],
+    ['Сравнивать даты как произвольный текст', 'Смешивать часовые пояса', 'Терять периоды без событий']
   ),
   text: guide(
-    'Нормализуем строки и кодируем условия.',
-    'Строковые функции очищают представление, CASE создаёт категорию, COALESCE выбирает первое известное значение.',
+    'Нормализуем строки и формируем категории.',
+    'CASE создаёт бизнес-классификацию, COALESCE выбирает первое известное значение.',
     "CASE WHEN priority = 'Critical' THEN 'P1' ELSE 'Other' END",
-    ['Нормализуй пробелы и регистр', 'Определи порядок WHEN', 'Добавь ELSE', 'Не скрывай важный NULL без причины'],
-    ['CASE без ELSE', 'LOWER без TRIM', 'COALESCE маскирует проблему качества']
+    ['Сформулируй категории сверху вниз', 'Добавь ELSE', 'Нормализуй регистр и пробелы'],
+    ['CASE без ELSE', 'Сравнение строк разного регистра', 'Подмена NULL пустой строкой без причины']
   ),
   'set-ops': guide(
-    'Объединяем совместимые результаты.',
-    'UNION складывает наборы и удаляет дубли, UNION ALL сохраняет все строки, INTERSECT и EXCEPT сравнивают множества.',
-    'SELECT service FROM tickets UNION SELECT service FROM incidents;',
-    ['Сопоставь число и смысл столбцов', 'Выбери ALL осознанно', 'Сортируй итоговый набор один раз'],
-    ['UNION вместо UNION ALL без причины', 'Несовместимые типы столбцов', 'ORDER BY внутри веток']
+    'Объединяем результаты совместимых SELECT.',
+    'UNION работает вертикально: одинаковое число столбцов и совместимые типы. UNION удаляет дубли, UNION ALL сохраняет.',
+    'SELECT service FROM tickets WHERE status = \'Open\' UNION SELECT service FROM tickets WHERE priority = \'Critical\';',
+    ['Сверь число столбцов', 'Сверь смысл столбцов', 'Выбери UNION или UNION ALL', 'ORDER BY ставь в конце'],
+    ['Несовместимые столбцы', 'Лишнее удаление дублей', 'ORDER BY внутри каждой части']
   ),
   'data-quality': guide(
-    'Измеряем и локализуем аномалии данных.',
-    'Сначала посчитай проблему, затем выведи конкретные строки. Дубликат определяется бизнес-ключом, а не полным совпадением записи.',
-    'GROUP BY email HAVING COUNT(*) > 1',
-    ['Определи бизнес-ключ', 'Посчитай NULL и дубли', 'Выведи проблемные ID', 'Не исправляй до измерения'],
-    ['COUNT(*) без детализации', 'Считать пустую строку и NULL одинаково', 'Удалять дубли без правила выбора']
+    'Находим пропуски, дубли и подозрительные значения.',
+    'Проверка качества — это запрос, который возвращает строки, требующие расследования, а не автоматически удаляет их.',
+    'SELECT email, COUNT(*) FROM customers GROUP BY email HAVING COUNT(*) > 1;',
+    ['Определи правило качества', 'Верни идентификаторы проблемных строк', 'Сначала измерь, потом исправляй'],
+    ['Удалять данные до проверки', 'Считать NULL обычным дублем', 'Не сохранять причину аномалии']
   ),
   indexes: guide(
-    'Ускоряем доступ к строкам ценой дополнительной записи и места.',
-    'Индекс — отсортированная структура. Полезен, если предикат достаточно селективен и соответствует порядку столбцов индекса.',
-    'CREATE INDEX idx_tickets_service_status ON tickets(service, status);',
-    ['Найди частый запрос', 'Проверь WHERE/JOIN/ORDER BY', 'Определи порядок столбцов', 'Сравни план до и после'],
-    ['Индексировать каждый столбец', 'Игнорировать порядок составного индекса', 'Оптимизировать без EXPLAIN']
+    'Подбираем индекс под конкретный путь доступа.',
+    'B-tree полезен, когда запрос быстро сужает набор по левым столбцам индекса.',
+    'CREATE INDEX idx_tickets_service ON tickets(service);',
+    ['Начни с частого запроса', 'Оцени селективность', 'Проверь порядок составного индекса', 'Сверь план'],
+    ['Индексировать всё', 'Игнорировать стоимость записи', 'Неверный порядок столбцов']
   ),
   explain: guide(
-    'Читаем путь выполнения запроса.',
-    'План показывает операции: сканирование, поиск по индексу, временную сортировку и порядок соединения.',
+    'Читаем план выполнения вместо догадок.',
+    'EXPLAIN QUERY PLAN показывает, сканирует ли SQLite таблицу или использует индекс и в каком порядке соединяет таблицы.',
     'EXPLAIN QUERY PLAN SELECT * FROM tickets WHERE service = \'VPN\';',
-    ['Найди SCAN и SEARCH', 'Сопоставь операцию с фильтром', 'Проверь временную сортировку', 'Измерь результат изменения'],
-    ['Считать стоимость точным временем', 'Игнорировать объём данных', 'Добавлять индекс без повторного плана']
+    ['Найди SCAN или SEARCH', 'Проверь используемый индекс', 'Оцени раннюю фильтрацию', 'Сравни план после изменения'],
+    ['Оптимизация без измерения', 'Смотреть только время на маленькой базе', 'Считать любой индекс полезным']
   ),
   transactions: guide(
-    'Объединяем изменения в одну атомарную операцию.',
-    'Транзакция либо фиксирует все изменения, либо откатывает их. Сначала проверка, затем изменение, затем контроль.',
-    'BEGIN; UPDATE ...; SELECT changes(); COMMIT;',
-    ['Открой транзакцию', 'Проверь затронутые строки', 'Подготовь ROLLBACK', 'Фиксируй только после контроля'],
-    ['UPDATE без WHERE', 'COMMIT до проверки', 'Длинная транзакция блокирует других']
+    'Делаем изменения атомарными и обратимыми.',
+    'Транзакция объединяет несколько действий: либо применяются все, либо ни одно.',
+    'BEGIN; UPDATE ...; SELECT ...; ROLLBACK;',
+    ['Начни транзакцию', 'Ограничь UPDATE через WHERE', 'Проверь изменённые строки', 'COMMIT или ROLLBACK явно'],
+    ['UPDATE без WHERE', 'Долгая транзакция', 'Нет проверки перед COMMIT']
   ),
   schema: guide(
-    'Проектируем таблицы, ограничения и связи.',
-    'Схема хранит инварианты: типы, обязательность, уникальность и ссылочную целостность.',
-    'CREATE TABLE services (service_id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);',
-    ['Определи сущности', 'Выбери первичные ключи', 'Добавь NOT NULL/UNIQUE/CHECK', 'Зафиксируй внешние ключи'],
-    ['Хранить список в одном поле', 'Полагаться только на UI', 'Не индексировать внешние ключи']
+    'Проектируем таблицы с явными правилами целостности.',
+    'Схема хранит бизнес-инварианты: типы, NOT NULL, UNIQUE, CHECK и связи должны предотвращать невозможные состояния.',
+    'CREATE TABLE audit_log(id INTEGER PRIMARY KEY, ticket_id INTEGER NOT NULL, action TEXT NOT NULL);',
+    ['Определи ключ', 'Отметь обязательные поля', 'Добавь ограничения', 'Проверь будущие запросы'],
+    ['Хранить несколько значений в одном поле', 'Нет внешних ключей', 'Избыточные nullable-поля']
   ),
   support: guide(
-    'Строим метрики поддержки и SLA.',
-    'Операционная метрика должна иметь период, набор строк, числитель, знаменатель и объяснимое исключение.',
-    "SUM(CASE WHEN resolution_minutes > sla_minutes THEN 1 ELSE 0 END)",
-    ['Зафиксируй период', 'Раздели backlog и closed flow', 'Определи SLA breach', 'Добавь детализацию для проверки'],
-    ['Среднее без распределения', 'Смешивать открытые и закрытые обращения', 'Процент без знаменателя']
+    'Превращаем журнал обращений в операционные показатели.',
+    'Метрика должна иметь чёткий числитель, знаменатель, период и бизнес-интерпретацию.',
+    'SUM(CASE WHEN resolution_minutes > sla_minutes THEN 1 ELSE 0 END) AS breaches',
+    ['Определи период', 'Зафиксируй статус выборки', 'Обработай незакрытые обращения', 'Добавь детализацию для проверки'],
+    ['Смешивать backlog и закрытые', 'Считать среднее без выбросов', 'Метрика без периода']
   ),
   final: guide(
-    'Собираем итоговую витрину из проверяемых этапов.',
-    'Финальный SQL — это конвейер: базовый набор, обогащение, метрики, ранжирование и стабильный вывод.',
-    'WITH base AS (...), metrics AS (...) SELECT * FROM metrics ORDER BY ...;',
-    ['Опиши итоговую строку', 'Проверь каждый CTE', 'Добавь валидационные срезы', 'Проверь план', 'Документируй метрики'],
-    ['Один гигантский SELECT', 'Непроверенные промежуточные результаты', 'Скрытая бизнес-логика']
+    'Собираем многоэтапный аналитический отчёт.',
+    'Финальный запрос — конвейер: подготовка данных, расчёт метрик, ранжирование и стабильный вывод.',
+    'WITH base AS (...), metrics AS (...) SELECT ... FROM metrics;',
+    ['Разбей задачу на этапы', 'Проверь каждый CTE', 'Назови показатели', 'Добавь контрольную сортировку'],
+    ['Один огромный SELECT', 'Необъяснимые алиасы', 'Нет проверки промежуточных результатов']
   )
 };
 
-const makeTasks = (moduleIndex: number, moduleId: string, guideData: ModuleGuide): SqlTask[] => {
-  const base = moduleIndex * 6 + 1;
-  const titles = ['Разогрев', 'Рабочий запрос', 'Проверка деталей', 'Интервью', 'SQL-пазл', 'Итог модуля'];
-  const modes: TaskMode[] = ['lesson', 'practice', 'practice', 'interview', 'puzzle', 'practice'];
-  const difficulties: Difficulty[] = ['База', 'Рабочий', 'Рабочий', 'Продвинутый', 'Продвинутый', 'Экспертный'];
-  return titles.map((title, offset) => {
-    const taskNumber = String(base + offset).padStart(3, '0');
+const services = ['VPN', 'LMS', 'VDI', 'Email', 'Access'];
+const priorities = ['Critical', 'High', 'Medium', 'Low'];
+const ticketIds = [1001, 1003, 1004, 1005, 1006, 1008];
+const modes: TaskMode[] = ['lesson', 'practice', 'interview', 'puzzle'];
+const difficulties: Difficulty[] = ['База', 'Рабочий', 'Продвинутый', 'Экспертный'];
+type Recipe = (variant: number) => Pick<SqlTask, 'title' | 'description' | 'starter' | 'solution' | 'hints'>;
+
+const recipes: Record<string, Recipe> = {
+  'sql-thinking': v => v === 5 ? ({
+    title: 'Контракт результата: Critical обращения',
+    description: 'Покажи ticket_id, service и status для всех Critical-обращений независимо от сервиса. Результат должен быть стабильно отсортирован.',
+    starter: 'SELECT\n  ticket_id,\n  service,\n  status\nFROM tickets\nWHERE ',
+    solution: "SELECT ticket_id, service, status FROM tickets WHERE priority = 'Critical' ORDER BY ticket_id;",
+    hints: ['Одна строка результата — одно обращение.', "Фильтр сравнивает priority со строкой 'Critical'.", 'Добавь ORDER BY ticket_id.']
+  }) : ({
+    title: `Контракт результата: ${services[v % services.length]}`,
+    description: `Покажи ticket_id, service и status для сервиса ${services[v % services.length]}. Результат должен быть стабильно отсортирован.`,
+    starter: 'SELECT\n  ticket_id,\n  service,\n  status\nFROM tickets\nWHERE ',
+    solution: `SELECT ticket_id, service, status FROM tickets WHERE service = '${services[v % services.length]}' ORDER BY ticket_id;`,
+    hints: ['Сначала сформулируй одну строку результата.', `Фильтр сравнивает service со строкой '${services[v % services.length]}'.`, 'Добавь ORDER BY ticket_id.']
+  }),
+  select: v => ({
+    title: `Вычисляемое отклонение SLA ${v + 1}`,
+    description: 'Выведи номер обращения, фактическое время, SLA и разницу между ними. Незакрытые обращения исключи.',
+    starter: 'SELECT\n  ticket_id,\n  resolution_minutes,\n  sla_minutes,\n  \nFROM tickets\nWHERE ',
+    solution: 'SELECT ticket_id, resolution_minutes, sla_minutes, resolution_minutes - sla_minutes AS delta_minutes FROM tickets WHERE resolution_minutes IS NOT NULL ORDER BY ticket_id;',
+    hints: ['Разность — обычное выражение в SELECT.', 'Назови вычисление delta_minutes.', 'Исключи NULL через IS NOT NULL.']
+  }),
+  filtering: v => ({
+    title: `Фильтр ${priorities[v % priorities.length]} + ${services[(v + 1) % services.length]}`,
+    description: `Найди закрытые обращения приоритета ${priorities[v % priorities.length]} или сервиса ${services[(v + 1) % services.length]}.`,
+    starter: 'SELECT ticket_id, service, priority, status\nFROM tickets\nWHERE ',
+    solution: `SELECT ticket_id, service, priority, status FROM tickets WHERE status = 'Closed' AND (priority = '${priorities[v % priorities.length]}' OR service = '${services[(v + 1) % services.length]}') ORDER BY ticket_id;`,
+    hints: ['Сначала ограничь status.', 'Условия с OR объедини скобками.', 'Строки заключаются в одинарные кавычки.']
+  }),
+  sorting: v => v < 3 ? ({
+    title: `Топ-${(v % 3) + 2} долгих обращений`,
+    description: `Покажи ${(v % 3) + 2} закрытых обращения с самым большим временем решения. При равенстве выше должен быть меньший ticket_id.`,
+    starter: 'SELECT ticket_id, resolution_minutes\nFROM tickets\nWHERE resolution_minutes IS NOT NULL\nORDER BY ',
+    solution: `SELECT ticket_id, resolution_minutes FROM tickets WHERE resolution_minutes IS NOT NULL ORDER BY resolution_minutes DESC, ticket_id ASC LIMIT ${(v % 3) + 2};`,
+    hints: ['Главная сортировка — resolution_minutes DESC.', 'ticket_id нужен как tie-breaker.', 'LIMIT ставится после ORDER BY.']
+  }) : ({
+    title: `Топ-${(v % 3) + 2} быстрых обращений`,
+    description: `Покажи ${(v % 3) + 2} закрытых обращения с самым маленьким временем решения. При равенстве выше должен быть меньший ticket_id.`,
+    starter: 'SELECT ticket_id, resolution_minutes\nFROM tickets\nWHERE resolution_minutes IS NOT NULL\nORDER BY ',
+    solution: `SELECT ticket_id, resolution_minutes FROM tickets WHERE resolution_minutes IS NOT NULL ORDER BY resolution_minutes ASC, ticket_id ASC LIMIT ${(v % 3) + 2};`,
+    hints: ['Главная сортировка — resolution_minutes ASC.', 'ticket_id нужен как tie-breaker.', 'LIMIT ставится после ORDER BY.']
+  }),
+  aggregates: v => ({
+    title: `Сводка закрытых обращений ${v + 1}`,
+    description: 'Верни количество закрытых обращений, минимальное, максимальное и среднее время решения, округлённое до одного знака.',
+    starter: 'SELECT\n  COUNT(*) AS closed_count,\n  \nFROM tickets\nWHERE ',
+    solution: "SELECT COUNT(*) AS closed_count, MIN(resolution_minutes) AS min_minutes, MAX(resolution_minutes) AS max_minutes, ROUND(AVG(resolution_minutes), 1) AS avg_minutes FROM tickets WHERE status = 'Closed';",
+    hints: ['Все показатели считаются по одному набору строк.', "Фильтр status = 'Closed'.", 'Для среднего используй ROUND(..., 1).']
+  }),
+  grouping: v => v < 3 ? ({
+    title: `Сервисы минимум с ${(v % 3) + 1} обращениями`,
+    description: `Посчитай обращения по сервисам и оставь группы, где не меньше ${(v % 3) + 1} строк.`,
+    starter: 'SELECT service, COUNT(*) AS tickets_count\nFROM tickets\nGROUP BY service\nHAVING ',
+    solution: `SELECT service, COUNT(*) AS tickets_count FROM tickets GROUP BY service HAVING COUNT(*) >= ${(v % 3) + 1} ORDER BY tickets_count DESC, service;`,
+    hints: ['COUNT(*) фильтруется через HAVING.', `Порог: >= ${(v % 3) + 1}.`, 'Сортируй по псевдониму и service.']
+  }) : ({
+    title: `Приоритеты минимум с ${(v % 3) + 1} обращениями`,
+    description: `Посчитай обращения по приоритетам и оставь группы, где не меньше ${(v % 3) + 1} строк.`,
+    starter: 'SELECT priority, COUNT(*) AS tickets_count\nFROM tickets\nGROUP BY priority\nHAVING ',
+    solution: `SELECT priority, COUNT(*) AS tickets_count FROM tickets GROUP BY priority HAVING COUNT(*) >= ${(v % 3) + 1} ORDER BY tickets_count DESC, priority;`,
+    hints: ['COUNT(*) фильтруется через HAVING.', `Порог: >= ${(v % 3) + 1}.`, 'Сортируй по псевдониму и priority.']
+  }),
+  joins: v => ({
+    title: `Назначения инженеров ${v + 1}`,
+    description: 'Соедини обращения и инженеров. Покажи ticket_id, имя, уровень инженера и сервис.',
+    starter: 'SELECT t.ticket_id, e.name, e.level, t.service\nFROM tickets t\nJOIN engineers e ON ',
+    solution: 'SELECT t.ticket_id, e.name, e.level, t.service FROM tickets t JOIN engineers e ON e.engineer_id = t.engineer_id ORDER BY t.ticket_id;',
+    hints: ['Внешний ключ находится в tickets.', 'Свяжи engineer_id обеих таблиц.', 'Используй алиасы t и e.']
+  }),
+  subqueries: v => v < 4 ? ({
+    title: `Выше среднего по ${priorities[v % priorities.length]}`,
+    description: `Найди закрытые обращения приоритета ${priorities[v % priorities.length]}, которые решались дольше среднего среди закрытых обращений того же приоритета.`,
+    starter: 'SELECT ticket_id, priority, resolution_minutes\nFROM tickets\nWHERE priority = ',
+    solution: `SELECT ticket_id, priority, resolution_minutes FROM tickets WHERE priority = '${priorities[v % priorities.length]}' AND resolution_minutes > (SELECT AVG(resolution_minutes) FROM tickets WHERE priority = '${priorities[v % priorities.length]}' AND resolution_minutes IS NOT NULL) ORDER BY resolution_minutes DESC, ticket_id;`,
+    hints: ['Подзапрос должен вернуть одно среднее.', 'Внутри и снаружи используй одинаковый priority.', 'NULL не должен участвовать в AVG.']
+  }) : ({
+    title: `Выше среднего в сервисе ${services[(v - 4) * 3]}`,
+    description: `Найди закрытые обращения сервиса ${services[(v - 4) * 3]}, которые решались дольше среднего среди закрытых обращений этого сервиса.`,
+    starter: 'SELECT ticket_id, service, resolution_minutes\nFROM tickets\nWHERE service = ',
+    solution: `SELECT ticket_id, service, resolution_minutes FROM tickets WHERE service = '${services[(v - 4) * 3]}' AND resolution_minutes > (SELECT AVG(resolution_minutes) FROM tickets WHERE service = '${services[(v - 4) * 3]}' AND resolution_minutes IS NOT NULL) ORDER BY resolution_minutes DESC, ticket_id;`,
+    hints: ['Подзапрос должен вернуть одно среднее.', 'Внутри и снаружи используй одинаковый service.', 'NULL не должен участвовать в AVG.']
+  }),
+  cte: v => ({
+    title: `CTE нагрузки сервисов ${v + 1}`,
+    description: 'Через CTE посчитай обращения и среднее время решения по сервисам. Оставь только сервисы с закрытыми обращениями.',
+    starter: 'WITH service_stats AS (\n  SELECT\n    service,\n    COUNT(*) AS tickets_count,\n    ROUND(AVG(resolution_minutes), 1) AS avg_minutes\n  FROM tickets\n  GROUP BY service\n)\nSELECT ',
+    solution: 'WITH service_stats AS (SELECT service, COUNT(*) AS tickets_count, ROUND(AVG(resolution_minutes), 1) AS avg_minutes FROM tickets GROUP BY service) SELECT service, tickets_count, avg_minutes FROM service_stats WHERE avg_minutes IS NOT NULL ORDER BY tickets_count DESC, service;',
+    hints: ['CTE уже вычисляет показатели.', 'Во внешнем SELECT перечисли три поля.', 'Отсутствие закрытых обращений проявится как avg_minutes IS NULL.']
+  }),
+  windows: v => ({
+    title: `Рейтинг обращений внутри сервиса ${v + 1}`,
+    description: 'Для каждого закрытого обращения присвой место по длительности внутри своего сервиса: самое долгое — первое.',
+    starter: 'SELECT\n  ticket_id,\n  service,\n  resolution_minutes,\n  RANK() OVER (\n    PARTITION BY \n    ORDER BY \n  ) AS duration_rank\nFROM tickets\nWHERE ',
+    solution: 'SELECT ticket_id, service, resolution_minutes, RANK() OVER (PARTITION BY service ORDER BY resolution_minutes DESC) AS duration_rank FROM tickets WHERE resolution_minutes IS NOT NULL ORDER BY service, duration_rank, ticket_id;',
+    hints: ['Окно делится по service.', 'Внутри сервиса сортируй resolution_minutes DESC.', 'После окна добавь итоговый ORDER BY.']
+  }),
+  dates: v => ({
+    title: `Дневная динамика обращений ${v + 1}`,
+    description: 'Посчитай количество обращений по календарным дням.',
+    starter: "SELECT date(created_at) AS created_day, COUNT(*) AS tickets_count\nFROM tickets\nGROUP BY ",
+    solution: 'SELECT date(created_at) AS created_day, COUNT(*) AS tickets_count FROM tickets GROUP BY date(created_at) ORDER BY created_day;',
+    hints: ['Нормализуй дату через date().', 'Группируй по тому же выражению.', 'Сортируй по created_day.']
+  }),
+  text: v => ({
+    title: `Классификация приоритета ${v + 1}`,
+    description: "Создай поле priority_group: Critical и High относятся к 'Urgent', остальные — к 'Normal'.",
+    starter: 'SELECT\n  ticket_id,\n  priority,\n  CASE\n    WHEN \n    ELSE \n  END AS priority_group\nFROM tickets\nORDER BY ticket_id;',
+    solution: "SELECT ticket_id, priority, CASE WHEN priority IN ('Critical', 'High') THEN 'Urgent' ELSE 'Normal' END AS priority_group FROM tickets ORDER BY ticket_id;",
+    hints: ['Удобно использовать IN.', "Для Critical и High верни 'Urgent'.", "Добавь ELSE 'Normal'."]
+  }),
+  'set-ops': v => ({
+    title: `Сервисы риска ${v + 1}`,
+    description: 'Собери уникальный список сервисов, у которых есть открытые или Critical-обращения.',
+    starter: "SELECT service FROM tickets WHERE status = 'Open'\n\nSELECT service FROM tickets WHERE priority = 'Critical'\nORDER BY service;",
+    solution: "SELECT service FROM tickets WHERE status = 'Open' UNION SELECT service FROM tickets WHERE priority = 'Critical' ORDER BY service;",
+    hints: ['Между SELECT нужен UNION.', 'UNION сам удаляет дубли.', 'ORDER BY применяется к общему результату.']
+  }),
+  'data-quality': v => ({
+    title: `Дубли контактных email ${v + 1}`,
+    description: 'Найди непустые email, которые встречаются у нескольких клиентов.',
+    starter: 'SELECT email, COUNT(*) AS duplicates_count\nFROM customers\nWHERE \nGROUP BY email\nHAVING ',
+    solution: 'SELECT email, COUNT(*) AS duplicates_count FROM customers WHERE email IS NOT NULL GROUP BY email HAVING COUNT(*) > 1 ORDER BY email;',
+    hints: ['NULL исключи до группировки.', 'Дубли — группы с COUNT(*) > 1.', 'Верни сам email и количество.']
+  }),
+  indexes: v => v === 5 ? ({
+    title: 'План составного фильтра Critical + Closed',
+    description: 'Проверь план поиска закрытых Critical-обращений. Составной индекс по priority и status уже создан.',
+    starter: 'EXPLAIN QUERY PLAN\nSELECT ticket_id, priority, status\nFROM tickets\nWHERE ',
+    solution: "EXPLAIN QUERY PLAN SELECT ticket_id, priority, status FROM tickets WHERE priority = 'Critical' AND status = 'Closed';",
+    hints: ['Запрос начинается с EXPLAIN QUERY PLAN.', "Фильтр использует priority = 'Critical' и status = 'Closed'.", 'В результате ожидается SEARCH по составному индексу.']
+  }) : ({
+    title: `План поиска ${services[v % services.length]}`,
+    description: `Проверь план поиска обращений сервиса ${services[v % services.length]}. Индекс по service уже создан.`,
+    starter: 'EXPLAIN QUERY PLAN\nSELECT ticket_id, service\nFROM tickets\nWHERE ',
+    solution: `EXPLAIN QUERY PLAN SELECT ticket_id, service FROM tickets WHERE service = '${services[v % services.length]}';`,
+    hints: ['Запрос начинается с EXPLAIN QUERY PLAN.', `Фильтр: service = '${services[v % services.length]}'.`, 'В результате ожидается SEARCH с индексом.']
+  }),
+  explain: v => ({
+    title: `План JOIN инженеров ${v + 1}`,
+    description: 'Получи план соединения tickets и engineers для Critical-обращений.',
+    starter: "EXPLAIN QUERY PLAN\nSELECT t.ticket_id, e.name\nFROM tickets t\nJOIN engineers e ON \nWHERE t.priority = 'Critical';",
+    solution: "EXPLAIN QUERY PLAN SELECT t.ticket_id, e.name FROM tickets t JOIN engineers e ON e.engineer_id = t.engineer_id WHERE t.priority = 'Critical';",
+    hints: ['Сначала допиши условие ON.', 'Свяжи engineer_id.', 'EXPLAIN стоит перед SELECT.']
+  }),
+  transactions: v => ({
+    title: `Безопасное закрытие обращения ${ticketIds[v % ticketIds.length]}`,
+    description: `В транзакции измени status обращения ${ticketIds[v % ticketIds.length]} на Closed, проверь результат SELECT и откати изменение.`,
+    starter: `BEGIN;\nUPDATE tickets\nSET status = 'Closed'\nWHERE \n\nSELECT ticket_id, status FROM tickets WHERE ticket_id = ${ticketIds[v % ticketIds.length]};\n\n`,
+    solution: `BEGIN; UPDATE tickets SET status = 'Closed' WHERE ticket_id = ${ticketIds[v % ticketIds.length]}; SELECT ticket_id, status FROM tickets WHERE ticket_id = ${ticketIds[v % ticketIds.length]}; ROLLBACK;`,
+    hints: [`WHERE ticket_id = ${ticketIds[v % ticketIds.length]}.`, 'Проверочный SELECT должен быть внутри транзакции.', 'Заверши ROLLBACK.']
+  }),
+  schema: v => ({
+    title: `Схема журнала аудита ${v + 1}`,
+    description: 'Создай таблицу audit_log с id INTEGER PRIMARY KEY, обязательными ticket_id и action TEXT. Затем выведи её структуру.',
+    starter: 'CREATE TABLE audit_log (\n  id INTEGER PRIMARY KEY,\n  \n);\n\nPRAGMA table_info(audit_log);',
+    solution: 'CREATE TABLE audit_log (id INTEGER PRIMARY KEY, ticket_id INTEGER NOT NULL, action TEXT NOT NULL); PRAGMA table_info(audit_log);',
+    hints: ['Добавь ticket_id INTEGER NOT NULL.', 'Добавь action TEXT NOT NULL.', 'PRAGMA должен выполниться после CREATE TABLE.']
+  }),
+  support: v => ({
+    title: `SLA по сервисам ${v + 1}`,
+    description: 'По каждому сервису посчитай закрытые обращения и число нарушений SLA.',
+    starter: 'SELECT\n  service,\n  COUNT(*) AS closed_count,\n  SUM(CASE WHEN \n      THEN 1 ELSE 0 END) AS breaches\nFROM tickets\nWHERE \nGROUP BY service\nORDER BY ',
+    solution: "SELECT service, COUNT(*) AS closed_count, SUM(CASE WHEN resolution_minutes > sla_minutes THEN 1 ELSE 0 END) AS breaches FROM tickets WHERE status = 'Closed' GROUP BY service ORDER BY breaches DESC, service;",
+    hints: ["Фильтр status = 'Closed'.", 'Нарушение: resolution_minutes > sla_minutes.', 'Сортируй по breaches DESC.']
+  }),
+  final: v => ({
+    title: `Финальная витрина сервисов ${v + 1}`,
+    description: 'Собери по сервисам количество обращений, нарушения SLA, среднее время решения и место по нагрузке.',
+    starter: 'WITH service_metrics AS (\n  SELECT\n    service,\n    COUNT(*) AS tickets_count,\n    SUM(CASE WHEN resolution_minutes > sla_minutes THEN 1 ELSE 0 END) AS breaches,\n    ROUND(AVG(resolution_minutes), 1) AS avg_minutes\n  FROM tickets\n  GROUP BY service\n)\nSELECT\n  service,\n  tickets_count,\n  breaches,\n  avg_minutes,\n  RANK() OVER (ORDER BY ) AS load_rank\nFROM service_metrics\nORDER BY ',
+    solution: 'WITH service_metrics AS (SELECT service, COUNT(*) AS tickets_count, SUM(CASE WHEN resolution_minutes > sla_minutes THEN 1 ELSE 0 END) AS breaches, ROUND(AVG(resolution_minutes), 1) AS avg_minutes FROM tickets GROUP BY service) SELECT service, tickets_count, breaches, avg_minutes, RANK() OVER (ORDER BY tickets_count DESC) AS load_rank FROM service_metrics ORDER BY load_rank, service;',
+    hints: ['В окне сортируй tickets_count DESC.', 'Итоговая сортировка — load_rank, service.', 'AVG автоматически игнорирует NULL.']
+  })
+};
+
+export const tasks: SqlTask[] = modules.flatMap(([module, topic], moduleIndex) =>
+  Array.from({ length: 6 }, (_, taskIndex) => {
+    const globalIndex = moduleIndex * 6 + taskIndex;
+    const recipe = recipes[module](taskIndex);
     return {
-      id: `task-${taskNumber}`,
-      module: moduleId,
-      title: `${title}: ${guideData.summary}`,
-      description: guideData.mentalModel,
-      topic: guideData.summary,
-      difficulty: difficulties[offset],
-      mode: modes[offset],
-      xp: 20 + moduleIndex * 3 + offset * 5,
-      starter: '-- Напиши запрос\n',
-      solution: taskSolutions[moduleId][offset],
-      hints: [guideData.checklist[0], guideData.checklist[1], guideData.example],
-      guide: guideData
+      id: `task-${String(globalIndex + 1).padStart(3, '0')}`,
+      module,
+      topic,
+      difficulty: difficulties[Math.min(3, Math.floor(globalIndex / 30))],
+      mode: modes[globalIndex % modes.length],
+      xp: 60 + (globalIndex % 8) * 15,
+      guide: moduleGuides[module],
+      ...recipe
     };
-  });
-};
-
-const taskSolutions: Record<string, string[]> = {
-  'sql-thinking': [
-    'SELECT ticket_id, service, status FROM tickets ORDER BY ticket_id;',
-    "SELECT ticket_id, priority FROM tickets WHERE status = 'Open' ORDER BY ticket_id;",
-    'SELECT ticket_id, service, resolution_minutes FROM tickets WHERE resolution_minutes IS NOT NULL ORDER BY service, ticket_id;',
-    "SELECT ticket_id, service FROM tickets WHERE status = 'Closed' ORDER BY service, ticket_id;",
-    'SELECT customer_id, segment FROM customers ORDER BY segment, customer_id;',
-    'SELECT ticket_id, service, priority, status FROM tickets ORDER BY priority, ticket_id;'
-  ],
-  select: [
-    'SELECT ticket_id, service FROM tickets ORDER BY ticket_id;',
-    'SELECT ticket_id, resolution_minutes - sla_minutes AS delta_minutes FROM tickets WHERE resolution_minutes IS NOT NULL ORDER BY ticket_id;',
-    'SELECT DISTINCT service FROM tickets ORDER BY service;',
-    'SELECT customer_id, region, segment FROM customers ORDER BY customer_id;',
-    'SELECT engineer_id, name, level FROM engineers ORDER BY level, engineer_id;',
-    'SELECT ticket_id, service, priority, status FROM tickets ORDER BY ticket_id;'
-  ],
-  filtering: [
-    "SELECT ticket_id FROM tickets WHERE priority = 'Critical' ORDER BY ticket_id;",
-    "SELECT ticket_id, service FROM tickets WHERE status = 'Open' AND priority IN ('High', 'Critical') ORDER BY ticket_id;",
-    'SELECT ticket_id FROM tickets WHERE resolution_minutes IS NULL ORDER BY ticket_id;',
-    "SELECT customer_id, email FROM customers WHERE email LIKE '%@example.com' ORDER BY customer_id;",
-    "SELECT ticket_id, service FROM tickets WHERE service BETWEEN 'Billing' AND 'VPN' ORDER BY service, ticket_id;",
-    "SELECT ticket_id, priority FROM tickets WHERE NOT (status = 'Closed' OR priority = 'Low') ORDER BY ticket_id;"
-  ],
-  sorting: [
-    'SELECT ticket_id, resolution_minutes FROM tickets WHERE resolution_minutes IS NOT NULL ORDER BY resolution_minutes DESC, ticket_id LIMIT 5;',
-    'SELECT ticket_id, priority FROM tickets ORDER BY CASE priority WHEN \'Critical\' THEN 1 WHEN \'High\' THEN 2 WHEN \'Medium\' THEN 3 ELSE 4 END, ticket_id;',
-    'SELECT customer_id, region FROM customers ORDER BY region, customer_id LIMIT 4 OFFSET 2;',
-    'SELECT ticket_id, service, created_at FROM tickets ORDER BY created_at DESC, ticket_id DESC;',
-    'SELECT engineer_id, name FROM engineers ORDER BY lower(name), engineer_id;',
-    'SELECT ticket_id, service FROM tickets ORDER BY service ASC, ticket_id ASC LIMIT 10;'
-  ],
-  aggregates: [
-    'SELECT COUNT(*) AS total_tickets FROM tickets;',
-    "SELECT COUNT(*) AS closed_tickets, ROUND(AVG(resolution_minutes), 1) AS avg_minutes FROM tickets WHERE status = 'Closed';",
-    'SELECT MIN(resolution_minutes) AS min_minutes, MAX(resolution_minutes) AS max_minutes FROM tickets;',
-    'SELECT COUNT(resolution_minutes) AS known_resolution_count FROM tickets;',
-    'SELECT SUM(CASE WHEN resolution_minutes > sla_minutes THEN 1 ELSE 0 END) AS breaches FROM tickets WHERE status = \'Closed\';',
-    'SELECT ROUND(AVG(COALESCE(resolution_minutes, 0)), 1) AS avg_with_open FROM tickets;'
-  ],
-  grouping: [
-    'SELECT service, COUNT(*) AS tickets_count FROM tickets GROUP BY service ORDER BY service;',
-    'SELECT priority, COUNT(*) AS tickets_count FROM tickets GROUP BY priority HAVING COUNT(*) >= 2 ORDER BY tickets_count DESC, priority;',
-    "SELECT service, ROUND(AVG(resolution_minutes), 1) AS avg_minutes FROM tickets WHERE status = 'Closed' GROUP BY service ORDER BY avg_minutes DESC, service;",
-    'SELECT engineer_id, COUNT(*) AS assigned_count FROM tickets GROUP BY engineer_id ORDER BY assigned_count DESC, engineer_id;',
-    'SELECT region, segment, COUNT(*) AS customers_count FROM customers GROUP BY region, segment ORDER BY region, segment;',
-    'SELECT status, COUNT(*) AS tickets_count FROM tickets GROUP BY status ORDER BY tickets_count DESC, status;'
-  ],
-  joins: [
-    'SELECT t.ticket_id, e.name FROM tickets t JOIN engineers e ON e.engineer_id = t.engineer_id ORDER BY t.ticket_id;',
-    'SELECT c.customer_id, c.region, t.ticket_id FROM customers c LEFT JOIN tickets t ON t.customer_id = c.customer_id ORDER BY c.customer_id, t.ticket_id;',
-    'SELECT e.engineer_id, e.name, COUNT(t.ticket_id) AS ticket_count FROM engineers e LEFT JOIN tickets t ON t.engineer_id = e.engineer_id GROUP BY e.engineer_id, e.name ORDER BY ticket_count DESC, e.engineer_id;',
-    'SELECT t.ticket_id, c.segment, e.level FROM tickets t JOIN customers c ON c.customer_id = t.customer_id JOIN engineers e ON e.engineer_id = t.engineer_id ORDER BY t.ticket_id;',
-    'SELECT c.customer_id FROM customers c LEFT JOIN tickets t ON t.customer_id = c.customer_id WHERE t.ticket_id IS NULL ORDER BY c.customer_id;',
-    'SELECT t1.ticket_id, t2.ticket_id AS later_ticket FROM tickets t1 JOIN tickets t2 ON t1.customer_id = t2.customer_id AND t1.ticket_id < t2.ticket_id ORDER BY t1.ticket_id, later_ticket;'
-  ],
-  subqueries: [
-    'SELECT ticket_id, resolution_minutes FROM tickets WHERE resolution_minutes > (SELECT AVG(resolution_minutes) FROM tickets WHERE resolution_minutes IS NOT NULL) ORDER BY resolution_minutes DESC;',
-    'SELECT customer_id FROM customers WHERE customer_id IN (SELECT customer_id FROM tickets WHERE priority = \'Critical\') ORDER BY customer_id;',
-    'SELECT e.engineer_id, e.name FROM engineers e WHERE EXISTS (SELECT 1 FROM tickets t WHERE t.engineer_id = e.engineer_id AND t.status = \'Open\') ORDER BY e.engineer_id;',
-    'SELECT ticket_id, service FROM tickets t WHERE resolution_minutes = (SELECT MAX(t2.resolution_minutes) FROM tickets t2 WHERE t2.service = t.service) ORDER BY service, ticket_id;',
-    'SELECT customer_id FROM customers WHERE NOT EXISTS (SELECT 1 FROM tickets WHERE tickets.customer_id = customers.customer_id) ORDER BY customer_id;',
-    'SELECT ticket_id FROM tickets WHERE service IN (SELECT service FROM tickets GROUP BY service HAVING COUNT(*) >= 2) ORDER BY ticket_id;'
-  ],
-  cte: [
-    'WITH open_tickets AS (SELECT * FROM tickets WHERE status = \'Open\') SELECT ticket_id, service FROM open_tickets ORDER BY ticket_id;',
-    'WITH service_stats AS (SELECT service, COUNT(*) AS total FROM tickets GROUP BY service) SELECT service, total FROM service_stats ORDER BY total DESC, service;',
-    'WITH base AS (SELECT ticket_id, service, resolution_minutes FROM tickets WHERE resolution_minutes IS NOT NULL), ranked AS (SELECT *, RANK() OVER (ORDER BY resolution_minutes DESC) AS rnk FROM base) SELECT ticket_id, service, resolution_minutes FROM ranked WHERE rnk <= 3 ORDER BY rnk, ticket_id;',
-    'WITH customer_counts AS (SELECT customer_id, COUNT(*) AS ticket_count FROM tickets GROUP BY customer_id) SELECT customer_id, ticket_count FROM customer_counts WHERE ticket_count > 1 ORDER BY customer_id;',
-    'WITH RECURSIVE nums(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM nums WHERE n < 5) SELECT n FROM nums;',
-    'WITH closed AS (SELECT service, resolution_minutes FROM tickets WHERE status = \'Closed\'), metrics AS (SELECT service, COUNT(*) AS total, ROUND(AVG(resolution_minutes), 1) AS avg_minutes FROM closed GROUP BY service) SELECT * FROM metrics ORDER BY total DESC, service;'
-  ],
-  windows: [
-    'SELECT ticket_id, service, resolution_minutes, ROW_NUMBER() OVER (PARTITION BY service ORDER BY resolution_minutes DESC, ticket_id) AS rn FROM tickets WHERE resolution_minutes IS NOT NULL ORDER BY service, rn;',
-    'SELECT ticket_id, created_at, LAG(created_at) OVER (ORDER BY created_at, ticket_id) AS previous_created_at FROM tickets ORDER BY created_at, ticket_id;',
-    'SELECT ticket_id, service, resolution_minutes, SUM(resolution_minutes) OVER (PARTITION BY service ORDER BY created_at, ticket_id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_minutes FROM tickets WHERE resolution_minutes IS NOT NULL ORDER BY service, created_at, ticket_id;',
-    'SELECT engineer_id, name, level, DENSE_RANK() OVER (ORDER BY level DESC) AS level_rank FROM engineers ORDER BY level_rank, engineer_id;',
-    'SELECT ticket_id, service, resolution_minutes, AVG(resolution_minutes) OVER (PARTITION BY service) AS service_avg FROM tickets WHERE resolution_minutes IS NOT NULL ORDER BY service, ticket_id;',
-    'SELECT ticket_id, service, resolution_minutes, NTILE(4) OVER (ORDER BY resolution_minutes) AS quartile FROM tickets WHERE resolution_minutes IS NOT NULL ORDER BY quartile, resolution_minutes, ticket_id;'
-  ],
-  dates: [
-    "SELECT date(created_at) AS day, COUNT(*) AS tickets_count FROM tickets GROUP BY date(created_at) ORDER BY day;",
-    "SELECT ticket_id, created_at FROM tickets WHERE created_at >= datetime('now', '-7 days') ORDER BY created_at, ticket_id;",
-    "SELECT strftime('%Y-%m', created_at) AS month, COUNT(*) AS tickets_count FROM tickets GROUP BY month ORDER BY month;",
-    "SELECT ticket_id, ROUND(julianday(closed_at) - julianday(created_at), 2) AS duration_days FROM tickets WHERE closed_at IS NOT NULL ORDER BY ticket_id;",
-    "SELECT ticket_id, datetime(created_at, '+3 hours') AS moscow_time FROM tickets ORDER BY ticket_id;",
-    "SELECT date(created_at, 'start of month') AS month_start, COUNT(*) AS tickets_count FROM tickets GROUP BY month_start ORDER BY month_start;"
-  ],
-  text: [
-    "SELECT customer_id, lower(trim(email)) AS normalized_email FROM customers ORDER BY customer_id;",
-    "SELECT ticket_id, CASE WHEN priority = 'Critical' THEN 'P1' WHEN priority = 'High' THEN 'P2' ELSE 'P3/P4' END AS priority_group FROM tickets ORDER BY ticket_id;",
-    "SELECT customer_id, COALESCE(email, 'missing') AS email_state FROM customers ORDER BY customer_id;",
-    "SELECT ticket_id, substr(service, 1, 3) AS service_prefix FROM tickets ORDER BY ticket_id;",
-    "SELECT customer_id, replace(phone, ' ', '') AS compact_phone FROM customers ORDER BY customer_id;",
-    "SELECT ticket_id, printf('%s-%04d', service, ticket_id) AS external_key FROM tickets ORDER BY ticket_id;"
-  ],
-  'set-ops': [
-    "SELECT service FROM tickets WHERE status = 'Open' UNION SELECT service FROM tickets WHERE priority = 'Critical' ORDER BY service;",
-    "SELECT service FROM tickets WHERE status = 'Open' UNION ALL SELECT service FROM tickets WHERE status = 'Closed' ORDER BY service;",
-    'SELECT customer_id FROM customers INTERSECT SELECT customer_id FROM tickets ORDER BY customer_id;',
-    'SELECT customer_id FROM customers EXCEPT SELECT customer_id FROM tickets ORDER BY customer_id;',
-    "SELECT 'ticket' AS source, ticket_id AS entity_id FROM tickets UNION ALL SELECT 'customer', customer_id FROM customers ORDER BY source, entity_id;",
-    'SELECT region FROM customers UNION SELECT service FROM tickets ORDER BY 1;'
-  ],
-  'data-quality': [
-    'SELECT email, COUNT(*) AS duplicate_count FROM customers WHERE email IS NOT NULL GROUP BY lower(trim(email)) HAVING COUNT(*) > 1 ORDER BY duplicate_count DESC, email;',
-    "SELECT customer_id FROM customers WHERE email IS NULL OR trim(email) = '' ORDER BY customer_id;",
-    'SELECT ticket_id FROM tickets WHERE closed_at IS NOT NULL AND status <> \'Closed\' ORDER BY ticket_id;',
-    'SELECT phone, COUNT(*) AS uses FROM customers WHERE phone IS NOT NULL GROUP BY replace(phone, \' \', \'\') HAVING COUNT(*) > 1 ORDER BY uses DESC;',
-    'SELECT engineer_id, COUNT(*) AS ticket_count FROM tickets GROUP BY engineer_id HAVING COUNT(*) > 3 ORDER BY ticket_count DESC;',
-    'SELECT customer_id, email, phone FROM customers WHERE email IS NULL AND phone IS NULL ORDER BY customer_id;'
-  ],
-  indexes: [
-    'SELECT ticket_id FROM tickets WHERE service = \'VPN\' AND status = \'Open\' ORDER BY ticket_id;',
-    'SELECT ticket_id, created_at FROM tickets WHERE customer_id = 3 ORDER BY created_at DESC, ticket_id DESC;',
-    'SELECT engineer_id, COUNT(*) AS tickets_count FROM tickets GROUP BY engineer_id ORDER BY tickets_count DESC;',
-    'SELECT ticket_id FROM tickets WHERE lower(service) = \'vpn\' ORDER BY ticket_id;',
-    'SELECT ticket_id, resolution_minutes FROM tickets WHERE service = \'Billing\' ORDER BY resolution_minutes DESC, ticket_id;',
-    'SELECT customer_id, ticket_id FROM tickets WHERE customer_id BETWEEN 1 AND 5 ORDER BY customer_id, ticket_id;'
-  ],
-  explain: [
-    'EXPLAIN QUERY PLAN SELECT * FROM tickets WHERE service = \'VPN\';',
-    'EXPLAIN QUERY PLAN SELECT * FROM tickets WHERE customer_id = 3 ORDER BY created_at DESC;',
-    'EXPLAIN QUERY PLAN SELECT t.ticket_id, e.name FROM tickets t JOIN engineers e ON e.engineer_id = t.engineer_id;',
-    'EXPLAIN QUERY PLAN SELECT service, COUNT(*) FROM tickets GROUP BY service;',
-    'EXPLAIN QUERY PLAN SELECT * FROM tickets WHERE lower(service) = \'vpn\';',
-    'EXPLAIN QUERY PLAN SELECT * FROM tickets ORDER BY resolution_minutes DESC LIMIT 10;'
-  ],
-  transactions: [
-    "SELECT ticket_id, status FROM tickets WHERE status = 'Open' ORDER BY ticket_id;",
-    'SELECT changes() AS changed_rows;',
-    'SELECT ticket_id, status FROM tickets WHERE ticket_id = 1;',
-    'SELECT customer_id, email FROM customers WHERE email IS NULL ORDER BY customer_id;',
-    'SELECT COUNT(*) AS tickets_count FROM tickets;',
-    'SELECT service, COUNT(*) AS tickets_count FROM tickets GROUP BY service ORDER BY service;'
-  ],
-  schema: [
-    "SELECT name, type FROM sqlite_master WHERE type IN ('table', 'index') ORDER BY type, name;",
-    'PRAGMA table_info(tickets);',
-    'PRAGMA foreign_key_list(tickets);',
-    'SELECT sql FROM sqlite_master WHERE name = \'tickets\';',
-    "SELECT name FROM sqlite_master WHERE type = 'index' ORDER BY name;",
-    'PRAGMA index_list(tickets);'
-  ],
-  support: [
-    "SELECT service, COUNT(*) AS open_count FROM tickets WHERE status = 'Open' GROUP BY service ORDER BY open_count DESC, service;",
-    "SELECT service, ROUND(AVG(resolution_minutes), 1) AS avg_resolution FROM tickets WHERE status = 'Closed' GROUP BY service ORDER BY avg_resolution DESC, service;",
-    "SELECT engineer_id, COUNT(*) AS assigned, SUM(CASE WHEN status = 'Open' THEN 1 ELSE 0 END) AS open_count FROM tickets GROUP BY engineer_id ORDER BY open_count DESC, engineer_id;",
-    "SELECT service, SUM(CASE WHEN resolution_minutes > sla_minutes THEN 1 ELSE 0 END) AS breaches FROM tickets WHERE status = 'Closed' GROUP BY service ORDER BY breaches DESC, service;",
-    "SELECT date(created_at) AS day, COUNT(*) AS opened, SUM(CASE WHEN status = 'Closed' THEN 1 ELSE 0 END) AS currently_closed FROM tickets GROUP BY day ORDER BY day;",
-    "SELECT priority, COUNT(*) AS open_count FROM tickets WHERE status = 'Open' GROUP BY priority ORDER BY CASE priority WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3 ELSE 4 END;"
-  ],
-  final: [
-    "WITH closed AS (SELECT service, resolution_minutes, sla_minutes FROM tickets WHERE status = 'Closed'), metrics AS (SELECT service, COUNT(*) AS tickets_count, ROUND(AVG(resolution_minutes), 1) AS avg_minutes, SUM(CASE WHEN resolution_minutes > sla_minutes THEN 1 ELSE 0 END) AS breaches FROM closed GROUP BY service) SELECT service, tickets_count, avg_minutes, breaches FROM metrics ORDER BY breaches DESC, avg_minutes DESC, service;",
-    'WITH workload AS (SELECT engineer_id, COUNT(*) AS assigned, SUM(CASE WHEN status = \'Open\' THEN 1 ELSE 0 END) AS open_count FROM tickets GROUP BY engineer_id) SELECT e.name, w.assigned, w.open_count FROM workload w JOIN engineers e ON e.engineer_id = w.engineer_id ORDER BY w.open_count DESC, e.name;',
-    'WITH customer_activity AS (SELECT customer_id, COUNT(*) AS tickets_count, MAX(created_at) AS last_ticket_at FROM tickets GROUP BY customer_id) SELECT c.customer_id, c.segment, COALESCE(a.tickets_count, 0) AS tickets_count, a.last_ticket_at FROM customers c LEFT JOIN customer_activity a ON a.customer_id = c.customer_id ORDER BY tickets_count DESC, c.customer_id;',
-    "WITH daily AS (SELECT date(created_at) AS day, COUNT(*) AS opened FROM tickets GROUP BY day), ranked AS (SELECT day, opened, SUM(opened) OVER (ORDER BY day) AS cumulative_opened FROM daily) SELECT * FROM ranked ORDER BY day;",
-    'WITH base AS (SELECT service, status, resolution_minutes, sla_minutes FROM tickets), quality AS (SELECT service, COUNT(*) AS total, SUM(CASE WHEN resolution_minutes IS NULL THEN 1 ELSE 0 END) AS missing_resolution FROM base GROUP BY service) SELECT * FROM quality ORDER BY missing_resolution DESC, service;',
-    "WITH closed AS (SELECT * FROM tickets WHERE status = 'Closed'), metrics AS (SELECT service, COUNT(*) AS volume, ROUND(AVG(resolution_minutes), 1) AS avg_minutes, SUM(CASE WHEN resolution_minutes > sla_minutes THEN 1 ELSE 0 END) AS breaches FROM closed GROUP BY service), ranked AS (SELECT *, RANK() OVER (ORDER BY breaches DESC, avg_minutes DESC) AS risk_rank FROM metrics) SELECT * FROM ranked ORDER BY risk_rank, service;"
-  ]
-};
-
-export const tasks = modules.flatMap((module, index) => makeTasks(index, module[0], moduleGuides[module[0]]));
+  })
+);
 
 export const achievements = [
-  { id: 'first-query', title: 'Первый SELECT', description: 'Решить первую задачу', threshold: 1 },
-  { id: 'ten', title: 'Разогнался', description: 'Решить 10 задач', threshold: 10 },
-  { id: 'half', title: 'Половина пути', description: 'Решить 60 задач', threshold: 60 },
-  { id: 'all', title: 'SQL Engineer', description: 'Решить все 120 задач', threshold: 120 }
+  { id: 'first-query', title: 'Первый запрос', description: 'Правильно решить первую задачу', threshold: 1 },
+  { id: 'ten-tasks', title: 'Разогрев окончен', description: 'Решить 10 задач', threshold: 10 },
+  { id: 'quarter', title: 'Четверть пути', description: 'Решить 30 задач', threshold: 30 },
+  { id: 'half', title: 'SQL-мидпоинт', description: 'Решить 60 задач', threshold: 60 },
+  { id: 'interview-ready', title: 'Interview Ready', description: 'Решить 90 задач', threshold: 90 },
+  { id: 'academy', title: 'SQL Academy', description: 'Решить все 120 задач', threshold: 120 }
 ];
