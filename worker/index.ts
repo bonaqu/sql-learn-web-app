@@ -4,6 +4,7 @@ import { authenticateSession, handleAuthRequest } from './auth';
 import { handleCheckpointRequest } from './checkpoints';
 import { handleCurriculumRequest } from './curriculum';
 import { handleMasteryProgressV1Request } from './mastery-progress-route';
+import { handleOnboardingRequest } from './onboarding';
 
 const ALLOWED_ORIGINS = new Set([
   'https://bonaqu.github.io',
@@ -15,6 +16,8 @@ const ALLOWED_ORIGINS = new Set([
 
 const CORS_METHODS = 'GET, PUT, POST, DELETE, OPTIONS';
 const CORS_HEADERS = 'authorization, content-type, x-profile-id';
+
+type Pipeline = 'auth' | 'assessment' | 'checkpoint' | 'curriculum' | 'onboarding';
 
 function allowedOrigin(request: Request) {
   const origin = request.headers.get('origin');
@@ -28,7 +31,7 @@ function corsHeaders(origin: string) {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': CORS_METHODS,
     'access-control-allow-headers': CORS_HEADERS,
-    'access-control-expose-headers': 'retry-after, x-request-id, x-progress-contract',
+    'access-control-expose-headers': 'retry-after, x-request-id, x-progress-contract, x-onboarding-contract',
     'access-control-max-age': '86400',
     vary: 'Origin'
   };
@@ -44,7 +47,7 @@ function withCors(response: Response, origin: string) {
   });
 }
 
-function pipelineFailure(error: unknown, pathname: string, pipeline: 'auth' | 'assessment' | 'checkpoint' | 'curriculum') {
+function pipelineFailure(error: unknown, pathname: string, pipeline: Pipeline) {
   const requestId = crypto.randomUUID();
   const name = error instanceof Error ? error.name.slice(0, 80) : 'UnknownError';
   const message = error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240);
@@ -55,7 +58,9 @@ function pipelineFailure(error: unknown, pathname: string, pipeline: 'auth' | 'a
       ? 'Assessment'
       : pipeline === 'checkpoint'
         ? 'Checkpoint'
-        : 'Curriculum';
+        : pipeline === 'onboarding'
+          ? 'Onboarding'
+          : 'Curriculum';
   return new Response(JSON.stringify({
     error: `${label} operation failed`,
     code: `${pipeline.toUpperCase()}_PIPELINE_UNHANDLED`,
@@ -149,6 +154,15 @@ export default {
         return origin ? withCors(response, origin) : response;
       }
       if (curriculumResponse) return origin ? withCors(curriculumResponse, origin) : curriculumResponse;
+
+      let onboardingResponse: Response | null;
+      try {
+        onboardingResponse = await handleOnboardingRequest(request, env, auth.userId);
+      } catch (error) {
+        const response = pipelineFailure(error, url.pathname, 'onboarding');
+        return origin ? withCors(response, origin) : response;
+      }
+      if (onboardingResponse) return origin ? withCors(onboardingResponse, origin) : onboardingResponse;
 
       const headers = new Headers(request.headers);
       headers.set('x-profile-id', auth.userId);
