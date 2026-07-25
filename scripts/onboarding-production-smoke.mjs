@@ -127,8 +127,8 @@ try {
     },
     firstWeekPlan: [
       { id: 'week-1-mo', day: 'MO', minutes: 25, kind: 'orientation', title: 'Контракт результата', detail: 'Описать grain и решить independent task.', moduleId: null },
-      { id: 'week-2-we', day: 'WE', minutes: 25, kind: 'lesson', title: 'Урок: JOIN', detail: 'Понять кардинальность и пройти check.', moduleId: 'joins' },
-      { id: 'week-3-fr', day: 'FR', minutes: 25, kind: 'practice', title: 'Independent practice: windows', detail: 'Решить без hints и solution.', moduleId: 'windows' }
+      { id: 'week-2-we', day: 'WE', minutes: 25, kind: 'practice', title: 'Independent practice: JOIN', detail: 'Решить без hints и solution.', moduleId: 'joins' },
+      { id: 'week-3-fr', day: 'FR', minutes: 25, kind: 'review', title: 'Retrieval review', detail: 'Воспроизвести модель по памяти и повторить ошибочную задачу.', moduleId: null }
     ],
     completedAt,
     updatedAt: completedAt
@@ -146,10 +146,13 @@ try {
   const fetched = await request(ENDPOINT);
   expectStatus(fetched, 200, 'get completed profile');
   expectContract(fetched, 'get completed profile');
+  const week = fetched.body?.profile?.firstWeekPlan || [];
   if (fetched.body?.revision !== 2
     || fetched.body?.profile?.placement?.score !== 78
     || fetched.body?.profile?.placement?.recommendedTrack !== 'support'
-    || fetched.body?.profile?.firstWeekPlan?.length !== 3) {
+    || week.length !== 3
+    || !week.some(item => item.kind === 'practice')
+    || !week.some(item => item.kind === 'review')) {
     throw new Error(`completed onboarding round-trip mismatch: ${fetched.text}`);
   }
 
@@ -166,7 +169,7 @@ try {
   expectStatus(revoked, 401, 'revoked onboarding session');
 
   await mark('complete');
-  console.log('Onboarding production smoke passed: profile revisions, placement evidence, validation and account cleanup.');
+  console.log('Onboarding production smoke passed: revisions, placement evidence, practice, retention and account cleanup.');
 } catch (error) {
   await fs.writeFile(failureFile, `stage=${stage}\n${error instanceof Error ? error.stack || error.message : String(error)}\n`);
   throw error;
