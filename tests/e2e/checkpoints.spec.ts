@@ -63,24 +63,25 @@ test('desktop checkpoint resumes, scores SQL and syncs evidence to a second devi
   await expect(page.getByTestId('start-checkpoint-foundation')).toBeEnabled();
   await page.getByTestId('start-checkpoint-foundation').click();
 
-  await expect(page.getByTestId('checkpoint-session')).toBeVisible();
-  await expect(page.locator('.assessment-progress-strip button')).toHaveCount(5);
-  await expect(page.getByTestId('checkpoint-locked-tools')).toBeVisible();
-  await expect(page.getByText('AI Mentor', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: /Показать решение/i })).toHaveCount(0);
+  const checkpointSession = page.getByTestId('checkpoint-session');
+  await expect(checkpointSession).toBeVisible();
+  await expect(checkpointSession.locator('.assessment-progress-strip button')).toHaveCount(5);
+  await expect(checkpointSession.getByTestId('checkpoint-locked-tools')).toBeVisible();
+  await expect(checkpointSession.getByText('AI Mentor', { exact: true })).toHaveCount(0);
+  await expect(checkpointSession.getByRole('button', { name: /Показать решение/i })).toHaveCount(0);
 
   await replaceEditorSql(page, FIRST_CHECKPOINT_SOLUTION);
-  await page.getByRole('button', { name: 'Проверить SQL' }).click();
-  await expect(page.locator('.assessment-feedback.success')).toContainText('Результат совпал');
-  await expect(page.getByTestId('checkpoint-result')).toBeVisible();
+  await checkpointSession.getByRole('button', { name: 'Проверить SQL' }).click();
+  await expect(checkpointSession.locator('.assessment-feedback.success')).toContainText('Результат совпал');
+  await expect(checkpointSession.getByTestId('checkpoint-result')).toBeVisible();
 
   const sessionKey = `sql-academy-checkpoint-session-v1:${String(auth.session.userId)}`;
   await expect.poll(() => page.evaluate(key => Boolean(localStorage.getItem(key)), sessionKey)).toBe(true);
   await page.reload();
   await expect(page.getByTestId('checkpoint-session')).toBeVisible();
-  await expect(page.locator('.assessment-progress-strip button').first()).toHaveClass(/correct/);
+  await expect(page.getByTestId('checkpoint-session').locator('.assessment-progress-strip button').first()).toHaveClass(/correct/);
 
-  await page.getByRole('button', { name: 'Завершить досрочно' }).click();
+  await page.getByTestId('checkpoint-session').getByRole('button', { name: 'Завершить досрочно' }).click();
   await expect(page.getByTestId('checkpoint-report')).toBeVisible();
   await expect(page.locator('.assessment-report-score strong')).not.toHaveText('0');
   await expect(page.getByText('Checkpoint report синхронизирован с аккаунтом.')).toBeVisible();
@@ -111,9 +112,10 @@ test('mobile checkpoint center keeps integrity controls usable on Pixel 7', asyn
   await expect(page.getByTestId('checkpoint-landing')).toBeVisible();
   await expect(page.locator('.assessment-mode-card')).toHaveCount(8);
   await page.getByTestId('start-checkpoint-foundation').click();
-  await expect(page.getByTestId('checkpoint-session')).toBeVisible();
-  await expect(page.getByTestId('checkpoint-locked-tools')).toBeVisible();
-  await expect(page.locator('.assessment-progress-strip button')).toHaveCount(5);
+  const checkpointSession = page.getByTestId('checkpoint-session');
+  await expect(checkpointSession).toBeVisible();
+  await expect(checkpointSession.getByTestId('checkpoint-locked-tools')).toBeVisible();
+  await expect(checkpointSession.locator('.assessment-progress-strip button')).toHaveCount(5);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('mobile-checkpoint-session.png'), fullPage: true });
 });
