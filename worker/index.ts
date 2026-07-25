@@ -3,6 +3,7 @@ import { handleAssessmentRequest } from './assessment';
 import { authenticateSession, handleAuthRequest } from './auth';
 import { handleCheckpointRequest } from './checkpoints';
 import { handleCurriculumRequest } from './curriculum';
+import { handleMasteryProgressRequest } from './mastery-progress';
 
 const ALLOWED_ORIGINS = new Set([
   'https://bonaqu.github.io',
@@ -92,6 +93,15 @@ export default {
       if (!origin) return new Response(null, { status: 204, headers: { allow: CORS_METHODS } });
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
+
+    let masteryProgressResponse: Response | null;
+    try {
+      masteryProgressResponse = await handleMasteryProgressRequest(request, env);
+    } catch (error) {
+      const response = pipelineFailure(error, url.pathname, 'auth');
+      return origin ? withCors(response, origin) : response;
+    }
+    if (masteryProgressResponse) return origin ? withCors(masteryProgressResponse, origin) : masteryProgressResponse;
 
     let authResponse: Response | null;
     try {
