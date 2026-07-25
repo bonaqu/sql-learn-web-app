@@ -24,7 +24,7 @@ const emptyProgress: Progress = {
 };
 const emptyCurriculum = emptyCurriculumProgress();
 const dmlLesson = advancedCurriculumLessons.find(lesson => lesson.module === 'dml');
-const coreLesson = curriculumLessons.find(lesson => lesson.module === 'select');
+const coreLesson = curriculumLessons.find(lesson => lesson.module === 'sql-thinking');
 
 function diagnosticReport(score: number, module: string, moduleScore: number): AssessmentReport {
   return {
@@ -51,7 +51,7 @@ function diagnosticReport(score: number, module: string, moduleScore: number): A
 }
 
 assert(Boolean(dmlLesson), 'DML advanced lesson is missing');
-assert(Boolean(coreLesson), 'Core SELECT lesson is missing');
+assert(Boolean(coreLesson), 'Core SQL-thinking lesson is missing');
 assert(PREREQUISITE_MASTERY >= 50 && PREREQUISITE_MASTERY <= 80, 'Prerequisite mastery threshold is unreasonable');
 assert(DIAGNOSTIC_MODULE_BYPASS > PREREQUISITE_MASTERY, 'Module diagnostic bypass must be stricter than task readiness');
 assert(DIAGNOSTIC_GLOBAL_BYPASS > DIAGNOSTIC_MODULE_BYPASS, 'Global diagnostic bypass must be the strictest path');
