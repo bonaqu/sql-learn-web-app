@@ -206,7 +206,13 @@ const difficulties: Difficulty[] = ['База', 'Рабочий', 'Продви�
 type Recipe = (variant: number) => Pick<SqlTask, 'title' | 'description' | 'starter' | 'solution' | 'hints'>;
 
 const recipes: Record<string, Recipe> = {
-  'sql-thinking': v => ({
+  'sql-thinking': v => v === 5 ? ({
+    title: 'Контракт результата: Critical обращения',
+    description: 'Покажи ticket_id, service и status для всех Critical-обращений независимо от сервиса. Результат должен быть стабильно отсортирован.',
+    starter: 'SELECT\n  ticket_id,\n  service,\n  status\nFROM tickets\nWHERE ',
+    solution: "SELECT ticket_id, service, status FROM tickets WHERE priority = 'Critical' ORDER BY ticket_id;",
+    hints: ['Одна строка результата — одно обращение.', "Фильтр сравнивает priority со строкой 'Critical'.", 'Добавь ORDER BY ticket_id.']
+  }) : ({
     title: `Контракт результата: ${services[v % services.length]}`,
     description: `Покажи ticket_id, service и status для сервиса ${services[v % services.length]}. Результат должен быть стабильно отсортирован.`,
     starter: 'SELECT\n  ticket_id,\n  service,\n  status\nFROM tickets\nWHERE ',
