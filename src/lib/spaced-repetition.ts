@@ -159,10 +159,12 @@ function addDays(now: number, days: number) {
   return new Date(now + days * DAY).toISOString();
 }
 
-export function gradeReviewCard(cardId: string, grade: ReviewGrade, id = userId(), now = Date.now()) {
-  const state = loadReviewState(id, now);
-  const previous = state.schedules[cardId] || initialReviewSchedule(cardId);
-  if (!previous.introducedAt) return state;
+export function gradeReviewSchedule(
+  previous: ReviewSchedule,
+  grade: ReviewGrade,
+  now = Date.now()
+): ReviewSchedule {
+  if (!previous.introducedAt) return previous;
   let intervalDays = previous.intervalDays;
   let ease = previous.ease;
   let repetitions = previous.repetitions;
@@ -191,7 +193,7 @@ export function gradeReviewCard(cardId: string, grade: ReviewGrade, id = userId(
     dueAt = addDays(now, intervalDays);
   }
 
-  state.schedules[cardId] = {
+  return {
     ...previous,
     dueAt,
     intervalDays,
@@ -200,6 +202,14 @@ export function gradeReviewCard(cardId: string, grade: ReviewGrade, id = userId(
     lapses,
     lastReviewedAt: new Date(now).toISOString()
   };
+}
+
+export function gradeReviewCard(cardId: string, grade: ReviewGrade, id = userId(), now = Date.now()) {
+  const state = loadReviewState(id, now);
+  const previous = state.schedules[cardId] || initialReviewSchedule(cardId);
+  const next = gradeReviewSchedule(previous, grade, now);
+  if (next === previous) return state;
+  state.schedules[cardId] = next;
   return saveReviewState(state, id);
 }
 
