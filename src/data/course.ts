@@ -233,12 +233,18 @@ const recipes: Record<string, Recipe> = {
     solution: `SELECT ticket_id, service, priority, status FROM tickets WHERE status = 'Closed' AND (priority = '${priorities[v % priorities.length]}' OR service = '${services[(v + 1) % services.length]}') ORDER BY ticket_id;`,
     hints: ['Сначала ограничь status.', 'Условия с OR объедини скобками.', 'Строки заключаются в одинарные кавычки.']
   }),
-  sorting: v => ({
+  sorting: v => v < 3 ? ({
     title: `Топ-${(v % 3) + 2} долгих обращений`,
     description: `Покажи ${(v % 3) + 2} закрытых обращения с самым большим временем решения. При равенстве выше должен быть меньший ticket_id.`,
     starter: 'SELECT ticket_id, resolution_minutes\nFROM tickets\nWHERE resolution_minutes IS NOT NULL\nORDER BY ',
     solution: `SELECT ticket_id, resolution_minutes FROM tickets WHERE resolution_minutes IS NOT NULL ORDER BY resolution_minutes DESC, ticket_id ASC LIMIT ${(v % 3) + 2};`,
     hints: ['Главная сортировка — resolution_minutes DESC.', 'ticket_id нужен как tie-breaker.', 'LIMIT ставится после ORDER BY.']
+  }) : ({
+    title: `Топ-${(v % 3) + 2} быстрых обращений`,
+    description: `Покажи ${(v % 3) + 2} закрытых обращения с самым маленьким временем решения. При равенстве выше должен быть меньший ticket_id.`,
+    starter: 'SELECT ticket_id, resolution_minutes\nFROM tickets\nWHERE resolution_minutes IS NOT NULL\nORDER BY ',
+    solution: `SELECT ticket_id, resolution_minutes FROM tickets WHERE resolution_minutes IS NOT NULL ORDER BY resolution_minutes ASC, ticket_id ASC LIMIT ${(v % 3) + 2};`,
+    hints: ['Главная сортировка — resolution_minutes ASC.', 'ticket_id нужен как tie-breaker.', 'LIMIT ставится после ORDER BY.']
   }),
   aggregates: v => ({
     title: `Сводка закрытых обращений ${v + 1}`,
@@ -247,12 +253,18 @@ const recipes: Record<string, Recipe> = {
     solution: "SELECT COUNT(*) AS closed_count, MIN(resolution_minutes) AS min_minutes, MAX(resolution_minutes) AS max_minutes, ROUND(AVG(resolution_minutes), 1) AS avg_minutes FROM tickets WHERE status = 'Closed';",
     hints: ['Все показатели считаются по одному набору строк.', "Фильтр status = 'Closed'.", 'Для среднего используй ROUND(..., 1).']
   }),
-  grouping: v => ({
+  grouping: v => v < 3 ? ({
     title: `Сервисы минимум с ${(v % 3) + 1} обращениями`,
     description: `Посчитай обращения по сервисам и оставь группы, где не меньше ${(v % 3) + 1} строк.`,
     starter: 'SELECT service, COUNT(*) AS tickets_count\nFROM tickets\nGROUP BY service\nHAVING ',
     solution: `SELECT service, COUNT(*) AS tickets_count FROM tickets GROUP BY service HAVING COUNT(*) >= ${(v % 3) + 1} ORDER BY tickets_count DESC, service;`,
     hints: ['COUNT(*) фильтруется через HAVING.', `Порог: >= ${(v % 3) + 1}.`, 'Сортируй по псевдониму и service.']
+  }) : ({
+    title: `Приоритеты минимум с ${(v % 3) + 1} обращениями`,
+    description: `Посчитай обращения по приоритетам и оставь группы, где не меньше ${(v % 3) + 1} строк.`,
+    starter: 'SELECT priority, COUNT(*) AS tickets_count\nFROM tickets\nGROUP BY priority\nHAVING ',
+    solution: `SELECT priority, COUNT(*) AS tickets_count FROM tickets GROUP BY priority HAVING COUNT(*) >= ${(v % 3) + 1} ORDER BY tickets_count DESC, priority;`,
+    hints: ['COUNT(*) фильтруется через HAVING.', `Порог: >= ${(v % 3) + 1}.`, 'Сортируй по псевдониму и priority.']
   }),
   joins: v => ({
     title: `Назначения инженеров ${v + 1}`,
@@ -261,12 +273,18 @@ const recipes: Record<string, Recipe> = {
     solution: 'SELECT t.ticket_id, e.name, e.level, t.service FROM tickets t JOIN engineers e ON e.engineer_id = t.engineer_id ORDER BY t.ticket_id;',
     hints: ['Внешний ключ находится в tickets.', 'Свяжи engineer_id обеих таблиц.', 'Используй алиасы t и e.']
   }),
-  subqueries: v => ({
+  subqueries: v => v < 4 ? ({
     title: `Выше среднего по ${priorities[v % priorities.length]}`,
     description: `Найди закрытые обращения приоритета ${priorities[v % priorities.length]}, которые решались дольше среднего среди закрытых обращений того же приоритета.`,
     starter: 'SELECT ticket_id, priority, resolution_minutes\nFROM tickets\nWHERE priority = ',
     solution: `SELECT ticket_id, priority, resolution_minutes FROM tickets WHERE priority = '${priorities[v % priorities.length]}' AND resolution_minutes > (SELECT AVG(resolution_minutes) FROM tickets WHERE priority = '${priorities[v % priorities.length]}' AND resolution_minutes IS NOT NULL) ORDER BY resolution_minutes DESC, ticket_id;`,
     hints: ['Подзапрос должен вернуть одно среднее.', 'Внутри и снаружи используй одинаковый priority.', 'NULL не должен участвовать в AVG.']
+  }) : ({
+    title: `Выше среднего в сервисе ${services[(v - 4) * 3]}`,
+    description: `Найди закрытые обращения сервиса ${services[(v - 4) * 3]}, которые решались дольше среднего среди закрытых обращений этого сервиса.`,
+    starter: 'SELECT ticket_id, service, resolution_minutes\nFROM tickets\nWHERE service = ',
+    solution: `SELECT ticket_id, service, resolution_minutes FROM tickets WHERE service = '${services[(v - 4) * 3]}' AND resolution_minutes > (SELECT AVG(resolution_minutes) FROM tickets WHERE service = '${services[(v - 4) * 3]}' AND resolution_minutes IS NOT NULL) ORDER BY resolution_minutes DESC, ticket_id;`,
+    hints: ['Подзапрос должен вернуть одно среднее.', 'Внутри и снаружи используй одинаковый service.', 'NULL не должен участвовать в AVG.']
   }),
   cte: v => ({
     title: `CTE нагрузки сервисов ${v + 1}`,
