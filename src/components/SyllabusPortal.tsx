@@ -33,6 +33,7 @@ import { moduleMastery } from '../lib/learning-path';
 import { loadProgress } from '../lib/progress';
 import { useDialogFocus } from '../lib/dialog-focus';
 import '../syllabus.css';
+import '../syllabus-readiness.css';
 
 type SyllabusTab = 'map' | 'dialects' | 'exams';
 
