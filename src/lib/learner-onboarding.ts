@@ -1,6 +1,5 @@
 import { onboardingModuleTitle } from '../data/onboarding-module-titles';
 import type { AssessmentReport } from './assessment';
-import { loadAuthSession } from './auth';
 
 export type LearnerGoal = 'support' | 'analyst' | 'backend' | 'interview' | 'full';
 export type ExperienceLevel = 'none' | 'basics' | 'regular' | 'advanced';
@@ -67,6 +66,7 @@ export const studyDayLabels: Record<StudyDay, string> = {
   MO: 'Пн', TU: 'Вт', WE: 'Ср', TH: 'Чт', FR: 'Пт', SA: 'Сб', SU: 'Вс'
 };
 
+const AUTH_SESSION_KEY = 'sql-academy-auth-session-v2';
 const dayOrder: StudyDay[] = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
 const defaultPlacement: PlacementResult = {
   status: 'not-started',
@@ -92,6 +92,16 @@ function now() {
   return new Date().toISOString();
 }
 
+function currentUserId() {
+  if (typeof localStorage === 'undefined') return 'guest';
+  try {
+    const session = JSON.parse(localStorage.getItem(AUTH_SESSION_KEY) || 'null') as { userId?: unknown } | null;
+    return typeof session?.userId === 'string' && session.userId ? session.userId : 'guest';
+  } catch {
+    return 'guest';
+  }
+}
+
 export function emptyOnboardingProfile(): LearnerOnboardingProfile {
   return {
     version: 1,
@@ -108,7 +118,7 @@ export function emptyOnboardingProfile(): LearnerOnboardingProfile {
   };
 }
 
-function storageKey(userId = loadAuthSession()?.userId || 'guest') {
+function storageKey(userId = currentUserId()) {
   return `sql-academy-onboarding-v1:${userId}`;
 }
 
@@ -193,16 +203,22 @@ export function sanitizeOnboardingProfile(value: unknown): LearnerOnboardingProf
   };
 }
 
-export function loadOnboardingProfile(userId = loadAuthSession()?.userId || 'guest') {
-  if (typeof localStorage === 'undefined') return emptyOnboardingProfile();
+export function storedOnboardingProfile(userId = currentUserId()): LearnerOnboardingProfile | null {
+  if (typeof localStorage === 'undefined') return null;
+  const raw = localStorage.getItem(storageKey(userId));
+  if (!raw) return null;
   try {
-    return sanitizeOnboardingProfile(JSON.parse(localStorage.getItem(storageKey(userId)) || 'null'));
+    return sanitizeOnboardingProfile(JSON.parse(raw));
   } catch {
-    return emptyOnboardingProfile();
+    return null;
   }
 }
 
-export function saveOnboardingProfile(profile: LearnerOnboardingProfile, userId = loadAuthSession()?.userId || 'guest') {
+export function loadOnboardingProfile(userId = currentUserId()) {
+  return storedOnboardingProfile(userId) || emptyOnboardingProfile();
+}
+
+export function saveOnboardingProfile(profile: LearnerOnboardingProfile, userId = currentUserId()) {
   const next = sanitizeOnboardingProfile({ ...profile, updatedAt: now() });
   if (typeof localStorage !== 'undefined') localStorage.setItem(storageKey(userId), JSON.stringify(next));
   if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent(ONBOARDING_CHANGED_EVENT, { detail: next }));
