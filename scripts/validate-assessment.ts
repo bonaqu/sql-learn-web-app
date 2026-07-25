@@ -26,10 +26,25 @@ const practiced: Progress = {
     completedAt: new Date(2026, 6, index % 20 + 1).toISOString()
   }]))
 };
+const completeProgress: Progress = {
+  ...defaultProgress,
+  completed: tasks.map(task => task.id),
+  taskStats: Object.fromEntries(tasks.map(task => [task.id, {
+    attempts: 1,
+    incorrect: 0,
+    hintsUsed: 0,
+    lastAttemptAt: new Date(2026, 6, 24).toISOString(),
+    completedAt: new Date(2026, 6, 24).toISOString()
+  }]))
+};
 
 for (const mode of Object.keys(assessmentModes) as AssessmentMode[]) {
   const config = assessmentModes[mode];
-  const progress = mode === 'quick' ? defaultProgress : practiced;
+  const progress = mode === 'quick' || mode === 'diagnostic'
+    ? defaultProgress
+    : mode === 'production' || mode === 'final'
+      ? completeProgress
+      : practiced;
   const eligibility = assessmentEligibility(mode, progress);
   assert(eligibility.eligible, `${mode}: expected eligible fixture`);
   const first = selectAssessmentTasks(mode, progress);
@@ -40,6 +55,7 @@ for (const mode of Object.keys(assessmentModes) as AssessmentMode[]) {
   assert(new Set(first.map(task => task.module)).size >= Math.min(config.taskCount, mode === 'quick' ? 3 : 4), `${mode}: insufficient module diversity`);
   if (mode === 'interview') assert(first.some(task => task.mode === 'interview'), 'interview: must include interview tasks');
   if (mode === 'exam') assert(first.every(task => task.mode !== 'lesson' && task.mode !== 'puzzle'), 'exam: invalid task mode');
+  if (config.fixedTaskIds) assert(JSON.stringify(first.map(task => task.id)) === JSON.stringify(config.fixedTaskIds), mode + ': fixed pool changed');
 }
 
 const quickTasks = selectAssessmentTasks('quick', defaultProgress);

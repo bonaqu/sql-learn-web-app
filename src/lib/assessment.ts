@@ -1,8 +1,9 @@
 import { modules, SqlTask, tasks } from '../data/course-catalog';
+import { sqlExams } from '../data/sql-exams';
 import { loadAuthSession } from './auth';
 import { Progress } from './progress';
 
-export type AssessmentMode = 'quick' | 'interview' | 'exam';
+export type AssessmentMode = 'quick' | 'interview' | 'exam' | 'diagnostic' | 'production' | 'final';
 export type AssessmentStatus = 'active' | 'completed' | 'expired' | 'abandoned';
 
 export type AssessmentModeConfig = {
@@ -15,6 +16,9 @@ export type AssessmentModeConfig = {
   interviewer: boolean;
   minimumCompleted: number;
   minimumModules: number;
+  passingScore: number;
+  requiredModuleIds?: string[];
+  fixedTaskIds?: string[];
 };
 
 export type AssessmentAnswer = {
@@ -103,7 +107,8 @@ export const assessmentModes: Record<AssessmentMode, AssessmentModeConfig> = {
     taskCount: 3,
     interviewer: false,
     minimumCompleted: 0,
-    minimumModules: 0
+    minimumModules: 0,
+    passingScore: 50
   },
   interview: {
     mode: 'interview',
@@ -114,7 +119,8 @@ export const assessmentModes: Record<AssessmentMode, AssessmentModeConfig> = {
     taskCount: 5,
     interviewer: true,
     minimumCompleted: 6,
-    minimumModules: 2
+    minimumModules: 2,
+    passingScore: 65
   },
   exam: {
     mode: 'exam',
@@ -125,15 +131,62 @@ export const assessmentModes: Record<AssessmentMode, AssessmentModeConfig> = {
     taskCount: 8,
     interviewer: false,
     minimumCompleted: 12,
-    minimumModules: 4
+    minimumModules: 4,
+    passingScore: 70
+  },
+  diagnostic: {
+    mode: 'diagnostic',
+    title: sqlExams[0].title,
+    shortTitle: 'Diagnostic',
+    description: sqlExams[0].description,
+    durationMinutes: sqlExams[0].durationMinutes,
+    taskCount: sqlExams[0].taskIds.length,
+    interviewer: false,
+    minimumCompleted: 0,
+    minimumModules: 0,
+    passingScore: sqlExams[0].passingScore,
+    requiredModuleIds: sqlExams[0].requiredModuleIds,
+    fixedTaskIds: sqlExams[0].taskIds
+  },
+  production: {
+    mode: 'production',
+    title: sqlExams[1].title,
+    shortTitle: 'Production',
+    description: sqlExams[1].description,
+    durationMinutes: sqlExams[1].durationMinutes,
+    taskCount: sqlExams[1].taskIds.length,
+    interviewer: false,
+    minimumCompleted: 96,
+    minimumModules: 16,
+    passingScore: sqlExams[1].passingScore,
+    requiredModuleIds: sqlExams[1].requiredModuleIds,
+    fixedTaskIds: sqlExams[1].taskIds
+  },
+  final: {
+    mode: 'final',
+    title: sqlExams[2].title,
+    shortTitle: 'Final',
+    description: sqlExams[2].description,
+    durationMinutes: sqlExams[2].durationMinutes,
+    taskCount: sqlExams[2].taskIds.length,
+    interviewer: false,
+    minimumCompleted: 180,
+    minimumModules: 26,
+    passingScore: sqlExams[2].passingScore,
+    requiredModuleIds: sqlExams[2].requiredModuleIds,
+    fixedTaskIds: sqlExams[2].taskIds
   }
 };
 
 const PHASE_MODULES = [
   new Set(['sql-thinking', 'select', 'filtering', 'sorting', 'aggregates', 'grouping']),
-  new Set(['joins', 'subqueries', 'cte', 'windows', 'dates', 'text']),
-  new Set(['set-ops', 'data-quality', 'indexes', 'explain', 'transactions', 'schema']),
-  new Set(['support', 'final'])
+  new Set(['joins', 'subqueries', 'cte', 'windows', 'dates', 'text', 'set-ops']),
+  new Set(['data-quality', 'indexes', 'explain', 'transactions', 'schema']),
+  new Set(['support', 'final']),
+  new Set(['dml', 'schema-evolution', 'null-logic-advanced']),
+  new Set(['conditional-aggregation', 'advanced-joins', 'recursive-cte']),
+  new Set(['window-frames', 'json-sql', 'sql-security']),
+  new Set(['concurrency', 'pagination-patterns', 'incident-investigation'])
 ];
 
 function sessionKey(userId: string) {
@@ -152,9 +205,14 @@ function moduleTitle(moduleId: string) {
   return modules.find(([id]) => id === moduleId)?.[1] || moduleId;
 }
 
-function completedModuleCount(progress: Progress) {
+function moduleCoverage(progress: Progress, moduleId: string) {
+  const moduleTasks = tasks.filter(task => task.module === moduleId);
   const completed = new Set(progress.completed);
-  return modules.filter(([id]) => tasks.some(task => task.module === id && completed.has(task.id))).length;
+  return moduleTasks.length ? moduleTasks.filter(task => completed.has(task.id)).length / moduleTasks.length : 0;
+}
+
+function completedModuleCount(progress: Progress) {
+  return modules.filter(([id]) => moduleCoverage(progress, id) >= 0.45).length;
 }
 
 export function assessmentEligibility(mode: AssessmentMode, progress: Progress) {
@@ -162,12 +220,14 @@ export function assessmentEligibility(mode: AssessmentMode, progress: Progress) 
   const modulesCompleted = completedModuleCount(progress);
   const missingCompleted = Math.max(0, config.minimumCompleted - progress.completed.length);
   const missingModules = Math.max(0, config.minimumModules - modulesCompleted);
+  const missingRequiredModules = (config.requiredModuleIds || []).filter(moduleId => moduleCoverage(progress, moduleId) < 0.45);
   return {
-    eligible: missingCompleted === 0 && missingModules === 0,
+    eligible: missingCompleted === 0 && missingModules === 0 && missingRequiredModules.length === 0,
     completed: progress.completed.length,
     modulesCompleted,
     missingCompleted,
-    missingModules
+    missingModules,
+    missingRequiredModules
   };
 }
 
@@ -185,6 +245,8 @@ function taskPriority(task: SqlTask, progress: Progress, mode: AssessmentMode) {
 }
 
 function eligiblePool(mode: AssessmentMode) {
+  const fixed = assessmentModes[mode].fixedTaskIds;
+  if (fixed?.length) return fixed.flatMap(taskId => tasks.find(task => task.id === taskId) || []);
   if (mode === 'quick') return tasks.filter(task => task.mode !== 'puzzle');
   if (mode === 'interview') return tasks.filter(task => task.mode === 'interview' || task.mode === 'practice');
   return tasks.filter(task => task.mode !== 'lesson' && task.mode !== 'puzzle' && task.difficulty !== 'База');
@@ -215,7 +277,9 @@ function chooseDiverse(candidates: SqlTask[], count: number, mode: AssessmentMod
 
 export function selectAssessmentTasks(mode: AssessmentMode, progress: Progress) {
   const config = assessmentModes[mode];
-  const ranked = eligiblePool(mode)
+  const pool = eligiblePool(mode);
+  if (config.fixedTaskIds?.length) return pool.slice(0, config.taskCount);
+  const ranked = pool
     .map(task => ({ task, priority: taskPriority(task, progress, mode) }))
     .sort((left, right) => right.priority - left.priority || left.task.id.localeCompare(right.task.id))
     .map(item => item.task);

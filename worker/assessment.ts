@@ -1,4 +1,4 @@
-type AssessmentMode = 'quick' | 'interview' | 'exam';
+type AssessmentMode = 'quick' | 'interview' | 'exam' | 'diagnostic' | 'production' | 'final';
 type AssessmentStatus = 'completed' | 'expired' | 'abandoned';
 
 type AssessmentReportPayload = {
@@ -25,7 +25,7 @@ type AssessmentReportPayload = {
 
 const REPORT_ID_PATTERN = /^[a-f0-9-]{16,64}$/i;
 const TASK_ID_PATTERN = /^task-[0-9]{3}$/;
-const MODES = new Set<AssessmentMode>(['quick', 'interview', 'exam']);
+const MODES = new Set<AssessmentMode>(['quick', 'interview', 'exam', 'diagnostic', 'production', 'final']);
 const STATUSES = new Set<AssessmentStatus>(['completed', 'expired', 'abandoned']);
 const MAX_REPORT_BYTES = 180_000;
 const MAX_AI_BYTES = 24_000;
@@ -95,9 +95,9 @@ function validReport(value: unknown): value is AssessmentReportPayload {
     && shortText(report.localDebrief, 8_000)
     && (report.aiDebrief === undefined || shortText(report.aiDebrief, 8_000))
     && Array.isArray(report.taskScores)
-    && report.taskScores.length <= 20
+    && report.taskScores.length <= 40
     && Array.isArray(report.moduleScores)
-    && report.moduleScores.length <= 20;
+    && report.moduleScores.length <= 40;
 }
 
 async function consumeAiQuota(env: Cloudflare.Env, userId: string) {
