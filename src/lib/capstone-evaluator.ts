@@ -63,6 +63,7 @@ export interface CapstoneReport {
   guidanceUses: number;
   solutionViews: number;
   files: CapstoneFileEvidence[];
+  submissionFiles: Record<string, string>;
   checks: CapstoneCheckResult[];
   reflection: string;
   remediation: string[];
@@ -331,6 +332,10 @@ export async function evaluateCapstone(input: {
     .filter(check => !check.passed && check.remediation)
     .map(check => check.remediation!)
     .filter((item, index, values) => values.indexOf(item) === index);
+  const submissionFiles = Object.fromEntries(contract.files.map(file => [
+    file.id,
+    (input.submission.files[file.id] || '').slice(0, 40_000)
+  ]));
 
   return {
     version: 1,
@@ -351,6 +356,7 @@ export async function evaluateCapstone(input: {
     guidanceUses: Math.max(0, input.submission.guidanceUses),
     solutionViews: Math.max(0, input.submission.solutionViews),
     files: fileEvidence,
+    submissionFiles,
     checks,
     reflection: input.submission.reflection.slice(0, 12_000),
     remediation
