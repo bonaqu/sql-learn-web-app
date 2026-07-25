@@ -55,7 +55,7 @@ export default defineConfig(({ command }) => ({
             },
             {
               name: 'assessment',
-              test: /src[\\/](?:components[\\/]AssessmentCenterPortal\.tsx|lib[\\/]assessment(?:-runtime)?\.ts)$/,
+              test: /src[\\/](?:components[\\/]AssessmentCenterPortal\.tsx|lib[\\/]assessment(?:-runtime)?\.ts|data[\\/]sql-exams\.ts)$/,
               priority: 40
             },
             {
