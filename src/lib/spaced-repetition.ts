@@ -30,6 +30,11 @@ export const REVIEW_CHANGED_EVENT = 'sql-academy-review-changed';
 const MINUTE = 60_000;
 const DAY = 86_400_000;
 const NOT_INTRODUCED_AT = '9999-12-31T23:59:59.999Z';
+const SOURCE_PRIORITY: Record<ReviewIntroductionSource, number> = {
+  'independent-practice': 3,
+  lesson: 2,
+  'legacy-practice': 1
+};
 
 function userId() {
   return loadAuthSession()?.userId || 'guest';
@@ -50,38 +55,47 @@ export function initialReviewSchedule(cardId: string): ReviewSchedule {
   };
 }
 
+function evidenceTime(evidence: ReviewEvidence) {
+  const value = new Date(evidence.at).getTime();
+  return Number.isFinite(value) ? value : 0;
+}
+
 export function reviewEvidenceForModule(
   moduleId: string,
   progress: Progress,
   curriculum: CurriculumProgressV1,
   now = Date.now()
 ): ReviewEvidence | null {
+  const candidates: ReviewEvidence[] = [];
   const lesson = curriculumLessons.find(item =>
     item.module === moduleId && curriculum.completedLessons.includes(item.id)
   );
-  if (lesson) {
-    return { source: 'lesson', at: curriculum.updatedAt };
-  }
+  if (lesson) candidates.push({ source: 'lesson', at: curriculum.updatedAt });
 
   const moduleTasks = tasks.filter(task => task.module === moduleId);
-  const independent = moduleTasks.find(task => hasIndependentTaskEvidence(progress, task.id));
-  if (independent) {
-    return {
+  for (const task of moduleTasks.filter(item => hasIndependentTaskEvidence(progress, item.id))) {
+    candidates.push({
       source: 'independent-practice',
-      at: progress.taskStats[independent.id]?.lastIndependentAt
-        || progress.taskStats[independent.id]?.completedAt
+      at: progress.taskStats[task.id]?.lastIndependentAt
+        || progress.taskStats[task.id]?.completedAt
         || new Date(now).toISOString()
-    };
+    });
   }
 
-  const legacy = moduleTasks.find(task => progress.completed.includes(task.id));
-  if (legacy) {
-    return {
-      source: 'legacy-practice',
-      at: progress.taskStats[legacy.id]?.completedAt || new Date(now).toISOString()
-    };
+  if (!candidates.some(item => item.source === 'independent-practice')) {
+    const legacy = moduleTasks.find(task => progress.completed.includes(task.id));
+    if (legacy) {
+      candidates.push({
+        source: 'legacy-practice',
+        at: progress.taskStats[legacy.id]?.completedAt || new Date(now).toISOString()
+      });
+    }
   }
-  return null;
+
+  return candidates.sort((left, right) =>
+    evidenceTime(right) - evidenceTime(left)
+    || SOURCE_PRIORITY[right.source] - SOURCE_PRIORITY[left.source]
+  )[0] || null;
 }
 
 export function introduceReviewSchedule(
@@ -90,11 +104,11 @@ export function introduceReviewSchedule(
   now = Date.now()
 ): ReviewSchedule {
   if (previous.introducedAt || !evidence) return previous;
-  const evidenceTime = new Date(evidence.at).getTime();
-  const introducedAt = Number.isFinite(evidenceTime)
-    ? new Date(evidenceTime).toISOString()
+  const evidenceTimestamp = evidenceTime(evidence);
+  const introducedAt = evidenceTimestamp
+    ? new Date(evidenceTimestamp).toISOString()
     : new Date(now).toISOString();
-  const dueAt = Number.isFinite(evidenceTime) && now - evidenceTime >= 10 * MINUTE
+  const dueAt = evidenceTimestamp && now - evidenceTimestamp >= 10 * MINUTE
     ? new Date(now).toISOString()
     : new Date(now + 10 * MINUTE).toISOString();
   return {
