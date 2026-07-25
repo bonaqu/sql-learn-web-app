@@ -22,13 +22,7 @@ jobs:
           node-version: 22
       - name: Apply integration patch
         run: node scripts/integrate-curriculum-2.mjs
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-      - name: Validate integrated repository
-        run: npm run check
-      - name: Build production app
-        run: npm run build
-      - name: Commit integration
+      - name: Commit integrated tree
         shell: bash
         run: |
           rm -f scripts/integrate-curriculum-2.mjs .github/workflows/apply-curriculum-2.yml
@@ -37,3 +31,9 @@ jobs:
           git add -A
           git commit -m "Integrate complete SQL catalog across the app"
           git push origin HEAD:agent/curriculum-2-complete-syllabus
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate integrated repository
+        run: npm run check
+      - name: Build production app
+        run: npm run build
