@@ -24,7 +24,17 @@ const taskFingerprints = tasks.map(task => JSON.stringify([
   task.starter.trim(),
   normalizedSql(task.solution)
 ]));
-if (new Set(taskFingerprints).size !== tasks.length) fail('full task fingerprints are not unique');
+const fingerprintOwners = new Map<string, string[]>();
+taskFingerprints.forEach((fingerprint, index) => {
+  fingerprintOwners.set(fingerprint, [...(fingerprintOwners.get(fingerprint) || []), tasks[index].id]);
+});
+const duplicateFingerprints = Array.from(fingerprintOwners.entries()).filter(([, ids]) => ids.length > 1);
+if (duplicateFingerprints.length) {
+  for (const [fingerprint, ids] of duplicateFingerprints) {
+    console.error(`Duplicate task contract ${ids.join(', ')}: ${fingerprint}`);
+  }
+  fail(`${duplicateFingerprints.length} duplicate task contract group(s)`);
+}
 
 const advancedIds = new Set<string>(advancedModules.map(([id]) => id));
 for (const [moduleId] of modules) {
