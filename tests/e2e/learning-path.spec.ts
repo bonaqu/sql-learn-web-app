@@ -6,7 +6,7 @@ const expectNoHorizontalOverflow = async (page: import('@playwright/test').Page)
   expect(overflow).toBe(false);
 };
 
-test('desktop adaptive learning path builds a session and opens a task', async ({ page }, testInfo) => {
+test('desktop adaptive learning path builds a session and explains readiness evidence', async ({ page }, testInfo) => {
   await authenticatePage(page, 'desktop-path');
   await page.route('**/api/mentor', async route => {
     await route.fulfill({
@@ -35,7 +35,15 @@ test('desktop adaptive learning path builds a session and opens a task', async (
   await learningPath.locator('.roadmap-section').scrollIntoViewIfNeeded();
   await expect(learningPath.getByRole('heading', { name: 'Карта доказательств' })).toBeVisible();
   expect(await learningPath.locator('.module-node').count()).toBeGreaterThanOrEqual(6);
-  await page.screenshot({ path: testInfo.outputPath('desktop-learning-roadmap.png') });
+
+  const explainer = learningPath.getByTestId('readiness-explainer');
+  await expect(explainer).toBeVisible();
+  await explainer.getByRole('button', { name: /Как считается readiness/i }).click();
+  await expect(explainer.getByText(/Expired и abandoned attempts/)).toBeVisible();
+  await expect(explainer.locator('.readiness-evidence-grid article')).toHaveCount(5);
+  await expect(explainer.getByText(/вес 55/)).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath('desktop-readiness-explainer.png') });
 
   await learningPath.locator('.session-list > button').first().click();
   await expect(learningPath).toBeHidden();
@@ -43,7 +51,7 @@ test('desktop adaptive learning path builds a session and opens a task', async (
   await expect(page.locator('.editor-panel')).toBeVisible();
 });
 
-test('mobile adaptive learning path remains usable and responsive', async ({ page }, testInfo) => {
+test('mobile adaptive learning path keeps readiness explanation responsive', async ({ page }, testInfo) => {
   await authenticatePage(page, 'mobile-path');
   await page.goto('./');
   await page.getByTestId('learning-path-mobile-trigger').click();
@@ -60,9 +68,12 @@ test('mobile adaptive learning path remains usable and responsive', async ({ pag
 
   await learningPath.locator('.roadmap-section').scrollIntoViewIfNeeded();
   await expect(learningPath.getByRole('heading', { name: 'Карта доказательств' })).toBeVisible();
-  await expect(learningPath.locator('.phase-card').first()).toBeVisible();
+  const explainer = learningPath.getByTestId('readiness-explainer');
+  await explainer.getByRole('button', { name: /Как считается readiness/i }).click();
+  await expect(explainer.locator('.readiness-evidence-grid article')).toHaveCount(5);
+  await expect(explainer.getByText(/Неприменимый capstone/)).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({ path: testInfo.outputPath('mobile-learning-roadmap.png') });
+  await page.screenshot({ path: testInfo.outputPath('mobile-readiness-explainer.png'), fullPage: true });
 
   await learningPath.getByRole('button', { name: 'Закрыть учебный путь' }).click();
   await expect(learningPath).toBeHidden();

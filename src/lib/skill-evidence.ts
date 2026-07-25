@@ -8,13 +8,24 @@ import type { AssessmentReport } from './assessment';
 import {
   bestCheckpointReport,
   checkpointPassed,
+  legacyCheckpointPassed,
   type CheckpointReport
 } from './checkpoints';
 import type { CurriculumProgressV1 } from './curriculum-progress';
 import { moduleMastery, phaseDefinitions } from './learning-path';
 import type { Progress } from './progress';
+import {
+  bestCompletedModuleAssessmentScore,
+  bestCompletedModuleCheckpointScore,
+  completedAssessmentReports,
+  completedCheckpointReports,
+  normalizedEvidenceScore,
+  READINESS_POLICY,
+  type ReadinessEvidenceKind,
+  type ReadinessEvidenceSource
+} from './readiness-policy';
 
-export type EvidenceKind = 'lesson' | 'practice' | 'checkpoint' | 'assessment' | 'project';
+export type EvidenceKind = ReadinessEvidenceKind;
 export type RecommendedEvidenceAction = EvidenceKind | 'review';
 
 export type EvidenceMetric = {
@@ -24,6 +35,7 @@ export type EvidenceMetric = {
   total: number;
   available: boolean;
   sourceIds: string[];
+  sourceKinds: ReadinessEvidenceSource[];
 };
 
 export type ModuleSkillEvidence = {
@@ -44,6 +56,7 @@ export type PhaseSkillEvidence = {
   readiness: number;
   checkpointId: string;
   checkpointPassed: boolean;
+  checkpointSource: 'report' | 'legacy' | 'none';
   completed: boolean;
   blockers: string[];
   completionCriteria: string[];
@@ -60,34 +73,23 @@ function clamp(value: number) {
   return Math.min(100, Math.max(0, Math.round(value)));
 }
 
-function bestModuleAssessmentScore(moduleId: string, reports: AssessmentReport[]) {
-  return reports.reduce((best, report) => {
-    const moduleScore = report.moduleScores.find(item => item.module === moduleId)?.score || 0;
-    return Math.max(best, moduleScore);
-  }, 0);
-}
-
-function bestModuleCheckpointScore(moduleId: string, reports: CheckpointReport[]) {
-  return reports.reduce((best, report) => {
-    const moduleScore = report.moduleScores.find(item => item.module === moduleId)?.score || 0;
-    return Math.max(best, moduleScore);
-  }, 0);
-}
-
 function metric(
   kind: EvidenceKind,
   score: number,
   completed: number,
   total: number,
-  sourceIds: string[]
+  available: boolean,
+  sourceIds: string[],
+  sourceKinds: ReadinessEvidenceSource[]
 ): EvidenceMetric {
   return {
     kind,
     score: clamp(score),
     completed,
     total,
-    available: total > 0 || sourceIds.length > 0,
-    sourceIds
+    available,
+    sourceIds: [...new Set(sourceIds)],
+    sourceKinds: [...new Set(sourceKinds)]
   };
 }
 
@@ -97,9 +99,12 @@ export function buildSkillEvidenceGraph(
   assessmentReports: AssessmentReport[],
   checkpointReports: CheckpointReport[]
 ): SkillEvidenceGraph {
+  const thresholds = READINESS_POLICY.thresholds;
   const mastery = moduleMastery(progress);
   const completedLessons = new Set(curriculum.completedLessons);
   const completedProjects = new Set(curriculum.completedProjects);
+  const validAssessmentReports = completedAssessmentReports(assessmentReports);
+  const validCheckpointReports = completedCheckpointReports(checkpointReports);
 
   const moduleEvidence = modules.map(([moduleId, title]) => {
     const masteryState = mastery.find(item => item.id === moduleId);
@@ -110,12 +115,25 @@ export function buildSkillEvidenceGraph(
     const moduleCheckpoints = curriculumCheckpoints.filter(checkpoint =>
       checkpoint.moduleIds.some(candidate => candidate === moduleId)
     );
-    const passedModuleCheckpoints = moduleCheckpoints.filter(checkpoint =>
-      checkpointPassed(checkpoint.id, progress, checkpointReports)
+
+    const directCheckpointReports = validCheckpointReports.filter(report =>
+      report.moduleScores.some(item => item.module === moduleId)
     );
-    const checkpointScore = bestModuleCheckpointScore(moduleId, checkpointReports);
-    const assessmentScore = bestModuleAssessmentScore(moduleId, assessmentReports);
-    const assessmentSourceIds = assessmentReports
+    const directPassedCheckpoints = moduleCheckpoints.filter(checkpoint =>
+      Boolean(bestCheckpointReport(checkpoint.id, validCheckpointReports)?.passed)
+    );
+    const legacyPassedCheckpoints = moduleCheckpoints.filter(checkpoint =>
+      !directPassedCheckpoints.some(item => item.id === checkpoint.id)
+      && legacyCheckpointPassed(checkpoint.id, progress)
+    );
+    const checkpointScore = Math.max(
+      bestCompletedModuleCheckpointScore(validCheckpointReports, moduleId),
+      ...legacyPassedCheckpoints.map(checkpoint => checkpoint.passingScore),
+      0
+    );
+
+    const assessmentScore = bestCompletedModuleAssessmentScore(validAssessmentReports, moduleId);
+    const assessmentSourceIds = validAssessmentReports
       .filter(report => report.moduleScores.some(item => item.module === moduleId))
       .map(report => report.id);
     const relatedProjects = capstoneProjects.filter(project => project.moduleIds.some(candidate => candidate === moduleId));
@@ -129,65 +147,82 @@ export function buildSkillEvidenceGraph(
       ? completedRelatedProjects.length / relatedProjects.length * 100
       : 0;
 
+    const checkpointSourceIds = [
+      ...directCheckpointReports.map(report => report.id),
+      ...legacyPassedCheckpoints.map(checkpoint => `legacy:${checkpoint.id}`)
+    ];
+    const checkpointSourceKinds: ReadinessEvidenceSource[] = [
+      ...(directCheckpointReports.length ? ['checkpoint-report' as const] : []),
+      ...(legacyPassedCheckpoints.length ? ['legacy-checkpoint-task' as const] : [])
+    ];
+
     const evidence: Record<EvidenceKind, EvidenceMetric> = {
       lesson: metric(
         'lesson',
         lessonScore,
         completedModuleLessons.length,
         moduleLessons.length,
-        completedModuleLessons.map(lesson => lesson.id)
+        moduleLessons.length > 0,
+        completedModuleLessons.map(lesson => lesson.id),
+        completedModuleLessons.length ? ['lesson-progress'] : []
       ),
       practice: metric(
         'practice',
         practiceScore,
         solvedTasks.length,
         moduleTasks.length,
-        solvedTasks.map(task => task.id)
+        moduleTasks.length > 0,
+        solvedTasks.map(task => task.id),
+        solvedTasks.length ? ['task-progress'] : []
       ),
       checkpoint: metric(
         'checkpoint',
         checkpointScore,
-        passedModuleCheckpoints.length,
+        directPassedCheckpoints.length + legacyPassedCheckpoints.length,
         moduleCheckpoints.length,
-        checkpointReports
-          .filter(report => report.moduleScores.some(item => item.module === moduleId))
-          .map(report => report.id)
+        moduleCheckpoints.length > 0,
+        checkpointSourceIds,
+        checkpointSourceKinds
       ),
       assessment: metric(
         'assessment',
         assessmentScore,
-        assessmentSourceIds.length,
-        assessmentSourceIds.length ? assessmentSourceIds.length : 1,
-        assessmentSourceIds
+        assessmentSourceIds.length ? 1 : 0,
+        1,
+        true,
+        assessmentSourceIds,
+        assessmentSourceIds.length ? ['assessment-report'] : []
       ),
       project: metric(
         'project',
         projectScore,
         completedRelatedProjects.length,
         relatedProjects.length,
-        completedRelatedProjects.map(project => project.id)
+        relatedProjects.length > 0,
+        completedRelatedProjects.map(project => project.id),
+        completedRelatedProjects.length ? ['project-progress'] : []
       )
     };
 
-    const readiness = clamp(
-      evidence.practice.score * 0.55
-      + evidence.lesson.score * 0.1
-      + evidence.checkpoint.score * 0.15
-      + evidence.assessment.score * 0.15
-      + evidence.project.score * 0.05
+    const readiness = normalizedEvidenceScore(
+      (Object.keys(evidence) as EvidenceKind[]).map(kind => ({
+        kind,
+        score: evidence[kind].score,
+        applicable: evidence[kind].available
+      }))
     );
     const blockers: string[] = [];
-    if (evidence.lesson.score < 100) blockers.push('Не завершены структурированные уроки');
-    if (evidence.practice.score < 55) blockers.push('Недостаточно самостоятельной практики');
-    if (moduleCheckpoints.length && evidence.checkpoint.completed < moduleCheckpoints.length) blockers.push('Нет passed checkpoint evidence');
-    if (assessmentScore < 60) blockers.push('Нет устойчивого assessment evidence');
+    if (evidence.lesson.available && evidence.lesson.score < 100) blockers.push('Не завершены структурированные уроки');
+    if (evidence.practice.available && evidence.practice.score < thresholds.curriculumPrerequisite) blockers.push('Недостаточно самостоятельной практики');
+    if (evidence.checkpoint.available && evidence.checkpoint.completed < evidence.checkpoint.total) blockers.push('Нет passed checkpoint evidence');
+    if (evidence.assessment.available && assessmentScore < thresholds.assessmentEvidence) blockers.push('Нет устойчивого completed assessment evidence');
 
     let recommendedAction: RecommendedEvidenceAction = 'review';
     let recommendedTargetId: string | null = null;
     const nextLesson = moduleLessons.find(lesson => !completedLessons.has(lesson.id));
     const nextTask = masteryState?.recommendedTask || null;
     const nextCheckpoint = moduleCheckpoints.find(checkpoint =>
-      !checkpointPassed(checkpoint.id, progress, checkpointReports)
+      !checkpointPassed(checkpoint.id, progress, validCheckpointReports)
     );
     const nextProject = relatedProjects.find(project => !completedProjects.has(project.id));
 
@@ -200,7 +235,7 @@ export function buildSkillEvidenceGraph(
     } else if (nextCheckpoint) {
       recommendedAction = 'checkpoint';
       recommendedTargetId = nextCheckpoint.id;
-    } else if (assessmentScore < 70) {
+    } else if (assessmentScore < thresholds.assessmentRecommendation) {
       recommendedAction = 'assessment';
     } else if (nextProject) {
       recommendedAction = 'project';
@@ -223,22 +258,25 @@ export function buildSkillEvidenceGraph(
     const phaseModules = moduleEvidence.filter(item => definition.moduleIds.some(id => id === item.moduleId));
     const checkpoint = curriculumCheckpoints[index];
     if (!checkpoint) throw new Error(`Missing checkpoint definition for phase ${definition.id}`);
-    const report = bestCheckpointReport(checkpoint.id, checkpointReports);
-    const passed = checkpointPassed(checkpoint.id, progress, checkpointReports);
+    const report = bestCheckpointReport(checkpoint.id, validCheckpointReports);
+    const reportPassed = Boolean(report?.passed);
+    const legacyPassed = !reportPassed && legacyCheckpointPassed(checkpoint.id, progress);
+    const passed = reportPassed || legacyPassed;
+    const checkpointSource = reportPassed ? 'report' : legacyPassed ? 'legacy' : 'none';
     const readiness = clamp(
       phaseModules.reduce((sum, item) => sum + item.readiness, 0) / Math.max(1, phaseModules.length)
     );
     const blockers: string[] = [];
     if (index > 0) {
       const previousCheckpoint = curriculumCheckpoints[index - 1];
-      if (previousCheckpoint && !checkpointPassed(previousCheckpoint.id, progress, checkpointReports)) {
+      if (previousCheckpoint && !checkpointPassed(previousCheckpoint.id, progress, validCheckpointReports)) {
         blockers.push(`Не пройден предыдущий checkpoint: ${previousCheckpoint.title}`);
       }
     }
-    if (phaseModules.some(item => item.evidence.practice.score < 48)) {
-      blockers.push('Есть модуль с practice mastery ниже 48%');
+    if (phaseModules.some(item => item.evidence.practice.score < thresholds.phasePracticeCompletion)) {
+      blockers.push(`Есть модуль с practice mastery ниже ${thresholds.phasePracticeCompletion}%`);
     }
-    if (!passed) blockers.push('Нет passed checkpoint report');
+    if (!passed) blockers.push('Нет passed checkpoint evidence');
 
     return {
       phaseId: definition.id,
@@ -247,13 +285,18 @@ export function buildSkillEvidenceGraph(
       readiness,
       checkpointId: checkpoint.id,
       checkpointPassed: passed,
-      completed: passed && phaseModules.every(item => item.evidence.practice.score >= 48),
+      checkpointSource,
+      completed: passed && phaseModules.every(item => item.evidence.practice.score >= thresholds.phasePracticeCompletion),
       blockers,
       completionCriteria: [
-        'Practice mastery каждого модуля не ниже 48%',
+        `Practice mastery каждого модуля не ниже ${thresholds.phasePracticeCompletion}%`,
         `Checkpoint score не ниже ${checkpoint.passingScore}%`,
-        'Отчёт сохранён как evidence и доступен после синхронизации',
-        report ? `Текущий лучший checkpoint score: ${report.bestScore}%` : 'Checkpoint ещё не выполнялся'
+        checkpointSource === 'report'
+          ? 'Источник: completed checkpoint report, синхронизируемый между устройствами'
+          : checkpointSource === 'legacy'
+            ? 'Источник: migrated legacy task evidence; рекомендуется подтвердить новым report'
+            : 'Checkpoint evidence ещё не получено',
+        report ? `Текущий лучший checkpoint score: ${report.bestScore}%` : 'Новый executable report отсутствует'
       ]
     } satisfies PhaseSkillEvidence;
   });
