@@ -316,6 +316,7 @@ export function buildFirstWeekPlan(profile: LearnerOnboardingProfile): WeekPlanI
     ? profile.placement.focusModuleIds
     : ['sql-thinking', 'select', 'filtering'];
   const kinds = weekKinds(profile, selectedDays.length);
+  const goalLabel = goalOptions.find(item => item.id === profile.goal)?.title || 'SQL';
   let focusIndex = 0;
   return selectedDays.map((day, index) => {
     const kind = kinds[index];
@@ -328,7 +329,7 @@ export function buildFirstWeekPlan(profile: LearnerOnboardingProfile): WeekPlanI
       day,
       minutes: profile.dailyMinutes,
       kind,
-      title: template.title,
+      title: index === 0 ? `${goalLabel} · ${template.title}` : template.title,
       detail: template.detail,
       moduleId
     };
