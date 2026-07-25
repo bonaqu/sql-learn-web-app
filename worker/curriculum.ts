@@ -1,4 +1,5 @@
 const MAX_CURRICULUM_BYTES = 180_000;
+const MAX_ANSWERS = 220;
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{2,99}$/;
 const LESSON_PATTERN = /^lesson-[a-z0-9-]{3,80}$/;
 const PROJECT_PATTERN = /^project-[a-z0-9-]{3,80}$/;
@@ -64,7 +65,7 @@ function validIdList(value: unknown, pattern: RegExp, max: number) {
 function validAnswers(value: unknown): value is Record<string, CurriculumAnswer> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const entries = Object.entries(value);
-  if (entries.length > 120) return false;
+  if (entries.length > MAX_ANSWERS) return false;
   return entries.every(([id, raw]) => {
     if (!ID_PATTERN.test(id) || !raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
     const answer = raw as Partial<CurriculumAnswer>;

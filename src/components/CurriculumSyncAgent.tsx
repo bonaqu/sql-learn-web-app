@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { clearAuthSession, loadAuthSession } from '../lib/auth';
-import { CURRICULUM_PROGRESS_CHANGED_EVENT } from '../lib/curriculum-progress';
-import { syncCurriculumWithStatus } from '../lib/curriculum-sync';
+import {
+  CURRICULUM_PROGRESS_CHANGED_EVENT,
+  syncCurriculumWithStatus
+} from '../lib/curriculum-sync';
 
 export default function CurriculumSyncAgent() {
   const timer = useRef<number | null>(null);

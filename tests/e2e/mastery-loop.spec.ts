@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { authenticatePage } from './auth-helper';
 
 const FIRST_SOLUTION = "SELECT ticket_id, service, status FROM tickets WHERE service = 'VPN' ORDER BY ticket_id;";
@@ -11,15 +11,29 @@ async function replaceEditorSql(page: import('@playwright/test').Page, sql: stri
   await page.keyboard.insertText(sql);
 }
 
+async function solveConceptCard(card: Locator) {
+  const options = card.locator('label');
+  for (let index = 0; index < await options.count(); index += 1) {
+    await options.nth(index).click();
+    await card.getByRole('button', { name: /Проверить reasoning|Проверить ещё раз/ }).click();
+    if (await card.evaluate(element => element.classList.contains('correct'))) return;
+  }
+  throw new Error('No correct concept-check option found');
+}
+
 async function completeFirstLessonTheory(page: import('@playwright/test').Page) {
   await page.getByTestId('curriculum-trigger').click();
   const studio = page.getByRole('dialog', { name: /Curriculum Studio/i });
   await expect(studio).toBeVisible();
   const sectionButtons = studio.getByRole('button', { name: /Отметить раздел изученным/i });
   while (await sectionButtons.count()) await sectionButtons.first().click();
-  await studio.getByLabel('Описать одну строку и столбцы результата').check();
-  await studio.getByRole('button', { name: 'Проверить ответ' }).click();
-  await expect(studio.getByText('Теория пройдена · нужна практика')).toBeVisible();
+
+  const conceptPanel = studio.getByTestId('concept-check-panel');
+  const cards = conceptPanel.locator('.concept-check-card');
+  await expect(cards).toHaveCount(3);
+  for (let index = 0; index < await cards.count(); index += 1) await solveConceptCard(cards.nth(index));
+  await expect(conceptPanel).toContainText('3/3');
+  await expect(studio.getByTestId('lesson-mastery-loop')).toContainText('Реши связанную SQL-задачу');
   await studio.getByRole('button', { name: 'Закрыть Curriculum Studio' }).click();
 }
 
@@ -52,7 +66,9 @@ test('desktop mastery loop distinguishes guided success, independent retry and r
   const studio = page.getByRole('dialog', { name: /Curriculum Studio/i });
   await expect(studio.getByText('Applied mastery', { exact: true }).first()).toBeVisible();
   await expect(studio.getByTestId('lesson-mastery-loop')).toContainText('independent SQL evidence');
-  await expect(studio.getByTestId('lesson-remediation')).toContainText('Синтаксис не разобран');
+  const remediation = studio.getByTestId('lesson-remediation');
+  await expect(remediation).toContainText('SQL начинается с синтаксиса');
+  await expect(remediation).toContainText('Сначала запиши');
   await page.screenshot({ path: testInfo.outputPath('desktop-mastery-loop.png'), fullPage: true });
   await studio.getByRole('button', { name: 'Закрыть Curriculum Studio' }).click();
 

@@ -1,13 +1,11 @@
 import { loadAuthSession } from './auth';
-import {
-  CurriculumProgressV1,
-  loadCurriculumProgress,
-  mergeCurriculumProgress,
-  saveCurriculumProgress
-} from './curriculum-progress';
+import type { CurriculumProgressV1 } from './curriculum-progress';
 
 export type CurriculumSyncStatus = 'idle' | 'syncing' | 'synced' | 'offline' | 'error';
 export const CURRICULUM_SYNC_STATUS_EVENT = 'sql-academy-curriculum-sync-status';
+export const CURRICULUM_PROGRESS_CHANGED_EVENT = 'sql-academy-curriculum-progress-changed';
+
+const STORAGE_PREFIX = 'sql-academy-curriculum-progress-v1';
 
 type CloudCurriculum = {
   progress: CurriculumProgressV1 | null;
@@ -21,8 +19,145 @@ type SavedCurriculum = {
   updatedAt: string;
 };
 
+type Answer = CurriculumProgressV1['answers'][string];
+type Draft = CurriculumProgressV1['projectDrafts'][string];
+
 function emit(status: CurriculumSyncStatus, message: string) {
   window.dispatchEvent(new CustomEvent(CURRICULUM_SYNC_STATUS_EVENT, { detail: { status, message } }));
+}
+
+function now() {
+  return new Date().toISOString();
+}
+
+function ownerId() {
+  const session = loadAuthSession();
+  return session?.userId || session?.username || 'local';
+}
+
+function storageKey() {
+  return `${STORAGE_PREFIX}:${ownerId()}`;
+}
+
+function emptyProgress(): CurriculumProgressV1 {
+  return {
+    version: 1,
+    completedSections: [],
+    completedLessons: [],
+    completedProjects: [],
+    answers: {},
+    projectDrafts: {},
+    bookmark: null,
+    updatedAt: now()
+  };
+}
+
+function uniqueStrings(value: unknown, max: number) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.filter((item): item is string => typeof item === 'string' && item.length > 0 && item.length <= 100))).slice(0, max);
+}
+
+function safeTimestamp(value: unknown, fallback = now()) {
+  return typeof value === 'string' && value.length <= 80 && Number.isFinite(Date.parse(value)) ? value : fallback;
+}
+
+function sanitizeEnvelope(value: unknown): CurriculumProgressV1 {
+  const source = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Partial<CurriculumProgressV1>
+    : {};
+  const answers: Record<string, Answer> = {};
+  if (source.answers && typeof source.answers === 'object' && !Array.isArray(source.answers)) {
+    for (const [id, raw] of Object.entries(source.answers).slice(0, 220)) {
+      if (!id || id.length > 100 || !raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+      const answer = raw as Partial<Answer>;
+      const optionIndex = Number(answer.optionIndex);
+      if (!Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex > 12 || typeof answer.correct !== 'boolean') continue;
+      answers[id] = { optionIndex, correct: answer.correct, answeredAt: safeTimestamp(answer.answeredAt) };
+    }
+  }
+
+  const projectDrafts: Record<string, Draft> = {};
+  if (source.projectDrafts && typeof source.projectDrafts === 'object' && !Array.isArray(source.projectDrafts)) {
+    for (const [id, raw] of Object.entries(source.projectDrafts).slice(0, 12)) {
+      if (!id || id.length > 100 || !raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+      const draft = raw as Partial<Draft>;
+      projectDrafts[id] = {
+        sql: typeof draft.sql === 'string' ? draft.sql.slice(0, 40_000) : '',
+        notes: typeof draft.notes === 'string' ? draft.notes.slice(0, 12_000) : '',
+        completedDeliverables: uniqueStrings(draft.completedDeliverables, 24),
+        updatedAt: safeTimestamp(draft.updatedAt)
+      };
+    }
+  }
+
+  const bookmark = source.bookmark
+    && typeof source.bookmark === 'object'
+    && typeof source.bookmark.lessonId === 'string'
+    && typeof source.bookmark.sectionId === 'string'
+    ? {
+        lessonId: source.bookmark.lessonId.slice(0, 100),
+        sectionId: source.bookmark.sectionId.slice(0, 100),
+        updatedAt: safeTimestamp(source.bookmark.updatedAt)
+      }
+    : null;
+
+  return {
+    version: 1,
+    completedSections: uniqueStrings(source.completedSections, 240),
+    completedLessons: uniqueStrings(source.completedLessons, 80),
+    completedProjects: uniqueStrings(source.completedProjects, 12),
+    answers,
+    projectDrafts,
+    bookmark,
+    updatedAt: safeTimestamp(source.updatedAt)
+  };
+}
+
+function loadLocalCurriculum() {
+  try {
+    const raw = localStorage.getItem(storageKey());
+    return raw ? sanitizeEnvelope(JSON.parse(raw)) : emptyProgress();
+  } catch {
+    return emptyProgress();
+  }
+}
+
+function saveLocalCurriculum(progress: CurriculumProgressV1) {
+  const next = sanitizeEnvelope({ ...progress, updatedAt: now() });
+  localStorage.setItem(storageKey(), JSON.stringify(next));
+  window.dispatchEvent(new CustomEvent(CURRICULUM_PROGRESS_CHANGED_EVENT, { detail: next }));
+  return next;
+}
+
+function mergeCurriculum(local: CurriculumProgressV1, remote: CurriculumProgressV1) {
+  const answers = { ...local.answers };
+  for (const [id, answer] of Object.entries(remote.answers)) {
+    const current = answers[id];
+    if (!current || answer.answeredAt >= current.answeredAt || answer.correct) answers[id] = answer;
+  }
+
+  const projectDrafts = { ...local.projectDrafts };
+  for (const [id, draft] of Object.entries(remote.projectDrafts)) {
+    const current = projectDrafts[id];
+    if (!current || draft.updatedAt >= current.updatedAt) projectDrafts[id] = draft;
+  }
+
+  const bookmark = !local.bookmark
+    ? remote.bookmark
+    : !remote.bookmark
+      ? local.bookmark
+      : remote.bookmark.updatedAt >= local.bookmark.updatedAt ? remote.bookmark : local.bookmark;
+
+  return sanitizeEnvelope({
+    version: 1,
+    completedSections: [...local.completedSections, ...remote.completedSections],
+    completedLessons: [...local.completedLessons, ...remote.completedLessons],
+    completedProjects: [...local.completedProjects, ...remote.completedProjects],
+    answers,
+    projectDrafts,
+    bookmark,
+    updatedAt: local.updatedAt >= remote.updatedAt ? local.updatedAt : remote.updatedAt
+  });
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -68,27 +203,27 @@ export async function syncCurriculumProgress() {
   if (!loadAuthSession()) throw new Error('Необходим вход');
   if (!navigator.onLine) {
     emit('offline', 'Curriculum сохранён локально. Синхронизация продолжится после подключения.');
-    return { progress: loadCurriculumProgress(), changed: false, status: 'offline' as const };
+    return { progress: loadLocalCurriculum(), changed: false, status: 'offline' as const };
   }
 
   emit('syncing', 'Синхронизирую уроки и Project Lab…');
-  let local = loadCurriculumProgress();
+  let local = loadLocalCurriculum();
   let cloud = await fetchCloudCurriculum();
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const merged = mergeCurriculumProgress(local, cloud.progress || local);
+    const merged = mergeCurriculum(local, cloud.progress || local);
     const localChanged = fingerprint(local) !== fingerprint(merged);
     const remoteChanged = fingerprint(cloud.progress) !== fingerprint(merged);
 
     if (!remoteChanged && cloud.progress) {
-      const saved = localChanged ? saveCurriculumProgress(merged) : local;
+      const saved = localChanged ? saveLocalCurriculum(merged) : local;
       emit('synced', localChanged ? 'Curriculum объединён с облачной копией.' : 'Curriculum синхронизирован.');
       return { progress: saved, changed: localChanged, status: 'synced' as const };
     }
 
     try {
       await putCloudCurriculum(merged, cloud.updatedAt);
-      const saved = saveCurriculumProgress(merged);
+      const saved = saveLocalCurriculum(merged);
       emit('synced', cloud.progress ? 'Локальные и облачные изменения объединены.' : 'Curriculum сохранён в облаке.');
       return { progress: saved, changed: localChanged, status: 'synced' as const };
     } catch (reason) {

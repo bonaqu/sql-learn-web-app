@@ -1,8 +1,10 @@
 import {
   capstoneProjects,
   curriculumCheckpoints,
-  curriculumLessons
+  curriculumLessons,
+  type CurriculumLesson
 } from '../src/data/complete-curriculum.ts';
+import { lessonChecks } from '../src/data/lesson-checks.ts';
 import { modules, tasks } from '../src/data/course-catalog.ts';
 import type { AssessmentMode, AssessmentReport, AssessmentStatus } from '../src/lib/assessment.ts';
 import { CHECKPOINT_PHASE_READINESS, type CheckpointReport, type CheckpointStatus } from '../src/lib/checkpoints.ts';
@@ -15,10 +17,7 @@ import {
 } from '../src/lib/curriculum-access.ts';
 import { emptyCurriculumProgress } from '../src/lib/curriculum-progress.ts';
 import type { Progress } from '../src/lib/progress.ts';
-import {
-  normalizedEvidenceScore,
-  READINESS_POLICY
-} from '../src/lib/readiness-policy.ts';
+import { normalizedEvidenceScore, READINESS_POLICY } from '../src/lib/readiness-policy.ts';
 import { buildSkillEvidenceGraph } from '../src/lib/skill-evidence.ts';
 
 const failures: string[] = [];
@@ -40,6 +39,21 @@ function progressFor(taskIds: string[]): Progress {
     xp: tasks.filter(task => taskIds.includes(task.id)).reduce((sum, task) => sum + task.xp, 0),
     streak: taskIds.length ? 1 : 0,
     history: days.map(day => ({ day, solved: 0 }))
+  };
+}
+
+function curriculumEvidence(lessons: CurriculumLesson[], includeProjects = false) {
+  return {
+    ...emptyCurriculumProgress(),
+    completedSections: lessons.flatMap(lesson => lesson.sections.map(section => section.id)),
+    completedLessons: lessons.map(lesson => lesson.id),
+    completedProjects: includeProjects ? capstoneProjects.map(project => project.id) : [],
+    answers: Object.fromEntries(lessons.flatMap(lesson => lessonChecks(lesson).map(check => [check.id, {
+      optionIndex: check.correctIndex,
+      correct: true,
+      answeredAt: now
+    }]))),
+    updatedAt: now
   };
 }
 
@@ -149,13 +163,9 @@ assert(Boolean(moduleWithoutProject), 'Expected at least one module without caps
 
 if (moduleWithoutProject) {
   const moduleTaskIds = tasks.filter(task => task.module === moduleWithoutProject).map(task => task.id);
+  const moduleLessons = curriculumLessons.filter(lesson => lesson.module === moduleWithoutProject);
   const progress = progressFor(moduleTaskIds);
-  const curriculum = {
-    ...emptyCurriculumProgress(),
-    completedLessons: curriculumLessons
-      .filter(lesson => lesson.module === moduleWithoutProject)
-      .map(lesson => lesson.id)
-  };
+  const curriculum = curriculumEvidence(moduleLessons);
   const checkpoint = curriculumCheckpoints.find(item =>
     item.moduleIds.some(candidate => candidate === moduleWithoutProject)
   );
@@ -194,11 +204,7 @@ if (moduleWithoutProject) {
 }
 
 const allProgress = progressFor(tasks.map(task => task.id));
-const allCurriculum = {
-  ...emptyCurriculumProgress(),
-  completedLessons: curriculumLessons.map(lesson => lesson.id),
-  completedProjects: capstoneProjects.map(project => project.id)
-};
+const allCurriculum = curriculumEvidence(curriculumLessons, true);
 const allCheckpointReports = curriculumCheckpoints.map(checkpoint => checkpointReport(checkpoint.id));
 const expiredExamReadiness = calculateCompleteReadiness(
   allProgress,
@@ -249,4 +255,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Readiness policy validated: normalized weights, completed-only reports, ${modules.length} modules and ${curriculumCheckpoints.length} checkpoints.`);
+console.log(`Readiness policy validated: normalized weights, completed-only reports, ${modules.length} modules, ${curriculumLessons.length} multi-check lessons and ${curriculumCheckpoints.length} checkpoints.`);

@@ -1,5 +1,6 @@
 import { advancedCurriculumLessons } from '../src/data/advanced-curriculum.ts';
 import { curriculumLessons } from '../src/data/complete-curriculum.ts';
+import { lessonChecks } from '../src/data/lesson-checks.ts';
 import { tasks } from '../src/data/course-catalog.ts';
 import type { AssessmentReport } from '../src/lib/assessment.ts';
 import {
@@ -14,6 +15,7 @@ import type { Progress } from '../src/lib/progress.ts';
 const failures: string[] = [];
 const assert = (condition: unknown, message: string) => { if (!condition) failures.push(message); };
 const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+const answeredAt = '2026-07-25T09:30:00.000Z';
 const emptyProgress: Progress = {
   version: 4,
   completed: [],
@@ -34,7 +36,7 @@ function diagnosticReport(score: number, module: string, moduleScore: number): A
     mode: 'diagnostic',
     status: 'completed',
     startedAt: '2026-07-25T09:00:00.000Z',
-    completedAt: '2026-07-25T09:30:00.000Z',
+    completedAt: answeredAt,
     durationSeconds: 1800,
     score,
     grade: score >= 80 ? 'strong' : score >= 60 ? 'ready' : 'developing',
@@ -67,9 +69,19 @@ if (dmlLesson && coreLesson) {
   assert(taskAccess.unlocked, 'Task mastery must unlock a prerequisite');
   assert(taskAccess.bypassed.length === 0, 'Task mastery is not a diagnostic bypass');
 
-  const transactionLessonIds = curriculumLessons.filter(lesson => lesson.module === 'transactions').map(lesson => lesson.id);
-  const lessonReady = { ...emptyCurriculum, completedLessons: transactionLessonIds };
-  assert(lessonAccess(dmlLesson, emptyProgress, lessonReady, []).unlocked, 'Completed prerequisite lessons must unlock DML');
+  const transactionLessons = curriculumLessons.filter(lesson => lesson.module === 'transactions');
+  const lessonReady = {
+    ...emptyCurriculum,
+    completedSections: transactionLessons.flatMap(lesson => lesson.sections.map(section => section.id)),
+    completedLessons: transactionLessons.map(lesson => lesson.id),
+    answers: Object.fromEntries(transactionLessons.flatMap(lesson => lessonChecks(lesson).map(check => [check.id, {
+      optionIndex: check.correctIndex,
+      correct: true,
+      answeredAt
+    }]))),
+    updatedAt: answeredAt
+  };
+  assert(lessonAccess(dmlLesson, emptyProgress, lessonReady, []).unlocked, 'Completed prerequisite lessons with all concept checks must unlock DML');
 
   const weakDiagnostic = diagnosticReport(60, 'transactions', 60);
   assert(!lessonAccess(dmlLesson, emptyProgress, emptyCurriculum, [weakDiagnostic]).unlocked, 'Weak diagnostic must not unlock advanced content');
@@ -91,4 +103,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Curriculum access validated: ${advancedCurriculumLessons.length} advanced lessons, mastery ${PREREQUISITE_MASTERY}%, module bypass ${DIAGNOSTIC_MODULE_BYPASS}%, global bypass ${DIAGNOSTIC_GLOBAL_BYPASS}%.`);
+console.log(`Curriculum access validated: ${advancedCurriculumLessons.length} advanced lessons, multi-check prerequisite evidence, mastery ${PREREQUISITE_MASTERY}%, module bypass ${DIAGNOSTIC_MODULE_BYPASS}%, global bypass ${DIAGNOSTIC_GLOBAL_BYPASS}%.`);
