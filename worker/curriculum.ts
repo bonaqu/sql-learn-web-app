@@ -33,6 +33,7 @@ type CurriculumWrite = {
 };
 
 type CurriculumRow = { payload: string; updated_at: string };
+type MutationRow = { updated_at: string };
 
 const json = (data: unknown, status = 200, extraHeaders: Record<string, string> = {}) => new Response(JSON.stringify(data), {
   status,
@@ -165,21 +166,24 @@ export async function handleCurriculumRequest(request: Request, env: Cloudflare.
 
     const updatedAt = new Date().toISOString();
     if (typeof body.baseUpdatedAt === 'string') {
-      const result = await env.DB.prepare(`UPDATE curriculum_progress
+      const updated = await env.DB.prepare(`UPDATE curriculum_progress
         SET payload = ?, updated_at = ?
-        WHERE user_id = ? AND updated_at = ?`)
+        WHERE user_id = ? AND updated_at = ?
+        RETURNING updated_at`)
         .bind(serialized, updatedAt, userId, body.baseUpdatedAt)
-        .run();
-      if (!result.meta.changes) return conflict(env, userId);
-      return json({ ok: true, version: body.progress.version, updatedAt });
+        .first<MutationRow>();
+      if (!updated) return conflict(env, userId);
+      return json({ ok: true, version: body.progress.version, updatedAt: updated.updated_at });
     }
 
-    const result = await env.DB.prepare(`INSERT OR IGNORE INTO curriculum_progress(user_id, payload, updated_at)
-      VALUES(?, ?, ?)`)
+    const inserted = await env.DB.prepare(`INSERT INTO curriculum_progress(user_id, payload, updated_at)
+      VALUES(?, ?, ?)
+      ON CONFLICT(user_id) DO NOTHING
+      RETURNING updated_at`)
       .bind(userId, serialized, updatedAt)
-      .run();
-    if (!result.meta.changes) return conflict(env, userId);
-    return json({ ok: true, version: body.progress.version, updatedAt });
+      .first<MutationRow>();
+    if (!inserted) return conflict(env, userId);
+    return json({ ok: true, version: body.progress.version, updatedAt: inserted.updated_at });
   }
 
   return json({ error: 'Method not allowed' }, 405, { allow: 'GET, PUT' });
