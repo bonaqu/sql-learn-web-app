@@ -1,3 +1,4 @@
+import { capstoneContract } from '../data/capstone-contracts';
 import { capstoneProjects, curriculumLessons } from '../data/complete-curriculum';
 import {
   allKnownLessonChecks,
@@ -17,8 +18,11 @@ export interface CurriculumCheckAnswer {
 
 export interface ProjectDraft {
   sql: string;
+  files: Record<string, string>;
   notes: string;
   completedDeliverables: string[];
+  startedAt: string;
+  guidanceUses: number;
   updatedAt: string;
 }
 
@@ -83,6 +87,28 @@ function lessonComplete(
     && lessonChecksComplete(lesson, answers);
 }
 
+function defaultProjectFiles(projectId: string, legacySql = '') {
+  const contract = capstoneContract(projectId);
+  if (!contract) return {};
+  return Object.fromEntries(contract.files.map((file, index) => [
+    file.id,
+    index === 0 && legacySql.trim() ? legacySql.slice(0, 40_000) : file.starterSql.slice(0, 40_000)
+  ]));
+}
+
+function sanitizedProjectFiles(projectId: string, value: unknown, legacySql: string) {
+  const contract = capstoneContract(projectId);
+  if (!contract) return {};
+  const source = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const fallback = defaultProjectFiles(projectId, legacySql);
+  return Object.fromEntries(contract.files.map(file => [
+    file.id,
+    typeof source[file.id] === 'string' ? String(source[file.id]).slice(0, 40_000) : fallback[file.id] || ''
+  ]));
+}
+
 function sanitize(raw: unknown): CurriculumProgressV1 {
   const source = raw && typeof raw === 'object' ? raw as Partial<CurriculumProgressV1> : {};
   const lessonIds = new Set(curriculumLessons.map(lesson => lesson.id));
@@ -109,12 +135,18 @@ function sanitize(raw: unknown): CurriculumProgressV1 {
   const projectDrafts: Record<string, ProjectDraft> = {};
   if (source.projectDrafts && typeof source.projectDrafts === 'object') {
     for (const project of capstoneProjects) {
-      const draft = source.projectDrafts[project.id];
+      const draft = source.projectDrafts[project.id] as Partial<ProjectDraft> | undefined;
       if (!draft || typeof draft !== 'object') continue;
+      const legacySql = typeof draft.sql === 'string' ? draft.sql.slice(0, 40_000) : '';
+      const files = sanitizedProjectFiles(project.id, draft.files, legacySql);
+      const firstFile = capstoneContract(project.id)?.files[0]?.id;
       projectDrafts[project.id] = {
-        sql: typeof draft.sql === 'string' ? draft.sql.slice(0, 40_000) : '',
+        sql: firstFile ? files[firstFile] || legacySql : legacySql,
+        files,
         notes: typeof draft.notes === 'string' ? draft.notes.slice(0, 12_000) : '',
         completedDeliverables: uniqueKnown(draft.completedDeliverables, deliverableIds.get(project.id) || new Set()),
+        startedAt: typeof draft.startedAt === 'string' && Number.isFinite(Date.parse(draft.startedAt)) ? draft.startedAt : now(),
+        guidanceUses: Number.isInteger(draft.guidanceUses) ? Math.max(0, Math.min(1_000, Number(draft.guidanceUses))) : 0,
         updatedAt: typeof draft.updatedAt === 'string' ? draft.updatedAt : now()
       };
     }
@@ -216,21 +248,51 @@ export function setCurriculumBookmark(progress: CurriculumProgressV1, lessonId: 
   });
 }
 
+export function projectDraftFor(progress: CurriculumProgressV1, projectId: string): ProjectDraft {
+  const current = progress.projectDrafts[projectId];
+  if (current) return current;
+  const files = defaultProjectFiles(projectId);
+  const firstFile = capstoneContract(projectId)?.files[0]?.id;
+  const timestamp = now();
+  return {
+    sql: firstFile ? files[firstFile] || '' : '',
+    files,
+    notes: '',
+    completedDeliverables: [],
+    startedAt: timestamp,
+    guidanceUses: 0,
+    updatedAt: timestamp
+  };
+}
+
 export function updateProjectDraft(
   progress: CurriculumProgressV1,
   projectId: string,
-  patch: Partial<Pick<ProjectDraft, 'sql' | 'notes' | 'completedDeliverables'>>
+  patch: Partial<Pick<ProjectDraft, 'sql' | 'files' | 'notes' | 'completedDeliverables' | 'startedAt' | 'guidanceUses'>>
 ) {
   const project = capstoneProjects.find(item => item.id === projectId);
   if (!project) return progress;
-  const current = progress.projectDrafts[projectId] || { sql: '', notes: '', completedDeliverables: [], updatedAt: now() };
+  const current = projectDraftFor(progress, projectId);
   const allowed = new Set(project.deliverables.map(item => item.id));
+  const files = patch.files
+    ? sanitizedProjectFiles(projectId, patch.files, current.sql)
+    : current.files;
+  const firstFile = capstoneContract(projectId)?.files[0]?.id;
   const nextDraft: ProjectDraft = {
-    sql: typeof patch.sql === 'string' ? patch.sql.slice(0, 40_000) : current.sql,
+    sql: typeof patch.sql === 'string'
+      ? patch.sql.slice(0, 40_000)
+      : firstFile ? files[firstFile] || current.sql : current.sql,
+    files,
     notes: typeof patch.notes === 'string' ? patch.notes.slice(0, 12_000) : current.notes,
     completedDeliverables: patch.completedDeliverables
       ? uniqueKnown(patch.completedDeliverables, allowed)
       : current.completedDeliverables,
+    startedAt: typeof patch.startedAt === 'string' && Number.isFinite(Date.parse(patch.startedAt))
+      ? patch.startedAt
+      : current.startedAt,
+    guidanceUses: Number.isInteger(patch.guidanceUses)
+      ? Math.max(0, Math.min(1_000, Number(patch.guidanceUses)))
+      : current.guidanceUses,
     updatedAt: now()
   };
   return saveCurriculumProgress({
@@ -245,7 +307,7 @@ export function completeProject(progress: CurriculumProgressV1, projectId: strin
   const draft = progress.projectDrafts[projectId];
   if (!project || !draft) return progress;
   const allDeliverables = project.deliverables.every(item => draft.completedDeliverables.includes(item.id));
-  if (!allDeliverables || draft.sql.trim().length < 20) return progress;
+  if (!allDeliverables || Object.values(draft.files).some(sql => sql.trim().length < 10)) return progress;
   return saveCurriculumProgress({
     ...progress,
     completedProjects: Array.from(new Set([...progress.completedProjects, projectId])),
@@ -286,6 +348,6 @@ export function mergeCurriculumProgress(local: CurriculumProgressV1, remote: Cur
 
 export function curriculumCompletion(progress: CurriculumProgressV1) {
   const lessonPercent = curriculumLessons.length ? progress.completedLessons.length / curriculumLessons.length : 0;
-  const projectPercent = capstoneProjects.length ? progress.completedProjects.length / capstoneProjects.length : 0;
-  return Math.round((lessonPercent * 0.75 + projectPercent * 0.25) * 100);
+  const legacyProjectPercent = capstoneProjects.length ? progress.completedProjects.length / capstoneProjects.length : 0;
+  return Math.round((lessonPercent * 0.9 + legacyProjectPercent * 0.1) * 100);
 }
