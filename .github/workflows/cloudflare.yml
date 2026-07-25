@@ -134,6 +134,11 @@ jobs:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
         run: node scripts/cloudflare-production-smoke.mjs
 
+      - name: Smoke-test executable checkpoint report lifecycle
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+        run: node scripts/checkpoint-production-smoke.mjs
+
       - name: Upload deployment diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
@@ -157,11 +162,17 @@ jobs:
           script: |
             const success = process.env.JOB_STATUS === 'success';
             let description = success
-              ? 'Cloudflare deployed; curriculum lifecycle and cascade verified'
+              ? 'Cloudflare deployed; curriculum and checkpoint lifecycles verified'
               : 'Cloudflare deployment or production smoke failed';
             try {
               const fs = require('fs');
-              const stage = fs.readFileSync('cloudflare-smoke-stage.txt', 'utf8').trim();
+              const checkpointStage = fs.existsSync('cloudflare-checkpoint-stage.txt')
+                ? fs.readFileSync('cloudflare-checkpoint-stage.txt', 'utf8').trim()
+                : '';
+              const curriculumStage = fs.existsSync('cloudflare-smoke-stage.txt')
+                ? fs.readFileSync('cloudflare-smoke-stage.txt', 'utf8').trim()
+                : '';
+              const stage = checkpointStage || curriculumStage;
               if (!success && stage) description = `Cloudflare smoke failed at ${stage}`.slice(0, 140);
             } catch {}
             const params = {
