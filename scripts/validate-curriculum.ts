@@ -46,9 +46,12 @@ for (const [moduleId] of modules) {
 }
 
 for (const lesson of curriculumLessons) {
+  const normalizedTitle = lesson.title.trim();
+  const recognizedAcronym = /^[A-ZА-ЯЁ][A-ZА-ЯЁ0-9-]{2,}$/.test(normalizedTitle);
+
   assert(moduleIds.has(lesson.module), `${lesson.id}: unknown module ${lesson.module}`);
   assert(lesson.id.startsWith(`lesson-${lesson.module}`), `${lesson.id}: lesson ID must start with lesson-${lesson.module}`);
-  assert(lesson.title.trim().length >= 4, `${lesson.id}: title is too short`);
+  assert(normalizedTitle.length >= 4 || recognizedAcronym, `${lesson.id}: title is too short`);
   assert(lesson.minutes >= 8 && lesson.minutes <= 90, `${lesson.id}: lesson duration out of range`);
   assert(lesson.objectives.length >= 3, `${lesson.id}: requires at least 3 objectives`);
   assert(lesson.sections.length >= 2, `${lesson.id}: requires at least 2 theory sections`);
