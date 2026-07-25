@@ -23,6 +23,16 @@ function boundedInteger(value: unknown, min: number, max: number) {
   return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max;
 }
 
+function validSubmissionFiles(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const entries = Object.entries(value);
+  return entries.length >= 1
+    && entries.length <= 8
+    && entries.every(([id, sql]) => /^[a-z0-9][a-z0-9.-]{2,99}$/i.test(id)
+      && typeof sql === 'string'
+      && sql.length <= 40_000);
+}
+
 export function validCapstoneReport(report: unknown, userId?: string): report is CapstoneReport {
   if (!report || typeof report !== 'object' || Array.isArray(report)) return false;
   const value = report as Partial<CapstoneReport>;
@@ -50,6 +60,7 @@ export function validCapstoneReport(report: unknown, userId?: string): report is
     && Array.isArray(value.files)
     && value.files.length >= 1
     && value.files.length <= 8
+    && validSubmissionFiles(value.submissionFiles)
     && Array.isArray(value.checks)
     && value.checks.length >= 1
     && value.checks.length <= 64
