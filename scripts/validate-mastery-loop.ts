@@ -4,6 +4,7 @@ import {
   classifySqlAttempt,
   diagnosticForKind
 } from '../src/lib/attempt-diagnostics.ts';
+import { mergeProgress } from '../src/lib/auth.ts';
 import { emptyCurriculumProgress } from '../src/lib/curriculum-progress.ts';
 import {
   lessonMasteryState,
@@ -35,6 +36,15 @@ function taskFor(moduleId: string): SqlTask {
   return task;
 }
 
+function blankProgress(): Progress {
+  return {
+    ...defaultProgress,
+    taskStats: {},
+    completed: [],
+    history: defaultProgress.history.map(item => ({ ...item }))
+  };
+}
+
 const selectTask = taskFor('select');
 const filteringTask = taskFor('filtering');
 const aggregateTask = taskFor('aggregates');
@@ -52,7 +62,7 @@ assert(classifySqlAttempt({ task: aggregateTask, sql: 'SELECT COUNT(*)', actual:
 assert(classifySqlAttempt({ task: joinTask, sql: 'SELECT * FROM a JOIN b', actual: [{ columns: ['id'], values: [[1], [1], [2]] }], expected: [{ columns: ['id'], values: [[1], [2]] }] }).kind === 'join-cardinality', 'JOIN multiplication must be join-cardinality');
 assert(Boolean(diagnosticForKind('ordering').nextStep), 'Every diagnostic must provide a next step');
 
-let progress: Progress = { ...defaultProgress, taskStats: {}, completed: [], history: defaultProgress.history.map(item => ({ ...item })) };
+let progress = blankProgress();
 const syntaxDiagnostic = diagnosticForKind('syntax');
 progress = recordAttempt(progress, selectTask, false, { diagnostic: syntaxDiagnostic });
 assert(progress.taskStats[selectTask.id]?.errorKinds?.syntax === 1, 'Failed attempt must persist diagnostic kind');
@@ -80,6 +90,50 @@ const guidedLegacy: Progress = {
 };
 assert(!hasIndependentTaskEvidence(guidedLegacy, selectTask.id), 'Hinted legacy completion must not be assumed independent');
 
+const localProgress: Progress = {
+  ...blankProgress(),
+  completed: [selectTask.id],
+  taskStats: {
+    [selectTask.id]: {
+      attempts: 3,
+      incorrect: 2,
+      hintsUsed: 1,
+      independentPasses: 1,
+      solutionViews: 0,
+      errorKinds: { syntax: 2 },
+      lastDiagnostic: syntaxDiagnostic,
+      lastAttemptAt: '2026-07-25T17:00:00.000Z',
+      completedAt: '2026-07-25T16:00:00.000Z'
+    }
+  }
+};
+const schemaDiagnostic = diagnosticForKind('schema');
+const cloudProgress: Progress = {
+  ...blankProgress(),
+  completed: [selectTask.id],
+  taskStats: {
+    [selectTask.id]: {
+      attempts: 4,
+      incorrect: 3,
+      hintsUsed: 1,
+      independentPasses: 2,
+      solutionViews: 1,
+      lastIndependentAt: '2026-07-25T17:30:00.000Z',
+      errorKinds: { syntax: 1, schema: 3 },
+      lastDiagnostic: schemaDiagnostic,
+      lastAttemptAt: '2026-07-25T18:00:00.000Z',
+      completedAt: '2026-07-25T16:30:00.000Z'
+    }
+  }
+};
+const mergedProgress = mergeProgress(localProgress, cloudProgress);
+const mergedStats = mergedProgress.taskStats[selectTask.id];
+assert(mergedStats.independentPasses === 2, 'Cross-device merge must preserve the strongest independent evidence');
+assert(mergedStats.solutionViews === 1, 'Cross-device merge must preserve solution-view provenance');
+assert(mergedStats.errorKinds?.syntax === 2 && mergedStats.errorKinds?.schema === 3, 'Cross-device merge must preserve diagnostic counters');
+assert(mergedStats.lastDiagnostic?.kind === 'schema', 'Latest diagnostic must survive cross-device merge');
+assert(mergedStats.completedAt === '2026-07-25T16:00:00.000Z', 'Earliest completion timestamp must remain stable');
+
 const lesson = curriculumLessons[0];
 const curriculum = {
   ...emptyCurriculumProgress(),
@@ -101,12 +155,7 @@ assert(!beforePractice.mastered && beforePractice.nextAction === 'practice', 'Re
 const practiceTask = tasks.find(item => lesson.practiceTaskIds.includes(item.id));
 assert(Boolean(practiceTask), 'Lesson must have a valid practice task');
 if (practiceTask) {
-  const appliedProgress = recordAttempt(
-    { ...defaultProgress, taskStats: {}, completed: [], history: defaultProgress.history.map(item => ({ ...item })) },
-    practiceTask,
-    true,
-    { independent: true }
-  );
+  const appliedProgress = recordAttempt(blankProgress(), practiceTask, true, { independent: true });
   const applied = lessonMasteryState(lesson, appliedProgress, curriculum);
   assert(applied.mastered, 'Theory, check and independent SQL must establish applied mastery');
   assert(!applied.durableMastery && applied.nextAction === 'review', 'Applied mastery must still require retrieval review');
@@ -115,6 +164,7 @@ if (practiceTask) {
 
   const evidence = reviewEvidenceForModule(lesson.module, appliedProgress, curriculum, now);
   assert(Boolean(evidence), 'Applied lesson must introduce review evidence');
+  assert(evidence?.source === 'independent-practice', 'Newest independent practice must introduce the review card');
   const initial = initialReviewSchedule(`review-${lesson.module}`);
   const introduced = introduceReviewSchedule(initial, evidence, now);
   assert(Boolean(introduced.introducedAt), 'Evidence must introduce a review card');
@@ -138,4 +188,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Mastery Loop validated: ${curriculumLessons.length} lessons, ${tasks.length} tasks, deterministic diagnostics, independent evidence and gated retention.`);
+console.log(`Mastery Loop validated: ${curriculumLessons.length} lessons, ${tasks.length} tasks, diagnostics, independent evidence, cross-device merge and gated retention.`);
