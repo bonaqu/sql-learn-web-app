@@ -27,6 +27,13 @@ function resultSummary(blocks: SqlTable[]) {
   return `${rows} строк · ${columns}${preview ? ` · ${preview}` : ''}`;
 }
 
+function selectionsFor(lesson: CurriculumLesson, curriculum: CurriculumProgressV1) {
+  return Object.fromEntries(lessonChecks(lesson).map(check => [
+    check.id,
+    curriculum.answers[check.id]?.optionIndex ?? null
+  ]));
+}
+
 export default function ConceptCheckPanel({ lesson, curriculum, onProgress }: {
   lesson: CurriculumLesson;
   curriculum: CurriculumProgressV1;
@@ -35,15 +42,17 @@ export default function ConceptCheckPanel({ lesson, curriculum, onProgress }: {
   const checks = useMemo(() => lessonChecks(lesson), [lesson]);
   const concept = conceptsForModule(lesson.module)[0];
   const progress = lessonCheckProgress(lesson, curriculum.answers);
-  const [selections, setSelections] = useState<Record<string, number | null>>({});
+  const [selections, setSelections] = useState<Record<string, number | null>>(() => selectionsFor(lesson, curriculum));
   const [engine, setEngine] = useState<SqlJsStatic | null>(null);
   const [runningId, setRunningId] = useState<string | null>(null);
   const [counterexampleResults, setCounterexampleResults] = useState<Record<string, CounterexampleResult>>({});
 
   useEffect(() => {
-    setSelections(Object.fromEntries(checks.map(check => [check.id, curriculum.answers[check.id]?.optionIndex ?? null])));
+    setSelections(selectionsFor(lesson, curriculum));
     setCounterexampleResults({});
-  }, [checks, curriculum.answers, lesson.id]);
+    // Reset only when switching lessons. Answer updates must not overwrite a learner's next radio selection.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lesson.id]);
 
   const submit = (checkId: string) => {
     const optionIndex = selections[checkId];
