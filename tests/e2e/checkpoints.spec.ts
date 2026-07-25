@@ -32,6 +32,7 @@ async function waitForHydration(page: import('@playwright/test').Page) {
   }, AUTH_KEY), { timeout: 30_000 }).toBeGreaterThan(0);
   await expect(page.locator('.auth-loading-screen')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: /SQL, который работает/i })).toBeVisible();
+  await page.waitForTimeout(900);
 }
 
 async function replaceEditorSql(page: import('@playwright/test').Page, sql: string) {
@@ -89,6 +90,7 @@ test('desktop checkpoint resumes, scores SQL and syncs evidence to a second devi
   const secondPage = await secondContext.newPage();
   await loginPage(secondPage, auth.username);
   await secondPage.goto(page.url().split('#')[0]);
+  await waitForHydration(secondPage);
   await secondPage.getByTestId('checkpoint-trigger').click();
   await expect(secondPage.getByTestId('checkpoint-landing')).toBeVisible();
   await expect(secondPage.locator('.assessment-history-list').getByText('Checkpoint · Надёжная база').first()).toBeVisible();
