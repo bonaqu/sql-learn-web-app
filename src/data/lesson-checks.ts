@@ -16,34 +16,44 @@ export interface DiagnosticKnowledgeCheck extends KnowledgeCheck {
 }
 
 type AnswerLike = { correct?: boolean } | undefined;
+type TaggedOption = {
+  text: string;
+  feedback: string;
+  correct: boolean;
+  misconceptionId: string | null;
+};
 
 function stableHash(value: string) {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
-  return hash;
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
 
-function rotate<T>(values: T[], offset: number) {
-  if (!values.length) return values;
-  const normalized = ((offset % values.length) + values.length) % values.length;
-  return [...values.slice(normalized), ...values.slice(0, normalized)];
+function arrangeOptions(items: TaggedOption[], id: string) {
+  const correct = items.find(item => item.correct);
+  if (!correct) return items;
+  const distractors = items.filter(item => !item.correct);
+  const distractorOffset = distractors.length ? stableHash(`${id}:distractors`) % distractors.length : 0;
+  const orderedDistractors = [...distractors.slice(distractorOffset), ...distractors.slice(0, distractorOffset)];
+  const targetPosition = stableHash(`${id}:answer-position`) % items.length;
+  const result = [...orderedDistractors];
+  result.splice(targetPosition, 0, correct);
+  return result;
 }
 
-function shuffledCheck(input: {
+function buildCheck(input: {
   id: string;
   kind: ConceptCheckKind;
   concept: CurriculumConcept;
   question: string;
-  correct: { text: string; feedback: string };
-  distractors: Array<{ text: string; feedback: string; misconceptionId?: string }>;
+  options: TaggedOption[];
   explanation: string;
   remediation: string;
 }): DiagnosticKnowledgeCheck {
-  const tagged = [
-    { ...input.correct, correct: true, misconceptionId: null as string | null },
-    ...input.distractors.map(item => ({ ...item, correct: false, misconceptionId: item.misconceptionId || null }))
-  ];
-  const items = rotate(tagged, stableHash(input.id) % tagged.length);
+  const items = arrangeOptions(input.options, input.id);
   return {
     id: input.id,
     kind: input.kind,
@@ -59,26 +69,49 @@ function shuffledCheck(input: {
   };
 }
 
+function shuffledCheck(input: {
+  id: string;
+  kind: ConceptCheckKind;
+  concept: CurriculumConcept;
+  question: string;
+  correct: { text: string; feedback: string };
+  distractors: Array<{ text: string; feedback: string; misconceptionId?: string }>;
+  explanation: string;
+  remediation: string;
+}) {
+  return buildCheck({
+    ...input,
+    options: [
+      { ...input.correct, correct: true, misconceptionId: null },
+      ...input.distractors.map(item => ({ ...item, correct: false, misconceptionId: item.misconceptionId || null }))
+    ]
+  });
+}
+
 function misconceptionFeedback(item: CurriculumMisconception) {
   return `Это соответствует misconception «${item.label}». ${item.explanation} ${item.remediation}`;
 }
 
 function enhancedOriginalCheck(lesson: CurriculumLesson, concept: CurriculumConcept): DiagnosticKnowledgeCheck {
   const misconceptions = concept.misconceptions;
-  return {
-    ...lesson.check,
+  return buildCheck({
+    id: lesson.check.id,
     kind: 'explanation',
-    conceptId: concept.id,
-    required: true,
-    optionFeedback: lesson.check.options.map((_, index) => {
-      if (index === lesson.check.correctIndex) return lesson.check.explanation;
-      return misconceptionFeedback(misconceptions[index % misconceptions.length]);
+    concept,
+    question: lesson.check.question,
+    options: lesson.check.options.map((text, index) => {
+      const correct = index === lesson.check.correctIndex;
+      const misconception = misconceptions[index % misconceptions.length];
+      return {
+        text,
+        correct,
+        feedback: correct ? lesson.check.explanation : misconceptionFeedback(misconception),
+        misconceptionId: correct ? null : misconception.id
+      };
     }),
-    misconceptionIds: lesson.check.options.map((_, index) => index === lesson.check.correctIndex
-      ? null
-      : misconceptions[index % misconceptions.length].id),
+    explanation: lesson.check.explanation,
     remediation: `Вернись к mental model «${concept.title}»: ${concept.mentalModel}`
-  };
+  });
 }
 
 function diagnosisCheck(lesson: CurriculumLesson, concept: CurriculumConcept): DiagnosticKnowledgeCheck {
@@ -87,22 +120,11 @@ function diagnosisCheck(lesson: CurriculumLesson, concept: CurriculumConcept): D
     id: `${lesson.id}-diagnosis-${target.id}`,
     kind: 'diagnosis',
     concept,
-    question: `Какой вывод точнее диагностирует заблуждение «${target.label}»?`,
-    correct: {
-      text: target.explanation,
-      feedback: `Верно. ${target.remediation}`
-    },
+    question: `В уроке «${lesson.title}»: какой вывод точнее диагностирует заблуждение «${target.label}»?`,
+    correct: { text: target.explanation, feedback: `Верно. ${target.remediation}` },
     distractors: [
-      {
-        text: alternate.explanation,
-        feedback: misconceptionFeedback(alternate),
-        misconceptionId: alternate.id
-      },
-      {
-        text: third.explanation,
-        feedback: misconceptionFeedback(third),
-        misconceptionId: third.id
-      },
+      { text: alternate.explanation, feedback: misconceptionFeedback(alternate), misconceptionId: alternate.id },
+      { text: third.explanation, feedback: misconceptionFeedback(third), misconceptionId: third.id },
       {
         text: 'Проблемы нет: если SQL выполнился без exception, результат автоматически корректен.',
         feedback: `Успешное выполнение доказывает только допустимость SQL, но не mental model и не контракт результата. ${target.remediation}`,
@@ -120,11 +142,8 @@ function transferCheck(lesson: CurriculumLesson, concept: CurriculumConcept): Di
     id: `${lesson.id}-transfer-${concept.id}`,
     kind: 'transfer',
     concept,
-    question: `Какое evidence лучше всего подтверждает mental model «${concept.title}» в новой задаче?`,
-    correct: {
-      text: concept.evidence,
-      feedback: `Верно: это проверяет перенос модели, а не узнавание формулировки.`
-    },
+    question: `В уроке «${lesson.title}»: какое evidence лучше всего подтверждает mental model «${concept.title}» в новой задаче?`,
+    correct: { text: concept.evidence, feedback: 'Верно: это проверяет перенос модели, а не узнавание формулировки.' },
     distractors: [
       {
         text: 'Запрос выполнился без ошибки один раз на текущих данных.',
@@ -143,7 +162,7 @@ function transferCheck(lesson: CurriculumLesson, concept: CurriculumConcept): Di
       }
     ],
     explanation: `Transfer подтверждается наблюдаемым evidence: ${concept.evidence}`,
-    remediation: `Сформулируй проверку своими словами и воспроизведи её на другом наборе данных.`
+    remediation: 'Сформулируй проверку своими словами и воспроизведи её на другом наборе данных.'
   });
 }
 
@@ -155,10 +174,10 @@ function predictionCheck(lesson: CurriculumLesson, concept: CurriculumConcept, i
     id: `${lesson.id}-prediction-${item.id}`,
     kind: 'prediction',
     concept,
-    question: counterexample.prediction,
+    question: `В уроке «${lesson.title}»: ${counterexample.prediction}`,
     correct: {
       text: counterexample.explanation,
-      feedback: `Верно. Теперь выполни оба SQL и сравни результат, а не только текст.`
+      feedback: 'Верно. Теперь выполни оба SQL и сравни результат, а не только текст.'
     },
     distractors: [
       {
