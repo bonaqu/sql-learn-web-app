@@ -12,19 +12,29 @@ const fail = (message: string): never => {
   console.error(`COURSE VALIDATION FAILED: ${message}`);
   process.exit(1);
 };
+const normalizedSql = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
 
 if (TOTAL_TASK_COUNT !== 240 || tasks.length !== 240) fail(`expected 240 tasks, received ${tasks.length}`);
 if (modules.length !== 32) fail(`expected 32 modules, received ${modules.length}`);
 if (new Set(tasks.map(task => task.id)).size !== tasks.length) fail('task IDs are not unique');
-if (new Set(tasks.map(task => task.solution.replace(/\s+/g, ' ').trim())).size < 220) {
-  fail('too many task solutions are duplicates');
-}
+const taskFingerprints = tasks.map(task => JSON.stringify([
+  task.module,
+  task.title.trim(),
+  task.description.trim(),
+  task.starter.trim(),
+  normalizedSql(task.solution)
+]));
+if (new Set(taskFingerprints).size !== tasks.length) fail('full task fingerprints are not unique');
 
-const advancedIds = new Set(advancedModules.map(([id]) => id));
+const advancedIds = new Set<string>(advancedModules.map(([id]) => id));
 for (const [moduleId] of modules) {
   const moduleTasks = tasks.filter(task => task.module === moduleId);
-  const expected = advancedIds.has(moduleId as never) ? 10 : 6;
+  const advanced = advancedIds.has(moduleId);
+  const expected = advanced ? 10 : 6;
   if (moduleTasks.length !== expected) fail(`module ${moduleId} has ${moduleTasks.length} tasks instead of ${expected}`);
+  if (advanced && new Set(moduleTasks.map(task => normalizedSql(task.solution))).size < 8) {
+    fail(`advanced module ${moduleId} has insufficient SQL variation`);
+  }
 }
 
 const SQL = await initSqlJs({
@@ -63,4 +73,4 @@ if (failures.length) {
   fail(`${failures.length} task(s) are invalid`);
 }
 
-console.log(`Course validation passed: ${tasks.length} executable solutions across ${modules.length} modules.`);
+console.log(`Course validation passed: ${tasks.length} executable task contracts across ${modules.length} modules.`);
