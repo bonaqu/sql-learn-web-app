@@ -55,7 +55,11 @@ INSERT INTO customers VALUES
   (3,'Екатеринбург','Business',NULL,'+7-900-100-10-03'),
   (4,'Новосибирск','Retail','help@retail.example',NULL),
   (5,'Москва','Education','admin@campus.example','+7-900-100-10-05'),
-  (6,'Пермь','Retail','support@west.example',NULL);
+  (6,'Пермь','Retail','support@west.example',NULL),
+  (7,'Самара','Business','ops@volga.example','+7-900-100-10-07'),
+  (8,'Тула','Education','admin@lab.example',NULL),
+  (9,'Омск','Retail',NULL,NULL),
+  (10,'Уфа','Business','service@ural.example','+7-900-100-10-10');
 INSERT INTO tickets VALUES
   (1001,'VPN','Closed','High',1,1,85,120,'2026-07-01 08:20:00','2026-07-01 09:45:00','VPN disconnects'),
   (1002,'LMS','Open','Medium',2,2,NULL,240,'2026-07-01 10:15:00',NULL,'Course access'),
@@ -68,7 +72,9 @@ INSERT INTO tickets VALUES
   (1009,'VPN','Closed','Medium',1,4,120,240,'2026-07-05 08:05:00','2026-07-05 10:05:00','MFA loop'),
   (1010,'Email','Open','Critical',2,3,NULL,60,'2026-07-05 13:25:00',NULL,'Mail flow stopped'),
   (1011,'Access','Closed','High',4,5,95,120,'2026-07-06 09:40:00','2026-07-06 11:15:00','Permission denied'),
-  (1012,'LMS','Open','Medium',3,6,NULL,240,'2026-07-06 15:00:00',NULL,'Video playback');
+  (1012,'LMS','Open','Medium',3,6,NULL,240,'2026-07-06 15:00:00',NULL,'Video playback'),
+  (1013,'Access','Closed','Medium',5,7,300,180,'2026-07-07 08:30:00','2026-07-07 13:30:00','Delayed role approval'),
+  (1014,'Email','Closed','Low',5,8,40,120,'2026-07-07 10:10:00','2026-07-07 10:50:00','Alias configuration');
 INSERT INTO service_tree VALUES
   (1,NULL,'Digital Workplace'),
   (2,1,'Remote Access'),
@@ -102,7 +108,10 @@ INSERT INTO request_samples VALUES
   (5,'x''; DROP TABLE tickets; --',1),
   (6,'admin@example.test',0),
   (7,'UNION SELECT password FROM users',1),
-  (8,'normal search phrase',0);
+  (8,'normal search phrase',0),
+  (9,'admin'' OR ''1''=''1',1),
+  (10,'ticket status report',0),
+  (11,'0); DELETE FROM tickets; --',1);
 CREATE INDEX idx_tickets_service ON tickets(service);
 CREATE INDEX idx_tickets_engineer ON tickets(engineer_id);
 CREATE INDEX idx_tickets_priority_status ON tickets(priority, status);
