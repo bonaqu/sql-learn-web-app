@@ -48,7 +48,7 @@ async function expectNoHorizontalOverflow(page: import('@playwright/test').Page)
   expect(overflow).toBe(false);
 }
 
-test('desktop checkpoint resumes, scores SQL and syncs evidence to a second device', async ({ page, browser }, testInfo) => {
+test('desktop checkpoint retries offline evidence sync and hydrates Learning Path on a second device', async ({ page, browser }, testInfo) => {
   const auth = await authenticatePage(page, 'checkpoint');
   await page.addInitScript(({ key, value }) => localStorage.setItem(key, JSON.stringify(value)), {
     key: PROGRESS_KEY,
@@ -82,6 +82,7 @@ test('desktop checkpoint resumes, scores SQL and syncs evidence to a second devi
   await expect(page.getByTestId('checkpoint-session')).toBeVisible();
   await expect(page.getByTestId('checkpoint-session').locator('.assessment-progress-strip button').first()).toHaveClass(/correct/);
 
+  await page.context().setOffline(true);
   await page.getByTestId('checkpoint-session').getByRole('button', { name: 'Завершить досрочно' }).click();
   await expect(page.getByTestId('checkpoint-report')).toBeVisible();
   await expect(page.locator('.assessment-report-score strong')).not.toHaveText('0');
@@ -90,6 +91,15 @@ test('desktop checkpoint resumes, scores SQL and syncs evidence to a second devi
     const reports = JSON.parse(localStorage.getItem(key) || '[]');
     return Array.isArray(reports) ? reports.length : 0;
   }, reportsKey)).toBeGreaterThan(0);
+
+  await page.context().setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await expect.poll(() => page.evaluate(async () => {
+    const response = await fetch('/api/checkpoints/reports');
+    if (!response.ok) return 0;
+    const payload = await response.json() as { reports?: unknown[] };
+    return Array.isArray(payload.reports) ? payload.reports.length : 0;
+  }), { timeout: 30_000 }).toBeGreaterThan(0);
   await page.screenshot({ path: testInfo.outputPath('desktop-checkpoint-report.png'), fullPage: true });
 
   const secondContext = await browser.newContext();
@@ -97,6 +107,21 @@ test('desktop checkpoint resumes, scores SQL and syncs evidence to a second devi
   await loginPage(secondPage, auth.username);
   await secondPage.goto(page.url().split('#')[0]);
   await waitForHydration(secondPage);
+
+  await expect.poll(() => secondPage.evaluate(key => {
+    const reports = JSON.parse(localStorage.getItem(key) || '[]');
+    return Array.isArray(reports) ? reports.length : 0;
+  }, reportsKey), { timeout: 30_000 }).toBeGreaterThan(0);
+
+  await secondPage.getByTestId('learning-path-trigger').click();
+  const learningPath = secondPage.getByTestId('learning-path');
+  await expect(learningPath).toBeVisible();
+  await learningPath.locator('.roadmap-section').scrollIntoViewIfNeeded();
+  const explainer = learningPath.getByTestId('readiness-explainer');
+  await explainer.getByRole('button', { name: /Как считается readiness/i }).click();
+  await expect(explainer.getByText(/completed checkpoint report/).first()).toBeVisible();
+  await learningPath.getByRole('button', { name: 'Закрыть учебный путь' }).click();
+
   await secondPage.getByTestId('checkpoint-trigger').click();
   await expect(secondPage.getByTestId('checkpoint-landing')).toBeVisible();
   await expect(secondPage.locator('.assessment-history-list').getByText('Checkpoint · Надёжная база').first()).toBeVisible();
