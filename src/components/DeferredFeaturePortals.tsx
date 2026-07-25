@@ -86,7 +86,7 @@ export default function DeferredFeaturePortals() {
       <SyllabusPortal openRequest={syllabusRequest} />
     </Suspense>}
     {checkpointLoaded && <Suspense fallback={<div className="feature-loading" role="status">Загрузка Checkpoint Center…</div>}>
-      <CheckpointCenterPortal openRequest={checkpointRequest} />
+      <CheckpointCenterPortal openRequest={checkpointRequest || 1} />
     </Suspense>}
   </>;
 }
