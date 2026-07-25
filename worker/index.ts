@@ -1,6 +1,7 @@
 import core from './core';
 import { handleAssessmentRequest } from './assessment';
 import { authenticateSession, handleAuthRequest } from './auth';
+import { handleCheckpointRequest } from './checkpoints';
 import { handleCurriculumRequest } from './curriculum';
 
 const ALLOWED_ORIGINS = new Set([
@@ -42,12 +43,18 @@ function withCors(response: Response, origin: string) {
   });
 }
 
-function pipelineFailure(error: unknown, pathname: string, pipeline: 'auth' | 'assessment' | 'curriculum') {
+function pipelineFailure(error: unknown, pathname: string, pipeline: 'auth' | 'assessment' | 'checkpoint' | 'curriculum') {
   const requestId = crypto.randomUUID();
   const name = error instanceof Error ? error.name.slice(0, 80) : 'UnknownError';
   const message = error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240);
   console.error(`${pipeline}_pipeline_unhandled`, { requestId, pathname, name, message });
-  const label = pipeline === 'auth' ? 'Authentication' : pipeline === 'assessment' ? 'Assessment' : 'Curriculum';
+  const label = pipeline === 'auth'
+    ? 'Authentication'
+    : pipeline === 'assessment'
+      ? 'Assessment'
+      : pipeline === 'checkpoint'
+        ? 'Checkpoint'
+        : 'Curriculum';
   return new Response(JSON.stringify({
     error: `${label} operation failed`,
     code: `${pipeline.toUpperCase()}_PIPELINE_UNHANDLED`,
@@ -114,6 +121,15 @@ export default {
         return origin ? withCors(response, origin) : response;
       }
       if (assessmentResponse) return origin ? withCors(assessmentResponse, origin) : assessmentResponse;
+
+      let checkpointResponse: Response | null;
+      try {
+        checkpointResponse = await handleCheckpointRequest(request, env, auth.userId);
+      } catch (error) {
+        const response = pipelineFailure(error, url.pathname, 'checkpoint');
+        return origin ? withCors(response, origin) : response;
+      }
+      if (checkpointResponse) return origin ? withCors(checkpointResponse, origin) : checkpointResponse;
 
       let curriculumResponse: Response | null;
       try {
