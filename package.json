@@ -22,7 +22,7 @@
     "validate:bundle": "node scripts/validate-bundle.mjs",
     "check": "npm run types:worker && tsc -b --pretty false && npm run validate:course && npm run validate:path && npm run validate:assessment && npm run validate:curriculum && npm run validate:concepts && npm run validate:checkpoints && npm run validate:readiness && npm run validate:evidence-sync && npm run validate:mastery && npm run validate:onboarding && npm run validate:tools && npm run validate:access && npm run validate:deployment-smoke",
     "build": "npm run types:worker && tsc -b && vite build",
-    "test:e2e": "playwright test",
+    "test:e2e": "playwright test --project=desktop-chromium && playwright test --project=mobile-chromium",
     "preview": "vite preview",
     "deploy:cloudflare": "npm run build && wrangler deploy",
     "deploy:cloudflare:dry": "npm run build && wrangler deploy --dry-run"
