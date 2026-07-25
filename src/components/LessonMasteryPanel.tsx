@@ -35,7 +35,7 @@ export default function LessonMasteryPanel({
   const remediation = lessonRemediation(progress, lesson);
   const steps = [
     {
-      id: 'theory',
+      id: 'study',
       title: 'Понять модель',
       detail: `${mastery.sectionsCompleted}/${mastery.sectionsTotal} раздела`,
       done: mastery.theoryComplete,
