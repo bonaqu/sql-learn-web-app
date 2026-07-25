@@ -228,7 +228,7 @@ patch('src/components/AssessmentCenterPortal.tsx',
 'assessment mode icons');
 patch('src/components/AssessmentCenterPortal.tsx',
 `            : <div className="assessment-locked"><LockKeyhole /><span>Нужно ещё {eligibility.missingCompleted} задач и {eligibility.missingModules} модулей</span></div>}`, 
-`            : <div className="assessment-locked"><LockKeyhole /><span>Нужно ещё {eligibility.missingCompleted} задач, {eligibility.missingModules} модулей{eligibility.missingRequiredModules.length ? ` · prerequisites: ${eligibility.missingRequiredModules.length}` : ''}</span></div>}`,
+`            : <div className="assessment-locked"><LockKeyhole /><span>Нужно ещё {eligibility.missingCompleted} задач, {eligibility.missingModules} модулей{eligibility.missingRequiredModules.length ? ' · prerequisites: ' + eligibility.missingRequiredModules.length : ''}</span></div>}`,
 'assessment prerequisite message');
 
 patch('scripts/validate-assessment.ts',
@@ -273,7 +273,7 @@ patch('scripts/validate-assessment.ts',
 `  if (mode === 'exam') assert(first.every(task => task.mode !== 'lesson' && task.mode !== 'puzzle'), 'exam: invalid task mode');
 }`,
 `  if (mode === 'exam') assert(first.every(task => task.mode !== 'lesson' && task.mode !== 'puzzle'), 'exam: invalid task mode');
-  if (config.fixedTaskIds) assert(JSON.stringify(first.map(task => task.id)) === JSON.stringify(config.fixedTaskIds), `${mode}: fixed pool changed`);
+  if (config.fixedTaskIds) assert(JSON.stringify(first.map(task => task.id)) === JSON.stringify(config.fixedTaskIds), mode + ': fixed pool changed');
 }`,
 'validator fixed pools');
 
