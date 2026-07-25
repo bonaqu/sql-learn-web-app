@@ -15,10 +15,12 @@ import {
   LockKeyhole,
   Map,
   Play,
+  RefreshCw,
   Route,
   ShieldCheck,
   Target,
   Trophy,
+  Wrench,
   X
 } from 'lucide-react';
 import { curriculumCheckpoints, curriculumLessons } from '../data/complete-curriculum';
@@ -33,16 +35,27 @@ import { moduleMastery } from '../lib/learning-path';
 import { loadProgress } from '../lib/progress';
 import { useDialogFocus } from '../lib/dialog-focus';
 import LearningReportButton from './LearningReportButton';
+import { SpacedReview, SqlLearningTools } from './SyllabusLearningTools';
 import '../syllabus.css';
 import '../syllabus-readiness.css';
+import '../syllabus-tools.css';
 
-type SyllabusTab = 'map' | 'dialects' | 'exams';
+type SyllabusTab = 'map' | 'review' | 'tools' | 'dialects' | 'exams';
 
 function masteryLabel(value: number) {
   if (value >= 82) return 'Освоено';
   if (value >= 55) return 'Закрепление';
   if (value > 0) return 'В работе';
   return 'Не начато';
+}
+
+function noun(count: number, one: string, few: string, many: string) {
+  const value = Math.abs(count) % 100;
+  const last = value % 10;
+  if (value > 10 && value < 20) return many;
+  if (last === 1) return one;
+  if (last >= 2 && last <= 4) return few;
+  return many;
 }
 
 export default function SyllabusPortal({ openRequest = 0 }: { openRequest?: number }) {
@@ -111,7 +124,7 @@ export default function SyllabusPortal({ openRequest = 0 }: { openRequest?: numb
           const taskCount = tasks.filter(task => task.module === moduleId).length;
           return <article key={moduleId} className={state?.mastery && state.mastery >= 82 ? 'mastered' : ''}>
             <span className="syllabus-module-index">{String(index + 1).padStart(2, '0')}</span>
-            <div className="syllabus-module-copy"><small>{masteryLabel(state?.mastery || 0)}</small><h3>{module?.[1] || moduleId}</h3><p>{module?.[2]}</p><div><span><BookOpen />{lessonCount} урока</span><span><Code2 />{taskCount} задач</span><span><Trophy />{state?.mastery || 0}% mastery</span></div></div>
+            <div className="syllabus-module-copy"><small>{masteryLabel(state?.mastery || 0)}</small><h3>{module?.[1] || moduleId}</h3><p>{module?.[2]}</p><div><span><BookOpen />{lessonCount} {noun(lessonCount, 'урок', 'урока', 'уроков')}</span><span><Code2 />{taskCount} {noun(taskCount, 'задача', 'задачи', 'задач')}</span><span><Trophy />{state?.mastery || 0}% mastery</span></div></div>
             <div className="syllabus-module-meter"><i style={{ height: `${state?.mastery || 0}%` }} /></div>
           </article>;
         })}</div>
@@ -132,7 +145,7 @@ export default function SyllabusPortal({ openRequest = 0 }: { openRequest?: numb
         <pre><code>{activePattern.examples[dialect.id as SqlDialect]}</code></pre>
         {activePattern.notes[dialect.id] && <p><ShieldCheck />{activePattern.notes[dialect.id]}</p>}
       </article>)}</section>
-      <section className="dialect-rule"><Languages /><div><strong>Правило переноса</strong><p>Сначала переноси семантику: форму результата, NULL-поведение, конфликт ключа и transaction boundary. Синтаксис переписывается после этого.</p></div></section>
+      <section className="dialect-rule"><Languages /><div><strong>Правило переноса</strong><p>Сначала переноси семантику: форму результата, NULL-поведение, conflict key и transaction boundary. Синтаксис переписывается после этого.</p></div></section>
     </main>
   </div>;
 
@@ -140,15 +153,16 @@ export default function SyllabusPortal({ openRequest = 0 }: { openRequest?: numb
     <header className="syllabus-exam-hero"><div><small>Graded assessment</small><h1>Экзамены SQL Academy</h1><p>Три уровня проверки: входная диагностика, production-надежность и финальная смешанная готовность.</p></div><ClipboardCheck /></header>
     <div className="syllabus-exam-grid">{sqlExams.map((exam, index) => {
       const unlocked = exam.requiredModuleIds.every(moduleId => (mastery.find(item => item.id === moduleId)?.mastery || 0) >= 45);
+      const available = unlocked || exam.id === 'diagnostic';
       const score = completeReadiness.examScores[exam.id] || 0;
       const passed = score >= exam.passingScore;
-      return <article key={exam.id} className={unlocked || exam.id === 'diagnostic' ? 'unlocked' : ''}>
-        <header><span>0{index + 1}</span><div><small>{exam.durationMinutes} минут · проходной {exam.passingScore}%</small><h2>{exam.title}</h2></div>{passed ? <CheckCircle2 /> : unlocked || exam.id === 'diagnostic' ? <Gauge /> : <LockKeyhole />}</header>
+      return <article key={exam.id} className={available ? 'unlocked' : ''}>
+        <header><span>0{index + 1}</span><div><small>{exam.durationMinutes} минут · проходной {exam.passingScore}%</small><h2>{exam.title}</h2></div>{passed ? <CheckCircle2 /> : available ? <Gauge /> : <LockKeyhole />}</header>
         <p>{exam.description}</p>
         <div className="syllabus-exam-stats"><span><Code2 /><strong>{exam.taskIds.length}</strong> задач</span><span><Gauge /><strong>{score || '—'}</strong> лучший score</span></div>
         <ul>{exam.rules.map(rule => <li key={rule}><ShieldCheck />{rule}</li>)}</ul>
         {!!exam.requiredModuleIds.length && <div className="syllabus-exam-required"><strong>Prerequisites</strong><div>{exam.requiredModuleIds.map(moduleId => <span key={moduleId}>{modules.find(([id]) => id === moduleId)?.[1] || moduleId}</span>)}</div></div>}
-        <button onClick={() => { setOpen(false); window.setTimeout(() => openDeferredFeature('assessment'), 50); }}><Play />{passed ? 'Открыть отчёт или пересдать' : 'Открыть Assessment Center'}</button>
+        <button disabled={!available} onClick={() => { if (!available) return; setOpen(false); window.setTimeout(() => openDeferredFeature('assessment'), 50); }}><Play />{!available ? 'Сначала prerequisites' : passed ? 'Открыть отчёт или пересдать' : 'Открыть Assessment Center'}</button>
       </article>;
     })}</div>
     <section className={`syllabus-certificate ${completeReadiness.certificateEligible ? 'eligible' : ''}`} data-testid="readiness-certificate">
@@ -165,17 +179,29 @@ export default function SyllabusPortal({ openRequest = 0 }: { openRequest?: numb
     <LearningReportButton readiness={completeReadiness} mastery={mastery} curriculum={curriculumProgress} reports={reports} />
   </main>;
 
+  const content = tab === 'map'
+    ? mapContent
+    : tab === 'review'
+      ? <SpacedReview />
+      : tab === 'tools'
+        ? <SqlLearningTools />
+        : tab === 'dialects'
+          ? dialectContent
+          : examContent;
+
   const shell = <div ref={shellRef} tabIndex={-1} className="syllabus-shell" role="dialog" aria-modal="true" aria-labelledby="syllabus-dialog-title">
     <header className="syllabus-topbar">
       <div className="syllabus-brand"><span><GraduationCap /></span><div><strong id="syllabus-dialog-title">SQL Syllabus Center</strong><small>32 модуля · 240 задач · 5 tracks</small></div></div>
       <div className="syllabus-tabs" role="tablist" aria-label="Разделы syllabus">
-        <button role="tab" aria-selected={tab === 'map'} className={tab === 'map' ? 'active' : ''} onClick={() => setTab('map')}><Map />Карта курса</button>
-        <button role="tab" aria-selected={tab === 'dialects'} className={tab === 'dialects' ? 'active' : ''} onClick={() => setTab('dialects')}><Languages />Dialect Lab</button>
+        <button role="tab" aria-selected={tab === 'map'} className={tab === 'map' ? 'active' : ''} onClick={() => setTab('map')}><Map />Карта</button>
+        <button role="tab" aria-selected={tab === 'review'} className={tab === 'review' ? 'active' : ''} onClick={() => setTab('review')}><RefreshCw />Повторение</button>
+        <button role="tab" aria-selected={tab === 'tools'} className={tab === 'tools' ? 'active' : ''} onClick={() => setTab('tools')}><Wrench />Инструменты</button>
+        <button role="tab" aria-selected={tab === 'dialects'} className={tab === 'dialects' ? 'active' : ''} onClick={() => setTab('dialects')}><Languages />Диалекты</button>
         <button role="tab" aria-selected={tab === 'exams'} className={tab === 'exams' ? 'active' : ''} onClick={() => setTab('exams')}><ClipboardCheck />Экзамены</button>
       </div>
       <div className="syllabus-top-stats"><span><Clock3 />74 ч</span><button data-autofocus onClick={() => setOpen(false)} aria-label="Закрыть SQL Syllabus Center"><X /></button></div>
     </header>
-    {tab === 'map' ? mapContent : tab === 'dialects' ? dialectContent : examContent}
+    {content}
   </div>;
 
   return createPortal(shell, document.body);
