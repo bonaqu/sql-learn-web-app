@@ -36,8 +36,8 @@ export const sqlTracks: SqlTrack[] = [
     title: 'Support SQL',
     purpose: 'Диагностика обращений, SLA, backlog, data quality и безопасные изменения.',
     estimatedHours: 15,
-    moduleIds: ['support', 'data-quality', 'dml', 'schema-evolution', 'sql-security', 'concurrency', 'incident-investigation'],
-    outcomes: ['Считать SLA и backlog', 'Находить аномалии', 'Безопасно менять данные', 'Сохранять evidence queries', 'Понимать transaction risk']
+    moduleIds: ['schema', 'support', 'data-quality', 'dml', 'schema-evolution', 'sql-security', 'concurrency', 'incident-investigation'],
+    outcomes: ['Читать рабочую схему', 'Считать SLA и backlog', 'Находить аномалии', 'Безопасно менять данные', 'Сохранять evidence queries', 'Понимать transaction risk']
   },
   {
     id: 'analytics',
