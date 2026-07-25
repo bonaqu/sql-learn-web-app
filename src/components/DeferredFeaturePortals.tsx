@@ -12,6 +12,7 @@ const CurriculumPortal = lazy(() => import('./CurriculumPortal'));
 const SyllabusPortal = lazy(() => import('./SyllabusPortal'));
 const CheckpointCenterPortal = lazy(() => import('./CheckpointCenterPortal'));
 const OnboardingPortal = lazy(() => import('./OnboardingPortal'));
+const ONBOARDING_ASSESSMENT_INTENT_KEY = 'sql-academy-onboarding-assessment-intent-v1';
 
 function activeSessionExists(prefix: string) {
   for (let index = 0; index < localStorage.length; index += 1) {
@@ -30,6 +31,21 @@ function preload(feature: DeferredFeature) {
   if (feature === 'checkpoints') return void import('./CheckpointCenterPortal');
   if (feature === 'onboarding') return void import('./OnboardingPortal');
   return void import('./CurriculumPortal');
+}
+
+async function prepareOnboardingAssessment() {
+  if (sessionStorage.getItem(ONBOARDING_ASSESSMENT_INTENT_KEY) !== 'diagnostic') return;
+  const [assessment, path, progressStore] = await Promise.all([
+    import('../lib/assessment'),
+    import('../lib/learning-path'),
+    import('../lib/progress')
+  ]);
+  if (!assessment.loadAssessmentSession()) {
+    const progress = progressStore.loadProgress();
+    const session = assessment.createAssessmentSession('diagnostic', progress, path.overallReadiness(progress));
+    assessment.saveAssessmentSession(session);
+  }
+  sessionStorage.removeItem(ONBOARDING_ASSESSMENT_INTENT_KEY);
 }
 
 export default function DeferredFeaturePortals() {
@@ -59,8 +75,10 @@ export default function DeferredFeaturePortals() {
         setPathLoaded(true);
         setPathRequest(value => value + 1);
       } else if (feature === 'assessment') {
-        setAssessmentLoaded(true);
-        setAssessmentRequest(value => value + 1);
+        void prepareOnboardingAssessment().catch(() => undefined).finally(() => {
+          setAssessmentLoaded(true);
+          setAssessmentRequest(value => value + 1);
+        });
       } else if (feature === 'curriculum') {
         setCurriculumLoaded(true);
         setCurriculumRequest(value => value + 1);
