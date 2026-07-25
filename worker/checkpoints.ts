@@ -1,5 +1,24 @@
 type CheckpointStatus = 'completed' | 'expired' | 'abandoned';
 
+type CheckpointTaskScore = {
+  taskId: string;
+  title: string;
+  module: string;
+  correct: boolean;
+  skipped: boolean;
+  attempts: number;
+  elapsedSeconds: number;
+  score: number;
+};
+
+type CheckpointModuleScore = {
+  module: string;
+  title: string;
+  score: number;
+  correct: number;
+  total: number;
+};
+
 type CheckpointReportPayload = {
   version: 1;
   id: string;
@@ -17,8 +36,8 @@ type CheckpointReportPayload = {
   accuracy: number;
   firstAttemptRate: number;
   independence: number;
-  taskScores: unknown[];
-  moduleScores: unknown[];
+  taskScores: CheckpointTaskScore[];
+  moduleScores: CheckpointModuleScore[];
   remediationModules: string[];
 };
 
@@ -34,6 +53,8 @@ const CHECKPOINT_IDS = new Set([
 ]);
 const STATUSES = new Set<CheckpointStatus>(['completed', 'expired', 'abandoned']);
 const REPORT_ID_PATTERN = /^[a-f0-9-]{16,64}$/i;
+const USER_ID_PATTERN = /^[a-f0-9-]{16,80}$/i;
+const TASK_ID_PATTERN = /^task-[0-9]{3}$/;
 const MODULE_ID_PATTERN = /^[a-z0-9-]{2,64}$/;
 const MAX_REPORT_BYTES = 120_000;
 
@@ -65,41 +86,96 @@ function boundedInteger(value: unknown, minimum: number, maximum: number) {
 }
 
 function shortText(value: unknown, maximum: number) {
-  return typeof value === 'string' && value.length > 0 && value.length <= maximum;
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= maximum;
+}
+
+function validIsoDate(value: unknown) {
+  return shortText(value, 64) && Number.isFinite(Date.parse(value as string));
+}
+
+function uniqueStrings(values: string[]) {
+  return new Set(values).size === values.length;
+}
+
+function validTaskScore(value: unknown): value is CheckpointTaskScore {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const score = value as Partial<CheckpointTaskScore>;
+  return typeof score.taskId === 'string'
+    && TASK_ID_PATTERN.test(score.taskId)
+    && shortText(score.title, 240)
+    && typeof score.module === 'string'
+    && MODULE_ID_PATTERN.test(score.module)
+    && typeof score.correct === 'boolean'
+    && typeof score.skipped === 'boolean'
+    && !(score.correct && score.skipped)
+    && boundedInteger(score.attempts, 0, 1_000)
+    && boundedInteger(score.elapsedSeconds, 0, 86_400)
+    && boundedInteger(score.score, 0, 100)
+    && (!score.correct || (score.attempts ?? 0) >= 1)
+    && (score.correct || score.score === 0);
+}
+
+function validModuleScore(value: unknown): value is CheckpointModuleScore {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const score = value as Partial<CheckpointModuleScore>;
+  return typeof score.module === 'string'
+    && MODULE_ID_PATTERN.test(score.module)
+    && shortText(score.title, 160)
+    && boundedInteger(score.score, 0, 100)
+    && boundedInteger(score.correct, 0, 8)
+    && boundedInteger(score.total, 1, 8)
+    && (score.correct ?? 0) <= (score.total ?? 0);
 }
 
 function validReport(value: unknown): value is CheckpointReportPayload {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const report = value as Partial<CheckpointReportPayload>;
+  if (!Array.isArray(report.taskScores)
+    || report.taskScores.length < 1
+    || report.taskScores.length > 8
+    || !report.taskScores.every(validTaskScore)) return false;
+  if (!Array.isArray(report.moduleScores)
+    || report.moduleScores.length < 1
+    || report.moduleScores.length > 8
+    || !report.moduleScores.every(validModuleScore)) return false;
+  if (!Array.isArray(report.remediationModules)
+    || report.remediationModules.length > 8
+    || !report.remediationModules.every(item => typeof item === 'string' && MODULE_ID_PATTERN.test(item))) return false;
+
+  const taskIds = report.taskScores.map(item => item.taskId);
+  const moduleIds = report.moduleScores.map(item => item.module);
+  const taskModules = new Set(report.taskScores.map(item => item.module));
+  const startedAt = typeof report.startedAt === 'string' ? Date.parse(report.startedAt) : NaN;
+  const completedAt = typeof report.completedAt === 'string' ? Date.parse(report.completedAt) : NaN;
+
   return report.version === 1
     && typeof report.id === 'string'
     && REPORT_ID_PATTERN.test(report.id)
     && typeof report.userId === 'string'
-    && report.userId.length >= 16
-    && report.userId.length <= 80
+    && USER_ID_PATTERN.test(report.userId)
     && typeof report.checkpointId === 'string'
     && CHECKPOINT_IDS.has(report.checkpointId)
     && STATUSES.has(report.status as CheckpointStatus)
-    && shortText(report.startedAt, 64)
-    && shortText(report.completedAt, 64)
+    && validIsoDate(report.startedAt)
+    && validIsoDate(report.completedAt)
+    && completedAt >= startedAt
     && boundedInteger(report.durationSeconds, 0, 86_400)
     && boundedInteger(report.attemptNumber, 1, 1_000)
     && boundedInteger(report.score, 0, 100)
     && boundedInteger(report.bestScore, 0, 100)
+    && (report.bestScore ?? 0) >= (report.score ?? 0)
     && boundedInteger(report.passingScore, 50, 100)
     && typeof report.passed === 'boolean'
+    && report.passed === (report.status === 'completed' && (report.score ?? 0) >= (report.passingScore ?? 101))
     && boundedInteger(report.accuracy, 0, 100)
     && boundedInteger(report.firstAttemptRate, 0, 100)
     && boundedInteger(report.independence, 0, 100)
-    && Array.isArray(report.taskScores)
-    && report.taskScores.length >= 1
-    && report.taskScores.length <= 8
-    && Array.isArray(report.moduleScores)
-    && report.moduleScores.length >= 1
-    && report.moduleScores.length <= 8
-    && Array.isArray(report.remediationModules)
-    && report.remediationModules.length <= 8
-    && report.remediationModules.every(item => typeof item === 'string' && MODULE_ID_PATTERN.test(item));
+    && uniqueStrings(taskIds)
+    && uniqueStrings(moduleIds)
+    && report.moduleScores.every(item => taskModules.has(item.module))
+    && report.taskScores.every(item => moduleIds.includes(item.module))
+    && uniqueStrings(report.remediationModules)
+    && report.remediationModules.every(item => moduleIds.includes(item));
 }
 
 async function listReports(env: Cloudflare.Env, userId: string) {
