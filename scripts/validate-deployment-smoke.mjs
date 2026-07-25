@@ -41,8 +41,7 @@ forbidText(smoke, "writeJson('cloudflare-register.json'", 'raw registration resp
 forbidText(smoke, "writeJson('cloudflare-delete-payload.json'", 'raw delete payload write');
 forbidText(checkpointSmoke, "writeJson('cloudflare-checkpoint-register.json'", 'raw checkpoint registration response write');
 forbidText(checkpointSmoke, "writeJson('cloudflare-checkpoint-delete-payload.json'", 'raw checkpoint delete payload write');
-forbidText(checkpointSmoke, 'password: smokePassword', 'password in checkpoint diagnostic object');
-forbidText(checkpointSmoke, 'recoveryCode: recoveryCode', 'recovery code in checkpoint diagnostic object');
+forbidText(checkpointSmoke, "writeJson('cloudflare-checkpoint-auth.json'", 'raw checkpoint auth response write');
 
 if (errors.length) {
   console.error(`Deployment smoke validation failed with ${errors.length} issue(s):`);
