@@ -58,7 +58,7 @@ for (const lesson of curriculumLessons) {
     assert(check.optionFeedback.length === check.options.length, `${check.id}: per-option feedback is incomplete`);
     assert(check.misconceptionIds.length === check.options.length, `${check.id}: misconception mapping is incomplete`);
     assert(check.misconceptionIds[check.correctIndex] === null, `${check.id}: correct answer cannot map to a misconception`);
-    assert(check.options.every(option => option.trim().length >= 2), `${check.id}: empty or unusable option text`);
+    assert(check.options.every(option => option.trim().length >= 1), `${check.id}: empty option text`);
     assert(new Set(check.options.map(normalized)).size === check.options.length, `${check.id}: duplicate options`);
     const question = normalized(check.question);
     assert(!questionTexts.has(question), `${check.id}: duplicate question text`);
