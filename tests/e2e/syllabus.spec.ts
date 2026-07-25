@@ -2,6 +2,38 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { authenticatePage } from './auth-helper';
 
+const PROGRESS_KEY = 'sql-academy-progress-v4';
+
+function oneTopicEvidence() {
+  return {
+    version: 4,
+    completed: ['task-001'],
+    taskStats: {
+      'task-001': {
+        attempts: 1,
+        incorrect: 0,
+        hintsUsed: 0,
+        independentPasses: 1,
+        lastIndependentAt: '2026-01-01T00:00:00.000Z',
+        completedAt: '2026-01-01T00:00:00.000Z',
+        lastAttemptAt: '2026-01-01T00:00:00.000Z'
+      }
+    },
+    xp: 60,
+    streak: 1,
+    history: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => ({ day, solved: 0 })),
+    lastTask: 'task-001',
+    lastStudyDate: '2026-01-01'
+  };
+}
+
+async function seedOneTopic(page: import('@playwright/test').Page) {
+  await page.addInitScript(({ key, value }) => localStorage.setItem(key, JSON.stringify(value)), {
+    key: PROGRESS_KEY,
+    value: oneTopicEvidence()
+  });
+}
+
 async function expectAccessible(page: import('@playwright/test').Page) {
   const result = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
@@ -15,8 +47,9 @@ async function expectNoHorizontalOverflow(page: import('@playwright/test').Page)
   expect(overflow).toBe(false);
 }
 
-test('desktop syllabus exposes tracks review tools dialects and graded exams', async ({ page }, testInfo) => {
+test('desktop syllabus exposes tracks evidence-gated review tools dialects and graded exams', async ({ page }, testInfo) => {
   await authenticatePage(page, 'syllabus');
+  await seedOneTopic(page);
   await page.goto('./');
   await page.getByTestId('syllabus-trigger').click();
 
@@ -27,12 +60,17 @@ test('desktop syllabus exposes tracks review tools dialects and graded exams', a
   await expect(page.getByRole('heading', { name: 'Модули маршрута' })).toBeVisible();
 
   await page.getByRole('tab', { name: /Повторение/i }).click();
-  await expect(page.getByTestId('spaced-review')).toBeVisible();
-  await expect(page.getByText('32').first()).toBeVisible();
+  const review = page.getByTestId('spaced-review');
+  await expect(review).toBeVisible();
+  await expect(review).toContainText('1');
+  await expect(review).toContainText('открыто по evidence');
+  await expect(review).toContainText('31');
+  await expect(review).toContainText('тем ещё не изучено');
+  await expect(review).toContainText('independent SQL evidence');
   await page.getByTestId('reveal-review-answer').click();
   await expect(page.locator('.review-answer')).toBeVisible();
   await page.getByTestId('review-grade-good').click();
-  await expect(page.locator('.review-card-top')).toContainText('31 осталось');
+  await expect(page.locator('.review-empty')).toContainText('Карточки на сегодня закончились');
 
   await page.getByRole('tab', { name: /Инструменты/i }).click();
   await expect(page.getByTestId('learning-tools')).toBeVisible();
@@ -66,6 +104,7 @@ test('desktop syllabus exposes tracks review tools dialects and graded exams', a
 
 test('mobile syllabus tools remain usable without page overflow', async ({ page }, testInfo) => {
   await authenticatePage(page, 'syllabusmobile');
+  await seedOneTopic(page);
   await page.goto('./');
   await page.getByRole('button', { name: 'Открыть меню' }).click();
   await page.getByTestId('syllabus-trigger').click();
@@ -73,6 +112,7 @@ test('mobile syllabus tools remain usable without page overflow', async ({ page 
   await expect(page.getByRole('dialog', { name: /SQL Syllabus Center/i })).toBeVisible();
   await page.getByRole('tab', { name: /Повторение/i }).click();
   await expect(page.getByTestId('spaced-review')).toBeVisible();
+  await expect(page.getByTestId('spaced-review')).toContainText('31');
   await page.getByTestId('reveal-review-answer').click();
   await expectNoHorizontalOverflow(page);
 
