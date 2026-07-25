@@ -1,0 +1,63 @@
+.curriculum-lesson-list button.locked { opacity: .82; }
+.curriculum-lesson-list button.locked .locked-icon { color: #f59e0b; }
+.curriculum-prerequisites button { display: inline-flex; align-items: center; gap: .3rem; }
+.curriculum-prerequisites button svg { width: .78rem; }
+.curriculum-prerequisites button.missing { border-color: rgb(245 158 11 / 35%); color: #fbbf24; }
+.curriculum-prerequisites button.ready { border-color: rgb(52 211 153 / 28%); color: #6ee7b7; }
+.curriculum-diagnostic-bypass {
+  display: flex;
+  align-items: flex-start;
+  gap: .55rem;
+  margin-top: .75rem;
+  padding: .7rem;
+  border: 1px solid rgb(52 211 153 / 26%);
+  border-radius: .7rem;
+  background: rgb(6 78 59 / 15%);
+}
+.curriculum-diagnostic-bypass > svg { flex: 0 0 auto; width: 1rem; color: #34d399; }
+.curriculum-diagnostic-bypass strong,
+.curriculum-diagnostic-bypass small { display: block; }
+.curriculum-diagnostic-bypass strong { font-size: .7rem; }
+.curriculum-diagnostic-bypass small { margin-top: .15rem; color: #a7f3d0; font-size: .62rem; }
+.curriculum-access-gate {
+  display: grid;
+  justify-items: center;
+  width: min(48rem, calc(100% - 2rem));
+  margin: 1.5rem auto 4rem;
+  padding: clamp(1.25rem, 4vw, 2.5rem);
+  border: 1px solid rgb(245 158 11 / 28%);
+  border-radius: 1rem;
+  background: linear-gradient(145deg, rgb(120 53 15 / 15%), rgb(24 24 27 / 88%));
+  text-align: center;
+}
+.curriculum-access-icon { display: grid; place-items: center; width: 3.5rem; height: 3.5rem; border-radius: 1rem; background: rgb(120 53 15 / 24%); color: #f59e0b; }
+.curriculum-access-icon svg { width: 1.45rem; }
+.curriculum-access-gate > small { margin-top: 1rem; color: #f59e0b; font-size: .62rem; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; }
+.curriculum-access-gate h2 { margin: .45rem 0 .65rem; font-size: clamp(1.45rem, 4vw, 2.2rem); }
+.curriculum-access-gate > p { max-width: 42rem; margin: 0; color: #d4d4d8; line-height: 1.65; }
+.curriculum-access-thresholds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .55rem; width: 100%; margin-top: 1.25rem; }
+.curriculum-access-thresholds span { display: grid; gap: .15rem; padding: .8rem; border: 1px solid rgb(148 163 184 / 14%); border-radius: .7rem; background: #18181b; }
+.curriculum-access-thresholds strong { font-size: 1.15rem; color: #fbbf24; }
+.curriculum-access-thresholds small { color: #a1a1aa; font-size: .62rem; }
+.curriculum-missing-list { display: grid; gap: .5rem; width: 100%; margin-top: 1rem; text-align: left; }
+.curriculum-missing-list article { display: flex; align-items: flex-start; gap: .65rem; padding: .8rem; border: 1px solid rgb(245 158 11 / 18%); border-radius: .7rem; background: rgb(24 24 27 / 85%); }
+.curriculum-missing-list article > svg { flex: 0 0 auto; width: 1rem; color: #f59e0b; }
+.curriculum-missing-list strong,
+.curriculum-missing-list small { display: block; }
+.curriculum-missing-list strong { font-size: .75rem; }
+.curriculum-missing-list small { margin-top: .18rem; color: #a1a1aa; font-size: .64rem; }
+.curriculum-access-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: .55rem; margin-top: 1rem; }
+.curriculum-access-actions button { display: inline-flex; align-items: center; gap: .4rem; min-height: 2.7rem; padding: .65rem .85rem; border: 1px solid rgb(245 158 11 / 30%); border-radius: .68rem; background: #27272a; color: #fef3c7; font: inherit; font-size: .68rem; font-weight: 900; cursor: pointer; }
+.curriculum-access-actions button:last-child { border-color: rgb(139 92 246 / 32%); background: rgb(91 33 182 / 20%); color: #ddd6fe; }
+.curriculum-access-actions svg { width: .95rem; }
+.curriculum-access-note { margin-top: 1rem !important; color: #a1a1aa !important; font-size: .65rem; }
+[data-theme="light"] .curriculum-access-gate { background: #fffbeb; color: #27272a; }
+[data-theme="light"] .curriculum-access-gate > p { color: #52525b; }
+[data-theme="light"] .curriculum-access-thresholds span,
+[data-theme="light"] .curriculum-missing-list article { background: #fff; }
+[data-theme="light"] .curriculum-prerequisites button.ready { color: #047857; }
+@media (max-width: 620px) {
+  .curriculum-access-thresholds { grid-template-columns: 1fr; }
+  .curriculum-access-actions { display: grid; width: 100%; }
+  .curriculum-access-actions button { justify-content: center; width: 100%; }
+}
