@@ -44,6 +44,10 @@ export type LessonAccess = {
   bypassed: ModuleAccessEvidence[];
 };
 
+function browserCheckpointReports() {
+  return typeof localStorage === 'undefined' ? [] : loadLocalCheckpointReports();
+}
+
 function bestDiagnosticReports(reports: AssessmentReport[]) {
   return completedAssessmentReports(reports)
     .filter(report => report.mode === 'diagnostic')
@@ -55,7 +59,7 @@ export function moduleAccessEvidence(
   progress: Progress,
   curriculum: CurriculumProgressV1,
   reports: AssessmentReport[],
-  checkpointReports: CheckpointReport[] = loadLocalCheckpointReports()
+  checkpointReports: CheckpointReport[] = browserCheckpointReports()
 ): ModuleAccessEvidence {
   const mastery = moduleMastery(progress).find(item => item.id === moduleId)?.mastery || 0;
   const lessons = curriculumLessons.filter(lesson => lesson.module === moduleId);
@@ -105,7 +109,7 @@ export function lessonAccess(
   progress: Progress,
   curriculum: CurriculumProgressV1,
   reports: AssessmentReport[],
-  checkpointReports: CheckpointReport[] = loadLocalCheckpointReports()
+  checkpointReports: CheckpointReport[] = browserCheckpointReports()
 ): LessonAccess {
   const evidence = lesson.prerequisites.map(moduleId =>
     moduleAccessEvidence(moduleId, progress, curriculum, reports, checkpointReports)
@@ -123,7 +127,7 @@ export function unlockedLessons(
   progress: Progress,
   curriculum: CurriculumProgressV1,
   reports: AssessmentReport[],
-  checkpointReports: CheckpointReport[] = loadLocalCheckpointReports()
+  checkpointReports: CheckpointReport[] = browserCheckpointReports()
 ) {
   return curriculumLessons.filter(lesson =>
     lessonAccess(lesson, progress, curriculum, reports, checkpointReports).unlocked
