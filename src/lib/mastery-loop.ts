@@ -40,8 +40,9 @@ export function lessonMasteryState(
   reviewState?: ReviewState
 ): LessonMasteryState {
   const sectionsCompleted = lesson.sections.filter(section => curriculum.completedSections.includes(section.id)).length;
-  const theoryComplete = sectionsCompleted === lesson.sections.length;
-  const checkCorrect = Boolean(curriculum.answers[lesson.check.id]?.correct);
+  const validCompletedLesson = curriculum.completedLessons.includes(lesson.id);
+  const theoryComplete = validCompletedLesson || sectionsCompleted === lesson.sections.length;
+  const checkCorrect = validCompletedLesson || Boolean(curriculum.answers[lesson.check.id]?.correct);
   const independentTaskIds = lesson.practiceTaskIds.filter(taskId => hasIndependentTaskEvidence(progress, taskId));
   const applied = independentTaskIds.length > 0;
   const review = reviewState?.schedules[`review-${lesson.module}`];
