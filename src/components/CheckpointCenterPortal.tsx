@@ -86,6 +86,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
   const shellRef = useRef<HTMLDivElement>(null);
   const elapsedTicks = useRef(0);
   const persistTimer = useRef<number | null>(null);
+  const finishingRef = useRef(false);
   const progress = useMemo(() => loadProgress(), [open, session?.id, report?.id]);
   const activeTask = useMemo(() => session ? currentCheckpointTask(session) : null, [session]);
   const activeAnswer = activeTask && session ? session.answers[activeTask.id] : null;
@@ -121,7 +122,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
   }, [engine, engineError, open, session]);
 
   useEffect(() => {
-    if (!session || !activeTask) return;
+    if (!session || !activeTask || finishingRef.current) return;
     setEditorSql(session.answers[activeTask.id]?.sql || activeTask.starter);
     setResult([]);
     setRunState('idle');
@@ -148,14 +149,27 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
   }, [auth?.userId]);
 
   useEffect(() => {
-    if (open && !session) void refreshHistory();
-  }, [open, refreshHistory, session]);
+    if (open && !session && !report) void refreshHistory();
+  }, [open, refreshHistory, report, session]);
 
   const complete = useCallback(async (
     source: CheckpointSession,
     status: 'completed' | 'expired' | 'abandoned'
   ) => {
-    const completedReport = finishCheckpointSession(source, status);
+    if (finishingRef.current) return;
+    finishingRef.current = true;
+    if (persistTimer.current) {
+      window.clearTimeout(persistTimer.current);
+      persistTimer.current = null;
+    }
+    let completedReport: CheckpointReport;
+    try {
+      completedReport = finishCheckpointSession(source, status);
+    } catch (reason) {
+      finishingRef.current = false;
+      setSyncMessage(reason instanceof Error ? reason.message : 'Не удалось завершить checkpoint.');
+      return;
+    }
     setSession(null);
     setReport(completedReport);
     setHistory(loadLocalCheckpointReports(completedReport.userId));
@@ -176,21 +190,22 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
   }, []);
 
   useEffect(() => {
-    if (!session) return;
+    if (!session || finishingRef.current) return;
     setSecondsLeft(remainingCheckpointSeconds(session));
     const timer = window.setInterval(() => {
+      if (finishingRef.current) return;
       const left = remainingCheckpointSeconds(session);
       setSecondsLeft(left);
       elapsedTicks.current += 1;
-      if (elapsedTicks.current >= 5 && activeTask) {
+      if (elapsedTicks.current >= 5 && activeTask && !finishingRef.current) {
         elapsedTicks.current = 0;
         const next = updateCheckpointAnswer(session, activeTask.id, {
           elapsedSeconds: (session.answers[activeTask.id]?.elapsedSeconds || 0) + 5,
           sql: editorSql
         });
-        setSession(next);
+        if (!finishingRef.current) setSession(next);
       }
-      if (left <= 0) {
+      if (left <= 0 && !finishingRef.current) {
         window.clearInterval(timer);
         void complete(session, 'expired');
       }
@@ -199,18 +214,26 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
   }, [activeTask?.id, complete, editorSql, session?.deadlineAt, session?.id]);
 
   useEffect(() => {
-    if (!session || !activeTask) return;
+    if (!session || !activeTask || finishingRef.current) return;
     if (persistTimer.current) window.clearTimeout(persistTimer.current);
     persistTimer.current = window.setTimeout(() => {
-      setSession(updateCheckpointAnswer(session, activeTask.id, { sql: editorSql }));
+      if (!finishingRef.current) {
+        setSession(updateCheckpointAnswer(session, activeTask.id, { sql: editorSql }));
+      }
+      persistTimer.current = null;
     }, 350);
     return () => {
-      if (persistTimer.current) window.clearTimeout(persistTimer.current);
+      if (persistTimer.current) {
+        window.clearTimeout(persistTimer.current);
+        persistTimer.current = null;
+      }
     };
-  }, [editorSql]);
+  }, [activeTask?.id, editorSql, session?.id]);
 
   const start = (checkpointId: string) => {
     try {
+      finishingRef.current = false;
+      elapsedTicks.current = 0;
       const next = createCheckpointSession(checkpointId, progress, history);
       setSession(next);
       setReport(null);
@@ -226,6 +249,8 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
   const resume = () => {
     const stored = loadCheckpointSession();
     if (!stored) return;
+    finishingRef.current = false;
+    elapsedTicks.current = 0;
     setSession(stored);
     setReport(null);
     setSecondsLeft(remainingCheckpointSeconds(stored));
@@ -233,7 +258,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
   };
 
   const runSql = () => {
-    if (!engine || !session || !activeTask || !activeAnswer) return;
+    if (finishingRef.current || !engine || !session || !activeTask || !activeAnswer) return;
     const attempts = activeAnswer.attempts + 1;
     try {
       const evaluation = evaluateAssessmentSql(engine, editorSql, activeTask.solution);
@@ -265,7 +290,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
   };
 
   const skip = () => {
-    if (!session || !activeTask) return;
+    if (finishingRef.current || !session || !activeTask) return;
     const updated = updateCheckpointAnswer(session, activeTask.id, {
       sql: editorSql,
       skipped: true,
@@ -276,7 +301,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
   };
 
   const nextTask = () => {
-    if (!session) return;
+    if (finishingRef.current || !session) return;
     if (session.currentIndex >= session.taskIds.length - 1) void complete(session, 'completed');
     else setSession(advanceCheckpoint(session));
   };
