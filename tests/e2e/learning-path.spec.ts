@@ -18,26 +18,27 @@ test('desktop adaptive learning path builds a session and opens a task', async (
 
   await page.goto('./');
   await page.getByTestId('learning-path-trigger').click();
-  await expect(page.getByTestId('learning-path')).toBeVisible();
-  await expect(page.getByRole('heading', { name: /Понятный путь к рабочему SQL/ })).toBeVisible();
-  await expect(page.locator('.phase-card')).toHaveCount(8);
-  const sessionTasks = await page.locator('.session-list > button').count();
+  const learningPath = page.getByTestId('learning-path');
+  await expect(learningPath).toBeVisible();
+  await expect(learningPath.getByRole('heading', { name: /Доказуемый путь к рабочему SQL/ })).toBeVisible();
+  await expect(learningPath.locator('.phase-card')).toHaveCount(8);
+  const sessionTasks = await learningPath.locator('.session-list > button').count();
   expect(sessionTasks).toBeGreaterThanOrEqual(2);
   expect(sessionTasks).toBeLessThanOrEqual(6);
-  await expect(page.locator('.readiness-ring strong')).toHaveText('0%');
+  await expect(learningPath.locator('.readiness-ring strong')).toHaveText('0%');
 
-  await page.getByRole('button', { name: 'AI-план', exact: true }).click();
-  await expect(page.locator('.path-ai-answer')).toContainText('Персональный план');
+  await learningPath.getByRole('button', { name: 'AI-план', exact: true }).click();
+  await expect(learningPath.locator('.path-ai-answer')).toContainText('Персональный план');
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('desktop-learning-path.png') });
 
-  await page.locator('.roadmap-section').scrollIntoViewIfNeeded();
-  await expect(page.getByRole('heading', { name: 'Карта компетенций' })).toBeVisible();
-  expect(await page.locator('.module-node').count()).toBeGreaterThanOrEqual(6);
+  await learningPath.locator('.roadmap-section').scrollIntoViewIfNeeded();
+  await expect(learningPath.getByRole('heading', { name: 'Карта доказательств' })).toBeVisible();
+  expect(await learningPath.locator('.module-node').count()).toBeGreaterThanOrEqual(6);
   await page.screenshot({ path: testInfo.outputPath('desktop-learning-roadmap.png') });
 
-  await page.locator('.session-list > button').first().click();
-  await expect(page.getByTestId('learning-path')).toBeHidden();
+  await learningPath.locator('.session-list > button').first().click();
+  await expect(learningPath).toBeHidden();
   await expect(page.getByRole('heading', { name: 'Practice Mode' })).toBeVisible();
   await expect(page.locator('.editor-panel')).toBeVisible();
 });
@@ -46,22 +47,23 @@ test('mobile adaptive learning path remains usable and responsive', async ({ pag
   await authenticatePage(page, 'mobile-path');
   await page.goto('./');
   await page.getByTestId('learning-path-mobile-trigger').click();
-  await expect(page.getByTestId('learning-path')).toBeVisible();
-  await expect(page.locator('.readiness-ring')).toBeVisible();
-  await expect(page.locator('.phase-card')).toHaveCount(8);
-  await expect(page.locator('.session-list > button').first()).toBeVisible();
+  const learningPath = page.getByTestId('learning-path');
+  await expect(learningPath).toBeVisible();
+  await expect(learningPath.locator('.readiness-ring')).toBeVisible();
+  await expect(learningPath.locator('.phase-card')).toHaveCount(8);
+  await expect(learningPath.locator('.session-list > button').first()).toBeVisible();
 
-  await page.locator('.path-top-actions select').selectOption('15');
-  await expect(page.getByRole('heading', { name: /Сессия на/ })).toBeVisible();
+  await learningPath.locator('.path-top-actions select').selectOption('15');
+  await expect(learningPath.getByRole('heading', { name: /Сессия на/ })).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('mobile-learning-path.png') });
 
-  await page.locator('.roadmap-section').scrollIntoViewIfNeeded();
-  await expect(page.getByRole('heading', { name: 'Карта компетенций' })).toBeVisible();
-  await expect(page.locator('.phase-card').first()).toBeVisible();
+  await learningPath.locator('.roadmap-section').scrollIntoViewIfNeeded();
+  await expect(learningPath.getByRole('heading', { name: 'Карта доказательств' })).toBeVisible();
+  await expect(learningPath.locator('.phase-card').first()).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('mobile-learning-roadmap.png') });
 
-  await page.getByRole('button', { name: 'Закрыть учебный путь' }).click();
-  await expect(page.getByTestId('learning-path')).toBeHidden();
+  await learningPath.getByRole('button', { name: 'Закрыть учебный путь' }).click();
+  await expect(learningPath).toBeHidden();
 });
