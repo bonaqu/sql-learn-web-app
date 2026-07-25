@@ -11,6 +11,7 @@ import {
   Gauge,
   KeyRound,
   Layers3,
+  LockKeyhole,
   RefreshCw,
   ShieldAlert,
   Table2
@@ -23,7 +24,8 @@ import {
   loadReviewState,
   nextReviewAt,
   reviewStats,
-  type ReviewGrade
+  type ReviewGrade,
+  type ReviewIntroductionSource
 } from '../lib/spaced-repetition';
 
 const gradeLabels: Record<ReviewGrade, { title: string; detail: string }> = {
@@ -31,6 +33,12 @@ const gradeLabels: Record<ReviewGrade, { title: string; detail: string }> = {
   hard: { title: 'Тяжело', detail: 'короткий интервал' },
   good: { title: 'Нормально', detail: 'обычный интервал' },
   easy: { title: 'Легко', detail: 'длинный интервал' }
+};
+
+const introductionLabels: Record<ReviewIntroductionSource, string> = {
+  lesson: 'теория + knowledge check',
+  'independent-practice': 'independent SQL evidence',
+  'legacy-practice': 'migrated legacy practice'
 };
 
 export function SpacedReview() {
@@ -50,19 +58,20 @@ export function SpacedReview() {
 
   return <main className="review-studio" data-testid="spaced-review">
     <header className="learning-tool-hero">
-      <div><small>Active recall · интервальное повторение</small><h1>Review Deck</h1><p>Не перечитывай тему пассивно. Сначала воспроизведи модель по памяти, затем сравни ответ и оцени реальную сложность.</p></div>
+      <div><small>Active recall · интервальное повторение</small><h1>Review Deck</h1><p>Карточка появляется только после учебного evidence. Сначала воспроизведи модель по памяти, затем сравни ответ и оцени реальную сложность.</p></div>
       <div className="review-due-badge"><RefreshCw /><strong>{stats.due}</strong><span>карточек сегодня</span></div>
     </header>
 
     <section className="review-stat-grid" aria-label="Статистика повторения">
-      <span><BookMarked /><strong>{stats.learned}</strong><small>уже изучались</small></span>
+      <span><BookMarked /><strong>{stats.available}</strong><small>открыто по evidence</small></span>
       <span><Gauge /><strong>{stats.mature}</strong><small>интервал 21+ день</small></span>
-      <span><AlertTriangle /><strong>{stats.lapses}</strong><small>возвратов «Снова»</small></span>
-      <span><Clock3 /><strong>{next ? next.toLocaleDateString('ru-RU') : '—'}</strong><small>ближайшее повторение</small></span>
+      <span><AlertTriangle /><strong>{stats.lapses}</strong><small>remediation lapses</small></span>
+      <span><LockKeyhole /><strong>{stats.locked}</strong><small>тем ещё не изучено</small></span>
     </section>
 
     {card ? <section className="review-card" aria-live="polite">
       <div className="review-card-top"><span>{card.moduleTitle}</span><small>{due.length} осталось · повторений {schedule?.repetitions || 0}</small></div>
+      <div className="review-introduction-source"><CheckCircle2 /><span><strong>Почему карточка доступна</strong><small>{schedule?.introductionSource ? introductionLabels[schedule.introductionSource] : 'learning evidence'}</small></span></div>
       <h2>{card.prompt}</h2>
       {!revealed ? <div className="review-recall-state">
         <CircleHelp /><p>Скажи ответ вслух или сформулируй его в голове. Пример SQL открывай только после попытки.</p>
@@ -77,7 +86,7 @@ export function SpacedReview() {
           </button>)}
         </div>
       </>}
-    </section> : <section className="review-empty"><CheckCircle2 /><h2>Карточки на сегодня закончились</h2><p>{next ? `Следующее повторение: ${next.toLocaleString('ru-RU')}.` : 'Новые карточки появятся после изучения тем.'}</p></section>}
+    </section> : <section className="review-empty"><CheckCircle2 /><h2>Карточки на сегодня закончились</h2><p>{next ? `Следующее повторение: ${next.toLocaleString('ru-RU')}.` : 'Новые карточки появятся после теории или самостоятельной практики. Неизученные темы не попадают в очередь.'}</p></section>}
   </main>;
 }
 
