@@ -1,0 +1,31 @@
+name: Patch Core Task Recipes
+
+on:
+  push:
+    branches: [agent/curriculum-2-complete-syllabus]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/curriculum-2-complete-syllabus
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: node scripts/patch-core-task-recipes.mjs
+      - name: Commit patch
+        shell: bash
+        run: |
+          rm -f scripts/patch-core-task-recipes.mjs .github/workflows/patch-core-task-recipes.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Diversify core sorting grouping and subquery tasks"
+          git push origin HEAD:agent/curriculum-2-complete-syllabus
