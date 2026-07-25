@@ -24,6 +24,23 @@ CREATE TABLE tickets(
   created_at TEXT NOT NULL,
   subject TEXT NOT NULL
 );
+CREATE TABLE service_tree(
+  service_id INTEGER PRIMARY KEY,
+  parent_id INTEGER REFERENCES service_tree(service_id),
+  name TEXT NOT NULL UNIQUE
+);
+CREATE TABLE ticket_events(
+  event_id INTEGER PRIMARY KEY,
+  ticket_id INTEGER NOT NULL REFERENCES tickets(ticket_id),
+  event_type TEXT NOT NULL,
+  event_at TEXT NOT NULL,
+  payload TEXT NOT NULL
+);
+CREATE TABLE request_samples(
+  sample_id INTEGER PRIMARY KEY,
+  input_text TEXT NOT NULL,
+  risk_level INTEGER NOT NULL CHECK(risk_level IN (0, 1))
+);
 INSERT INTO engineers VALUES
   (1,'Артём','L2','Core'),
   (2,'Марина','L2','Learning'),
@@ -50,7 +67,43 @@ INSERT INTO tickets VALUES
   (1010,'Email','Open','Critical',2,3,NULL,60,'2026-07-05 13:25:00','Mail flow stopped'),
   (1011,'Access','Closed','High',4,5,95,120,'2026-07-06 09:40:00','Permission denied'),
   (1012,'LMS','Open','Medium',3,6,NULL,240,'2026-07-06 15:00:00','Video playback');
+INSERT INTO service_tree VALUES
+  (1,NULL,'Digital Workplace'),
+  (2,1,'Remote Access'),
+  (3,1,'Collaboration'),
+  (4,2,'VPN'),
+  (5,2,'VDI'),
+  (6,3,'Email'),
+  (7,3,'LMS'),
+  (8,1,'Identity'),
+  (9,8,'Access');
+INSERT INTO ticket_events VALUES
+  (1,1001,'created','2026-07-01 08:20:00','{"channel":"web","actor":"user","latency_ms":40}'),
+  (2,1001,'assigned','2026-07-01 08:25:00','{"channel":"chat","actor":"dispatcher","latency_ms":15}'),
+  (3,1001,'closed','2026-07-01 09:45:00','{"channel":"chat","actor":"engineer","latency_ms":55}'),
+  (4,1002,'created','2026-07-01 10:15:00','{"channel":"email","actor":"user","latency_ms":120}'),
+  (5,1002,'commented','2026-07-01 10:40:00','{"channel":"email","actor":"engineer","latency_ms":80}'),
+  (6,1004,'created','2026-07-02 11:35:00','{"channel":"web","actor":"monitoring","latency_ms":25}'),
+  (7,1004,'escalated','2026-07-02 11:40:00','{"channel":"chat","actor":"dispatcher","latency_ms":10}'),
+  (8,1004,'assigned','2026-07-02 11:45:00','{"channel":"chat","actor":"engineer","latency_ms":18}'),
+  (9,1004,'closed','2026-07-02 20:05:00','{"channel":"web","actor":"engineer","latency_ms":65}'),
+  (10,1005,'created','2026-07-03 07:50:00','{"channel":"email","actor":"user","latency_ms":95}'),
+  (11,1005,'closed','2026-07-03 11:00:00','{"channel":"email","actor":"engineer","latency_ms":70}'),
+  (12,1006,'created','2026-07-03 14:10:00','{"channel":"web","actor":"monitoring","latency_ms":20}'),
+  (13,1006,'escalated','2026-07-03 14:20:00','{"channel":"chat","actor":"dispatcher","latency_ms":12}'),
+  (14,1006,'closed','2026-07-03 19:40:00','{"channel":"chat","actor":"engineer","latency_ms":60}');
+INSERT INTO request_samples VALUES
+  (1,'1001',0),
+  (2,'VPN',0),
+  (3,'2026-07-01',0),
+  (4,'1 OR 1=1',1),
+  (5,'x''; DROP TABLE tickets; --',1),
+  (6,'admin@example.test',0),
+  (7,'UNION SELECT password FROM users',1),
+  (8,'normal search phrase',0);
 CREATE INDEX idx_tickets_service ON tickets(service);
 CREATE INDEX idx_tickets_engineer ON tickets(engineer_id);
 CREATE INDEX idx_tickets_priority_status ON tickets(priority, status);
+CREATE INDEX idx_ticket_events_ticket_time ON ticket_events(ticket_id, event_at, event_id);
+CREATE INDEX idx_service_tree_parent ON service_tree(parent_id);
 `;
