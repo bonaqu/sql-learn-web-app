@@ -76,6 +76,7 @@ test('desktop checkpoint resumes, scores SQL and syncs evidence to a second devi
   await expect(checkpointSession.getByTestId('checkpoint-result')).toBeVisible();
 
   const sessionKey = `sql-academy-checkpoint-session-v1:${String(auth.session.userId)}`;
+  const reportsKey = `sql-academy-checkpoint-reports-v1:${String(auth.session.userId)}`;
   await expect.poll(() => page.evaluate(key => Boolean(localStorage.getItem(key)), sessionKey)).toBe(true);
   await page.reload();
   await expect(page.getByTestId('checkpoint-session')).toBeVisible();
@@ -84,7 +85,11 @@ test('desktop checkpoint resumes, scores SQL and syncs evidence to a second devi
   await page.getByTestId('checkpoint-session').getByRole('button', { name: 'Завершить досрочно' }).click();
   await expect(page.getByTestId('checkpoint-report')).toBeVisible();
   await expect(page.locator('.assessment-report-score strong')).not.toHaveText('0');
-  await expect(page.getByText('Checkpoint report синхронизирован с аккаунтом.')).toBeVisible();
+  await expect.poll(() => page.evaluate(key => !localStorage.getItem(key), sessionKey)).toBe(true);
+  await expect.poll(() => page.evaluate(key => {
+    const reports = JSON.parse(localStorage.getItem(key) || '[]');
+    return Array.isArray(reports) ? reports.length : 0;
+  }, reportsKey)).toBeGreaterThan(0);
   await page.screenshot({ path: testInfo.outputPath('desktop-checkpoint-report.png'), fullPage: true });
 
   const secondContext = await browser.newContext();
