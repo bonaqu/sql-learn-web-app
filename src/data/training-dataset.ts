@@ -10,7 +10,8 @@ CREATE TABLE customers(
   customer_id INTEGER PRIMARY KEY,
   region TEXT NOT NULL,
   segment TEXT NOT NULL,
-  email TEXT
+  email TEXT,
+  phone TEXT
 );
 CREATE TABLE tickets(
   ticket_id INTEGER PRIMARY KEY,
@@ -22,6 +23,7 @@ CREATE TABLE tickets(
   resolution_minutes INTEGER,
   sla_minutes INTEGER NOT NULL,
   created_at TEXT NOT NULL,
+  closed_at TEXT,
   subject TEXT NOT NULL
 );
 CREATE TABLE service_tree(
@@ -48,25 +50,25 @@ INSERT INTO engineers VALUES
   (4,'София','L3','Core'),
   (5,'Олег','L2','Learning');
 INSERT INTO customers VALUES
-  (1,'Москва','Business','ops@north.example'),
-  (2,'Казань','Education','admin@campus.example'),
-  (3,'Екатеринбург','Business',NULL),
-  (4,'Новосибирск','Retail','help@retail.example'),
-  (5,'Москва','Education','admin@campus.example'),
-  (6,'Пермь','Retail','support@west.example');
+  (1,'Москва','Business','ops@north.example','+7-900-100-10-01'),
+  (2,'Казань','Education','admin@campus.example','+7-900-100-10-02'),
+  (3,'Екатеринбург','Business',NULL,'+7-900-100-10-03'),
+  (4,'Новосибирск','Retail','help@retail.example',NULL),
+  (5,'Москва','Education','admin@campus.example','+7-900-100-10-05'),
+  (6,'Пермь','Retail','support@west.example',NULL);
 INSERT INTO tickets VALUES
-  (1001,'VPN','Closed','High',1,1,85,120,'2026-07-01 08:20:00','VPN disconnects'),
-  (1002,'LMS','Open','Medium',2,2,NULL,240,'2026-07-01 10:15:00','Course access'),
-  (1003,'VPN','Closed','Low',1,3,40,240,'2026-07-02 09:00:00','Client update'),
-  (1004,'VDI','Closed','Critical',4,4,510,60,'2026-07-02 11:35:00','VDI unavailable'),
-  (1005,'Email','Closed','High',3,5,190,120,'2026-07-03 07:50:00','Mailbox quota'),
-  (1006,'VPN','Closed','Critical',2,2,330,60,'2026-07-03 14:10:00','Gateway failure'),
-  (1007,'LMS','Open','High',3,1,NULL,120,'2026-07-04 12:30:00','Assignment upload'),
-  (1008,'Access','Closed','Low',4,6,25,240,'2026-07-04 16:45:00','Role request'),
-  (1009,'VPN','Closed','Medium',1,4,120,240,'2026-07-05 08:05:00','MFA loop'),
-  (1010,'Email','Open','Critical',2,3,NULL,60,'2026-07-05 13:25:00','Mail flow stopped'),
-  (1011,'Access','Closed','High',4,5,95,120,'2026-07-06 09:40:00','Permission denied'),
-  (1012,'LMS','Open','Medium',3,6,NULL,240,'2026-07-06 15:00:00','Video playback');
+  (1001,'VPN','Closed','High',1,1,85,120,'2026-07-01 08:20:00','2026-07-01 09:45:00','VPN disconnects'),
+  (1002,'LMS','Open','Medium',2,2,NULL,240,'2026-07-01 10:15:00',NULL,'Course access'),
+  (1003,'VPN','Closed','Low',1,3,40,240,'2026-07-02 09:00:00','2026-07-02 09:40:00','Client update'),
+  (1004,'VDI','Closed','Critical',4,4,510,60,'2026-07-02 11:35:00','2026-07-02 20:05:00','VDI unavailable'),
+  (1005,'Email','Closed','High',3,5,190,120,'2026-07-03 07:50:00','2026-07-03 11:00:00','Mailbox quota'),
+  (1006,'VPN','Closed','Critical',2,2,330,60,'2026-07-03 14:10:00','2026-07-03 19:40:00','Gateway failure'),
+  (1007,'LMS','Open','High',3,1,NULL,120,'2026-07-04 12:30:00',NULL,'Assignment upload'),
+  (1008,'Access','Closed','Low',4,6,25,240,'2026-07-04 16:45:00','2026-07-04 17:10:00','Role request'),
+  (1009,'VPN','Closed','Medium',1,4,120,240,'2026-07-05 08:05:00','2026-07-05 10:05:00','MFA loop'),
+  (1010,'Email','Open','Critical',2,3,NULL,60,'2026-07-05 13:25:00',NULL,'Mail flow stopped'),
+  (1011,'Access','Closed','High',4,5,95,120,'2026-07-06 09:40:00','2026-07-06 11:15:00','Permission denied'),
+  (1012,'LMS','Open','Medium',3,6,NULL,240,'2026-07-06 15:00:00',NULL,'Video playback');
 INSERT INTO service_tree VALUES
   (1,NULL,'Digital Workplace'),
   (2,1,'Remote Access'),
