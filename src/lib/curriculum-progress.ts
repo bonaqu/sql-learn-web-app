@@ -1,4 +1,9 @@
 import { capstoneProjects, curriculumLessons } from '../data/complete-curriculum';
+import {
+  allKnownLessonChecks,
+  lessonChecks,
+  lessonChecksComplete
+} from '../data/lesson-checks';
 
 export const CURRICULUM_PROGRESS_CHANGED_EVENT = 'sql-academy-curriculum-progress-changed';
 const STORAGE_PREFIX = 'sql-academy-curriculum-progress-v1';
@@ -69,23 +74,33 @@ function uniqueKnown(values: unknown, known: Set<string>) {
   return Array.from(new Set(values.filter((value): value is string => typeof value === 'string' && known.has(value))));
 }
 
+function lessonComplete(
+  lesson: (typeof curriculumLessons)[number],
+  completedSections: string[],
+  answers: Record<string, CurriculumCheckAnswer>
+) {
+  return lesson.sections.every(section => completedSections.includes(section.id))
+    && lessonChecksComplete(lesson, answers);
+}
+
 function sanitize(raw: unknown): CurriculumProgressV1 {
   const source = raw && typeof raw === 'object' ? raw as Partial<CurriculumProgressV1> : {};
   const lessonIds = new Set(curriculumLessons.map(lesson => lesson.id));
   const sectionIds = new Set(curriculumLessons.flatMap(lesson => lesson.sections.map(section => section.id)));
   const projectIds = new Set(capstoneProjects.map(project => project.id));
   const deliverableIds = new Map(capstoneProjects.map(project => [project.id, new Set(project.deliverables.map(item => item.id))]));
+  const knownChecks = allKnownLessonChecks(curriculumLessons);
 
   const answers: Record<string, CurriculumCheckAnswer> = {};
   if (source.answers && typeof source.answers === 'object') {
-    for (const lesson of curriculumLessons) {
-      const answer = source.answers[lesson.check.id];
+    for (const check of knownChecks) {
+      const answer = source.answers[check.id];
       if (!answer || typeof answer !== 'object') continue;
       const optionIndex = Number(answer.optionIndex);
-      if (!Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= lesson.check.options.length) continue;
-      answers[lesson.check.id] = {
+      if (!Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex >= check.options.length) continue;
+      answers[check.id] = {
         optionIndex,
-        correct: optionIndex === lesson.check.correctIndex,
+        correct: optionIndex === check.correctIndex,
         answeredAt: typeof answer.answeredAt === 'string' ? answer.answeredAt : now()
       };
     }
@@ -105,6 +120,12 @@ function sanitize(raw: unknown): CurriculumProgressV1 {
     }
   }
 
+  const completedSections = uniqueKnown(source.completedSections, sectionIds);
+  const requestedCompletedLessons = new Set(uniqueKnown(source.completedLessons, lessonIds));
+  const completedLessons = curriculumLessons
+    .filter(lesson => requestedCompletedLessons.has(lesson.id) && lessonComplete(lesson, completedSections, answers))
+    .map(lesson => lesson.id);
+
   const bookmark = source.bookmark
     && typeof source.bookmark.lessonId === 'string'
     && lessonIds.has(source.bookmark.lessonId)
@@ -119,8 +140,8 @@ function sanitize(raw: unknown): CurriculumProgressV1 {
 
   return {
     version: 1,
-    completedSections: uniqueKnown(source.completedSections, sectionIds),
-    completedLessons: uniqueKnown(source.completedLessons, lessonIds),
+    completedSections,
+    completedLessons,
     completedProjects: uniqueKnown(source.completedProjects, projectIds),
     answers,
     projectDrafts,
@@ -149,31 +170,40 @@ export function markCurriculumSection(progress: CurriculumProgressV1, lessonId: 
   const lesson = curriculumLessons.find(item => item.id === lessonId);
   if (!lesson || !lesson.sections.some(section => section.id === sectionId)) return progress;
   const completedSections = Array.from(new Set([...progress.completedSections, sectionId]));
-  const answerCorrect = Boolean(progress.answers[lesson.check.id]?.correct);
-  const lessonComplete = lesson.sections.every(section => completedSections.includes(section.id)) && answerCorrect;
+  const complete = lessonComplete(lesson, completedSections, progress.answers);
   return saveCurriculumProgress({
     ...progress,
     completedSections,
-    completedLessons: lessonComplete ? Array.from(new Set([...progress.completedLessons, lessonId])) : progress.completedLessons,
+    completedLessons: complete ? Array.from(new Set([...progress.completedLessons, lessonId])) : progress.completedLessons,
     bookmark: { lessonId, sectionId, updatedAt: now() },
     updatedAt: now()
   });
 }
 
-export function answerCurriculumCheck(progress: CurriculumProgressV1, lessonId: string, optionIndex: number) {
+export function answerCurriculumCheck(
+  progress: CurriculumProgressV1,
+  lessonId: string,
+  optionIndex: number,
+  checkId?: string
+) {
   const lesson = curriculumLessons.find(item => item.id === lessonId);
-  if (!lesson || optionIndex < 0 || optionIndex >= lesson.check.options.length) return progress;
+  if (!lesson) return progress;
+  const checks = lessonChecks(lesson);
+  const check = checkId ? checks.find(item => item.id === checkId) : checks[0];
+  if (!check || optionIndex < 0 || optionIndex >= check.options.length) return progress;
   const answer: CurriculumCheckAnswer = {
     optionIndex,
-    correct: optionIndex === lesson.check.correctIndex,
+    correct: optionIndex === check.correctIndex,
     answeredAt: now()
   };
-  const answers = { ...progress.answers, [lesson.check.id]: answer };
-  const lessonComplete = lesson.sections.every(section => progress.completedSections.includes(section.id)) && answer.correct;
+  const answers = { ...progress.answers, [check.id]: answer };
+  const complete = lessonComplete(lesson, progress.completedSections, answers);
   return saveCurriculumProgress({
     ...progress,
     answers,
-    completedLessons: lessonComplete ? Array.from(new Set([...progress.completedLessons, lessonId])) : progress.completedLessons,
+    completedLessons: complete
+      ? Array.from(new Set([...progress.completedLessons, lessonId]))
+      : progress.completedLessons.filter(id => id !== lessonId),
     updatedAt: now()
   });
 }
