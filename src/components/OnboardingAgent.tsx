@@ -49,16 +49,13 @@ export default function OnboardingAgent() {
     };
 
     const assessmentChanged = () => {
-      void Promise.all([
-        import('../lib/assessment'),
-        import('../lib/learner-onboarding'),
-        import('../lib/onboarding-sync')
-      ]).then(([assessment, onboarding, sync]) => {
+      void import('../lib/learner-onboarding').then(async onboarding => {
         const profile = onboarding.loadOnboardingProfile(userId);
         if (profile.placement.status !== 'pending') {
           schedule();
           return;
         }
+        const assessment = await import('../lib/assessment');
         const report = onboarding.latestCompletedDiagnostic(assessment.loadLocalAssessmentReports(userId));
         if (!report || report.id === profile.placement.reportId) return;
         const placement = onboarding.calculatePlacement(profile, report);
@@ -69,7 +66,8 @@ export default function OnboardingAgent() {
           completedAt: null,
           updatedAt: report.completedAt
         }, userId);
-        void sync.syncOnboardingProfile(next).catch(() => undefined);
+        const { syncOnboardingProfile } = await import('../lib/onboarding-sync');
+        void syncOnboardingProfile(next).catch(() => undefined);
         window.setTimeout(() => openDeferredFeature('onboarding'), 140);
       }).catch(() => undefined);
     };
