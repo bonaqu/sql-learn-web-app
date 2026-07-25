@@ -385,6 +385,7 @@ function App() {
         <Nav icon={<Home />} label="Главная" active={view === 'home'} onClick={() => navigate('home')} />
         <button type="button" data-testid="learning-path-trigger" onMouseEnter={() => preloadDeferredFeature('learning-path')} onFocus={() => preloadDeferredFeature('learning-path')} onClick={() => openDeferredFeature('learning-path')}><Route /><span>Учебный путь</span></button>
         <button type="button" data-testid="curriculum-trigger" onMouseEnter={() => preloadDeferredFeature('curriculum')} onFocus={() => preloadDeferredFeature('curriculum')} onClick={() => openDeferredFeature('curriculum')}><GraduationCap /><span>Уроки и проекты</span></button>
+        <button type="button" data-testid="syllabus-trigger" onMouseEnter={() => preloadDeferredFeature('syllabus')} onFocus={() => preloadDeferredFeature('syllabus')} onClick={() => openDeferredFeature('syllabus')}><ListChecks /><span>Карта курса и диалекты</span></button>
         <Nav icon={<BookOpen />} label="Каталог" active={view === 'catalog'} onClick={() => navigate('catalog')} />
         <Nav icon={<BrainCircuit />} label="Practice" active={view === 'practice'} onClick={() => navigate('practice')} />
         <Nav icon={<Repeat2 />} label={`Повторение${queue.length ? ` · ${queue.length}` : ''}`} active={view === 'review'} onClick={() => navigate('review')} />
