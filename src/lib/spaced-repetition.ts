@@ -2,11 +2,12 @@ import { curriculumLessons } from '../data/complete-curriculum';
 import { reviewCards, type ReviewCard } from '../data/review-cards';
 import { tasks } from '../data/course-catalog';
 import { loadAuthSession } from './auth';
-import { loadCurriculumProgress } from './curriculum-progress';
-import { hasIndependentTaskEvidence, loadProgress } from './progress';
+import { loadCurriculumProgress, type CurriculumProgressV1 } from './curriculum-progress';
+import { hasIndependentTaskEvidence, loadProgress, type Progress } from './progress';
 
 export type ReviewGrade = 'again' | 'hard' | 'good' | 'easy';
 export type ReviewIntroductionSource = 'lesson' | 'independent-practice' | 'legacy-practice';
+export type ReviewEvidence = { source: ReviewIntroductionSource; at: string };
 
 export type ReviewSchedule = {
   cardId: string;
@@ -38,7 +39,7 @@ function storageKey(id = userId()) {
   return `sql-academy-spaced-review-v1:${id}`;
 }
 
-function initialSchedule(cardId: string): ReviewSchedule {
+export function initialReviewSchedule(cardId: string): ReviewSchedule {
   return {
     cardId,
     dueAt: NOT_INTRODUCED_AT,
@@ -49,60 +50,78 @@ function initialSchedule(cardId: string): ReviewSchedule {
   };
 }
 
-function evidenceForModule(moduleId: string) {
-  const curriculum = loadCurriculumProgress();
-  const progress = loadProgress();
+export function reviewEvidenceForModule(
+  moduleId: string,
+  progress: Progress,
+  curriculum: CurriculumProgressV1,
+  now = Date.now()
+): ReviewEvidence | null {
   const lesson = curriculumLessons.find(item =>
     item.module === moduleId && curriculum.completedLessons.includes(item.id)
   );
   if (lesson) {
-    return {
-      source: 'lesson' as const,
-      at: curriculum.updatedAt
-    };
+    return { source: 'lesson', at: curriculum.updatedAt };
   }
 
   const moduleTasks = tasks.filter(task => task.module === moduleId);
   const independent = moduleTasks.find(task => hasIndependentTaskEvidence(progress, task.id));
   if (independent) {
     return {
-      source: 'independent-practice' as const,
+      source: 'independent-practice',
       at: progress.taskStats[independent.id]?.lastIndependentAt
         || progress.taskStats[independent.id]?.completedAt
-        || new Date().toISOString()
+        || new Date(now).toISOString()
     };
   }
 
   const legacy = moduleTasks.find(task => progress.completed.includes(task.id));
   if (legacy) {
     return {
-      source: 'legacy-practice' as const,
-      at: progress.taskStats[legacy.id]?.completedAt || new Date().toISOString()
+      source: 'legacy-practice',
+      at: progress.taskStats[legacy.id]?.completedAt || new Date(now).toISOString()
     };
   }
   return null;
 }
 
-function introduceEligibleCards(state: ReviewState, now = Date.now()) {
+export function introduceReviewSchedule(
+  previous: ReviewSchedule,
+  evidence: ReviewEvidence | null,
+  now = Date.now()
+): ReviewSchedule {
+  if (previous.introducedAt || !evidence) return previous;
+  const evidenceTime = new Date(evidence.at).getTime();
+  const introducedAt = Number.isFinite(evidenceTime)
+    ? new Date(evidenceTime).toISOString()
+    : new Date(now).toISOString();
+  const dueAt = Number.isFinite(evidenceTime) && now - evidenceTime >= 10 * MINUTE
+    ? new Date(now).toISOString()
+    : new Date(now + 10 * MINUTE).toISOString();
+  return {
+    ...previous,
+    introducedAt,
+    introductionSource: evidence.source,
+    dueAt
+  };
+}
+
+export function introduceEligibleReviewCards(
+  state: ReviewState,
+  progress: Progress,
+  curriculum: CurriculumProgressV1,
+  now = Date.now()
+) {
   let changed = false;
   const schedules = { ...state.schedules };
   for (const card of reviewCards) {
-    const previous = schedules[card.id] || initialSchedule(card.id);
-    if (previous.introducedAt) continue;
-    const evidence = evidenceForModule(card.moduleId);
-    if (!evidence) continue;
-    const evidenceTime = new Date(evidence.at).getTime();
-    const introducedAt = Number.isFinite(evidenceTime) ? new Date(evidenceTime).toISOString() : new Date(now).toISOString();
-    const dueAt = Number.isFinite(evidenceTime) && now - evidenceTime >= 10 * MINUTE
-      ? new Date(now).toISOString()
-      : new Date(now + 10 * MINUTE).toISOString();
-    schedules[card.id] = {
-      ...previous,
-      introducedAt,
-      introductionSource: evidence.source,
-      dueAt
-    };
-    changed = true;
+    const previous = schedules[card.id] || initialReviewSchedule(card.id);
+    const next = introduceReviewSchedule(
+      previous,
+      reviewEvidenceForModule(card.moduleId, progress, curriculum, now),
+      now
+    );
+    schedules[card.id] = next;
+    if (next !== previous) changed = true;
   }
   return { state: { version: 1 as const, schedules }, changed };
 }
@@ -117,8 +136,13 @@ export function loadReviewState(id = userId(), now = Date.now()): ReviewState {
     }
   }
   const schedules = { ...(parsed?.version === 1 ? parsed.schedules : {}) };
-  for (const card of reviewCards) schedules[card.id] ||= initialSchedule(card.id);
-  const introduced = introduceEligibleCards({ version: 1, schedules }, now);
+  for (const card of reviewCards) schedules[card.id] ||= initialReviewSchedule(card.id);
+  const introduced = introduceEligibleReviewCards(
+    { version: 1, schedules },
+    loadProgress(),
+    loadCurriculumProgress(),
+    now
+  );
   if (introduced.changed && typeof localStorage !== 'undefined') {
     localStorage.setItem(storageKey(id), JSON.stringify(introduced.state));
   }
@@ -137,7 +161,7 @@ function addDays(now: number, days: number) {
 
 export function gradeReviewCard(cardId: string, grade: ReviewGrade, id = userId(), now = Date.now()) {
   const state = loadReviewState(id, now);
-  const previous = state.schedules[cardId] || initialSchedule(cardId);
+  const previous = state.schedules[cardId] || initialReviewSchedule(cardId);
   if (!previous.introducedAt) return state;
   let intervalDays = previous.intervalDays;
   let ease = previous.ease;
