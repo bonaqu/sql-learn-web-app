@@ -1,7 +1,12 @@
+import { curriculumLessons } from '../data/complete-curriculum';
 import { reviewCards, type ReviewCard } from '../data/review-cards';
+import { tasks } from '../data/course-catalog';
 import { loadAuthSession } from './auth';
+import { loadCurriculumProgress } from './curriculum-progress';
+import { hasIndependentTaskEvidence, loadProgress } from './progress';
 
 export type ReviewGrade = 'again' | 'hard' | 'good' | 'easy';
+export type ReviewIntroductionSource = 'lesson' | 'independent-practice' | 'legacy-practice';
 
 export type ReviewSchedule = {
   cardId: string;
@@ -10,6 +15,8 @@ export type ReviewSchedule = {
   ease: number;
   repetitions: number;
   lapses: number;
+  introducedAt?: string;
+  introductionSource?: ReviewIntroductionSource;
   lastReviewedAt?: string;
 };
 
@@ -21,6 +28,7 @@ export type ReviewState = {
 export const REVIEW_CHANGED_EVENT = 'sql-academy-review-changed';
 const MINUTE = 60_000;
 const DAY = 86_400_000;
+const NOT_INTRODUCED_AT = '9999-12-31T23:59:59.999Z';
 
 function userId() {
   return loadAuthSession()?.userId || 'guest';
@@ -30,8 +38,73 @@ function storageKey(id = userId()) {
   return `sql-academy-spaced-review-v1:${id}`;
 }
 
-function initialSchedule(cardId: string, now = Date.now()): ReviewSchedule {
-  return { cardId, dueAt: new Date(now).toISOString(), intervalDays: 0, ease: 2.5, repetitions: 0, lapses: 0 };
+function initialSchedule(cardId: string): ReviewSchedule {
+  return {
+    cardId,
+    dueAt: NOT_INTRODUCED_AT,
+    intervalDays: 0,
+    ease: 2.5,
+    repetitions: 0,
+    lapses: 0
+  };
+}
+
+function evidenceForModule(moduleId: string) {
+  const curriculum = loadCurriculumProgress();
+  const progress = loadProgress();
+  const lesson = curriculumLessons.find(item =>
+    item.module === moduleId && curriculum.completedLessons.includes(item.id)
+  );
+  if (lesson) {
+    return {
+      source: 'lesson' as const,
+      at: curriculum.updatedAt
+    };
+  }
+
+  const moduleTasks = tasks.filter(task => task.module === moduleId);
+  const independent = moduleTasks.find(task => hasIndependentTaskEvidence(progress, task.id));
+  if (independent) {
+    return {
+      source: 'independent-practice' as const,
+      at: progress.taskStats[independent.id]?.lastIndependentAt
+        || progress.taskStats[independent.id]?.completedAt
+        || new Date().toISOString()
+    };
+  }
+
+  const legacy = moduleTasks.find(task => progress.completed.includes(task.id));
+  if (legacy) {
+    return {
+      source: 'legacy-practice' as const,
+      at: progress.taskStats[legacy.id]?.completedAt || new Date().toISOString()
+    };
+  }
+  return null;
+}
+
+function introduceEligibleCards(state: ReviewState, now = Date.now()) {
+  let changed = false;
+  const schedules = { ...state.schedules };
+  for (const card of reviewCards) {
+    const previous = schedules[card.id] || initialSchedule(card.id);
+    if (previous.introducedAt) continue;
+    const evidence = evidenceForModule(card.moduleId);
+    if (!evidence) continue;
+    const evidenceTime = new Date(evidence.at).getTime();
+    const introducedAt = Number.isFinite(evidenceTime) ? new Date(evidenceTime).toISOString() : new Date(now).toISOString();
+    const dueAt = Number.isFinite(evidenceTime) && now - evidenceTime >= 10 * MINUTE
+      ? new Date(now).toISOString()
+      : new Date(now + 10 * MINUTE).toISOString();
+    schedules[card.id] = {
+      ...previous,
+      introducedAt,
+      introductionSource: evidence.source,
+      dueAt
+    };
+    changed = true;
+  }
+  return { state: { version: 1 as const, schedules }, changed };
 }
 
 export function loadReviewState(id = userId(), now = Date.now()): ReviewState {
@@ -44,8 +117,12 @@ export function loadReviewState(id = userId(), now = Date.now()): ReviewState {
     }
   }
   const schedules = { ...(parsed?.version === 1 ? parsed.schedules : {}) };
-  for (const card of reviewCards) schedules[card.id] ||= initialSchedule(card.id, now);
-  return { version: 1, schedules };
+  for (const card of reviewCards) schedules[card.id] ||= initialSchedule(card.id);
+  const introduced = introduceEligibleCards({ version: 1, schedules }, now);
+  if (introduced.changed && typeof localStorage !== 'undefined') {
+    localStorage.setItem(storageKey(id), JSON.stringify(introduced.state));
+  }
+  return introduced.state;
 }
 
 export function saveReviewState(state: ReviewState, id = userId()) {
@@ -60,7 +137,8 @@ function addDays(now: number, days: number) {
 
 export function gradeReviewCard(cardId: string, grade: ReviewGrade, id = userId(), now = Date.now()) {
   const state = loadReviewState(id, now);
-  const previous = state.schedules[cardId] || initialSchedule(cardId, now);
+  const previous = state.schedules[cardId] || initialSchedule(cardId);
+  if (!previous.introducedAt) return state;
   let intervalDays = previous.intervalDays;
   let ease = previous.ease;
   let repetitions = previous.repetitions;
@@ -103,7 +181,8 @@ export function gradeReviewCard(cardId: string, grade: ReviewGrade, id = userId(
 
 export function dueReviewCards(state = loadReviewState(), now = Date.now()): ReviewCard[] {
   return reviewCards
-    .filter(card => new Date(state.schedules[card.id]?.dueAt || 0).getTime() <= now)
+    .filter(card => state.schedules[card.id]?.introducedAt)
+    .filter(card => new Date(state.schedules[card.id]?.dueAt || NOT_INTRODUCED_AT).getTime() <= now)
     .sort((left, right) => {
       const leftSchedule = state.schedules[left.id];
       const rightSchedule = state.schedules[right.id];
@@ -115,6 +194,7 @@ export function dueReviewCards(state = loadReviewState(), now = Date.now()): Rev
 
 export function nextReviewAt(state = loadReviewState()) {
   const future = Object.values(state.schedules)
+    .filter(item => item.introducedAt)
     .map(item => new Date(item.dueAt).getTime())
     .filter(value => Number.isFinite(value))
     .sort((left, right) => left - right);
@@ -123,10 +203,13 @@ export function nextReviewAt(state = loadReviewState()) {
 
 export function reviewStats(state = loadReviewState(), now = Date.now()) {
   const schedules = Object.values(state.schedules);
+  const available = schedules.filter(item => item.introducedAt);
   return {
-    due: schedules.filter(item => new Date(item.dueAt).getTime() <= now).length,
-    learned: schedules.filter(item => item.repetitions > 0).length,
-    mature: schedules.filter(item => item.intervalDays >= 21).length,
-    lapses: schedules.reduce((sum, item) => sum + item.lapses, 0)
+    available: available.length,
+    due: available.filter(item => new Date(item.dueAt).getTime() <= now).length,
+    learned: available.filter(item => item.repetitions > 0).length,
+    mature: available.filter(item => item.intervalDays >= 21).length,
+    lapses: available.reduce((sum, item) => sum + item.lapses, 0),
+    locked: schedules.length - available.length
   };
 }
