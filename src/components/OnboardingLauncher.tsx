@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Compass } from 'lucide-react';
 import { openDeferredFeature, preloadDeferredFeature } from '../lib/deferred-features';
-import { loadOnboardingProfile, ONBOARDING_CHANGED_EVENT, onboardingReady } from '../lib/learner-onboarding';
+
+const ONBOARDING_CHANGED_EVENT = 'sql-academy-onboarding-changed';
 
 export default function OnboardingLauncher() {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
-  const [profile, setProfile] = useState(() => loadOnboardingProfile());
+  const [complete, setComplete] = useState(false);
 
   useEffect(() => {
     const mount = () => {
@@ -36,7 +37,12 @@ export default function OnboardingLauncher() {
   }, []);
 
   useEffect(() => {
-    const update = () => setProfile(loadOnboardingProfile());
+    const update = () => {
+      void import('../lib/learner-onboarding').then(module => {
+        setComplete(module.onboardingReady(module.loadOnboardingProfile()));
+      }).catch(() => setComplete(false));
+    };
+    update();
     window.addEventListener(ONBOARDING_CHANGED_EVENT, update);
     window.addEventListener('storage', update);
     return () => {
@@ -46,7 +52,6 @@ export default function OnboardingLauncher() {
   }, []);
 
   if (!slot) return null;
-  const complete = onboardingReady(profile);
   return createPortal(<button
     type="button"
     data-testid="onboarding-trigger"
