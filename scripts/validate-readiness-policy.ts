@@ -108,7 +108,7 @@ function checkpointReport(
       return {
         taskId,
         title: task?.title || taskId,
-        module: task?.module || checkpoint.moduleIds[0],
+        module: task?.module || checkpoint.moduleIds[0] || 'sql-thinking',
         correct: score >= checkpoint.passingScore,
         skipped: false,
         attempts: 1,
@@ -179,8 +179,8 @@ if (moduleWithoutProject) {
     assert(evidence?.readiness === 100, `${moduleWithoutProject}: full applicable evidence must reach 100, got ${evidence?.readiness}`);
 
     const invalidGraph = buildSkillEvidenceGraph(
-      progress,
-      curriculum,
+      progressFor([]),
+      emptyCurriculumProgress(),
       [assessmentReport('expired-module-assessment', 'quick', 'expired', 100, [{ module: moduleWithoutProject, score: 100 }])],
       [checkpointReport(checkpoint.id, 'expired', 100)]
     );
@@ -189,6 +189,7 @@ if (moduleWithoutProject) {
     assert(invalidEvidence?.evidence.assessment.completed === 0, 'Expired assessment must not count as completed evidence');
     assert(!invalidEvidence?.evidence.assessment.sourceIds.length, 'Expired assessment must not appear as evidence source');
     assert(invalidEvidence?.evidence.checkpoint.score === 0, 'Expired checkpoint must not contribute module score');
+    assert(!invalidEvidence?.evidence.checkpoint.sourceIds.length, 'Expired checkpoint must not appear as evidence source');
   }
 }
 
