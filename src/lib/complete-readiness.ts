@@ -1,13 +1,19 @@
 import { capstoneProjects, curriculumCheckpoints, curriculumLessons } from '../data/complete-curriculum';
 import { assessmentModes, type AssessmentMode, type AssessmentReport } from './assessment';
 import {
-  checkpointPassed,
+  bestCheckpointReport,
+  legacyCheckpointPassed,
   loadLocalCheckpointReports,
   type CheckpointReport
 } from './checkpoints';
 import type { CurriculumProgressV1 } from './curriculum-progress';
 import { overallReadiness } from './learning-path';
 import type { Progress } from './progress';
+import {
+  bestCompletedAssessmentScore,
+  normalizedCompleteScore,
+  READINESS_POLICY
+} from './readiness-policy';
 
 export type ReadinessCriterion = {
   id: string;
@@ -23,6 +29,8 @@ export type CompleteReadiness = {
   taskReadiness: number;
   lessonCompletion: number;
   checkpointCompletion: number;
+  reportedCheckpoints: number;
+  legacyCheckpoints: number;
   projectCompletion: number;
   examReadiness: number;
   examScores: Partial<Record<AssessmentMode, number>>;
@@ -36,8 +44,9 @@ function clamp(value: number) {
 
 function bestScores(reports: AssessmentReport[]) {
   const scores: Partial<Record<AssessmentMode, number>> = {};
-  for (const report of reports) {
-    scores[report.mode] = Math.max(scores[report.mode] || 0, report.score);
+  for (const mode of Object.keys(assessmentModes) as AssessmentMode[]) {
+    const score = bestCompletedAssessmentScore(reports, mode);
+    if (score > 0) scores[mode] = score;
   }
   return scores;
 }
@@ -48,16 +57,25 @@ export function calculateCompleteReadiness(
   reports: AssessmentReport[],
   checkpointReports: CheckpointReport[] = loadLocalCheckpointReports()
 ): CompleteReadiness {
+  const thresholds = READINESS_POLICY.thresholds;
   const taskReadiness = overallReadiness(progress);
   const lessonCompletion = clamp(
     curriculum.completedLessons.length / Math.max(1, curriculumLessons.length) * 100
   );
-  const passedCheckpoints = curriculumCheckpoints.filter(checkpoint =>
-    checkpointPassed(checkpoint.id, progress, checkpointReports)
-  ).length;
+
+  const checkpointEvidence = curriculumCheckpoints.map(checkpoint => {
+    const direct = bestCheckpointReport(checkpoint.id, checkpointReports);
+    const reported = Boolean(direct?.passed);
+    const legacy = !reported && legacyCheckpointPassed(checkpoint.id, progress);
+    return { reported, legacy, passed: reported || legacy };
+  });
+  const reportedCheckpoints = checkpointEvidence.filter(item => item.reported).length;
+  const legacyCheckpoints = checkpointEvidence.filter(item => item.legacy).length;
+  const passedCheckpoints = checkpointEvidence.filter(item => item.passed).length;
   const checkpointCompletion = clamp(
     passedCheckpoints / Math.max(1, curriculumCheckpoints.length) * 100
   );
+
   const projectCompletion = clamp(
     curriculum.completedProjects.length / Math.max(1, capstoneProjects.length) * 100
   );
@@ -66,34 +84,36 @@ export function calculateCompleteReadiness(
   const production = examScores.production || 0;
   const final = examScores.final || 0;
   const examReadiness = clamp(diagnostic * 0.1 + production * 0.3 + final * 0.6);
-  const total = clamp(
-    taskReadiness * 0.45
-    + lessonCompletion * 0.15
-    + checkpointCompletion * 0.1
-    + projectCompletion * 0.1
-    + examReadiness * 0.2
-  );
+  const total = normalizedCompleteScore([
+    { kind: 'tasks', score: taskReadiness },
+    { kind: 'lessons', score: lessonCompletion },
+    { kind: 'checkpoints', score: checkpointCompletion },
+    { kind: 'projects', score: projectCompletion },
+    { kind: 'exams', score: examReadiness }
+  ]);
 
   const criteria: ReadinessCriterion[] = [
     {
       id: 'tasks',
       title: 'Task mastery',
       current: taskReadiness,
-      target: 80,
-      passed: taskReadiness >= 80,
+      target: thresholds.certificateTaskReadiness,
+      passed: taskReadiness >= thresholds.certificateTaskReadiness,
       unit: '%'
     },
     {
       id: 'lessons',
       title: 'Структурированные уроки',
       current: curriculum.completedLessons.length,
-      target: Math.ceil(curriculumLessons.length * 0.9),
-      passed: lessonCompletion >= 90,
+      target: Math.ceil(curriculumLessons.length * thresholds.certificateLessonCompletion / 100),
+      passed: lessonCompletion >= thresholds.certificateLessonCompletion,
       unit: 'count'
     },
     {
       id: 'checkpoints',
-      title: 'Исполняемые checkpoints',
+      title: legacyCheckpoints
+        ? `Checkpoints: ${reportedCheckpoints} reports + ${legacyCheckpoints} migrated`
+        : 'Исполняемые checkpoints',
       current: passedCheckpoints,
       target: curriculumCheckpoints.length,
       passed: passedCheckpoints === curriculumCheckpoints.length,
@@ -130,10 +150,12 @@ export function calculateCompleteReadiness(
     taskReadiness,
     lessonCompletion,
     checkpointCompletion,
+    reportedCheckpoints,
+    legacyCheckpoints,
     projectCompletion,
     examReadiness,
     examScores,
-    certificateEligible: total >= 82 && criteria.every(item => item.passed),
+    certificateEligible: total >= thresholds.certificateOverall && criteria.every(item => item.passed),
     criteria
   };
 }
