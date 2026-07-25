@@ -328,7 +328,13 @@ const recipes: Record<string, Recipe> = {
     solution: 'SELECT email, COUNT(*) AS duplicates_count FROM customers WHERE email IS NOT NULL GROUP BY email HAVING COUNT(*) > 1 ORDER BY email;',
     hints: ['NULL исключи до группировки.', 'Дубли — группы с COUNT(*) > 1.', 'Верни сам email и количество.']
   }),
-  indexes: v => ({
+  indexes: v => v === 5 ? ({
+    title: 'План составного фильтра Critical + Closed',
+    description: 'Проверь план поиска закрытых Critical-обращений. Составной индекс по priority и status уже создан.',
+    starter: 'EXPLAIN QUERY PLAN\nSELECT ticket_id, priority, status\nFROM tickets\nWHERE ',
+    solution: "EXPLAIN QUERY PLAN SELECT ticket_id, priority, status FROM tickets WHERE priority = 'Critical' AND status = 'Closed';",
+    hints: ['Запрос начинается с EXPLAIN QUERY PLAN.', "Фильтр использует priority = 'Critical' и status = 'Closed'.", 'В результате ожидается SEARCH по составному индексу.']
+  }) : ({
     title: `План поиска ${services[v % services.length]}`,
     description: `Проверь план поиска обращений сервиса ${services[v % services.length]}. Индекс по service уже создан.`,
     starter: 'EXPLAIN QUERY PLAN\nSELECT ticket_id, service\nFROM tickets\nWHERE ',
