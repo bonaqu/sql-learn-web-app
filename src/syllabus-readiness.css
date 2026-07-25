@@ -49,9 +49,29 @@
 .syllabus-certificate-criteria small { display: block; }
 .syllabus-certificate-criteria strong { font-size: .7rem; }
 .syllabus-certificate-criteria small { margin-top: .15rem; color: #a1a1aa; font-size: .62rem; }
+.syllabus-report-export {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45rem;
+  width: min(30rem, 100%);
+  min-height: 2.75rem;
+  margin: 1rem auto 0;
+  border: 1px solid rgb(139 92 246 / 28%);
+  border-radius: .75rem;
+  background: rgb(91 33 182 / 16%);
+  color: #ddd6fe;
+  font: inherit;
+  font-size: .72rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+.syllabus-report-export:hover { border-color: rgb(167 139 250 / 55%); background: rgb(91 33 182 / 25%); }
+.syllabus-report-export svg { width: 1rem; }
 [data-theme="light"] .syllabus-readiness-components span,
 [data-theme="light"] .syllabus-certificate-criteria article { background: #fff; color: #52525b; }
 [data-theme="light"] .syllabus-readiness-components strong { color: #27272a; }
+[data-theme="light"] .syllabus-report-export { background: #ede9fe; color: #5b21b6; }
 @media (max-width: 900px) {
   .syllabus-readiness-components { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .syllabus-certificate-criteria { grid-template-columns: repeat(2, minmax(0, 1fr)); }
