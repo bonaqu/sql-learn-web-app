@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 const base = String(process.env.DEPLOY_URL || '').replace(/\/$/, '');
 if (!base) throw new Error('DEPLOY_URL is required');
 
+const PROGRESS_PATH = '/api/mastery/progress';
 const stageFile = 'cloudflare-mastery-stage.txt';
 const failureFile = 'cloudflare-mastery-failure.txt';
 const username = `mastery_${Date.now().toString(36)}`.slice(0, 30);
@@ -29,6 +30,13 @@ async function request(path, options = {}) {
 function expectStatus(result, status, label) {
   if (result.response.status !== status) {
     throw new Error(`${label}: expected ${status}, got ${result.response.status}: ${result.text.slice(0, 800)}`);
+  }
+}
+
+function expectMasteryContract(result, label) {
+  const contract = result.response.headers.get('x-progress-contract');
+  if (contract !== 'mastery-v1') {
+    throw new Error(`${label}: expected x-progress-contract=mastery-v1, got ${contract || 'missing'}`);
   }
 }
 
@@ -77,24 +85,27 @@ try {
   if (!token || !recoveryCode) throw new Error('register: token or recovery code is missing');
 
   await mark('initial-progress');
-  const initial = await request('/api/user/progress');
+  const initial = await request(PROGRESS_PATH);
   expectStatus(initial, 200, 'initial progress');
+  expectMasteryContract(initial, 'initial progress');
   if (initial.body?.progress !== null || initial.body?.revision !== 0) {
     throw new Error(`initial progress contract mismatch: ${initial.text}`);
   }
 
   await mark('put-mastery-evidence');
-  const stored = await request('/api/user/progress', {
+  const stored = await request(PROGRESS_PATH, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ progress, baseRevision: 0 })
   });
   expectStatus(stored, 200, 'put mastery evidence');
+  expectMasteryContract(stored, 'put mastery evidence');
   if (stored.body?.revision !== 1) throw new Error(`expected revision 1, got ${stored.text}`);
 
   await mark('get-mastery-evidence');
-  const fetched = await request('/api/user/progress');
+  const fetched = await request(PROGRESS_PATH);
   expectStatus(fetched, 200, 'get mastery evidence');
+  expectMasteryContract(fetched, 'get mastery evidence');
   const stats = fetched.body?.progress?.taskStats?.['task-001'];
   if (fetched.body?.revision !== 1
     || stats?.independentPasses !== 1
@@ -107,37 +118,41 @@ try {
   await mark('reject-invalid-diagnostic');
   const invalid = structuredClone(progress);
   invalid.taskStats['task-001'].lastDiagnostic.kind = 'made-up-kind';
-  const rejected = await request('/api/user/progress', {
+  const rejected = await request(PROGRESS_PATH, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ progress: invalid, baseRevision: 1 })
   });
   expectStatus(rejected, 400, 'invalid diagnostic');
+  expectMasteryContract(rejected, 'invalid diagnostic');
 
   await mark('reject-stale-revision');
-  const conflict = await request('/api/user/progress', {
+  const conflict = await request(PROGRESS_PATH, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ progress, baseRevision: 0 })
   });
   expectStatus(conflict, 409, 'stale revision');
+  expectMasteryContract(conflict, 'stale revision');
 
   await mark('update-independent-evidence');
   const nextProgress = structuredClone(progress);
   nextProgress.taskStats['task-001'].attempts = 5;
   nextProgress.taskStats['task-001'].independentPasses = 2;
   nextProgress.taskStats['task-001'].lastIndependentAt = '2026-07-25T19:00:00.000Z';
-  const updated = await request('/api/user/progress', {
+  const updated = await request(PROGRESS_PATH, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ progress: nextProgress, baseRevision: 1 })
   });
   expectStatus(updated, 200, 'update mastery evidence');
+  expectMasteryContract(updated, 'update mastery evidence');
   if (updated.body?.revision !== 2) throw new Error(`expected revision 2, got ${updated.text}`);
 
   await mark('verify-updated-evidence');
-  const verified = await request('/api/user/progress');
+  const verified = await request(PROGRESS_PATH);
   expectStatus(verified, 200, 'verify mastery evidence');
+  expectMasteryContract(verified, 'verify mastery evidence');
   if (verified.body?.progress?.taskStats?.['task-001']?.independentPasses !== 2) {
     throw new Error(`updated independent evidence is missing: ${verified.text}`);
   }
@@ -151,11 +166,12 @@ try {
   expectStatus(deleted, 200, 'delete account');
 
   await mark('verify-revoked');
-  const revoked = await request('/api/user/progress');
+  const revoked = await request(PROGRESS_PATH);
   expectStatus(revoked, 401, 'revoked progress session');
+  expectMasteryContract(revoked, 'revoked progress session');
 
   await mark('complete');
-  console.log('Mastery progress production smoke passed: validated evidence, revision conflict and account cleanup.');
+  console.log('Mastery progress production smoke passed: versioned contract, validated evidence, revision conflict and account cleanup.');
 } catch (error) {
   await fs.writeFile(failureFile, `stage=${stage}\n${error instanceof Error ? error.stack || error.message : String(error)}\n`);
   throw error;

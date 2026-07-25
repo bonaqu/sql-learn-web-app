@@ -1,6 +1,8 @@
 const DEFAULT_CLOUD_API = 'https://sql-learn-web-app.bonaqu.workers.dev';
 const AUTH_SESSION_KEY = 'sql-academy-auth-session-v2';
 const AUTH_CHANGED_EVENT = 'sql-academy-auth-changed';
+const LEGACY_PROGRESS_PATH = '/api/user/progress';
+const MASTERY_PROGRESS_PATH = '/api/mastery/progress';
 const nativeFetch = window.fetch.bind(window);
 
 const configuredApiBase = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '');
@@ -11,18 +13,29 @@ function apiBase() {
   return '';
 }
 
+function normalizedApiPath(pathname: string) {
+  return pathname === LEGACY_PROGRESS_PATH ? MASTERY_PROGRESS_PATH : pathname;
+}
+
 function resolveInput(input: RequestInfo | URL): RequestInfo | URL {
   const base = apiBase();
-  if (!base) return input;
-  if (typeof input === 'string') return input.startsWith('/api/') ? `${base}${input}` : input;
+  if (typeof input === 'string') {
+    const url = new URL(input, window.location.href);
+    if (url.origin !== window.location.origin || !url.pathname.startsWith('/api/')) return input;
+    const pathname = normalizedApiPath(url.pathname);
+    return base
+      ? `${base}${pathname}${url.search}${url.hash}`
+      : `${pathname}${url.search}${url.hash}`;
+  }
   if (input instanceof URL) {
-    return input.pathname.startsWith('/api/') && input.origin === window.location.origin
-      ? new URL(`${base}${input.pathname}${input.search}${input.hash}`)
-      : input;
+    if (!input.pathname.startsWith('/api/') || input.origin !== window.location.origin) return input;
+    const pathname = normalizedApiPath(input.pathname);
+    return new URL(`${base || window.location.origin}${pathname}${input.search}${input.hash}`);
   }
   const requestUrl = new URL(input.url, window.location.href);
   if (!requestUrl.pathname.startsWith('/api/') || requestUrl.origin !== window.location.origin) return input;
-  return new Request(`${base}${requestUrl.pathname}${requestUrl.search}${requestUrl.hash}`, input);
+  const pathname = normalizedApiPath(requestUrl.pathname);
+  return new Request(`${base || window.location.origin}${pathname}${requestUrl.search}${requestUrl.hash}`, input);
 }
 
 function authToken() {
