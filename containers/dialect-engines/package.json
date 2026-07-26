@@ -1,0 +1,9 @@
+{
+  "name": "sql-academy-dialect-engines",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "mysql2": "3.14.3",
+    "pg": "8.16.3"
+  }
+}
