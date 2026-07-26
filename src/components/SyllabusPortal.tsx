@@ -1,13 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   BookOpen,
   CheckCircle2,
-  ChevronRight,
   ClipboardCheck,
   Clock3,
   Code2,
-  Database,
   Gauge,
   GraduationCap,
   Languages,
@@ -25,7 +23,6 @@ import {
 } from 'lucide-react';
 import { curriculumCheckpoints, curriculumLessons } from '../data/complete-curriculum';
 import { modules, tasks } from '../data/course-catalog';
-import { dialectPatterns, dialects, type SqlDialect } from '../data/sql-dialects';
 import { sqlExams, sqlTracks, type SqlTrackId } from '../data/sql-exams';
 import { loadLocalAssessmentReports } from '../lib/assessment';
 import { calculateCompleteReadiness } from '../lib/complete-readiness';
@@ -40,6 +37,7 @@ import '../syllabus.css';
 import '../syllabus-readiness.css';
 import '../syllabus-tools.css';
 
+const DialectLabWorkbench = lazy(() => import('./DialectLabWorkbench'));
 type SyllabusTab = 'map' | 'review' | 'tools' | 'dialects' | 'exams';
 
 function masteryLabel(value: number) {
@@ -62,7 +60,6 @@ export default function SyllabusPortal({ openRequest = 0 }: { openRequest?: numb
   const [open, setOpen] = useState(Boolean(openRequest));
   const [tab, setTab] = useState<SyllabusTab>('map');
   const [trackId, setTrackId] = useState<SqlTrackId>('fundamentals');
-  const [patternId, setPatternId] = useState(dialectPatterns[0].id);
   const shellRef = useRef<HTMLDivElement>(null);
   const previousOverflow = useRef('');
 
@@ -75,7 +72,6 @@ export default function SyllabusPortal({ openRequest = 0 }: { openRequest?: numb
     [curriculumProgress, progress, reports]
   );
   const activeTrack = sqlTracks.find(track => track.id === trackId) || sqlTracks[0];
-  const activePattern = dialectPatterns.find(pattern => pattern.id === patternId) || dialectPatterns[0];
 
   useEffect(() => { if (openRequest > 0) setOpen(true); }, [openRequest]);
   useDialogFocus(open, shellRef, () => setOpen(false));
@@ -133,21 +129,9 @@ export default function SyllabusPortal({ openRequest = 0 }: { openRequest?: numb
     </main>
   </div>;
 
-  const dialectContent = <div className="dialect-lab" data-testid="dialect-lab">
-    <aside className="dialect-pattern-list" aria-label="SQL patterns">
-      <header><Languages /><div><strong>Dialect Lab</strong><small>{dialectPatterns.length} production patterns</small></div></header>
-      {dialectPatterns.map(pattern => <button key={pattern.id} className={pattern.id === activePattern.id ? 'active' : ''} onClick={() => setPatternId(pattern.id)}><Database /><span><strong>{pattern.title}</strong><small>{pattern.concept}</small></span><ChevronRight /></button>)}
-    </aside>
-    <main className="dialect-workspace">
-      <header><small>Portable SQL reasoning</small><h1>{activePattern.title}</h1><p>{activePattern.portableGuidance}</p></header>
-      <section className="dialect-grid">{dialects.map(dialect => <article key={dialect.id}>
-        <div className="dialect-card-heading"><span>{dialect.title.slice(0, 2).toUpperCase()}</span><div><h2>{dialect.title}</h2><small>{dialect.role}</small></div></div>
-        <pre><code>{activePattern.examples[dialect.id as SqlDialect]}</code></pre>
-        {activePattern.notes[dialect.id] && <p><ShieldCheck />{activePattern.notes[dialect.id]}</p>}
-      </article>)}</section>
-      <section className="dialect-rule"><Languages /><div><strong>Правило переноса</strong><p>Сначала переноси семантику: форму результата, NULL-поведение, conflict key и transaction boundary. Синтаксис переписывается после этого.</p></div></section>
-    </main>
-  </div>;
+  const dialectContent = <Suspense fallback={<div className="feature-loading" role="status">Загрузка executable Dialect Lab…</div>}>
+    <DialectLabWorkbench />
+  </Suspense>;
 
   const examContent = <main className="syllabus-exams" data-testid="syllabus-exams">
     <header className="syllabus-exam-hero"><div><small>Graded assessment</small><h1>Экзамены SQL Academy</h1><p>Три уровня проверки: входная диагностика, production-надежность и финальная смешанная готовность.</p></div><ClipboardCheck /></header>

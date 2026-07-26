@@ -47,7 +47,7 @@ async function expectNoHorizontalOverflow(page: import('@playwright/test').Page)
   expect(overflow).toBe(false);
 }
 
-test('desktop syllabus exposes tracks evidence-gated review tools dialects and graded exams', async ({ page }, testInfo) => {
+test('desktop syllabus exposes tracks evidence-gated review tools executable dialects and graded exams', async ({ page }, testInfo) => {
   await authenticatePage(page, 'syllabus');
   await seedOneTopic(page);
   await page.goto('./');
@@ -84,12 +84,15 @@ test('desktop syllabus exposes tracks evidence-gated review tools dialects and g
   await expectAccessible(page);
 
   await page.getByRole('tab', { name: /Диалекты/i }).click();
-  await expect(page.getByTestId('dialect-lab')).toBeVisible();
-  await page.getByRole('button', { name: /UPSERT/i }).click();
-  await expect(page.getByRole('heading', { name: 'PostgreSQL' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'MySQL' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'SQL Server' })).toBeVisible();
-  await expect(page.getByText(/ON CONFLICT\(key\)/i).first()).toBeVisible();
+  const dialectLab = page.getByTestId('dialect-executable-lab');
+  await expect(dialectLab).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'NULL ordering across engines' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /SQLite Local WASM/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /PostgreSQL Remote sandbox/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /MySQL Remote sandbox/i })).toBeVisible();
+  await page.getByText(/Reference-only syntax matrix/i).click();
+  await expect(page.locator('.dialect-reference-matrix article').filter({ hasText: 'SQL Server' })).toBeVisible();
+  await expectAccessible(page);
 
   await page.getByRole('tab', { name: /Экзамены/i }).click();
   await expect(page.getByTestId('syllabus-exams')).toBeVisible();
@@ -102,7 +105,7 @@ test('desktop syllabus exposes tracks evidence-gated review tools dialects and g
   await page.screenshot({ path: testInfo.outputPath('syllabus-center-desktop.png'), fullPage: true });
 });
 
-test('mobile syllabus tools remain usable without page overflow', async ({ page }, testInfo) => {
+test('mobile syllabus and executable dialect lab remain usable without overflow', async ({ page }, testInfo) => {
   await authenticatePage(page, 'syllabusmobile');
   await seedOneTopic(page);
   await page.goto('./');
@@ -120,6 +123,11 @@ test('mobile syllabus tools remain usable without page overflow', async ({ page 
   await page.getByRole('tab', { name: 'Errors' }).click();
   await expect(page.getByTestId('error-atlas')).toBeVisible();
   await expectNoHorizontalOverflow(page);
+
+  await page.getByRole('tab', { name: /Диалекты/i }).click();
+  await expect(page.getByTestId('dialect-executable-lab')).toBeVisible();
+  await expect(page.getByTestId('dialect-evidence-card')).toBeVisible();
+  await expectNoHorizontalOverflow(page);
   await expectAccessible(page);
-  await page.screenshot({ path: testInfo.outputPath('syllabus-tools-mobile.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('syllabus-dialect-mobile.png'), fullPage: true });
 });

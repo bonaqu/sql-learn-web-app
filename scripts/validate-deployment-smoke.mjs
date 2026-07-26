@@ -6,12 +6,14 @@ const conceptSmoke = readFileSync('scripts/concept-progress-production-smoke.mjs
 const checkpointSmoke = readFileSync('scripts/checkpoint-production-smoke.mjs', 'utf8');
 const capstoneSmoke = readFileSync('scripts/capstone-production-smoke.mjs', 'utf8');
 const calibrationSmoke = readFileSync('scripts/assessment-calibration-production-smoke.mjs', 'utf8');
+const dialectSmoke = readFileSync('scripts/dialect-labs-production-smoke.mjs', 'utf8');
 const core = readFileSync('worker/core.ts', 'utf8');
 const workerIndex = readFileSync('worker/index.ts', 'utf8');
 const curriculumWorker = readFileSync('worker/curriculum.ts', 'utf8');
 const capstoneWorker = readFileSync('worker/capstones.ts', 'utf8');
 const assessmentWorker = readFileSync('worker/assessment.ts', 'utf8');
 const assessmentReportV2 = readFileSync('worker/assessment-report-v2-route.ts', 'utf8');
+const dialectWorker = readFileSync('worker/dialect-labs.ts', 'utf8');
 const errors = [];
 const requireText = (source, text, label) => {
   if (!source.includes(text)) errors.push(`Missing ${label}: ${text}`);
@@ -26,11 +28,13 @@ requireText(workflow, 'node scripts/concept-progress-production-smoke.mjs', 'con
 requireText(workflow, 'node scripts/checkpoint-production-smoke.mjs', 'checkpoint smoke entrypoint');
 requireText(workflow, 'node scripts/capstone-production-smoke.mjs', 'capstone smoke entrypoint');
 requireText(workflow, 'node scripts/assessment-calibration-production-smoke.mjs', 'assessment calibration smoke entrypoint');
+requireText(workflow, 'node scripts/dialect-labs-production-smoke.mjs', 'dialect lab smoke entrypoint');
 requireText(workflow, 'cloudflare-smoke-stage.txt', 'curriculum stage diagnostics');
 requireText(workflow, 'cloudflare-concepts-stage.txt', 'concept stage diagnostics');
 requireText(workflow, 'cloudflare-checkpoint-stage.txt', 'checkpoint stage diagnostics');
 requireText(workflow, 'cloudflare-capstone-stage.txt', 'capstone stage diagnostics');
 requireText(workflow, 'cloudflare-assessment-calibration-stage.txt', 'assessment calibration stage diagnostics');
+requireText(workflow, 'cloudflare-dialect-stage.txt', 'dialect stage diagnostics');
 requireText(smoke, 'expected: [409]', 'stale-write conflict check');
 requireText(smoke, 'expected: [401]', 'revoked session check');
 requireText(smoke, "'--yes'", 'non-interactive D1 execution');
@@ -99,6 +103,24 @@ requireText(calibrationSmoke, 'rejectedStatePreserved: true', 'rejected state pr
 requireText(calibrationSmoke, 'anonymousAggregateSurvivedDeletion', 'anonymous aggregate retention evidence');
 requireText(calibrationSmoke, "'--yes'", 'assessment non-interactive D1 execution');
 
+requireText(workerIndex, 'handleDialectLabRequest', 'authenticated dialect lab route ordering');
+requireText(dialectWorker, "url.pathname === '/api/dialect-labs/execute'", 'dialect execute Worker route');
+requireText(dialectWorker, "url.pathname === '/api/dialect-labs/progress'", 'dialect progress Worker route');
+requireText(dialectWorker, 'HOURLY_EXECUTION_LIMIT = 120', 'dialect execution quota');
+requireText(dialectWorker, 'validateDialectSqlPolicy', 'shared dialect SQL policy');
+requireText(dialectWorker, 'Published dialect lab case not found', 'published-case isolation');
+requireText(dialectSmoke, "'/api/dialect-labs/execute'", 'dialect execution lifecycle');
+requireText(dialectSmoke, "'/api/dialect-labs/progress'", 'dialect progress lifecycle');
+requireText(dialectSmoke, 'dialect-policy-abuse', 'dialect policy abuse rejection');
+requireText(dialectSmoke, 'dialect-incomplete-contract', 'incomplete semantic contract rejection');
+requireText(dialectSmoke, 'expected: [409]', 'dialect optimistic conflict check');
+requireText(dialectSmoke, 'expected: [401]', 'dialect revoked session check');
+requireText(dialectSmoke, 'verifyCascade()', 'dialect progress cascade verification');
+requireText(dialectSmoke, 'FROM dialect_lab_progress', 'dialect progress cleanup query');
+requireText(dialectSmoke, "'--yes'", 'dialect non-interactive D1 execution');
+requireText(dialectSmoke, 'sqlPersisted: false', 'dialect privacy summary');
+requireText(dialectSmoke, 'contractSandboxPassed: true', 'dialect contract sandbox summary');
+
 forbidText(workflow, 'cloudflare-register-payload.json', 'password-bearing diagnostic');
 forbidText(workflow, 'cloudflare-delete-payload.json', 'recovery-bearing diagnostic');
 forbidText(workflow, 'cloudflare-register.json', 'token-bearing diagnostic');
@@ -116,6 +138,11 @@ forbidText(capstoneSmoke, 'recoveryCode:', 'capstone recovery diagnostic write')
 forbidText(calibrationSmoke, "writeJson('cloudflare-assessment-calibration-register.json'", 'raw assessment registration response write');
 forbidText(calibrationSmoke, 'authToken:', 'assessment token diagnostic write');
 forbidText(calibrationSmoke, 'recoveryCode:', 'assessment recovery diagnostic write');
+forbidText(dialectSmoke, "writeJson('cloudflare-dialect-register.json'", 'raw dialect registration response write');
+forbidText(dialectSmoke, 'authToken:', 'dialect token diagnostic write');
+forbidText(dialectSmoke, 'recoveryCode:', 'dialect recovery diagnostic write');
+forbidText(dialectWorker, 'console.log(sql', 'dialect learner SQL logging');
+forbidText(dialectWorker, 'console.error(sql', 'dialect learner SQL error logging');
 
 if (errors.length) {
   console.error(`Deployment smoke validation failed with ${errors.length} issue(s):`);
@@ -123,4 +150,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Deployment smoke validation passed: curriculum, concepts, checkpoints, immutable capstone and atomic privacy-first assessment calibration lifecycles include bounded payloads, strict telemetry validation, learner SQL rejection, conflicts, owner isolation, replay recovery, revoked sessions, cascade cleanup and redaction contracts.');
+console.log('Deployment smoke validation passed: curriculum, concepts, checkpoints, immutable capstone, atomic privacy-first assessment calibration and bounded dialect contract sandbox lifecycles include strict validation, conflicts, revoked sessions, cascade cleanup and redaction contracts.');
