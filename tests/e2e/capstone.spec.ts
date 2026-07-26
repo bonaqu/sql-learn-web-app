@@ -17,8 +17,8 @@ async function expectNoSeriousAxeViolations(page: import('@playwright/test').Pag
   expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
 }
 
-async function openProjectLab(page: import('@playwright/test').Page) {
-  await page.getByTestId('curriculum-trigger').click();
+async function openProjectLab(page: import('@playwright/test').Page, mobile = false) {
+  await page.getByTestId(mobile ? 'curriculum-mobile-trigger' : 'curriculum-trigger').click();
   const studio = page.getByRole('dialog', { name: /Curriculum Studio/i });
   await expect(studio).toBeVisible();
   await studio.getByRole('tab', { name: /Project Lab/i }).click();
@@ -93,7 +93,7 @@ test('desktop capstone creates immutable report, exports portfolio and hydrates 
 test('mobile capstone reports failed invariants without horizontal overflow', async ({ page }, testInfo) => {
   await authenticatePage(page, 'capstonemobile');
   await page.goto('./');
-  await openProjectLab(page);
+  await openProjectLab(page, true);
   const evaluator = await openEvaluator(page);
 
   await evaluator.getByTestId('capstone-reflection').fill('Короткая заметка без полного контракта.');
