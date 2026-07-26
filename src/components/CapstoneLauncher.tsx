@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ShieldCheck } from 'lucide-react';
+import '../capstone-evaluator.css';
 
 const CapstonePortal = lazy(() => import('./CapstonePortal'));
 const DEFAULT_PROJECT = 'project-incident-command';
@@ -48,8 +49,8 @@ export default function CapstoneLauncher() {
         <ShieldCheck />Открыть evaluator
       </button>
     </>, target)}
-    <Suspense fallback={null}>
+    {openRequest > 0 && <Suspense fallback={null}>
       <CapstonePortal projectId={projectId} openRequest={openRequest} />
-    </Suspense>
+    </Suspense>}
   </>;
 }
