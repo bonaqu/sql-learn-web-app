@@ -27,9 +27,9 @@ async function openProjectLab(page: import('@playwright/test').Page, mobile = fa
   return studio;
 }
 
-async function openEvaluator(page: import('@playwright/test').Page) {
+async function openEvaluator(page: import('@playwright/test').Page, name: RegExp = /Incident Command Dashboard/i) {
   await page.getByTestId('open-capstone-evaluator').click();
-  const evaluator = page.getByRole('dialog', { name: /Incident Command Dashboard/i });
+  const evaluator = page.getByRole('dialog', { name });
   await expect(evaluator).toBeVisible();
   await expect(evaluator.getByTestId('capstone-sql-editor')).toBeVisible();
   return evaluator;
@@ -46,10 +46,16 @@ async function fillReferenceSubmission(evaluator: import('@playwright/test').Loc
 
 test('desktop capstone creates immutable report, exports portfolio and hydrates a second device', async ({ page, browser }, testInfo) => {
   const auth = await authenticatePage(page, 'capstone');
+  const userId = String(auth.session.userId || '');
   await page.goto('./');
   const studio = await openProjectLab(page);
-  const evaluator = await openEvaluator(page);
 
+  await studio.getByRole('button', { name: /Customer Data Trust Audit/i }).click();
+  const trustEvaluator = await openEvaluator(page, /Customer Data Trust Audit/i);
+  await trustEvaluator.getByRole('button', { name: 'Закрыть executable capstone' }).click();
+  await studio.getByRole('button', { name: /Incident Command Dashboard/i }).click();
+
+  const evaluator = await openEvaluator(page);
   await expect(evaluator).toContainText('Passed report required');
   await fillReferenceSubmission(evaluator);
   await evaluator.getByTestId('submit-capstone').click();
@@ -70,6 +76,14 @@ test('desktop capstone creates immutable report, exports portfolio and hydrates 
   await evaluator.getByRole('button', { name: /SQL bundle/i }).click();
   const sql = await sqlPromise;
   expect(sql.suggestedFilename()).toMatch(/verified\.sql$/);
+
+  const popupPromise = page.waitForEvent('popup');
+  await evaluator.getByRole('button', { name: /Печать \/ PDF/i }).click();
+  const printPage = await popupPromise;
+  await expect(printPage.getByRole('heading', { name: 'Incident Command Dashboard' })).toBeVisible();
+  if (userId) await expect(printPage.locator('body')).not.toContainText(userId);
+  await expect(printPage.locator('body')).toContainText('Engineering reflection');
+  await printPage.close();
 
   await page.screenshot({ path: testInfo.outputPath('desktop-capstone-passed.png'), fullPage: true });
   await evaluator.getByRole('button', { name: 'Закрыть executable capstone' }).click();
