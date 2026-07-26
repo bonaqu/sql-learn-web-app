@@ -17,7 +17,7 @@ jobs:
   deploy:
     name: Validate and deploy Worker
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -149,6 +149,11 @@ jobs:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
         run: node scripts/capstone-production-smoke.mjs
 
+      - name: Smoke-test privacy-first assessment calibration lifecycle
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+        run: node scripts/assessment-calibration-production-smoke.mjs
+
       - name: Smoke-test Mastery progress evidence lifecycle
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
@@ -182,7 +187,7 @@ jobs:
           script: |
             const success = process.env.JOB_STATUS === 'success';
             let description = success
-              ? 'Cloudflare deployed; curriculum, concepts, checkpoints, capstones, Mastery and onboarding verified'
+              ? 'Cloudflare deployed; curriculum, concepts, checkpoints, capstones, assessment calibration, Mastery and onboarding verified'
               : 'Cloudflare deployment or production smoke failed';
             try {
               const fs = require('fs');
@@ -191,6 +196,9 @@ jobs:
                 : '';
               const masteryStage = fs.existsSync('cloudflare-mastery-stage.txt')
                 ? fs.readFileSync('cloudflare-mastery-stage.txt', 'utf8').trim()
+                : '';
+              const assessmentCalibrationStage = fs.existsSync('cloudflare-assessment-calibration-stage.txt')
+                ? fs.readFileSync('cloudflare-assessment-calibration-stage.txt', 'utf8').trim()
                 : '';
               const capstoneStage = fs.existsSync('cloudflare-capstone-stage.txt')
                 ? fs.readFileSync('cloudflare-capstone-stage.txt', 'utf8').trim()
@@ -204,7 +212,7 @@ jobs:
               const curriculumStage = fs.existsSync('cloudflare-smoke-stage.txt')
                 ? fs.readFileSync('cloudflare-smoke-stage.txt', 'utf8').trim()
                 : '';
-              const stage = onboardingStage || masteryStage || capstoneStage || checkpointStage || conceptStage || curriculumStage;
+              const stage = onboardingStage || masteryStage || assessmentCalibrationStage || capstoneStage || checkpointStage || conceptStage || curriculumStage;
               if (!success && stage) description = `Cloudflare smoke failed at ${stage}`.slice(0, 140);
             } catch {}
             const params = {
