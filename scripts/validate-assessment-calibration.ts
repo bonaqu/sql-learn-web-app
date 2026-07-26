@@ -39,13 +39,23 @@ for (const item of assessmentItemBank) {
 }
 
 for (const mode of ['quick', 'interview', 'exam', 'production', 'final'] as const) {
-  const forms = Array.from({ length: 4 }, (_, index) => selectAssessmentForm({
-    mode,
-    progress: completeProgress,
-    userId: `synthetic-user-${index + 1}-0000000000000000`,
-    reports: [],
-    calibration: calibrationSnapshot([])
-  }));
+  const syntheticUser = `canonical-${mode}-forms-0000000000000000`;
+  const forms = Array.from({ length: 4 }, (_, index) => {
+    const priorAttempts: AssessmentSelectionReport[] = Array.from({ length: index }, (__, attemptIndex) => ({
+      mode,
+      status: 'abandoned',
+      completedAt: `2026-07-25T12:0${attemptIndex}:00.000Z`,
+      taskScores: []
+    }));
+    return selectAssessmentForm({
+      mode,
+      progress: completeProgress,
+      userId: syntheticUser,
+      reports: priorAttempts,
+      calibration: calibrationSnapshot([])
+    });
+  });
+  assert(new Set(forms.map(form => form.formId)).size === 4, `${mode}: selector must cycle through four distinct canonical form IDs`);
   for (const form of forms) {
     const coverage = assessmentFormCoverage(mode, form.tasks);
     assert(coverage.valid, `${mode} ${form.formId}: invalid blueprint coverage (${JSON.stringify(coverage)})`);
@@ -178,4 +188,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Assessment calibration validated: ${assessmentItemBank.length} items, blueprint-equivalent parallel forms, known-solution avoidance, invalid-report isolation, Wilson uncertainty and reproducible quality flags.`);
+console.log(`Assessment calibration validated: ${assessmentItemBank.length} items, four canonical blueprint-equivalent forms, known-solution avoidance, invalid-report isolation, Wilson uncertainty and reproducible quality flags.`);
