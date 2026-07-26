@@ -45,7 +45,9 @@ function taskHash(taskId: string, seed: string) {
 }
 
 function completedKnownTasks(reports: AssessmentSelectionReport[]) {
-  return new Set(reports.flatMap(report => report.taskScores.filter(item => item.correct).map(item => item.taskId)));
+  return new Set(reports
+    .filter(report => report.status === 'completed')
+    .flatMap(report => report.taskScores.filter(item => item.correct).map(item => item.taskId)));
 }
 
 function modePool(mode: CalibratedAssessmentMode) {
