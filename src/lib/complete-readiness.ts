@@ -1,5 +1,7 @@
 import { capstoneProjects, curriculumCheckpoints, curriculumLessons } from '../data/complete-curriculum';
 import { assessmentModes, type AssessmentMode, type AssessmentReport } from './assessment';
+import { bestCapstoneReport, type CapstoneReport } from './capstone-evaluator';
+import { loadLocalCapstoneReports } from './capstone-reports';
 import {
   bestCheckpointReport,
   legacyCheckpointPassed,
@@ -56,7 +58,8 @@ export function calculateCompleteReadiness(
   progress: Progress,
   curriculum: CurriculumProgressV1,
   reports: AssessmentReport[],
-  checkpointReports: CheckpointReport[] = loadLocalCheckpointReports()
+  checkpointReports: CheckpointReport[] = loadLocalCheckpointReports(),
+  capstoneReports: CapstoneReport[] = loadLocalCapstoneReports()
 ): CompleteReadiness {
   const thresholds = READINESS_POLICY.thresholds;
   const taskReadiness = overallReadiness(progress);
@@ -78,8 +81,9 @@ export function calculateCompleteReadiness(
     passedCheckpoints / Math.max(1, curriculumCheckpoints.length) * 100
   );
 
+  const passedProjects = capstoneProjects.filter(project => Boolean(bestCapstoneReport(project.id, capstoneReports)));
   const projectCompletion = clamp(
-    curriculum.completedProjects.length / Math.max(1, capstoneProjects.length) * 100
+    passedProjects.length / Math.max(1, capstoneProjects.length) * 100
   );
   const examScores = bestScores(reports);
   const diagnostic = examScores.diagnostic || 0;
@@ -123,10 +127,10 @@ export function calculateCompleteReadiness(
     },
     {
       id: 'projects',
-      title: 'Capstone-проекты',
-      current: curriculum.completedProjects.length,
+      title: 'Verified executable capstones',
+      current: passedProjects.length,
       target: capstoneProjects.length,
-      passed: curriculum.completedProjects.length === capstoneProjects.length,
+      passed: passedProjects.length === capstoneProjects.length,
       unit: 'count'
     },
     {
