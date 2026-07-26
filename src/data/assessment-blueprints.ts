@@ -113,7 +113,7 @@ export function errorClassForModule(moduleId: string): AssessmentErrorClass {
 function eligibleModes(task: SqlTask): CalibratedAssessmentMode[] {
   const modes: CalibratedAssessmentMode[] = ['quick'];
   if (task.mode === 'interview' || task.mode === 'practice') modes.push('interview');
-  if (task.mode !== 'lesson' && task.mode !== 'puzzle' && task.difficulty !== 'База') modes.push('exam');
+  if (task.mode !== 'lesson' && task.mode !== 'puzzle') modes.push('exam');
   if (task.mode !== 'puzzle') modes.push('diagnostic');
   if (task.mode !== 'lesson' && task.mode !== 'puzzle') modes.push('production', 'final');
   return Array.from(new Set(modes));
@@ -182,14 +182,14 @@ export const assessmentBlueprints: Record<CalibratedAssessmentMode, AssessmentBl
     minimumDistinctModules: 7,
     minimumDistinctSkills: 7,
     slots: [
-      { reasoningSkill: 'row-selection', count: 1 },
-      { reasoningSkill: 'aggregation', count: 1 },
-      { reasoningSkill: 'relationships', count: 1 },
-      { reasoningSkill: 'query-structure', count: 1 },
-      { reasoningSkill: 'time-series', count: 1 },
-      { reasoningSkill: 'safe-write', count: 1 },
-      { reasoningSkill: 'performance', count: 1 },
-      { reasoningSkill: 'operations', count: 1 }
+      { reasoningSkill: 'row-selection', count: 1, difficultyBands: ['working', 'advanced'] },
+      { reasoningSkill: 'aggregation', count: 1, difficultyBands: ['working', 'advanced', 'expert'] },
+      { reasoningSkill: 'relationships', count: 1, difficultyBands: ['working', 'advanced', 'expert'] },
+      { reasoningSkill: 'query-structure', count: 1, difficultyBands: ['working', 'advanced', 'expert'] },
+      { reasoningSkill: 'time-series', count: 1, difficultyBands: ['working', 'advanced', 'expert'] },
+      { reasoningSkill: 'safe-write', count: 1, difficultyBands: ['working', 'advanced', 'expert'] },
+      { reasoningSkill: 'performance', count: 1, difficultyBands: ['working', 'advanced', 'expert'] },
+      { reasoningSkill: 'operations', count: 1, difficultyBands: ['working', 'advanced', 'expert'] }
     ],
     maximumFormOverlap: 0.38
   },
