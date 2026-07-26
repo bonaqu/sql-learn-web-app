@@ -91,7 +91,7 @@ test('desktop syllabus exposes tracks evidence-gated review tools executable dia
   await expect(page.getByRole('button', { name: /PostgreSQL Remote sandbox/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /MySQL Remote sandbox/i })).toBeVisible();
   await page.getByText(/Reference-only syntax matrix/i).click();
-  await expect(page.getByRole('heading', { name: 'SQL Server' })).toBeVisible();
+  await expect(page.locator('.dialect-reference-matrix article').filter({ hasText: 'SQL Server' })).toBeVisible();
   await expectAccessible(page);
 
   await page.getByRole('tab', { name: /Экзамены/i }).click();
