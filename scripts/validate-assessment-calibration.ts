@@ -61,10 +61,11 @@ for (const mode of ['quick', 'interview', 'exam', 'production', 'final'] as cons
   }
 }
 
+const knownUserId = 'known-solution-validator-00000000000001';
 const firstProduction = selectAssessmentForm({
   mode: 'production',
   progress: completeProgress,
-  userId: 'known-solution-validator-00000000000001',
+  userId: knownUserId,
   reports: [],
   calibration: calibrationSnapshot([])
 });
@@ -77,13 +78,24 @@ const knownReports: AssessmentSelectionReport[] = [{
 const secondProduction = selectAssessmentForm({
   mode: 'production',
   progress: completeProgress,
-  userId: 'known-solution-validator-00000000000001',
+  userId: knownUserId,
   reports: knownReports,
   calibration: calibrationSnapshot([])
 });
 const repeated = secondProduction.tasks.filter(task => firstProduction.tasks.some(previous => previous.id === task.id));
 assert(repeated.length <= Math.ceil(firstProduction.tasks.length * assessmentBlueprints.production.maximumFormOverlap), 'Adaptive selection repeats too many known solutions');
 assert(secondProduction.fallbackKnownSolutions <= repeated.length, 'Known-solution fallback accounting is invalid');
+
+const expiredReports: AssessmentSelectionReport[] = knownReports.map(report => ({ ...report, status: 'expired' }));
+const afterExpired = selectAssessmentForm({
+  mode: 'production',
+  progress: completeProgress,
+  userId: knownUserId,
+  reports: expiredReports,
+  calibration: calibrationSnapshot([])
+});
+assert(afterExpired.excludedKnownSolutions === 0, 'Expired report must not mark correct items as known solutions');
+assert(afterExpired.fallbackKnownSolutions === 0, 'Expired report must not force known-solution fallback');
 
 function aggregate(taskId: string, overrides: Partial<AssessmentItemAggregate>): AssessmentItemAggregate {
   return {
@@ -166,4 +178,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Assessment calibration validated: ${assessmentItemBank.length} items, blueprint-equivalent parallel forms, known-solution avoidance, Wilson uncertainty and reproducible quality flags.`);
+console.log(`Assessment calibration validated: ${assessmentItemBank.length} items, blueprint-equivalent parallel forms, known-solution avoidance, invalid-report isolation, Wilson uncertainty and reproducible quality flags.`);
