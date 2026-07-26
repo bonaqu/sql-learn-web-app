@@ -5,11 +5,14 @@ import { authenticatePage, loginPage } from './auth-helper';
 const SQLITE_NULL_ORDERING = `SELECT ticket_id, closed_at
 FROM tickets
 ORDER BY (closed_at IS NULL), closed_at, ticket_id;`;
-
 const POSTGRES_NULL_ORDERING = `SELECT ticket_id, closed_at
 FROM tickets
 ORDER BY closed_at NULLS LAST, ticket_id;`;
-
+const SQLITE_DATE_BOUNDARY = `SELECT ticket_id
+FROM tickets
+WHERE closed_at >= datetime('2026-07-08 00:00:00', '-1 day')
+  AND closed_at < datetime('2026-07-08 00:00:00')
+ORDER BY ticket_id;`;
 const MYSQL_OPTIMISTIC_UPDATE = `UPDATE ticket_versions
 SET priority = 'Critical', version = version + 1
 WHERE ticket_id = 1002 AND version = 7;
@@ -38,22 +41,28 @@ async function expectNoHorizontalOverflow(page: Page) {
 
 async function expectAccessible(page: Page) {
   const result = await new AxeBuilder({ page })
+    .include('[data-testid="dialect-executable-lab"]')
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
     .analyze();
   const violations = result.violations.filter(item => item.impact === 'serious' || item.impact === 'critical');
   expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
 }
 
-test('desktop syllabus dialect lab executes SQLite and PostgreSQL evidence and hydrates a second device', async ({ page, browser }, testInfo) => {
+test('desktop dialect lab executes independent SQLite and PostgreSQL contract evidence and hydrates a second device', async ({ page, browser }, testInfo) => {
   const auth = await authenticatePage(page, 'dialect');
   await openDialectLab(page);
 
-  await replaceSql(page, SQLITE_NULL_ORDERING);
   await page.getByTestId('run-dialect-lab').click();
   const evidence = page.getByTestId('dialect-evidence-card');
+  await expect(evidence).toContainText('Нужна коррекция');
+  await expect(page.locator('.dialect-errors')).toContainText('semantic marker');
+
+  await replaceSql(page, SQLITE_NULL_ORDERING);
+  await page.getByTestId('run-dialect-lab').click();
   await expect(evidence).toContainText('Contract подтверждён');
   await expect(evidence).toContainText('local-sqlite');
   await expect(page.locator('.dialect-sync-message')).toContainText(/Independent evidence синхронизирован|Cloud sync повторится/);
+  await expect(page.locator('.dialect-executable-hero')).toContainText('1/3');
 
   await page.getByRole('button', { name: /PostgreSQL Remote sandbox/i }).click();
   await replaceSql(page, POSTGRES_NULL_ORDERING);
@@ -62,6 +71,26 @@ test('desktop syllabus dialect lab executes SQLite and PostgreSQL evidence and h
   await expect(evidence).toContainText('remote-sandbox');
   await expect(page.locator('.dialect-sync-message')).toContainText(/Independent evidence синхронизирован|Cloud sync повторится/);
   await expect(page.locator('.dialect-executable-hero')).toContainText('2/3');
+
+  const storageKey = `sql-academy-dialect-lab-progress-v1:${String(auth.session.userId)}`;
+  const storedProgress = await page.evaluate(key => localStorage.getItem(key) || '', storageKey);
+  expect(storedProgress).toContain('fnv1a-');
+  expect(storedProgress.toUpperCase()).not.toContain('SELECT TICKET_ID');
+  expect(storedProgress.toUpperCase()).not.toContain('NULLS LAST');
+
+  await page.getByRole('button', { name: /Date\/time boundary semantics/i }).click();
+  await page.getByTestId('run-dialect-lab').click();
+  await page.getByTestId('run-dialect-lab').click();
+  const reveal = page.getByRole('button', { name: /Reference после 2 попыток/i });
+  await expect(reveal).toBeEnabled();
+  await reveal.click();
+  await replaceSql(page, SQLITE_DATE_BOUNDARY);
+  await page.getByTestId('run-dialect-lab').click();
+  await expect(evidence).toContainText('Contract подтверждён');
+  await expect(page.locator('.dialect-sync-message')).toContainText('guided');
+  await expect(page.locator('.dialect-executable-hero')).toContainText('0/3');
+
+  await expectAccessible(page);
   await page.screenshot({ path: testInfo.outputPath('desktop-dialect-evidence.png'), fullPage: true });
 
   const secondContext = await browser.newContext();
@@ -71,11 +100,13 @@ test('desktop syllabus dialect lab executes SQLite and PostgreSQL evidence and h
   await expect(secondPage.locator('.dialect-executable-hero')).toContainText('2/3');
   await expect(secondPage.getByRole('button', { name: /SQLite Local WASM/i }).locator('svg.passed')).toBeVisible();
   await expect(secondPage.getByRole('button', { name: /PostgreSQL Remote sandbox/i }).locator('svg.passed')).toBeVisible();
+  const secondStored = await secondPage.evaluate(key => localStorage.getItem(key) || '', storageKey);
+  expect(secondStored.toUpperCase()).not.toContain('SELECT TICKET_ID');
   await expectAccessible(secondPage);
   await secondContext.close();
 });
 
-test('mobile syllabus dialect lab blocks unsafe SQL and renders deterministic concurrency evidence without overflow', async ({ page }, testInfo) => {
+test('mobile dialect lab blocks unsafe SQL and renders deterministic concurrency evidence without overflow', async ({ page }, testInfo) => {
   await authenticatePage(page, 'dialectmobile');
   await openDialectLab(page, true);
 
@@ -92,6 +123,7 @@ test('mobile syllabus dialect lab blocks unsafe SQL and renders deterministic co
   await expect(evidence).toContainText('Contract подтверждён');
   await expect(evidence).toContainText('deterministic-simulation');
   await expect(page.locator('.dialect-timeline')).toContainText('B affected rows = 0');
+  await expect(page.locator('.dialect-result-table')).toContainText('conflict');
   await expectNoHorizontalOverflow(page);
   await expectAccessible(page);
   await page.screenshot({ path: testInfo.outputPath('mobile-dialect-simulation.png'), fullPage: true });
