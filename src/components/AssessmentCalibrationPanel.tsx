@@ -10,36 +10,74 @@ import {
 import {
   ASSESSMENT_REPORTS_CHANGED_EVENT,
   loadLocalAssessmentReports,
+  saveLocalAssessmentReport,
   type AssessmentReport
 } from '../lib/assessment';
 import '../assessment-calibration.css';
 
-function latestMeasuredReport() {
-  return loadLocalAssessmentReports().find(report => report.measurement) || null;
+function measuredReports() {
+  return loadLocalAssessmentReports().filter(report => report.measurement);
+}
+
+function visibleMeasuredReport(reportHero?: HTMLElement | null) {
+  const reports = measuredReports();
+  const visibleText = reportHero?.textContent || '';
+  return reports.find(report => report.formId && visibleText.includes(report.formId)) || reports[0] || null;
+}
+
+function setStartButtonsReady(ready: boolean) {
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-testid^="start-"]')) {
+    button.disabled = !ready;
+    button.dataset.evidenceReady = ready ? 'true' : 'false';
+    if (!ready) button.setAttribute('aria-label', `${button.textContent?.trim() || 'Начать'} — синхронизация evidence`);
+    else button.removeAttribute('aria-label');
+  }
 }
 
 export default function AssessmentCalibrationPanel() {
   const [landingSlot, setLandingSlot] = useState<HTMLElement | null>(null);
   const [reportSlot, setReportSlot] = useState<HTMLElement | null>(null);
   const [snapshot, setSnapshot] = useState<AssessmentCalibrationSnapshot>(loadAssessmentCalibration);
-  const [report, setReport] = useState<AssessmentReport | null>(latestMeasuredReport);
+  const [report, setReport] = useState<AssessmentReport | null>(() => visibleMeasuredReport());
   const [syncState, setSyncState] = useState<'syncing' | 'synced' | 'local'>('syncing');
   const mounted = useRef<HTMLElement[]>([]);
+  const evidenceReady = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-    void syncAssessmentCalibration()
-      .then(next => {
+    evidenceReady.current = false;
+    setStartButtonsReady(false);
+    const hydrate = async () => {
+      try {
+        const [nextCalibration, reportsResponse] = await Promise.all([
+          syncAssessmentCalibration(),
+          fetch('/api/assessment/reports')
+        ]);
+        if (!reportsResponse.ok) throw new Error('Assessment report history is unavailable');
+        const payload = await reportsResponse.json() as { reports?: AssessmentReport[] };
+        for (const remote of [...(payload.reports || [])].reverse()) saveLocalAssessmentReport(remote);
         if (cancelled) return;
-        setSnapshot(next);
+        setSnapshot(nextCalibration);
+        setReport(visibleMeasuredReport(document.querySelector<HTMLElement>('.assessment-report .assessment-report-hero')));
         setSyncState('synced');
-      })
-      .catch(() => {
+      } catch {
         if (cancelled) return;
         setSnapshot(loadAssessmentCalibration());
+        setReport(visibleMeasuredReport(document.querySelector<HTMLElement>('.assessment-report .assessment-report-hero')));
         setSyncState('local');
-      });
-    return () => { cancelled = true; };
+      } finally {
+        if (!cancelled) {
+          evidenceReady.current = true;
+          setStartButtonsReady(true);
+        }
+      }
+    };
+    void hydrate();
+    return () => {
+      cancelled = true;
+      evidenceReady.current = true;
+      setStartButtonsReady(true);
+    };
   }, []);
 
   useEffect(() => {
@@ -58,15 +96,16 @@ export default function AssessmentCalibrationPanel() {
         slot.dataset.assessmentCalibrationSlot = 'report';
         reportHero.insertAdjacentElement('afterend', slot);
         mounted.current.push(slot);
-        setReport(latestMeasuredReport());
         setReportSlot(slot);
       }
+      if (reportHero) setReport(visibleMeasuredReport(reportHero));
       if (!landing) setLandingSlot(null);
       if (!reportHero) setReportSlot(null);
+      setStartButtonsReady(evidenceReady.current);
     };
     mount();
     const observer = new MutationObserver(mount);
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     return () => {
       observer.disconnect();
       for (const slot of mounted.current) slot.remove();
@@ -79,7 +118,7 @@ export default function AssessmentCalibrationPanel() {
       const detail = (event as CustomEvent<AssessmentCalibrationSnapshot>).detail;
       setSnapshot(detail || loadAssessmentCalibration());
     };
-    const onReports = () => setReport(latestMeasuredReport());
+    const onReports = () => setReport(visibleMeasuredReport(document.querySelector<HTMLElement>('.assessment-report .assessment-report-hero')));
     window.addEventListener(ASSESSMENT_CALIBRATION_CHANGED_EVENT, onCalibration);
     window.addEventListener(ASSESSMENT_REPORTS_CHANGED_EVENT, onReports);
     return () => {
@@ -107,10 +146,10 @@ export default function AssessmentCalibrationPanel() {
         <span><b>{summary.flagged}</b><small>quality review flags</small></span>
       </div>
       <p>{syncState === 'syncing'
-        ? 'Синхронизирую anonymous item aggregates…'
+        ? 'Синхронизирую reports и anonymous item aggregates перед выбором формы…'
         : syncState === 'synced'
-          ? `Cross-device snapshot получен: ${summary.observed} items имеют aggregate evidence.`
-          : 'Облачная calibration недоступна. Форма безопасно использует authored difficulty без выдуманной точности.'}</p>
+          ? `Cross-device evidence готов: ${summary.observed} items имеют aggregate evidence.`
+          : 'Облачное evidence недоступно. Форма безопасно использует локальную историю и authored difficulty без выдуманной точности.'}</p>
     </section>,
     landingSlot
   ) : null;
