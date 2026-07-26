@@ -40,6 +40,7 @@ import {
   downloadCapstoneSql,
   printCapstonePortfolio
 } from '../lib/capstone-portfolio';
+import { loadCapstoneSqlRuntime } from '../lib/capstone-sql-runtime';
 import {
   completeProject,
   loadCurriculumProgress,
@@ -177,8 +178,7 @@ export default function CapstonePortal({ projectId, openRequest }: CapstonePorta
     setEvaluating(true);
     setStatus('SQLite проверяет public contract и hidden datasets…');
     try {
-      const module = await import('sql.js');
-      const SQL = await module.default({ locateFile: file => `https://sql.js.org/dist/${file}` });
+      const SQL = await loadCapstoneSqlRuntime();
       const previous = loadLocalCapstoneReports(auth.userId).filter(report => report.projectId === activeProjectId);
       const report = await evaluateCapstone({
         SQL,
