@@ -81,6 +81,11 @@ requireText(assessmentReportV2, 'immutableReport(stored) !== immutableReport(inc
 requireText(assessmentReportV2, 'containsForbiddenEvidenceKey', 'learner SQL privacy guard');
 requireText(assessmentReportV2, 'recovered: telemetryContributed', 'replay telemetry recovery evidence');
 requireText(calibrationSmoke, "'/api/assessment/calibration'", 'assessment calibration endpoint lifecycle');
+requireText(calibrationSmoke, 'assessment-calibration-reject-forged-telemetry', 'forged telemetry rejection stage');
+requireText(calibrationSmoke, 'assessment-calibration-reject-sql-field', 'learner SQL privacy rejection stage');
+requireText(calibrationSmoke, 'assessment-calibration-rejected-state-preserved', 'rejected payload state preservation');
+requireText(calibrationSmoke, 'submissionSql:', 'explicit forbidden SQL payload test');
+requireText(calibrationSmoke, 'expected: [400]', 'strict assessment payload rejection');
 requireText(calibrationSmoke, 'telemetryContributed !== true', 'assessment first contribution evidence');
 requireText(calibrationSmoke, 'idempotent !== true', 'assessment exact replay evidence');
 requireText(calibrationSmoke, 'expected: [409]', 'assessment immutable mutation rejection');
@@ -88,6 +93,9 @@ requireText(calibrationSmoke, 'expected: [403]', 'assessment owner mismatch chec
 requireText(calibrationSmoke, 'expected: [401]', 'assessment revoked session check');
 requireText(calibrationSmoke, 'verifyD1Lifecycle', 'assessment D1 receipt/report cascade verification');
 requireText(calibrationSmoke, 'technicalErrorAttempts', 'technical-error exclusion evidence');
+requireText(calibrationSmoke, 'forgedTelemetryRejected: true', 'forged telemetry summary evidence');
+requireText(calibrationSmoke, 'learnerSqlFieldRejected: true', 'learner SQL rejection summary evidence');
+requireText(calibrationSmoke, 'rejectedStatePreserved: true', 'rejected state preservation summary');
 requireText(calibrationSmoke, 'anonymousAggregateSurvivedDeletion', 'anonymous aggregate retention evidence');
 requireText(calibrationSmoke, "'--yes'", 'assessment non-interactive D1 execution');
 
@@ -108,7 +116,6 @@ forbidText(capstoneSmoke, 'recoveryCode:', 'capstone recovery diagnostic write')
 forbidText(calibrationSmoke, "writeJson('cloudflare-assessment-calibration-register.json'", 'raw assessment registration response write');
 forbidText(calibrationSmoke, 'authToken:', 'assessment token diagnostic write');
 forbidText(calibrationSmoke, 'recoveryCode:', 'assessment recovery diagnostic write');
-forbidText(calibrationSmoke, 'submissionSql', 'learner SQL in assessment calibration diagnostic');
 
 if (errors.length) {
   console.error(`Deployment smoke validation failed with ${errors.length} issue(s):`);
@@ -116,4 +123,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Deployment smoke validation passed: curriculum, concepts, checkpoints, immutable capstone and atomic privacy-first assessment calibration lifecycles include bounded payloads, conflicts, owner isolation, replay recovery, revoked sessions, cascade cleanup and redaction contracts.');
+console.log('Deployment smoke validation passed: curriculum, concepts, checkpoints, immutable capstone and atomic privacy-first assessment calibration lifecycles include bounded payloads, strict telemetry validation, learner SQL rejection, conflicts, owner isolation, replay recovery, revoked sessions, cascade cleanup and redaction contracts.');
