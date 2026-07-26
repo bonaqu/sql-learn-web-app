@@ -53,6 +53,7 @@ test('desktop capstone creates immutable report, exports portfolio and hydrates 
   await studio.getByRole('button', { name: /Customer Data Trust Audit/i }).click();
   const trustEvaluator = await openEvaluator(page, /Customer Data Trust Audit/i);
   await trustEvaluator.getByRole('button', { name: 'Закрыть executable capstone' }).click();
+  await expect(trustEvaluator).toBeHidden();
   await studio.getByRole('button', { name: /Incident Command Dashboard/i }).click();
 
   const evaluator = await openEvaluator(page);
