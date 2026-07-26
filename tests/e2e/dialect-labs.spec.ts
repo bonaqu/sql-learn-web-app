@@ -79,6 +79,7 @@ test('desktop dialect lab executes independent SQLite and PostgreSQL contract ev
   expect(storedProgress.toUpperCase()).not.toContain('NULLS LAST');
 
   await page.getByRole('button', { name: /Date\/time boundary semantics/i }).click();
+  await page.getByRole('button', { name: /SQLite Local WASM/i }).click();
   await page.getByTestId('run-dialect-lab').click();
   await page.getByTestId('run-dialect-lab').click();
   const reveal = page.getByRole('button', { name: /Reference после 2 попыток/i });
