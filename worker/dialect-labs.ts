@@ -8,6 +8,14 @@ const MAX_EVIDENCE = 18;
 const HOURLY_EXECUTION_LIMIT = 120;
 const DIGEST_PATTERN = /^fnv1a-[a-f0-9]{8}$/;
 
+type StoredProgress = {
+  version: 1;
+  userId: string;
+  revision: number;
+  evidence: Record<string, Record<string, unknown>>;
+  updatedAt: string;
+};
+
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) => new Response(JSON.stringify(data), {
   status,
   headers: {
@@ -36,31 +44,61 @@ function boundedString(value: unknown, maximum: number) {
   return typeof value === 'string' && value.length <= maximum;
 }
 
+function digest(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `fnv1a-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+}
+
+function expectedPublishedDigest(labId: string, dialect: SqlDialect, executionMode: string) {
+  const labCase = dialectLabCase(labId, dialect);
+  if (!labCase) return null;
+  const output = {
+    columns: [...labCase.expected.columns],
+    rows: labCase.expected.rows.map(row => [...row])
+  };
+  const serialized = JSON.stringify(output);
+  if (executionMode === 'remote-sandbox') return digest(`${labId}:${dialect}:${serialized}:true:dialect-sandbox-v1`);
+  if (executionMode === 'deterministic-simulation') return digest(`${labId}:${dialect}:${serialized}:true`);
+  return null;
+}
+
 function validEvidence(value: unknown, key: string) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const item = value as Record<string, unknown>;
   const lab = dialectLabManifests.find(candidate => candidate.id === item.labId);
   const dialect = item.dialect as SqlDialect;
-  return Boolean(lab)
-    && ['sqlite', 'postgresql', 'mysql'].includes(String(dialect))
-    && key === `${item.labId}:${dialect}`
-    && item.version === 1
-    && item.manifestVersion === 1
-    && ['local-sqlite', 'remote-sandbox', 'deterministic-simulation'].includes(String(item.executionMode))
-    && typeof item.passed === 'boolean'
-    && typeof item.evidenceEligible === 'boolean'
-    && typeof item.independent === 'boolean'
-    && typeof item.attempts === 'number'
-    && Number.isInteger(item.attempts)
-    && item.attempts >= 0
-    && item.attempts <= 10_000
-    && (item.bestDurationMs === null || (typeof item.bestDurationMs === 'number' && Number.isInteger(item.bestDurationMs) && item.bestDurationMs >= 1 && item.bestDurationMs <= 60_000))
-    && (item.resultDigest === null || (typeof item.resultDigest === 'string' && DIGEST_PATTERN.test(item.resultDigest)))
-    && (item.completedAt === null || boundedString(item.completedAt, 64))
-    && boundedString(item.lastAttemptAt, 64);
+  if (!lab || !['sqlite', 'postgresql', 'mysql'].includes(String(dialect))) return false;
+  const behavior = lab.behaviors.find(candidate => candidate.dialect === dialect);
+  if (!behavior || item.executionMode !== behavior.executionMode) return false;
+  if (key !== `${item.labId}:${dialect}`
+    || item.version !== 1
+    || item.manifestVersion !== 1
+    || typeof item.passed !== 'boolean'
+    || typeof item.evidenceEligible !== 'boolean'
+    || typeof item.independent !== 'boolean'
+    || typeof item.attempts !== 'number'
+    || !Number.isInteger(item.attempts)
+    || item.attempts < 0
+    || item.attempts > 10_000
+    || !(item.bestDurationMs === null || (typeof item.bestDurationMs === 'number' && Number.isInteger(item.bestDurationMs) && item.bestDurationMs >= 1 && item.bestDurationMs <= 60_000))
+    || !(item.resultDigest === null || (typeof item.resultDigest === 'string' && DIGEST_PATTERN.test(item.resultDigest)))
+    || !(item.completedAt === null || boundedString(item.completedAt, 64))
+    || !boundedString(item.lastAttemptAt, 64)) return false;
+
+  if (item.passed === true) {
+    if (item.evidenceEligible !== true || item.independent !== true || item.completedAt === null || typeof item.resultDigest !== 'string') return false;
+    const publishedDigest = expectedPublishedDigest(String(item.labId), dialect, behavior.executionMode);
+    if (publishedDigest && item.resultDigest !== publishedDigest) return false;
+  }
+  if (item.independent === true && item.passed !== true) return false;
+  return true;
 }
 
-function validProgress(value: unknown, userId: string) {
+function validProgress(value: unknown, userId: string): value is StoredProgress {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const progress = value as Record<string, unknown>;
   if (progress.version !== 1
@@ -86,13 +124,27 @@ function parseStoredProgress(payload: string, userId: string) {
   }
 }
 
-function digest(value: string) {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
+function monotonicEvidence(previous: Record<string, unknown>, next: Record<string, unknown>) {
+  if (Number(next.attempts) < Number(previous.attempts)) return false;
+  if (previous.passed === true) {
+    if (next.passed !== true || next.independent !== true || next.evidenceEligible !== true) return false;
+    if (next.resultDigest !== previous.resultDigest || next.completedAt !== previous.completedAt) return false;
   }
-  return `fnv1a-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+  if (previous.independent === true && next.independent !== true) return false;
+  if (previous.evidenceEligible === true && next.evidenceEligible !== true) return false;
+  if (typeof previous.bestDurationMs === 'number') {
+    if (typeof next.bestDurationMs !== 'number' || Number(next.bestDurationMs) > previous.bestDurationMs) return false;
+  }
+  return true;
+}
+
+function monotonicProgress(previous: StoredProgress | null, next: StoredProgress) {
+  if (!previous) return true;
+  for (const [key, evidence] of Object.entries(previous.evidence)) {
+    const candidate = next.evidence[key];
+    if (!candidate || !monotonicEvidence(evidence, candidate)) return false;
+  }
+  return true;
 }
 
 async function consumeExecutionQuota(env: Cloudflare.Env, userId: string) {
@@ -105,15 +157,20 @@ async function consumeExecutionQuota(env: Cloudflare.Env, userId: string) {
   return { allowed: true, remaining: HOURLY_EXECUTION_LIMIT - current - 1 };
 }
 
-async function readProgress(env: Cloudflare.Env, userId: string) {
+async function currentProgress(env: Cloudflare.Env, userId: string) {
   const row = await env.DB.prepare(`SELECT payload, revision, updated_at
     FROM dialect_lab_progress WHERE user_id = ?`)
     .bind(userId)
     .first<{ payload: string; revision: number; updated_at: string }>();
-  if (!row) return json({ progress: null, revision: 0, updatedAt: null });
+  if (!row) return { progress: null as StoredProgress | null, revision: 0, updatedAt: null as string | null };
   const progress = parseStoredProgress(row.payload, userId);
-  if (!progress) return json({ error: 'Stored dialect progress is invalid' }, 500);
-  return json({ progress, revision: row.revision, updatedAt: row.updated_at });
+  if (!progress) throw new Error('Stored dialect progress is invalid');
+  return { progress, revision: row.revision, updatedAt: row.updated_at };
+}
+
+async function readProgress(env: Cloudflare.Env, userId: string) {
+  const current = await currentProgress(env, userId);
+  return json(current);
 }
 
 async function writeProgress(request: Request, env: Cloudflare.Env, userId: string) {
@@ -126,39 +183,33 @@ async function writeProgress(request: Request, env: Cloudflare.Env, userId: stri
     || body.baseRevision < 0
     || body.baseRevision > 1_000_000) return json({ error: 'Invalid dialect progress payload' }, 400);
 
-  const nextRevision = body.baseRevision + 1;
-  const progress = { ...(body.progress as Record<string, unknown>), revision: nextRevision, updatedAt: new Date().toISOString() };
+  const current = await currentProgress(env, userId);
+  if (body.baseRevision !== current.revision) {
+    return json({ error: 'Dialect progress conflict', ...current }, 409);
+  }
+  if (!monotonicProgress(current.progress, body.progress)) {
+    return json({ error: 'Dialect progress cannot regress or mutate verified evidence' }, 400);
+  }
+
+  const nextRevision = current.revision + 1;
+  const progress: StoredProgress = { ...body.progress, revision: nextRevision, updatedAt: new Date().toISOString() };
   const serialized = JSON.stringify(progress);
   if (new TextEncoder().encode(serialized).byteLength > MAX_PROGRESS_BYTES) return json({ error: 'Dialect progress payload is too large' }, 413);
   const updatedAt = sqliteTime();
 
-  if (body.baseRevision === 0) {
+  if (!current.progress) {
     const inserted = await env.DB.prepare(`INSERT OR IGNORE INTO dialect_lab_progress(user_id, payload, revision, updated_at)
       VALUES(?, ?, 1, ?)`).bind(userId, serialized, updatedAt).run();
     if ((inserted.meta.changes || 0) !== 1) {
-      const current = await env.DB.prepare(`SELECT payload, revision, updated_at FROM dialect_lab_progress WHERE user_id = ?`)
-        .bind(userId).first<{ payload: string; revision: number; updated_at: string }>();
-      return json({
-        error: 'Dialect progress conflict',
-        progress: current ? parseStoredProgress(current.payload, userId) : null,
-        revision: current?.revision || 0,
-        updatedAt: current?.updated_at || null
-      }, 409);
+      return json({ error: 'Dialect progress conflict', ...(await currentProgress(env, userId)) }, 409);
     }
   } else {
     const updated = await env.DB.prepare(`UPDATE dialect_lab_progress
       SET payload = ?, revision = ?, updated_at = ?
       WHERE user_id = ? AND revision = ?`)
-      .bind(serialized, nextRevision, updatedAt, userId, body.baseRevision).run();
+      .bind(serialized, nextRevision, updatedAt, userId, current.revision).run();
     if ((updated.meta.changes || 0) !== 1) {
-      const current = await env.DB.prepare(`SELECT payload, revision, updated_at FROM dialect_lab_progress WHERE user_id = ?`)
-        .bind(userId).first<{ payload: string; revision: number; updated_at: string }>();
-      return json({
-        error: 'Dialect progress conflict',
-        progress: current ? parseStoredProgress(current.payload, userId) : null,
-        revision: current?.revision || 0,
-        updatedAt: current?.updated_at || null
-      }, 409);
+      return json({ error: 'Dialect progress conflict', ...(await currentProgress(env, userId)) }, 409);
     }
   }
 
