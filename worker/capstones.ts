@@ -177,11 +177,12 @@ function validReport(value: unknown): value is CapstoneReportPayload {
     || !report.files.every(file => validFileEvidence(file, allowedFiles))) return false;
   if (!sameStringSet(report.files.map(file => file.fileId), expectedFiles)) return false;
   if (!validSubmissionFiles(report.submissionFiles, expectedFiles)) return false;
-  if (!Array.isArray(report.checks)
-    || report.checks.length < expectedFiles.length + 1
-    || report.checks.length > 32
-    || !report.checks.every(check => validCheck(check, allowedFiles))) return false;
-  if (!unique(report.checks.map(check => check.id))) return false;
+  const checks = report.checks;
+  if (!Array.isArray(checks)
+    || checks.length < expectedFiles.length + 1
+    || checks.length > 32
+    || !checks.every(check => validCheck(check, allowedFiles))) return false;
+  if (!unique(checks.map(check => check.id))) return false;
   if (!Array.isArray(report.remediation)
     || report.remediation.length > 32
     || !report.remediation.every(item => shortText(item, 1_200))) return false;
@@ -189,12 +190,12 @@ function validReport(value: unknown): value is CapstoneReportPayload {
   const startedAt = typeof report.startedAt === 'string' ? Date.parse(report.startedAt) : NaN;
   const completedAt = typeof report.completedAt === 'string' ? Date.parse(report.completedAt) : NaN;
   const fileChecksComplete = report.files.every(file => {
-    const checks = report.checks.filter(check => check.fileId === file.fileId);
-    return checks.length === file.checks.length
-      && sameStringSet(checks.map(check => check.id), file.checks)
-      && file.passed === checks.every(check => check.passed);
+    const relatedChecks = checks.filter(check => check.fileId === file.fileId);
+    return relatedChecks.length === file.checks.length
+      && sameStringSet(relatedChecks.map(check => check.id), file.checks)
+      && file.passed === relatedChecks.every(check => check.passed);
   });
-  const reflection = report.checks.find(check => check.kind === 'reflection');
+  const reflection = checks.find(check => check.kind === 'reflection');
   const expectedPassed = (report.score ?? 0) >= (report.passingScore ?? 101)
     && report.files.every(file => file.passed)
     && Boolean(reflection?.passed)
