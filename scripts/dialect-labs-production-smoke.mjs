@@ -5,6 +5,8 @@ import { appendFileSync, writeFileSync } from 'node:fs';
 const deployUrl = process.env.DEPLOY_URL;
 if (!deployUrl) throw new Error('DEPLOY_URL is required');
 
+const ROUTE_PROPAGATION_ATTEMPTS = 8;
+const ROUTE_PROPAGATION_DELAY_MS = 4_000;
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 let stageName = 'bootstrap';
 let authToken = '';
@@ -47,6 +49,11 @@ async function request(path, {
   if (last?.text && diagnosticFile) writeFileSync(diagnosticFile, last.text);
   throw new Error(`${method} ${path} did not return ${expected.join('/')} (last: ${last?.response?.status ?? 'network error'})`);
 }
+
+const propagationOptions = {
+  attempts: ROUTE_PROPAGATION_ATTEMPTS,
+  delayMs: ROUTE_PROPAGATION_DELAY_MS
+};
 
 function findCount(value) {
   if (Array.isArray(value)) {
@@ -133,9 +140,11 @@ async function verifyCascade() {
 
 try {
   stage('dialect-unauthenticated');
-  await request('/api/dialect-labs/progress', { expected: [401], attempts: 6, diagnosticFile: 'cloudflare-dialect-unauthorized.json' });
+  await request('/api/dialect-labs/progress', {
+    expected: [401], diagnosticFile: 'cloudflare-dialect-unauthorized.json', ...propagationOptions
+  });
   await request('/api/dialect-labs/execute', {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', expected: [401], attempts: 2
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', expected: [401], ...propagationOptions
   });
   endStage();
 
@@ -158,7 +167,9 @@ try {
   const headers = { authorization: `Bearer ${authToken}`, 'content-type': 'application/json' };
 
   stage('dialect-initial-progress');
-  const initial = parseJson((await request('/api/dialect-labs/progress', { headers, attempts: 3 })).text, 'Initial dialect progress');
+  const initial = parseJson((await request('/api/dialect-labs/progress', {
+    headers, ...propagationOptions
+  })).text, 'Initial dialect progress');
   if (initial.progress !== null || initial.revision !== 0) throw new Error('New account must have empty dialect progress');
   endStage();
 
@@ -166,7 +177,7 @@ try {
   await request('/api/dialect-labs/execute', {
     method: 'POST', headers,
     body: JSON.stringify({ version: 1, labId: 'dialect-null-ordering', dialect: 'postgresql', sql: 'SELECT SLEEP(10);' }),
-    expected: [400], attempts: 1, diagnosticFile: 'cloudflare-dialect-policy-rejection.json'
+    expected: [400], diagnosticFile: 'cloudflare-dialect-policy-rejection.json', ...propagationOptions
   });
   endStage();
 
@@ -174,7 +185,7 @@ try {
   const incomplete = parseJson((await request('/api/dialect-labs/execute', {
     method: 'POST', headers,
     body: JSON.stringify({ version: 1, labId: 'dialect-null-ordering', dialect: 'postgresql', sql: 'SELECT ticket_id, closed_at FROM tickets ORDER BY closed_at, ticket_id;' }),
-    expected: [200], attempts: 2
+    expected: [200], ...propagationOptions
   })).text, 'Incomplete dialect contract');
   if (incomplete.passed !== false || incomplete.evidenceEligible !== false || !Array.isArray(incomplete.errors) || incomplete.errors.length === 0) {
     throw new Error('Incomplete semantic contract unexpectedly passed');
@@ -186,7 +197,7 @@ try {
   const executed = parseJson((await request('/api/dialect-labs/execute', {
     method: 'POST', headers,
     body: JSON.stringify({ version: 1, labId: 'dialect-null-ordering', dialect: 'postgresql', sql: referenceSql }),
-    expected: [200], attempts: 3
+    expected: [200], ...propagationOptions
   })).text, 'Dialect remote contract');
   if (!executed.passed || !executed.evidenceEligible || executed.offlinePreview || executed.executionMode !== 'remote-sandbox') {
     throw new Error(`Remote contract sandbox did not produce eligible evidence: ${JSON.stringify(executed)}`);
@@ -256,12 +267,13 @@ try {
     labId: 'dialect-null-ordering',
     dialect: 'postgresql',
     contractSandboxPassed: true,
+    routePropagationRetries: ROUTE_PROPAGATION_ATTEMPTS,
     policyAbuseRejected: true,
     progressRoundTrip: true,
     sqlPersisted: false,
     cascadeVerified: true
   });
-  console.log('Dialect lab production smoke passed: authenticated contract sandbox, policy rejection, progress conflict, privacy, cascade cleanup and revoked session.');
+  console.log('Dialect lab production smoke passed: propagation-safe routes, authenticated contract sandbox, policy rejection, progress conflict, privacy, cascade cleanup and revoked session.');
 } catch (error) {
   writeFileSync('cloudflare-dialect-failure.txt', `stage=${stageName}\n${error instanceof Error ? error.stack || error.message : String(error)}\n`);
   await deleteSmokeAccount();
