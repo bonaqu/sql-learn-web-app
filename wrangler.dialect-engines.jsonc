@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "sql-academy-dialect-engines",
+  "main": "worker/dialect-engine-service.ts",
+  "compatibility_date": "2026-07-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "DIALECT_ENGINE_SANDBOX",
+        "class_name": "DialectEngineSandbox"
+      }
+    ]
+  },
+  "containers": [
+    {
+      "class_name": "DialectEngineSandbox",
+      "image": "./containers/dialect-engines/Dockerfile",
+      "max_instances": 2,
+      "instance_type": "basic",
+      "rollout_step_percentage": 100
+    }
+  ],
+  "migrations": [
+    {
+      "tag": "dialect-engines-v1",
+      "new_sqlite_classes": ["DialectEngineSandbox"]
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}
