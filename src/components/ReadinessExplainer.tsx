@@ -22,6 +22,8 @@ import {
 import { buildSkillEvidenceGraph } from '../lib/skill-evidence';
 import '../readiness-explainer.css';
 
+const CAPSTONE_REPORTS_CHANGED_EVENT = 'sql-academy-capstone-reports-changed';
+
 const evidenceLabels: Record<ReadinessEvidenceKind, string> = {
   lesson: 'Уроки',
   practice: 'Практика',
@@ -36,7 +38,8 @@ const sourceLabels: Record<ReadinessEvidenceSource, string> = {
   'checkpoint-report': 'completed checkpoint report',
   'legacy-checkpoint-task': 'migrated legacy evidence',
   'assessment-report': 'completed assessment report',
-  'project-progress': 'завершённый capstone'
+  'capstone-report': 'immutable passed capstone report',
+  'project-progress': 'legacy project checkbox (не authoritative)'
 };
 
 function loadGraph() {
@@ -81,12 +84,14 @@ export default function ReadinessExplainer() {
     window.addEventListener(CURRICULUM_PROGRESS_CHANGED_EVENT, refresh);
     window.addEventListener(ASSESSMENT_REPORTS_CHANGED_EVENT, refresh);
     window.addEventListener(CHECKPOINT_REPORTS_CHANGED_EVENT, refresh);
+    window.addEventListener(CAPSTONE_REPORTS_CHANGED_EVENT, refresh);
     window.addEventListener('storage', refresh);
     return () => {
       window.removeEventListener(PROGRESS_CHANGED_EVENT, refresh);
       window.removeEventListener(CURRICULUM_PROGRESS_CHANGED_EVENT, refresh);
       window.removeEventListener(ASSESSMENT_REPORTS_CHANGED_EVENT, refresh);
       window.removeEventListener(CHECKPOINT_REPORTS_CHANGED_EVENT, refresh);
+      window.removeEventListener(CAPSTONE_REPORTS_CHANGED_EVENT, refresh);
       window.removeEventListener('storage', refresh);
     };
   }, []);
@@ -143,7 +148,7 @@ export default function ReadinessExplainer() {
         </article>;
       })}</div>
 
-      <aside><ShieldCheck /><span><strong>Integrity rule</strong><small>Expired и abandoned attempts остаются в истории, но не участвуют в module readiness, best exam score или сертификате. Legacy checkpoint помечается отдельно.</small></span></aside>
+      <aside><ShieldCheck /><span><strong>Integrity rule</strong><small>Expired и abandoned attempts остаются в истории, но не участвуют в readiness. Project evidence создаёт только immutable passed capstone report; legacy checkbox не участвует в сертификате.</small></span></aside>
     </div>}
   </section>, slot);
 }
