@@ -28,8 +28,8 @@ const nullOrderingRows = [
   [1008, '2026-07-04 17:10:00'],
   [1009, '2026-07-05 10:05:00'],
   [1011, '2026-07-06 11:15:00'],
-  [1013, '2026-07-07 13:30:00'],
   [1014, '2026-07-07 10:50:00'],
+  [1013, '2026-07-07 13:30:00'],
   [1002, null],
   [1007, null],
   [1010, null],
@@ -131,9 +131,9 @@ export const dialectLabCases: readonly DialectLabCase[] = [
     labId: 'dialect-json-extraction',
     dialect: 'sqlite',
     setupSql: jsonSetup,
-    starterSql: "SELECT event_id, json_extract(payload, '$.channel') AS channel FROM ticket_events ORDER BY event_id;",
-    referenceSql: "SELECT event_id,\n       json_extract(payload, '$.channel') AS channel,\n       CASE WHEN json_type(payload, '$.channel') IS NULL THEN 1 ELSE 0 END AS channel_missing\nFROM ticket_events\nORDER BY event_id;",
-    requiredPatterns: ['JSON_EXTRACT', 'JSON_TYPE', 'CHANNEL_MISSING', 'ORDER BY'],
+    starterSql: "SELECT event_id, json_extract(payload, '$.channel') AS channel FROM ticket_events WHERE event_id >= 101 ORDER BY event_id;",
+    referenceSql: "SELECT event_id,\n       json_extract(payload, '$.channel') AS channel,\n       CASE WHEN json_type(payload, '$.channel') IS NULL THEN 1 ELSE 0 END AS channel_missing\nFROM ticket_events\nWHERE event_id >= 101\nORDER BY event_id;",
+    requiredPatterns: ['JSON_EXTRACT', 'JSON_TYPE', 'CHANNEL_MISSING', 'EVENT_ID >= 101', 'ORDER BY'],
     forbiddenPatterns: [],
     expected: {
       columns: ['event_id', 'channel', 'channel_missing'],
@@ -144,9 +144,9 @@ export const dialectLabCases: readonly DialectLabCase[] = [
   {
     labId: 'dialect-json-extraction',
     dialect: 'postgresql',
-    starterSql: "SELECT event_id, payload ->> 'channel' AS channel FROM ticket_events ORDER BY event_id;",
-    referenceSql: "SELECT event_id,\n       payload ->> 'channel' AS channel,\n       NOT (payload ? 'channel') AS channel_missing\nFROM ticket_events\nORDER BY event_id;",
-    requiredPatterns: ["->> 'CHANNEL'", "PAYLOAD ? 'CHANNEL'", 'CHANNEL_MISSING'],
+    starterSql: "SELECT event_id, payload ->> 'channel' AS channel FROM ticket_events WHERE event_id >= 101 ORDER BY event_id;",
+    referenceSql: "SELECT event_id,\n       payload ->> 'channel' AS channel,\n       NOT (payload ? 'channel') AS channel_missing\nFROM ticket_events\nWHERE event_id >= 101\nORDER BY event_id;",
+    requiredPatterns: ["->> 'CHANNEL'", "PAYLOAD ? 'CHANNEL'", 'CHANNEL_MISSING', 'EVENT_ID >= 101'],
     forbiddenPatterns: [],
     expected: {
       columns: ['event_id', 'channel', 'channel_missing'],
@@ -157,9 +157,9 @@ export const dialectLabCases: readonly DialectLabCase[] = [
   {
     labId: 'dialect-json-extraction',
     dialect: 'mysql',
-    starterSql: "SELECT event_id, JSON_UNQUOTE(JSON_EXTRACT(payload, '$.channel')) AS channel FROM ticket_events ORDER BY event_id;",
-    referenceSql: "SELECT event_id,\n       JSON_UNQUOTE(JSON_EXTRACT(payload, '$.channel')) AS channel,\n       CASE WHEN JSON_CONTAINS_PATH(payload, 'one', '$.channel') = 0 THEN 1 ELSE 0 END AS channel_missing\nFROM ticket_events\nORDER BY event_id;",
-    requiredPatterns: ['JSON_EXTRACT', 'JSON_UNQUOTE', 'JSON_CONTAINS_PATH', 'CHANNEL_MISSING'],
+    starterSql: "SELECT event_id, JSON_UNQUOTE(JSON_EXTRACT(payload, '$.channel')) AS channel FROM ticket_events WHERE event_id >= 101 ORDER BY event_id;",
+    referenceSql: "SELECT event_id,\n       JSON_UNQUOTE(JSON_EXTRACT(payload, '$.channel')) AS channel,\n       CASE WHEN JSON_CONTAINS_PATH(payload, 'one', '$.channel') = 0 THEN 1 ELSE 0 END AS channel_missing\nFROM ticket_events\nWHERE event_id >= 101\nORDER BY event_id;",
+    requiredPatterns: ['JSON_EXTRACT', 'JSON_UNQUOTE', 'JSON_CONTAINS_PATH', 'CHANNEL_MISSING', 'EVENT_ID >= 101'],
     forbiddenPatterns: [],
     expected: {
       columns: ['event_id', 'channel', 'channel_missing'],
