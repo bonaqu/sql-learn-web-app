@@ -192,7 +192,7 @@ export function dialectLabCompletion(progress: DialectLabProgress, labId: string
   return { passed, required: manifest.evidence.minimumPassingDialects, complete: passed >= manifest.evidence.minimumPassingDialects };
 }
 
-export async function syncDialectLabProgress(progress: DialectLabProgress) {
+export async function syncDialectLabProgress(progress: DialectLabProgress, conflictAttempts = 0): Promise<DialectLabProgress> {
   const response = await fetch('/api/dialect-labs/progress', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
@@ -200,8 +200,9 @@ export async function syncDialectLabProgress(progress: DialectLabProgress) {
   });
   const payload = await response.json() as { progress?: DialectLabProgress; revision?: number; error?: string };
   if (response.status === 409 && payload.progress) {
+    if (conflictAttempts >= 3) throw new Error('Dialect progress changed repeatedly on another device');
     const merged = mergeDialectLabProgress(progress, sanitizeDialectLabProgress(payload.progress, progress.userId));
-    return syncDialectLabProgress({ ...merged, revision: Number(payload.revision) || merged.revision });
+    return syncDialectLabProgress({ ...merged, revision: Number(payload.revision) || merged.revision }, conflictAttempts + 1);
   }
   if (!response.ok || !payload.progress) throw new Error(payload.error || 'Dialect progress sync failed');
   return saveDialectLabProgress(sanitizeDialectLabProgress(payload.progress, progress.userId));
