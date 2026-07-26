@@ -5,8 +5,15 @@ import '../capstone-evaluator.css';
 
 const CapstonePortal = lazy(() => import('./CapstonePortal'));
 const DEFAULT_PROJECT = 'project-incident-command';
+const PROJECT_BY_TITLE: Record<string, string> = {
+  'Incident Command Dashboard': 'project-incident-command',
+  'Customer Data Trust Audit': 'project-data-trust',
+  'T-Bonk SLA Executive Mart': 'project-executive-mart'
+};
 
 function selectedProjectId() {
+  const title = document.querySelector<HTMLElement>('.project-hero h1')?.textContent?.trim() || '';
+  if (PROJECT_BY_TITLE[title]) return PROJECT_BY_TITLE[title];
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   return params.get('project') || DEFAULT_PROJECT;
 }
@@ -24,7 +31,7 @@ export default function CapstoneLauncher() {
     };
     resolve();
     const observer = new MutationObserver(resolve);
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     window.addEventListener('hashchange', resolve);
     window.addEventListener('popstate', resolve);
     return () => {
