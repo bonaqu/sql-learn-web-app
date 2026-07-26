@@ -240,22 +240,28 @@ export function buildAssessmentMeasurement(input: {
   formId: string;
   snapshot: AssessmentCalibrationSnapshot;
 }): AssessmentMeasurement {
-  const interval = wilsonInterval(input.correct, Math.max(1, input.eligibleItems));
-  const calibratedItems = input.taskIds.filter(taskId => input.snapshot.items[taskId]?.evidence === 'calibrated').length;
-  const calibratedRatio = calibratedItems / Math.max(1, input.taskIds.length);
+  const noEligibleEvidence = input.eligibleItems === 0;
+  const interval = noEligibleEvidence ? { low: 0, high: 1 } : wilsonInterval(input.correct, input.eligibleItems);
+  const calibratedInForm = input.taskIds.filter(taskId => input.snapshot.items[taskId]?.evidence === 'calibrated').length;
+  const calibratedItems = noEligibleEvidence ? 0 : Math.min(input.eligibleItems, calibratedInForm);
+  const calibratedRatio = calibratedItems / Math.max(1, input.eligibleItems);
   const intervalWidth = interval.high - interval.low;
-  const halfWidth = Math.max(5, Math.round(intervalWidth * 45 + (1 - calibratedRatio) * 5));
-  const reliability: AssessmentMeasurement['reliability'] = input.eligibleItems >= 18 && calibratedRatio >= 0.65
-    ? 'supported'
-    : input.eligibleItems >= 8 || calibratedRatio >= 0.35
-      ? 'emerging'
-      : 'limited';
+  const halfWidth = noEligibleEvidence ? 100 : Math.max(5, Math.round(intervalWidth * 45 + (1 - calibratedRatio) * 5));
+  const reliability: AssessmentMeasurement['reliability'] = noEligibleEvidence
+    ? 'limited'
+    : input.eligibleItems >= 18 && calibratedRatio >= 0.65
+      ? 'supported'
+      : input.eligibleItems >= 8 || calibratedRatio >= 0.35
+        ? 'emerging'
+        : 'limited';
   const explanation = [
     `Форма ${input.formId} собрана по ${ASSESSMENT_BLUEPRINT_VERSION}.`,
     `${input.eligibleItems} задач вошли в измерение; ${input.excludedItems} исключены из calibration evidence.`,
-    calibratedItems
-      ? `${calibratedItems} items имеют достаточный aggregate evidence.`
-      : 'Item calibration пока опирается на authored difficulty: aggregate evidence недостаточен.',
+    noEligibleEvidence
+      ? 'Ни одной измеримой задачи нет: результат сохраняется в истории, но не интерпретируется как оценка знания.'
+      : calibratedItems
+        ? `${calibratedItems} items имеют достаточный aggregate evidence.`
+        : 'Item calibration пока опирается на authored difficulty: aggregate evidence недостаточен.',
     'Интервал показывает неопределённость измерения и не является гарантией результата следующей попытки.'
   ];
   return {
@@ -267,11 +273,14 @@ export function buildAssessmentMeasurement(input: {
     excludedItems: input.excludedItems,
     calibratedItems,
     accuracyInterval: {
-      low: Math.round(interval.low * 100),
-      high: Math.round(interval.high * 100),
+      low: noEligibleEvidence ? 0 : Math.round(interval.low * 100),
+      high: noEligibleEvidence ? 100 : Math.round(interval.high * 100),
       confidence: 90
     },
-    scoreBand: {
+    scoreBand: noEligibleEvidence ? {
+      low: 0,
+      high: 100
+    } : {
       low: Math.round(clamp(input.score - halfWidth)),
       high: Math.round(clamp(input.score + halfWidth))
     },
