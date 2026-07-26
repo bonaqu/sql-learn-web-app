@@ -93,6 +93,7 @@ function sanitizeEnvelope(value: unknown): CurriculumProgressV1 {
       const draft = raw as Partial<Draft>;
       const updatedAt = safeTimestamp(draft.updatedAt);
       const guidanceUses = Number(draft.guidanceUses);
+      const solutionViews = Number(draft.solutionViews);
       projectDrafts[id] = {
         sql: typeof draft.sql === 'string' ? draft.sql.slice(0, 40_000) : '',
         files: safeProjectFiles(draft.files),
@@ -100,6 +101,7 @@ function sanitizeEnvelope(value: unknown): CurriculumProgressV1 {
         completedDeliverables: uniqueStrings(draft.completedDeliverables, 24),
         startedAt: safeTimestamp(draft.startedAt, updatedAt),
         guidanceUses: Number.isInteger(guidanceUses) && guidanceUses >= 0 && guidanceUses <= 1_000 ? guidanceUses : 0,
+        solutionViews: Number.isInteger(solutionViews) && solutionViews >= 0 && solutionViews <= 1_000 ? solutionViews : 0,
         updatedAt
       };
     }
