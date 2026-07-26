@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
+import { tasks } from '../../src/data/course-catalog';
 import { authenticatePage, loginPage } from './auth-helper';
 
-const QUICK_FIRST_SOLUTION = "SELECT ticket_id, service, status FROM tickets WHERE service = 'VPN' ORDER BY ticket_id;";
 const PROGRESS_KEY = 'sql-academy-progress-v4';
 const AUTH_KEY = 'sql-academy-auth-session-v2';
 
@@ -49,11 +49,13 @@ function practicedProgress() {
   };
 }
 
-test('desktop assessment resumes, scores SQL and syncs report to a second device', async ({ page, browser }, testInfo) => {
+test('desktop assessment uses an adaptive form, explains uncertainty and syncs report to a second device', async ({ page, browser }, testInfo) => {
   const auth = await authenticatePage(page, 'assess');
   await page.goto('./');
   await page.getByTestId('assessment-trigger').click();
   await expect(page.getByTestId('assessment-landing')).toBeVisible();
+  await expect(page.getByTestId('assessment-calibration-summary')).toBeVisible();
+  await expect(page.getByTestId('assessment-calibration-summary')).toContainText(/Blueprint v2|authored difficulty/i);
   await page.getByTestId('start-quick').click();
 
   const center = page.getByTestId('assessment-center');
@@ -64,12 +66,29 @@ test('desktop assessment resumes, scores SQL and syncs report to a second device
   await expect(center.getByRole('button', { name: /Показать решение/i })).toHaveCount(0);
   await expect(center.getByText('AI Mentor', { exact: true })).toHaveCount(0);
 
-  await replaceEditorSql(page, QUICK_FIRST_SOLUTION);
+  const sessionKey = `sql-academy-assessment-session-v1:${String(auth.session.userId)}`;
+  const session = await page.evaluate(key => JSON.parse(localStorage.getItem(key) || 'null'), sessionKey) as {
+    formId: string;
+    blueprintVersion: string;
+    thresholdVersion: string;
+    taskIds: string[];
+    selection: { distinctModules: number; distinctSkills: number };
+  };
+  expect(session.formId).toMatch(/^QUICK-assessment-blueprint-v2-F[1-4]$/);
+  expect(session.blueprintVersion).toBe('assessment-blueprint-v2');
+  expect(session.thresholdVersion).toBe('assessment-thresholds-v2');
+  expect(session.taskIds).toHaveLength(3);
+  expect(new Set(session.taskIds).size).toBe(3);
+  expect(session.selection.distinctModules).toBeGreaterThanOrEqual(3);
+  expect(session.selection.distinctSkills).toBeGreaterThanOrEqual(3);
+  const firstTask = tasks.find(task => task.id === session.taskIds[0]);
+  expect(firstTask, `Missing adaptive task ${session.taskIds[0]}`).toBeTruthy();
+
+  await replaceEditorSql(page, firstTask!.solution);
   await page.getByRole('button', { name: 'Проверить SQL' }).click();
   await expect(page.locator('.assessment-feedback.success')).toContainText('Результат совпал');
   await expect(page.getByTestId('assessment-result')).toBeVisible();
 
-  const sessionKey = `sql-academy-assessment-session-v1:${String(auth.session.userId)}`;
   await expect.poll(() => page.evaluate(key => Boolean(localStorage.getItem(key)), sessionKey)).toBe(true);
   await page.goto('./', { waitUntil: 'domcontentloaded' });
   await expect(page.getByTestId('assessment-session')).toBeVisible();
@@ -78,10 +97,15 @@ test('desktop assessment resumes, scores SQL and syncs report to a second device
   await page.getByRole('button', { name: 'Завершить досрочно' }).click();
   await expect(page.getByTestId('assessment-report')).toBeVisible();
   await expect(page.locator('.assessment-report-score strong')).not.toHaveText('0');
+  await expect(page.getByTestId('assessment-measurement-panel')).toBeVisible();
+  await expect(page.getByTestId('assessment-measurement-panel')).toContainText(session.formId);
+  await expect(page.getByTestId('assessment-measurement-panel')).toContainText(/90% interval точности/i);
+  await expect(page.getByTestId('assessment-measurement-panel')).toContainText(/Диапазон отражает неопределённость/i);
   await expect(page.getByText('Skill report синхронизирован с аккаунтом.')).toBeVisible();
   await page.getByRole('button', { name: /Получить AI Debrief/ }).click();
   await expect(page.locator('.assessment-debrief-card pre')).not.toContainText('Анализирую');
-  await page.screenshot({ path: testInfo.outputPath('desktop-assessment-report.png'), fullPage: true });
+  await expect(page.locator('.assessment-debrief-card pre')).toContainText(/измерительный диапазон/i);
+  await page.screenshot({ path: testInfo.outputPath('desktop-assessment-calibrated-report.png'), fullPage: true });
 
   const secondContext = await browser.newContext();
   const secondPage = await secondContext.newPage();
@@ -89,7 +113,10 @@ test('desktop assessment resumes, scores SQL and syncs report to a second device
   await secondPage.goto(page.url().split('#')[0]);
   await secondPage.getByTestId('assessment-trigger').click();
   await expect(secondPage.getByTestId('assessment-landing')).toBeVisible();
+  await expect(secondPage.getByTestId('assessment-calibration-summary')).toBeVisible();
   await expect(secondPage.locator('.assessment-history-list').getByText('Quick Check').first()).toBeVisible();
+  await secondPage.locator('.assessment-history-list').getByText('Quick Check').first().click();
+  await expect(secondPage.getByTestId('assessment-measurement-panel')).toContainText(session.formId);
   await expectNoHorizontalOverflow(secondPage);
   await secondContext.close();
 });
@@ -111,7 +138,9 @@ test('desktop diagnostic exam uses its fixed 12-task protected pool and resumes'
   const sessionKey = `sql-academy-assessment-session-v1:${String(auth.session.userId)}`;
   await expect.poll(() => page.evaluate(key => {
     const session = JSON.parse(localStorage.getItem(key) || 'null');
-    return session?.mode === 'diagnostic' && session?.taskIds?.length === 12;
+    return session?.mode === 'diagnostic'
+      && session?.taskIds?.length === 12
+      && session?.formId?.startsWith('DIAGNOSTIC-assessment-blueprint-v2-');
   }, sessionKey)).toBe(true);
   await page.reload();
   await expect(page.getByTestId('assessment-session')).toBeVisible();
@@ -146,6 +175,7 @@ test('desktop assessment enforces exam integrity and restores an expired session
   await expect(page.getByTestId('assessment-report')).toBeVisible({ timeout: 25_000 });
   await expect(page.getByText(/Время истекло/)).toBeVisible();
   await expect(page.locator('.assessment-task-score')).toHaveCount(8);
+  await expect(page.getByTestId('assessment-measurement-panel')).toContainText(/limited|emerging/i);
 });
 
 test('desktop assessment interview allows bounded clarification without exposing a solution', async ({ page }) => {
@@ -168,15 +198,17 @@ test('desktop assessment interview allows bounded clarification without exposing
   await expect(page.locator('.assessment-interviewer p')).not.toContainText(/SELECT\s/i);
 });
 
-test('mobile assessment landing and recovery-safe session UI fit Pixel 7', async ({ page }, testInfo) => {
+test('mobile assessment landing, adaptive session and measurement panel fit Pixel 7', async ({ page }, testInfo) => {
   await authenticatePage(page, 'mobileassess');
   await page.goto('./');
   await page.getByTestId('assessment-mobile-trigger').click();
   await expect(page.getByTestId('assessment-landing')).toBeVisible();
   await expect(page.locator('.assessment-mode-card')).toHaveCount(6);
+  await expect(page.getByTestId('assessment-calibration-summary')).toBeVisible();
+  await expectNoHorizontalOverflow(page);
   await page.getByTestId('start-quick').click();
   await expect(page.getByTestId('assessment-session')).toBeVisible();
   await expect(page.getByTestId('assessment-locked-tools')).toBeVisible();
   await expectNoHorizontalOverflow(page);
-  await page.screenshot({ path: testInfo.outputPath('mobile-assessment-session.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('mobile-assessment-adaptive-session.png'), fullPage: true });
 });
