@@ -8,6 +8,7 @@ export type ReadinessEvidenceSource =
   | 'checkpoint-report'
   | 'legacy-checkpoint-task'
   | 'assessment-report'
+  | 'capstone-report'
   | 'project-progress';
 
 export const READINESS_POLICY = {
