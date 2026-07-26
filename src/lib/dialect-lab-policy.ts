@@ -127,7 +127,7 @@ function scrubSql(source: string) {
   return {
     scrubbed: output.replace(/\s+/g, ' ').trim().toUpperCase(),
     statements: statements.map(item => item.replace(/\s+/g, ' ').trim()),
-    unterminated: Boolean(quote || lineComment || blockComment)
+    unterminated: Boolean(quote || blockComment)
   };
 }
 
