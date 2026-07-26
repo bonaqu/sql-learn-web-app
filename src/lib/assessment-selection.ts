@@ -85,7 +85,7 @@ function candidateValue(input: {
     + calibrationSelectionValue(input.task.id, input.calibration)
     + anchor
     + newModule
-    + taskHash(input.task.id, input.seed) * 42;
+    + taskHash(input.task.id, input.seed) * 160;
 }
 
 function chooseCandidate(input: {
@@ -120,9 +120,13 @@ function chooseCandidate(input: {
     .sort((left, right) => right.value - left.value || left.task.id.localeCompare(right.task.id))[0]?.task || null;
 }
 
+export function assessmentFormVariant(userId: string, attemptNumber: number) {
+  const initial = hash(`${userId}:${ASSESSMENT_BLUEPRINT_VERSION}`) % 4;
+  return 1 + ((initial + Math.max(0, attemptNumber - 1)) % 4);
+}
+
 export function assessmentFormId(mode: CalibratedAssessmentMode, userId: string, attemptNumber: number) {
-  const form = 1 + (hash(`${userId}:${mode}:${attemptNumber}:${ASSESSMENT_BLUEPRINT_VERSION}`) % 4);
-  return `${mode.toUpperCase()}-${ASSESSMENT_BLUEPRINT_VERSION}-F${form}`;
+  return `${mode.toUpperCase()}-${ASSESSMENT_BLUEPRINT_VERSION}-F${assessmentFormVariant(userId, attemptNumber)}`;
 }
 
 export function selectAssessmentForm(input: {
@@ -136,8 +140,9 @@ export function selectAssessmentForm(input: {
   const reports = input.reports || [];
   const calibration = input.calibration || emptyCalibrationSnapshot();
   const attemptNumber = reports.filter(report => report.mode === input.mode).length + 1;
-  const formId = assessmentFormId(input.mode, input.userId, attemptNumber);
-  const seed = `${formId}:${input.userId}:${attemptNumber}`;
+  const variant = assessmentFormVariant(input.userId, attemptNumber);
+  const formId = `${input.mode.toUpperCase()}-${ASSESSMENT_BLUEPRINT_VERSION}-F${variant}`;
+  const seed = `${input.mode}:F${variant}:${ASSESSMENT_BLUEPRINT_VERSION}`;
   const known = completedKnownTasks(reports);
 
   if (blueprint.fixedTaskIds?.length) {
