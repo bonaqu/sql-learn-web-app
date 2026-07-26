@@ -5,9 +5,11 @@ const smoke = readFileSync('scripts/cloudflare-production-smoke.mjs', 'utf8');
 const conceptSmoke = readFileSync('scripts/concept-progress-production-smoke.mjs', 'utf8');
 const checkpointSmoke = readFileSync('scripts/checkpoint-production-smoke.mjs', 'utf8');
 const capstoneSmoke = readFileSync('scripts/capstone-production-smoke.mjs', 'utf8');
+const calibrationSmoke = readFileSync('scripts/assessment-calibration-production-smoke.mjs', 'utf8');
 const core = readFileSync('worker/core.ts', 'utf8');
 const curriculumWorker = readFileSync('worker/curriculum.ts', 'utf8');
 const capstoneWorker = readFileSync('worker/capstones.ts', 'utf8');
+const assessmentWorker = readFileSync('worker/assessment.ts', 'utf8');
 const errors = [];
 const requireText = (source, text, label) => {
   if (!source.includes(text)) errors.push(`Missing ${label}: ${text}`);
@@ -21,10 +23,12 @@ requireText(workflow, 'node scripts/cloudflare-production-smoke.mjs', 'productio
 requireText(workflow, 'node scripts/concept-progress-production-smoke.mjs', 'concept history smoke entrypoint');
 requireText(workflow, 'node scripts/checkpoint-production-smoke.mjs', 'checkpoint smoke entrypoint');
 requireText(workflow, 'node scripts/capstone-production-smoke.mjs', 'capstone smoke entrypoint');
+requireText(workflow, 'node scripts/assessment-calibration-production-smoke.mjs', 'assessment calibration smoke entrypoint');
 requireText(workflow, 'cloudflare-smoke-stage.txt', 'curriculum stage diagnostics');
 requireText(workflow, 'cloudflare-concepts-stage.txt', 'concept stage diagnostics');
 requireText(workflow, 'cloudflare-checkpoint-stage.txt', 'checkpoint stage diagnostics');
 requireText(workflow, 'cloudflare-capstone-stage.txt', 'capstone stage diagnostics');
+requireText(workflow, 'cloudflare-assessment-calibration-stage.txt', 'assessment calibration stage diagnostics');
 requireText(smoke, 'expected: [409]', 'stale-write conflict check');
 requireText(smoke, 'expected: [401]', 'revoked session check');
 requireText(smoke, "'--yes'", 'non-interactive D1 execution');
@@ -63,6 +67,21 @@ requireText(capstoneSmoke, 'idempotent !== true', 'capstone exact replay evidenc
 requireText(capstoneSmoke, 'Object.keys(stored.submissionFiles || {}).length !== 3', 'capstone immutable SQL round-trip');
 requireText(capstoneSmoke, 'tokenPresent: true', 'capstone registration redaction');
 
+requireText(assessmentWorker, "url.pathname === '/api/assessment/calibration'", 'assessment calibration Worker route');
+requireText(assessmentWorker, 'Assessment report is immutable', 'assessment immutable core guard');
+requireText(assessmentWorker, 'assessment_calibration_receipts', 'assessment deduplication receipt');
+requireText(assessmentWorker, 'assessment_item_aggregates', 'assessment anonymous item aggregate');
+requireText(calibrationSmoke, "'/api/assessment/calibration'", 'assessment calibration endpoint lifecycle');
+requireText(calibrationSmoke, 'telemetryContributed !== true', 'assessment first contribution evidence');
+requireText(calibrationSmoke, 'idempotent !== true', 'assessment exact replay evidence');
+requireText(calibrationSmoke, 'expected: [409]', 'assessment immutable mutation rejection');
+requireText(calibrationSmoke, 'expected: [403]', 'assessment owner mismatch check');
+requireText(calibrationSmoke, 'expected: [401]', 'assessment revoked session check');
+requireText(calibrationSmoke, 'verifyD1Lifecycle', 'assessment D1 receipt/report cascade verification');
+requireText(calibrationSmoke, 'technicalErrorAttempts', 'technical-error exclusion evidence');
+requireText(calibrationSmoke, 'anonymousAggregateSurvivedDeletion', 'anonymous aggregate retention evidence');
+requireText(calibrationSmoke, "'--yes'", 'assessment non-interactive D1 execution');
+
 forbidText(workflow, 'cloudflare-register-payload.json', 'password-bearing diagnostic');
 forbidText(workflow, 'cloudflare-delete-payload.json', 'recovery-bearing diagnostic');
 forbidText(workflow, 'cloudflare-register.json', 'token-bearing diagnostic');
@@ -77,6 +96,10 @@ forbidText(capstoneSmoke, "writeJson('cloudflare-capstone-register.json'", 'raw 
 forbidText(capstoneSmoke, "writeJson('cloudflare-capstone-delete-payload.json'", 'raw capstone delete payload write');
 forbidText(capstoneSmoke, 'authToken:', 'capstone token diagnostic write');
 forbidText(capstoneSmoke, 'recoveryCode:', 'capstone recovery diagnostic write');
+forbidText(calibrationSmoke, "writeJson('cloudflare-assessment-calibration-register.json'", 'raw assessment registration response write');
+forbidText(calibrationSmoke, 'authToken:', 'assessment token diagnostic write');
+forbidText(calibrationSmoke, 'recoveryCode:', 'assessment recovery diagnostic write');
+forbidText(calibrationSmoke, 'submissionSql', 'learner SQL in assessment calibration diagnostic');
 
 if (errors.length) {
   console.error(`Deployment smoke validation failed with ${errors.length} issue(s):`);
@@ -84,4 +107,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Deployment smoke validation passed: curriculum, concepts, checkpoints and immutable capstone lifecycles include bounded payloads, conflicts, owner isolation, revoked sessions, cascade cleanup and redaction contracts.');
+console.log('Deployment smoke validation passed: curriculum, concepts, checkpoints, immutable capstone and privacy-first assessment calibration lifecycles include bounded payloads, conflicts, owner isolation, revoked sessions, cascade cleanup and redaction contracts.');
