@@ -280,14 +280,15 @@ export function updateProjectDraft(
   if (!project) return progress;
   const current = projectDraftFor(progress, projectId);
   const allowed = new Set(project.deliverables.map(item => item.id));
-  const files = patch.files
-    ? sanitizedProjectFiles(projectId, patch.files, current.sql)
-    : current.files;
   const firstFile = capstoneContract(projectId)?.files[0]?.id;
+  const legacySql = typeof patch.sql === 'string' ? patch.sql.slice(0, 40_000) : null;
+  const files = patch.files
+    ? sanitizedProjectFiles(projectId, patch.files, legacySql ?? current.sql)
+    : legacySql !== null && firstFile
+      ? { ...current.files, [firstFile]: legacySql }
+      : current.files;
   const nextDraft: ProjectDraft = {
-    sql: typeof patch.sql === 'string'
-      ? patch.sql.slice(0, 40_000)
-      : firstFile ? files[firstFile] || current.sql : current.sql,
+    sql: firstFile ? files[firstFile] || legacySql || current.sql : legacySql || current.sql,
     files,
     notes: typeof patch.notes === 'string' ? patch.notes.slice(0, 12_000) : current.notes,
     completedDeliverables: patch.completedDeliverables
