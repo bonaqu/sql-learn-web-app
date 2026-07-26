@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import type { Monaco } from '@monaco-editor/react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -44,6 +45,23 @@ import '../dialect-labs.css';
 
 const Editor = lazy(() => import('./SqlEditor'));
 const executableDialects: SqlDialect[] = ['sqlite', 'postgresql', 'mysql'];
+const DIALECT_DARK_THEME = 'sql-academy-dialect-dark';
+
+function configureDialectEditor(monaco: Monaco) {
+  monaco.editor.defineTheme(DIALECT_DARK_THEME, {
+    base: 'vs-dark',
+    inherit: true,
+    rules: [
+      { token: 'string', foreground: 'FF7B72' },
+      { token: 'string.sql', foreground: 'FF7B72' },
+      { token: 'string.escape', foreground: 'FF9B93' },
+      { token: 'string.quote', foreground: 'FF7B72' }
+    ],
+    colors: {
+      'editor.background': '#1E1E1E'
+    }
+  });
+}
 
 const dialectTitles: Record<SqlDialect, string> = {
   sqlite: 'SQLite',
@@ -201,9 +219,10 @@ export default function DialectLabWorkbench() {
           <header><Code2 /><div><strong>SQL submission</strong><small>{lab.statementPolicy.maximumStatements} statements · {lab.statementPolicy.timeoutMs} ms · {lab.statementPolicy.maximumRows} rows</small></div></header>
           <Suspense fallback={<div className="dialect-editor-loading">Загрузка SQL editor…</div>}>
             <Editor
+              beforeMount={configureDialectEditor}
               height="330px"
               language="sql"
-              theme={document.documentElement.dataset.theme === 'light' ? 'light' : 'vs-dark'}
+              theme={document.documentElement.dataset.theme === 'light' ? 'light' : DIALECT_DARK_THEME}
               value={sql}
               onChange={value => setSql(value || '')}
               options={{ minimap: { enabled: false }, fontSize: 14, lineHeight: 22, automaticLayout: true, wordWrap: 'on', scrollBeyondLastLine: false, tabSize: 2 }}
