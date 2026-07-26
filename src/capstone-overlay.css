@@ -1,0 +1,4 @@
+.capstone-shell {
+  z-index: 2147483000;
+  isolation: isolate;
+}
