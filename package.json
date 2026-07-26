@@ -20,7 +20,7 @@
     "validate:onboarding": "tsx scripts/validate-onboarding.ts",
     "validate:tools": "tsx scripts/validate-learning-tools.ts",
     "validate:access": "tsx scripts/validate-curriculum-access.ts",
-    "validate:deployment-smoke": "node --check scripts/cloudflare-production-smoke.mjs && node --check scripts/concept-progress-production-smoke.mjs && node --check scripts/checkpoint-production-smoke.mjs && node --check scripts/capstone-production-smoke.mjs && node --check scripts/mastery-progress-production-smoke.mjs && node --check scripts/onboarding-production-smoke.mjs && node scripts/validate-deployment-smoke.mjs",
+    "validate:deployment-smoke": "node --check scripts/cloudflare-production-smoke.mjs && node --check scripts/concept-progress-production-smoke.mjs && node --check scripts/checkpoint-production-smoke.mjs && node --check scripts/capstone-production-smoke.mjs && node --check scripts/assessment-calibration-production-smoke.mjs && node --check scripts/mastery-progress-production-smoke.mjs && node --check scripts/onboarding-production-smoke.mjs && node scripts/validate-deployment-smoke.mjs",
     "validate:bundle": "node scripts/validate-bundle.mjs",
     "check": "npm run types:worker && tsc -b --pretty false && npm run validate:course && npm run validate:path && npm run validate:assessment && npm run validate:assessment-calibration && npm run validate:curriculum && npm run validate:concepts && npm run validate:capstones && npm run validate:checkpoints && npm run validate:readiness && npm run validate:evidence-sync && npm run validate:mastery && npm run validate:onboarding && npm run validate:tools && npm run validate:access && npm run validate:deployment-smoke",
     "build": "npm run types:worker && tsc -b && vite build",
@@ -46,7 +46,6 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
-    "@cloudflare/workers-types": "latest",
     "@playwright/test": "^1.59.1",
     "@types/node": "^26.1.1",
     "@types/react": "^19.1.10",
