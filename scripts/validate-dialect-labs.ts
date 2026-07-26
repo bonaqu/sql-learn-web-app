@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import initSqlJs from 'sql.js';
-import { dialectLabCases, dialectLabCase } from '../src/data/dialect-lab-cases.ts';
+import { dialectLabCases, dialectLabCase, type DialectResultValue } from '../src/data/dialect-lab-cases.ts';
 import { dialectLabManifests, type SqlDialect } from '../src/data/dialect-lab-manifests.ts';
 import { evaluateDialectCaseSql, validateDialectSqlPolicy } from '../src/lib/dialect-lab-policy.ts';
 import {
@@ -28,6 +28,21 @@ function executeSqlite(source: string, setupSql?: string) {
   } finally {
     database.close();
   }
+}
+
+function normalizeValue(value: unknown): DialectResultValue {
+  if (value === null || typeof value === 'string' || typeof value === 'number') return value;
+  if (typeof value === 'bigint') return Number(value);
+  if (value instanceof Uint8Array) return Array.from(value).join(',');
+  return String(value);
+}
+
+function normalizedLastResult(results: ReturnType<typeof executeSqlite>) {
+  const last = results.at(-1);
+  return {
+    columns: (last?.columns || []).map(column => column.toLowerCase()),
+    rows: (last?.values || []).map(row => row.map(normalizeValue))
+  };
 }
 
 assert(dialectLabManifests.length === 6, `Expected 6 published dialect labs, got ${dialectLabManifests.length}`);
@@ -65,9 +80,19 @@ for (const lab of dialectLabManifests) {
       try {
         const result = executeSqlite(labCase.referenceSql, labCase.setupSql);
         assert(result.length > 0, `${lab.id}: SQLite reference produced no result block`);
-        const last = result.at(-1);
-        assert(Boolean(last?.columns.length), `${lab.id}: SQLite reference produced no columns`);
-        assert((last?.values.length || 0) <= lab.statementPolicy.maximumRows, `${lab.id}: SQLite reference exceeds row ceiling`);
+        const normalized = normalizedLastResult(result);
+        assert(normalized.columns.length > 0, `${lab.id}: SQLite reference produced no columns`);
+        assert(normalized.rows.length <= lab.statementPolicy.maximumRows, `${lab.id}: SQLite reference exceeds row ceiling`);
+        if (lab.kind !== 'plan') {
+          const expected = {
+            columns: [...labCase.expected.columns],
+            rows: labCase.expected.rows.map(row => [...row])
+          };
+          assert(JSON.stringify(normalized) === JSON.stringify(expected), `${lab.id}: SQLite fixture mismatch\nactual=${JSON.stringify(normalized)}\nexpected=${JSON.stringify(expected)}`);
+        } else {
+          const details = normalized.rows.map(row => String(row.at(-1) || '').toUpperCase()).join(' ');
+          assert(/SEARCH|SCAN/.test(details), `${lab.id}: SQLite EXPLAIN result has no access-path evidence`);
+        }
       } catch (error) {
         failures.push(`${lab.id}: SQLite reference failed: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -78,6 +103,7 @@ for (const lab of dialectLabManifests) {
 const readOnly = dialectLabManifests[0].statementPolicy;
 assert(validateDialectSqlPolicy("SELECT '-- DROP TABLE tickets' AS sample;", readOnly).ok, 'Quoted deny text must not trigger policy rejection');
 assert(validateDialectSqlPolicy('SELECT 1 /* DROP TABLE tickets; */;', readOnly).ok, 'Commented deny text must not trigger policy rejection');
+assert(validateDialectSqlPolicy('SELECT 1; -- ordinary EOF comment', readOnly).ok, 'EOF line comment must be treated as terminated');
 assert(!validateDialectSqlPolicy('SELECT 1; DROP TABLE tickets;', readOnly).ok, 'Second unsafe statement bypassed policy');
 assert(!validateDialectSqlPolicy('SELECT SLEEP(10);', readOnly).ok, 'SLEEP abuse bypassed denylist');
 assert(!validateDialectSqlPolicy('ATTACH DATABASE \'x\' AS x;', readOnly).ok, 'ATTACH abuse bypassed denylist');
@@ -133,6 +159,7 @@ assert(!/\bsql\s+TEXT\b/i.test(migration), 'Dialect progress schema must not sto
 assert(worker.includes("'/api/dialect-labs/execute'"), 'Worker execute route is missing');
 assert(worker.includes('HOURLY_EXECUTION_LIMIT = 120'), 'Sandbox rate limit is missing');
 assert(worker.includes('validateDialectSqlPolicy'), 'Worker is not using the shared policy scanner');
+assert(worker.includes("sandboxModelVersion: 'dialect-sandbox-v1'"), 'Remote contract sandbox version is not explicit');
 assert(!/console\.(log|error)\([^\n]*\bsql\b/i.test(worker), 'Worker appears to log learner SQL');
 
 if (failures.length) {
@@ -141,4 +168,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Dialect lab validation passed: ${dialectLabManifests.length} labs, ${dialectLabCases.length} engine cases, SQLite execution, policy abuse, evidence merge and D1 privacy contract.`);
+console.log(`Dialect lab validation passed: ${dialectLabManifests.length} labs, ${dialectLabCases.length} engine cases, exact SQLite fixtures, policy abuse, evidence merge and D1 privacy contract.`);
