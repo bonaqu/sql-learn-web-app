@@ -84,6 +84,7 @@ export default function CapstonePortal({ projectId, openRequest }: CapstonePorta
   const [status, setStatus] = useState('Draft сохраняется локально; report будет синхронизирован с аккаунтом.');
   const shellRef = useRef<HTMLDivElement>(null);
   const previousOverflow = useRef('');
+  const handledOpenRequest = useRef(0);
 
   const contract = capstoneContract(activeProjectId);
   const project = capstoneProjects.find(item => item.id === activeProjectId) || capstoneProjects[0];
@@ -99,7 +100,8 @@ export default function CapstonePortal({ projectId, openRequest }: CapstonePorta
   const activeFile = contract?.files.find(file => file.id === activeFileId) || contract?.files[0] || null;
 
   useEffect(() => {
-    if (openRequest <= 0) return;
+    if (openRequest <= 0 || handledOpenRequest.current === openRequest) return;
+    handledOpenRequest.current = openRequest;
     const nextProjectId = capstoneContract(projectId) ? projectId : 'project-incident-command';
     const freshProgress = loadCurriculumProgress();
     const freshReports = loadLocalCapstoneReports();
