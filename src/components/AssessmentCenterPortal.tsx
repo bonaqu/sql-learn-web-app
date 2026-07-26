@@ -43,7 +43,12 @@ import {
   saveLocalAssessmentReport,
   updateAssessmentAnswer
 } from '../lib/assessment';
-import { AssessmentSqlEngine, AssessmentSqlTable, evaluateAssessmentSql } from '../lib/assessment-runtime';
+import {
+  AssessmentSqlEngine,
+  AssessmentSqlExecutionError,
+  AssessmentSqlTable,
+  evaluateAssessmentSql
+} from '../lib/assessment-runtime';
 import { loadAuthSession } from '../lib/auth';
 import { overallReadiness } from '../lib/learning-path';
 import { loadProgress } from '../lib/progress';
@@ -158,7 +163,7 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
 
   useEffect(() => {
     if (!open || !session || engine || engineError) return;
-    initSqlJs({ locateFile: file => `https://sql.js.org/dist/${file}` })
+    initSqlJs()
       .then(setEngine)
       .catch(() => setEngineError('Не удалось загрузить SQLite WASM. Проверь соединение и открой Assessment Center снова.'));
   }, [engine, engineError, open, session]);
@@ -297,15 +302,22 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
         ? 'Результат совпал. Ответ зафиксирован в assessment.'
         : 'SQL выполнился, но результат не совпал. Проверь контракт результата и попробуй ещё раз.');
     } catch (error) {
-      const next = updateAssessmentAnswer(session, activeTask.id, {
+      const technical = error instanceof AssessmentSqlExecutionError && error.kind === 'technical';
+      const next = updateAssessmentAnswer(session, activeTask.id, technical ? {
+        sql: editorSql,
+        technicalErrors: activeAnswer.technicalErrors + 1
+      } : {
         sql: editorSql,
         attempts: activeAnswer.attempts + 1,
-        incorrect: activeAnswer.incorrect + 1
+        incorrect: activeAnswer.incorrect + 1,
+        elapsedSeconds: activeAnswer.elapsedSeconds + Math.max(1, Math.round((Date.now() - started) / 1000))
       });
       setSession(next);
       setResult([]);
       setRunState('error');
-      setMessage(`Ошибка SQLite: ${error instanceof Error ? error.message : String(error)}`);
+      setMessage(technical
+        ? `Техническая ошибка assessment: ${error.message}. Она не учитывается как ошибка знания.`
+        : `Ошибка SQLite: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -433,7 +445,7 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
       <div className="assessment-history-list">
         {history.map(item => <button key={item.id} onClick={() => setReport(item)}>
           <span className={`assessment-score-badge grade-${item.grade}`}>{item.score}</span>
-          <span><strong>{assessmentModes[item.mode].title}</strong><small>{new Date(item.completedAt).toLocaleString('ru-RU')} · {item.accuracy}% точность</small></span>
+          <span><strong>{assessmentModes[item.mode].title}</strong><small>{new Date(item.completedAt).toLocaleString('ru-RU')} · {item.accuracy}% точность{item.formId ? ` · ${item.formId}` : ''}</small></span>
           <ChevronRight />
         </button>)}
       </div>
@@ -455,7 +467,7 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
 
     <section className="assessment-workspace">
       <article className="assessment-task-panel">
-        <div className="assessment-task-meta"><span>{activeTask.topic}</span><span>{activeTask.difficulty}</span><span>попыток {activeAnswer.attempts}</span></div>
+        <div className="assessment-task-meta"><span>{activeTask.topic}</span><span>{activeTask.difficulty}</span><span>попыток {activeAnswer.attempts}</span>{activeAnswer.technicalErrors > 0 && <span>technical {activeAnswer.technicalErrors}</span>}</div>
         <h1>{activeTask.title}</h1>
         <p>{activeTask.description}</p>
         <div className="assessment-integrity-note" data-testid="assessment-locked-tools"><LockKeyhole /><span><strong>Assessment integrity</strong><small>Подсказки, эталон и обычный AI Mentor недоступны до завершения.</small></span></div>
@@ -495,7 +507,7 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
     <section className="assessment-report-hero">
       <button className="assessment-back" onClick={() => setReport(null)}><ArrowLeft />К Assessment Center</button>
       <div className={`assessment-report-score grade-${report.grade}`}><strong>{report.score}</strong><span>/100</span></div>
-      <div><span>{assessmentModes[report.mode].title}</span><h1>{gradeLabel(report)}</h1><p>{report.status === 'expired' ? 'Время истекло. Незавершённые задачи учтены как пропущенные.' : 'Skill report рассчитан по точности, времени, попыткам и самостоятельности.'}</p></div>
+      <div><span>{assessmentModes[report.mode].title}{report.formId ? ` · ${report.formId}` : ''}</span><h1>{gradeLabel(report)}</h1><p>{report.status === 'expired' ? 'Время истекло. Незавершённые задачи учтены как пропущенные.' : 'Skill report рассчитан по точности, времени, попыткам и самостоятельности.'}</p></div>
     </section>
     <section className="assessment-report-metrics">
       <article><CheckCircle2 /><span><small>Точность</small><strong>{report.accuracy}%</strong></span></article>
@@ -518,7 +530,7 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
     </section>
     <section className="assessment-task-breakdown assessment-report-card">
       <div className="assessment-section-heading"><div><span>Задачи</span><h2>Детализация попыток</h2></div><ListChecks /></div>
-      {report.taskScores.map((task, index) => <div className="assessment-task-score" key={task.taskId}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{task.title}</strong><small>{task.topic} · {task.attempts} попыток · {formatDuration(task.elapsedSeconds)}</small></div><b className={task.correct ? 'correct' : 'incorrect'}>{task.score}</b></div>)}
+      {report.taskScores.map((task, index) => <div className="assessment-task-score" key={task.taskId}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{task.title}</strong><small>{task.topic} · {task.attempts} попыток · {formatDuration(task.elapsedSeconds)}{task.telemetryEligible === false ? ` · excluded: ${task.telemetryExclusionReason}` : ''}</small></div><b className={task.correct ? 'correct' : 'incorrect'}>{task.score}</b></div>)}
     </section>
   </main> : null;
 

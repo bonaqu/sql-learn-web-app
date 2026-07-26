@@ -1,0 +1,101 @@
+.assessment-calibration-summary,
+.assessment-measurement-panel {
+  margin: 0 32px 24px;
+  border: 1px solid color-mix(in srgb, var(--accent, #7c3aed) 28%, var(--border, #27272a));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface, #111113) 92%, var(--accent, #7c3aed) 8%);
+  padding: 20px;
+}
+
+.assessment-calibration-summary > div:first-child,
+.assessment-measurement-panel > header,
+.assessment-measurement-panel > header > div,
+.assessment-measurement-panel > div > article {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.assessment-calibration-summary svg,
+.assessment-measurement-panel svg {
+  width: 20px;
+  height: 20px;
+  color: var(--accent, #8b5cf6);
+  flex: 0 0 auto;
+}
+
+.assessment-calibration-summary span,
+.assessment-measurement-panel span {
+  display: grid;
+  gap: 2px;
+}
+
+.assessment-calibration-summary small,
+.assessment-measurement-panel small,
+.assessment-calibration-summary p,
+.assessment-measurement-panel p {
+  color: var(--muted, #a1a1aa);
+}
+
+.assessment-calibration-summary strong,
+.assessment-measurement-panel strong {
+  color: var(--text, #fafafa);
+}
+
+.assessment-calibration-metrics,
+.assessment-measurement-panel > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.assessment-calibration-metrics > span,
+.assessment-measurement-panel > div > article {
+  border: 1px solid var(--border, #27272a);
+  border-radius: 13px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--surface, #111113) 88%, transparent);
+}
+
+.assessment-calibration-metrics b,
+.assessment-measurement-panel > header > b {
+  font-size: 24px;
+  line-height: 1;
+  color: var(--text, #fafafa);
+}
+
+.assessment-calibration-summary p,
+.assessment-measurement-panel p {
+  margin: 14px 0 0;
+  line-height: 1.55;
+}
+
+.assessment-measurement-panel > header {
+  justify-content: space-between;
+}
+
+.assessment-measurement-panel.supported {
+  border-color: color-mix(in srgb, #22c55e 38%, var(--border, #27272a));
+}
+
+.assessment-measurement-panel.limited {
+  border-color: color-mix(in srgb, #f59e0b 42%, var(--border, #27272a));
+}
+
+@media (max-width: 720px) {
+  .assessment-calibration-summary,
+  .assessment-measurement-panel {
+    margin: 0 14px 18px;
+    padding: 16px;
+  }
+
+  .assessment-calibration-metrics,
+  .assessment-measurement-panel > div {
+    grid-template-columns: 1fr;
+  }
+
+  .assessment-measurement-panel > header {
+    align-items: flex-start;
+  }
+}

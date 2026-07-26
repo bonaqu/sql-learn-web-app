@@ -8,6 +8,7 @@ import {
 const LearningPathPortal = lazy(() => import('./LearningPathPortal'));
 const ReadinessExplainer = lazy(() => import('./ReadinessExplainer'));
 const AssessmentCenterPortal = lazy(() => import('./AssessmentCenterPortal'));
+const AssessmentCalibrationPanel = lazy(() => import('./AssessmentCalibrationPanel'));
 const CurriculumPortal = lazy(() => import('./CurriculumPortal'));
 const SyllabusPortal = lazy(() => import('./SyllabusPortal'));
 const CheckpointCenterPortal = lazy(() => import('./CheckpointCenterPortal'));
@@ -26,7 +27,10 @@ function preload(feature: DeferredFeature) {
     void import('./LearningPathPortal');
     return void import('./ReadinessExplainer');
   }
-  if (feature === 'assessment') return void import('./AssessmentCenterPortal');
+  if (feature === 'assessment') {
+    void import('./AssessmentCalibrationPanel');
+    return void import('./AssessmentCenterPortal');
+  }
   if (feature === 'syllabus') return void import('./SyllabusPortal');
   if (feature === 'checkpoints') return void import('./CheckpointCenterPortal');
   if (feature === 'onboarding') return void import('./OnboardingPortal');
@@ -92,6 +96,7 @@ export default function DeferredFeaturePortals() {
     </Suspense>}
     {assessmentLoaded && <Suspense fallback={<div className="feature-loading" role="status">Загрузка Assessment Center…</div>}>
       <AssessmentCenterPortal externalLauncher openRequest={assessmentRequest} />
+      <AssessmentCalibrationPanel />
     </Suspense>}
     {curriculumLoaded && <Suspense fallback={<div className="feature-loading" role="status">Загрузка Curriculum Studio…</div>}>
       <CurriculumPortal openRequest={curriculumRequest} />
