@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ShieldCheck } from 'lucide-react';
 import '../capstone-evaluator.css';
+import '../capstone-overlay.css';
 
 const CapstonePortal = lazy(() => import('./CapstonePortal'));
 const DEFAULT_PROJECT = 'project-incident-command';
