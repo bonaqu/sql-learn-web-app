@@ -18,6 +18,20 @@ function phrasePattern(value: string) {
   return new RegExp(`(^|[^A-Z0-9_])${escapeRegExp(value.toUpperCase()).replace(/\\ /g, '\\s+')}([^A-Z0-9_]|$)`, 'i');
 }
 
+function semanticMarker(value: string) {
+  return value
+    .toUpperCase()
+    .replace(/'(?:''|[^'])*'/g, ' ')
+    .replace(/"(?:""|[^"])*"/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function includesSemanticMarker(normalizedSql: string, value: string) {
+  const marker = semanticMarker(value);
+  return Boolean(marker) && normalizedSql.includes(marker);
+}
+
 function scrubSql(source: string) {
   let output = '';
   let statement = '';
@@ -169,8 +183,8 @@ export function validateDialectSqlPolicy(sql: string, policy: DialectStatementPo
 export function evaluateDialectCaseSql(sql: string, labCase: DialectLabCase, policy: DialectStatementPolicy) {
   const policyVerdict = validateDialectSqlPolicy(sql, policy);
   const normalized = policyVerdict.normalizedSql;
-  const missing = labCase.requiredPatterns.filter(pattern => !normalized.includes(pattern.toUpperCase()));
-  const forbidden = labCase.forbiddenPatterns.filter(pattern => normalized.includes(pattern.toUpperCase()));
+  const missing = labCase.requiredPatterns.filter(pattern => !includesSemanticMarker(normalized, pattern));
+  const forbidden = labCase.forbiddenPatterns.filter(pattern => includesSemanticMarker(normalized, pattern));
   const errors = [
     ...policyVerdict.errors,
     ...missing.map(pattern => `Не подтверждён semantic marker: ${pattern}.`),
@@ -181,6 +195,6 @@ export function evaluateDialectCaseSql(sql: string, labCase: DialectLabCase, pol
     errors: Array.from(new Set(errors)),
     normalizedSql: normalized,
     statements: policyVerdict.statements,
-    matchedPatterns: labCase.requiredPatterns.filter(pattern => normalized.includes(pattern.toUpperCase()))
+    matchedPatterns: labCase.requiredPatterns.filter(pattern => includesSemanticMarker(normalized, pattern))
   };
 }
