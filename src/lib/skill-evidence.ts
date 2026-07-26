@@ -5,7 +5,8 @@ import {
 } from '../data/complete-curriculum';
 import { modules, tasks } from '../data/course-catalog';
 import type { AssessmentReport } from './assessment';
-import { bestCapstoneReport, type CapstoneReport } from './capstone-evaluator';
+import type { CapstoneReport } from './capstone-evaluator';
+import { bestCapstoneReport } from './capstone-report-policy';
 import { loadLocalCapstoneReports } from './capstone-reports';
 import {
   bestCheckpointReport,
