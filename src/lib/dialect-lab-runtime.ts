@@ -101,12 +101,21 @@ async function executeSqliteSource(source: string, setupSql?: string) {
   }
 }
 
+function publishedOutput(labId: string, dialect: SqlDialect): DialectLabOutput {
+  const labCase = dialectLabCase(labId, dialect);
+  if (!labCase) return { columns: [], rows: [] };
+  return {
+    columns: [...labCase.expected.columns],
+    rows: labCase.expected.rows.map(row => [...row])
+  };
+}
+
 function simulationExecution(labId: string, dialect: SqlDialect, sql: string, started: number): DialectLabExecution {
   const manifest = dialectLabManifest(labId);
   const labCase = dialectLabCase(labId, dialect);
   if (!manifest || !labCase) throw new Error('Dialect lab case not found');
   const verdict = evaluateDialectCaseSql(sql, labCase, manifest.statementPolicy);
-  const output = { columns: [...labCase.expected.columns], rows: labCase.expected.rows.map(row => [...row]) };
+  const output = publishedOutput(labId, dialect);
   const serialized = stableOutput(output);
   return {
     version: 1,
@@ -175,7 +184,7 @@ export async function executeLocalDialectLab(labId: string, dialect: SqlDialect,
       ? JSON.stringify(normalizedPlan) === JSON.stringify(referencePlan)
       : stableOutput(output) === stableOutput(reference);
     const passed = equal && outputErrors.length === 0;
-    const serialized = stableOutput(output);
+    const digestOutput = manifest.kind === 'plan' ? publishedOutput(labId, dialect) : output;
     return {
       version: 1,
       labId,
@@ -190,7 +199,7 @@ export async function executeLocalDialectLab(labId: string, dialect: SqlDialect,
       output,
       normalizedPlan,
       timeline: [],
-      resultDigest: digest(`${labId}:${dialect}:${serialized}:${normalizedPlan.join('|')}`)
+      resultDigest: digest(`${labId}:${dialect}:${stableOutput(digestOutput)}:${normalizedPlan.join('|')}`)
     };
   } catch (error) {
     return {
@@ -228,7 +237,7 @@ export async function executeRemoteDialectLab(labId: string, dialect: Exclude<Sq
     const labCase = dialectLabCase(labId, dialect);
     if (!manifest || !labCase) throw error;
     const verdict = evaluateDialectCaseSql(sql, labCase, manifest.statementPolicy);
-    const output = { columns: [...labCase.expected.columns], rows: labCase.expected.rows.map(row => [...row]) };
+    const output = publishedOutput(labId, dialect);
     return {
       version: 1,
       labId,
