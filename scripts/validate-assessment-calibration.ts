@@ -1,6 +1,7 @@
 import { assessmentBlueprints, assessmentItemBank } from '../src/data/assessment-blueprints';
 import {
   MINIMUM_CALIBRATION_EVIDENCE,
+  buildAssessmentMeasurement,
   calibrationFromAggregate,
   calibrationSnapshot,
   wilsonInterval,
@@ -182,10 +183,24 @@ const intervalSmall = wilsonInterval(3, 4);
 const intervalLarge = wilsonInterval(75, 100);
 assert(intervalSmall.high - intervalSmall.low > intervalLarge.high - intervalLarge.low, 'Confidence interval must narrow with evidence volume');
 
+const zeroEvidence = buildAssessmentMeasurement({
+  score: 0,
+  correct: 0,
+  eligibleItems: 0,
+  excludedItems: 3,
+  taskIds: assessmentItemBank.slice(0, 3).map(item => item.taskId),
+  formId: 'QUICK-assessment-blueprint-v2-F1',
+  snapshot: calibrationSnapshot([])
+});
+assert(zeroEvidence.accuracyInterval.low === 0 && zeroEvidence.accuracyInterval.high === 100, 'Zero eligible evidence must have full accuracy uncertainty');
+assert(zeroEvidence.scoreBand.low === 0 && zeroEvidence.scoreBand.high === 100, 'Zero eligible evidence must have full score uncertainty');
+assert(zeroEvidence.calibratedItems === 0, 'Excluded items must not count as calibrated measurement evidence');
+assert(zeroEvidence.reliability === 'limited', 'Zero eligible evidence must remain limited');
+
 if (failures.length) {
   console.error(`Assessment calibration validation failed with ${failures.length} issue(s):`);
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
 
-console.log(`Assessment calibration validated: ${assessmentItemBank.length} items, four canonical blueprint-equivalent forms, known-solution avoidance, invalid-report isolation, Wilson uncertainty and reproducible quality flags.`);
+console.log(`Assessment calibration validated: ${assessmentItemBank.length} items, four canonical blueprint-equivalent forms, known-solution avoidance, invalid-report isolation, zero-evidence uncertainty, Wilson intervals and reproducible quality flags.`);
