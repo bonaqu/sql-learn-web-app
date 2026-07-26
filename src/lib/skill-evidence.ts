@@ -5,6 +5,8 @@ import {
 } from '../data/complete-curriculum';
 import { modules, tasks } from '../data/course-catalog';
 import type { AssessmentReport } from './assessment';
+import { bestCapstoneReport, type CapstoneReport } from './capstone-evaluator';
+import { loadLocalCapstoneReports } from './capstone-reports';
 import {
   bestCheckpointReport,
   checkpointPassed,
@@ -98,11 +100,11 @@ export function buildSkillEvidenceGraph(
   progress: Progress,
   curriculum: CurriculumProgressV1,
   assessmentReports: AssessmentReport[],
-  checkpointReports: CheckpointReport[]
+  checkpointReports: CheckpointReport[],
+  capstoneReports: CapstoneReport[] = loadLocalCapstoneReports()
 ): SkillEvidenceGraph {
   const thresholds = READINESS_POLICY.thresholds;
   const mastery = moduleMastery(progress);
-  const completedProjects = new Set(curriculum.completedProjects);
   const validAssessmentReports = completedAssessmentReports(assessmentReports);
   const validCheckpointReports = completedCheckpointReports(checkpointReports);
 
@@ -137,12 +139,15 @@ export function buildSkillEvidenceGraph(
       .filter(report => report.moduleScores.some(item => item.module === moduleId))
       .map(report => report.id);
     const relatedProjects = capstoneProjects.filter(project => project.moduleIds.some(candidate => candidate === moduleId));
-    const completedRelatedProjects = relatedProjects.filter(project => completedProjects.has(project.id));
+    const completedRelatedProjects = relatedProjects.flatMap(project => {
+      const report = bestCapstoneReport(project.id, capstoneReports);
+      return report ? [{ project, report }] : [];
+    });
 
     const lessonScore = appliedLessons.score;
     const practiceScore = masteryState?.mastery || 0;
     const projectScore = relatedProjects.length
-      ? completedRelatedProjects.length / relatedProjects.length * 100
+      ? completedRelatedProjects.reduce((sum, item) => sum + item.report.score, 0) / relatedProjects.length
       : 0;
 
     const checkpointSourceIds = [
@@ -197,8 +202,8 @@ export function buildSkillEvidenceGraph(
         completedRelatedProjects.length,
         relatedProjects.length,
         relatedProjects.length > 0,
-        completedRelatedProjects.map(project => project.id),
-        completedRelatedProjects.length ? ['project-progress'] : []
+        completedRelatedProjects.map(item => item.report.id),
+        completedRelatedProjects.length ? ['capstone-report'] : []
       )
     };
 
@@ -222,7 +227,7 @@ export function buildSkillEvidenceGraph(
     const nextCheckpoint = moduleCheckpoints.find(checkpoint =>
       !checkpointPassed(checkpoint.id, progress, validCheckpointReports)
     );
-    const nextProject = relatedProjects.find(project => !completedProjects.has(project.id));
+    const nextProject = relatedProjects.find(project => !bestCapstoneReport(project.id, capstoneReports));
 
     if (nextLesson) {
       recommendedAction = 'lesson';
