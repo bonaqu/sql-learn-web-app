@@ -1,6 +1,7 @@
 import { capstoneProjects, curriculumCheckpoints, curriculumLessons } from '../data/complete-curriculum';
 import { assessmentModes, type AssessmentMode, type AssessmentReport } from './assessment';
-import { bestCapstoneReport, type CapstoneReport } from './capstone-evaluator';
+import type { CapstoneReport } from './capstone-evaluator';
+import { bestCapstoneReport } from './capstone-report-policy';
 import { loadLocalCapstoneReports } from './capstone-reports';
 import {
   bestCheckpointReport,
