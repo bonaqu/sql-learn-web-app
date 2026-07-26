@@ -4,8 +4,10 @@ const workflow = readFileSync('.github/workflows/cloudflare.yml', 'utf8');
 const smoke = readFileSync('scripts/cloudflare-production-smoke.mjs', 'utf8');
 const conceptSmoke = readFileSync('scripts/concept-progress-production-smoke.mjs', 'utf8');
 const checkpointSmoke = readFileSync('scripts/checkpoint-production-smoke.mjs', 'utf8');
+const capstoneSmoke = readFileSync('scripts/capstone-production-smoke.mjs', 'utf8');
 const core = readFileSync('worker/core.ts', 'utf8');
 const curriculumWorker = readFileSync('worker/curriculum.ts', 'utf8');
+const capstoneWorker = readFileSync('worker/capstones.ts', 'utf8');
 const errors = [];
 const requireText = (source, text, label) => {
   if (!source.includes(text)) errors.push(`Missing ${label}: ${text}`);
@@ -18,9 +20,11 @@ requireText(core, 'curriculumVersion: 1', 'health curriculum version');
 requireText(workflow, 'node scripts/cloudflare-production-smoke.mjs', 'production smoke entrypoint');
 requireText(workflow, 'node scripts/concept-progress-production-smoke.mjs', 'concept history smoke entrypoint');
 requireText(workflow, 'node scripts/checkpoint-production-smoke.mjs', 'checkpoint smoke entrypoint');
+requireText(workflow, 'node scripts/capstone-production-smoke.mjs', 'capstone smoke entrypoint');
 requireText(workflow, 'cloudflare-smoke-stage.txt', 'curriculum stage diagnostics');
 requireText(workflow, 'cloudflare-concepts-stage.txt', 'concept stage diagnostics');
 requireText(workflow, 'cloudflare-checkpoint-stage.txt', 'checkpoint stage diagnostics');
+requireText(workflow, 'cloudflare-capstone-stage.txt', 'capstone stage diagnostics');
 requireText(smoke, 'expected: [409]', 'stale-write conflict check');
 requireText(smoke, 'expected: [401]', 'revoked session check');
 requireText(smoke, "'--yes'", 'non-interactive D1 execution');
@@ -32,9 +36,9 @@ requireText(smoke, 'curriculumVersion === 1', 'deployed schema propagation check
 requireText(curriculumWorker, 'MAX_ANSWERS = 220', 'bounded curriculum answer history');
 requireText(conceptSmoke, 'curriculumProgress(144', 'full concept answer round-trip');
 requireText(conceptSmoke, 'curriculumProgress(221', 'answer ceiling rejection');
-requireText(conceptSmoke, "expectStatus(rejected, 400", 'invalid concept payload status');
+requireText(conceptSmoke, 'expectStatus(rejected, 400', 'invalid concept payload status');
 requireText(conceptSmoke, 'verify-valid-state-preserved', 'rejected payload state preservation');
-requireText(conceptSmoke, "expectStatus(revoked, 401", 'concept revoked session check');
+requireText(conceptSmoke, 'expectStatus(revoked, 401', 'concept revoked session check');
 requireText(conceptSmoke, "confirm: 'DELETE'", 'concept smoke account cleanup');
 
 requireText(checkpointSmoke, "'/api/checkpoints/reports'", 'checkpoint report endpoint lifecycle');
@@ -46,6 +50,19 @@ requireText(checkpointSmoke, "'--yes'", 'checkpoint non-interactive D1 execution
 requireText(checkpointSmoke, 'tokenPresent', 'checkpoint registration redaction');
 requireText(checkpointSmoke, 'checkpointRoundTripVerified', 'checkpoint round-trip summary');
 
+requireText(capstoneWorker, "url.pathname === '/api/capstones/reports'", 'capstone Worker route');
+requireText(capstoneWorker, 'Capstone reports are immutable', 'capstone immutability guard');
+requireText(capstoneSmoke, "'/api/capstones/reports'", 'capstone report endpoint lifecycle');
+requireText(capstoneSmoke, 'expected: [409]', 'capstone immutable mutation rejection');
+requireText(capstoneSmoke, 'expected: [403]', 'capstone owner mismatch check');
+requireText(capstoneSmoke, 'expected: [401]', 'capstone revoked session check');
+requireText(capstoneSmoke, 'verifyCascade()', 'capstone D1 cascade verification');
+requireText(capstoneSmoke, 'FROM capstone_reports', 'capstone report cleanup query');
+requireText(capstoneSmoke, "'--yes'", 'capstone non-interactive D1 execution');
+requireText(capstoneSmoke, 'idempotent !== true', 'capstone exact replay evidence');
+requireText(capstoneSmoke, 'Object.keys(stored.submissionFiles || {}).length !== 3', 'capstone immutable SQL round-trip');
+requireText(capstoneSmoke, 'tokenPresent: true', 'capstone registration redaction');
+
 forbidText(workflow, 'cloudflare-register-payload.json', 'password-bearing diagnostic');
 forbidText(workflow, 'cloudflare-delete-payload.json', 'recovery-bearing diagnostic');
 forbidText(workflow, 'cloudflare-register.json', 'token-bearing diagnostic');
@@ -56,6 +73,10 @@ forbidText(conceptSmoke, 'fs.writeFile(recoveryCode', 'concept recovery diagnost
 forbidText(checkpointSmoke, "writeJson('cloudflare-checkpoint-register.json'", 'raw checkpoint registration response write');
 forbidText(checkpointSmoke, "writeJson('cloudflare-checkpoint-delete-payload.json'", 'raw checkpoint delete payload write');
 forbidText(checkpointSmoke, "writeJson('cloudflare-checkpoint-auth.json'", 'raw checkpoint auth response write');
+forbidText(capstoneSmoke, "writeJson('cloudflare-capstone-register.json'", 'raw capstone registration response write');
+forbidText(capstoneSmoke, "writeJson('cloudflare-capstone-delete-payload.json'", 'raw capstone delete payload write');
+forbidText(capstoneSmoke, 'authToken:', 'capstone token diagnostic write');
+forbidText(capstoneSmoke, 'recoveryCode:', 'capstone recovery diagnostic write');
 
 if (errors.length) {
   console.error(`Deployment smoke validation failed with ${errors.length} issue(s):`);
@@ -63,4 +84,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Deployment smoke validation passed: curriculum, full concept history and checkpoint lifecycles include bounded payloads, state preservation, revoked-session, cascade and redaction contracts.');
+console.log('Deployment smoke validation passed: curriculum, concepts, checkpoints and immutable capstone lifecycles include bounded payloads, conflicts, owner isolation, revoked sessions, cascade cleanup and redaction contracts.');
