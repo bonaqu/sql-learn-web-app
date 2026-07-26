@@ -87,14 +87,14 @@ function assessmentReport(userId, id = randomUUID()) {
       taskId: 'task-013', title: 'Smoke aggregation', module: 'aggregates', topic: 'aggregation',
       correct: false, skipped: false, attempts: 2, elapsedSeconds: 310, interviewerUses: 0, score: 0,
       technicalErrors: 0, telemetryEligible: true, telemetryExclusionReason: null,
-      abilityBand: 'high', itemVersion: 'assessment-blueprint-v2', reasoningSkill: 'aggregation',
+      abilityBand: 'low', itemVersion: 'assessment-blueprint-v2', reasoningSkill: 'aggregation',
       errorClass: 'aggregation-grain', expectedSeconds: 240
     },
     {
       taskId: 'task-025', title: 'Smoke technical exclusion', module: 'joins', topic: 'technical',
       correct: false, skipped: false, attempts: 1, elapsedSeconds: 12, interviewerUses: 0, score: 0,
       technicalErrors: 1, telemetryEligible: false, telemetryExclusionReason: 'technical-error',
-      abilityBand: 'mid', itemVersion: 'assessment-blueprint-v2', reasoningSkill: 'relationships',
+      abilityBand: 'low', itemVersion: 'assessment-blueprint-v2', reasoningSkill: 'relationships',
       errorClass: 'cardinality', expectedSeconds: 240
     }
   ];
@@ -200,6 +200,35 @@ try {
   const beforeTechnical = aggregateFor(baseline, 'task-025');
   endStage();
 
+  stage('assessment-calibration-reject-forged-telemetry');
+  const forgedTelemetry = assessmentReport(smokeUserId);
+  forgedTelemetry.taskScores[2] = {
+    ...forgedTelemetry.taskScores[2],
+    telemetryEligible: true,
+    telemetryExclusionReason: null
+  };
+  await request('/api/assessment/reports', {
+    method: 'POST', headers, body: JSON.stringify(forgedTelemetry), expected: [400], attempts: 1,
+    diagnosticFile: 'cloudflare-assessment-calibration-forged-telemetry.json'
+  });
+  endStage();
+
+  stage('assessment-calibration-reject-sql-field');
+  const reportWithSql = { ...assessmentReport(smokeUserId), submissionSql: 'SELECT secret FROM employer_data;' };
+  await request('/api/assessment/reports', {
+    method: 'POST', headers, body: JSON.stringify(reportWithSql), expected: [400], attempts: 1,
+    diagnosticFile: 'cloudflare-assessment-calibration-sql-field.json'
+  });
+  endStage();
+
+  stage('assessment-calibration-rejected-state-preserved');
+  const afterRejected = parseJson((await request('/api/assessment/calibration', { headers, attempts: 2 })).text, 'Calibration after rejected payloads');
+  if (aggregateFor(afterRejected, 'task-001').eligibleAttempts !== beforeTask.eligibleAttempts
+    || aggregateFor(afterRejected, 'task-025').technicalErrorAttempts !== beforeTechnical.technicalErrorAttempts) {
+    throw new Error('Rejected assessment payload changed calibration state');
+  }
+  endStage();
+
   stage('assessment-calibration-report-create');
   reportId = randomUUID();
   const report = assessmentReport(smokeUserId, reportId);
@@ -279,11 +308,14 @@ try {
     blueprintVersion: report.blueprintVersion,
     eligibleDelta: 1,
     technicalExcluded: true,
+    forgedTelemetryRejected: true,
+    learnerSqlFieldRejected: true,
+    rejectedStatePreserved: true,
     idempotentReplay: true,
     immutableConflict: true,
     anonymousAggregateSurvivedDeletion: true
   });
-  console.log('Assessment calibration production smoke passed: anonymous aggregate delta, technical exclusion, idempotency, immutable report core, owner isolation, cascade cleanup and revoked session.');
+  console.log('Assessment calibration production smoke passed: strict telemetry validation, SQL privacy guard, anonymous aggregate delta, technical exclusion, idempotency, immutable report core, owner isolation, cascade cleanup and revoked session.');
 } catch (error) {
   writeFileSync('cloudflare-assessment-calibration-failure.txt', `stage=${stageName}\n${error instanceof Error ? error.stack || error.message : String(error)}\n`);
   await deleteSmokeAccount();
