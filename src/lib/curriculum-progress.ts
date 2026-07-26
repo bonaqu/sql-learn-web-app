@@ -1,5 +1,6 @@
 import { capstoneContract } from '../data/capstone-contracts';
 import { capstoneProjects, curriculumLessons } from '../data/complete-curriculum';
+import { capstoneWorkspaceTemplate } from '../data/capstone-workspace-templates';
 import {
   allKnownLessonChecks,
   lessonChecks,
@@ -23,6 +24,7 @@ export interface ProjectDraft {
   completedDeliverables: string[];
   startedAt: string;
   guidanceUses: number;
+  solutionViews: number;
   updatedAt: string;
 }
 
@@ -92,7 +94,9 @@ function defaultProjectFiles(projectId: string, legacySql = '') {
   if (!contract) return {};
   return Object.fromEntries(contract.files.map((file, index) => [
     file.id,
-    index === 0 && legacySql.trim() ? legacySql.slice(0, 40_000) : file.starterSql.slice(0, 40_000)
+    index === 0 && legacySql.trim()
+      ? legacySql.slice(0, 40_000)
+      : capstoneWorkspaceTemplate(file.id, file.starterSql).slice(0, 40_000)
   ]));
 }
 
@@ -147,6 +151,7 @@ function sanitize(raw: unknown): CurriculumProgressV1 {
         completedDeliverables: uniqueKnown(draft.completedDeliverables, deliverableIds.get(project.id) || new Set()),
         startedAt: typeof draft.startedAt === 'string' && Number.isFinite(Date.parse(draft.startedAt)) ? draft.startedAt : now(),
         guidanceUses: Number.isInteger(draft.guidanceUses) ? Math.max(0, Math.min(1_000, Number(draft.guidanceUses))) : 0,
+        solutionViews: Number.isInteger(draft.solutionViews) ? Math.max(0, Math.min(1_000, Number(draft.solutionViews))) : 0,
         updatedAt: typeof draft.updatedAt === 'string' ? draft.updatedAt : now()
       };
     }
@@ -261,6 +266,7 @@ export function projectDraftFor(progress: CurriculumProgressV1, projectId: strin
     completedDeliverables: [],
     startedAt: timestamp,
     guidanceUses: 0,
+    solutionViews: 0,
     updatedAt: timestamp
   };
 }
@@ -268,7 +274,7 @@ export function projectDraftFor(progress: CurriculumProgressV1, projectId: strin
 export function updateProjectDraft(
   progress: CurriculumProgressV1,
   projectId: string,
-  patch: Partial<Pick<ProjectDraft, 'sql' | 'files' | 'notes' | 'completedDeliverables' | 'startedAt' | 'guidanceUses'>>
+  patch: Partial<Pick<ProjectDraft, 'sql' | 'files' | 'notes' | 'completedDeliverables' | 'startedAt' | 'guidanceUses' | 'solutionViews'>>
 ) {
   const project = capstoneProjects.find(item => item.id === projectId);
   if (!project) return progress;
@@ -293,6 +299,9 @@ export function updateProjectDraft(
     guidanceUses: Number.isInteger(patch.guidanceUses)
       ? Math.max(0, Math.min(1_000, Number(patch.guidanceUses)))
       : current.guidanceUses,
+    solutionViews: Number.isInteger(patch.solutionViews)
+      ? Math.max(0, Math.min(1_000, Number(patch.solutionViews)))
+      : current.solutionViews,
     updatedAt: now()
   };
   return saveCurriculumProgress({
