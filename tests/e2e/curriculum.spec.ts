@@ -68,12 +68,8 @@ test('desktop curriculum studio diagnoses misconceptions and syncs project draft
   const draft = page.getByTestId('project-sql-draft');
   await draft.fill('WITH base AS (SELECT * FROM tickets) SELECT service, COUNT(*) FROM base GROUP BY service;');
   await expect(draft).toHaveValue(/WITH base/);
-
-  await page.getByRole('button', { name: /Отметить: Надёжный базовый набор/i }).click();
-  await page.getByRole('button', { name: /Отметить: Сервисные метрики/i }).click();
-  await page.getByRole('button', { name: /Отметить: Приоритет внимания/i }).click();
-  await page.getByTestId('complete-project').click();
-  await expect(page.getByText('Проект завершён')).toBeVisible();
+  await expect(page.getByTestId('open-capstone-evaluator')).toBeVisible();
+  await expect(page.getByTestId('complete-project')).toBeHidden();
   await page.getByTestId('curriculum-sync').click();
   await expect(page.getByTestId('curriculum-sync')).toContainText('В облаке');
 
@@ -88,9 +84,12 @@ test('desktop curriculum studio diagnoses misconceptions and syncs project draft
   await loginPage(secondPage, auth.username, auth.password);
   await secondPage.goto('./');
   await secondPage.getByTestId('curriculum-trigger').click();
+  const secondStudio = secondPage.getByRole('dialog', { name: /Curriculum Studio/i });
+  await secondStudio.getByTestId('curriculum-sync').click();
+  await expect(secondStudio.getByTestId('curriculum-sync')).toContainText('В облаке');
   await secondPage.getByRole('tab', { name: /Project Lab/i }).click();
   await expect(secondPage.getByTestId('project-sql-draft')).toHaveValue(/WITH base/);
-  await expect(secondPage.getByText('Проект завершён')).toBeVisible();
+  await expect(secondPage.getByTestId('open-capstone-evaluator')).toBeVisible();
   await secondContext.close();
 });
 
