@@ -63,6 +63,9 @@ function expectedPublishedDigest(labId: string, dialect: SqlDialect, executionMo
   const serialized = JSON.stringify(output);
   if (executionMode === 'remote-sandbox') return digest(`${labId}:${dialect}:${serialized}:true:dialect-sandbox-v1`);
   if (executionMode === 'deterministic-simulation') return digest(`${labId}:${dialect}:${serialized}:true`);
+  if (executionMode === 'local-sqlite') {
+    return digest(`${labId}:${dialect}:${serialized}:${[...(labCase.expected.normalizedPlan || [])].join('|')}`);
+  }
   return null;
 }
 
@@ -92,7 +95,7 @@ function validEvidence(value: unknown, key: string) {
   if (item.passed === true) {
     if (item.evidenceEligible !== true || item.independent !== true || item.completedAt === null || typeof item.resultDigest !== 'string') return false;
     const publishedDigest = expectedPublishedDigest(String(item.labId), dialect, behavior.executionMode);
-    if (publishedDigest && item.resultDigest !== publishedDigest) return false;
+    if (!publishedDigest || item.resultDigest !== publishedDigest) return false;
   }
   if (item.independent === true && item.passed !== true) return false;
   return true;
