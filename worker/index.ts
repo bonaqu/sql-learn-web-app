@@ -5,6 +5,7 @@ import { authenticateSession, handleAuthRequest } from './auth';
 import { handleCapstoneRequest } from './capstones';
 import { handleCheckpointRequest } from './checkpoints';
 import { handleCurriculumRequest } from './curriculum';
+import { handleDialectLabRequest } from './dialect-labs';
 import { handleMasteryProgressV1Request } from './mastery-progress-route';
 import { handleOnboardingRequest } from './onboarding';
 
@@ -19,7 +20,7 @@ const ALLOWED_ORIGINS = new Set([
 const CORS_METHODS = 'GET, PUT, POST, DELETE, OPTIONS';
 const CORS_HEADERS = 'authorization, content-type, x-profile-id';
 
-type Pipeline = 'auth' | 'assessment' | 'checkpoint' | 'capstone' | 'curriculum' | 'onboarding';
+type Pipeline = 'auth' | 'assessment' | 'checkpoint' | 'capstone' | 'dialect' | 'curriculum' | 'onboarding';
 
 function allowedOrigin(request: Request) {
   const origin = request.headers.get('origin');
@@ -33,7 +34,7 @@ function corsHeaders(origin: string) {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': CORS_METHODS,
     'access-control-allow-headers': CORS_HEADERS,
-    'access-control-expose-headers': 'retry-after, x-request-id, x-progress-contract, x-onboarding-contract',
+    'access-control-expose-headers': 'retry-after, x-request-id, x-progress-contract, x-onboarding-contract, x-dialect-lab-contract',
     'access-control-max-age': '86400',
     vary: 'Origin'
   };
@@ -62,9 +63,11 @@ function pipelineFailure(error: unknown, pathname: string, pipeline: Pipeline) {
         ? 'Checkpoint'
         : pipeline === 'capstone'
           ? 'Capstone'
-          : pipeline === 'onboarding'
-            ? 'Onboarding'
-            : 'Curriculum';
+          : pipeline === 'dialect'
+            ? 'Dialect lab'
+            : pipeline === 'onboarding'
+              ? 'Onboarding'
+              : 'Curriculum';
   return new Response(JSON.stringify({
     error: `${label} operation failed`,
     code: `${pipeline.toUpperCase()}_PIPELINE_UNHANDLED`,
@@ -167,6 +170,15 @@ export default {
         return origin ? withCors(response, origin) : response;
       }
       if (capstoneResponse) return origin ? withCors(capstoneResponse, origin) : capstoneResponse;
+
+      let dialectResponse: Response | null;
+      try {
+        dialectResponse = await handleDialectLabRequest(request, env, auth.userId);
+      } catch (error) {
+        const response = pipelineFailure(error, url.pathname, 'dialect');
+        return origin ? withCors(response, origin) : response;
+      }
+      if (dialectResponse) return origin ? withCors(dialectResponse, origin) : dialectResponse;
 
       let curriculumResponse: Response | null;
       try {
