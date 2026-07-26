@@ -111,6 +111,10 @@ requireText(dialectWorker, 'validateDialectSqlPolicy', 'shared dialect SQL polic
 requireText(dialectWorker, 'Published dialect lab case not found', 'published-case isolation');
 requireText(dialectSmoke, "'/api/dialect-labs/execute'", 'dialect execution lifecycle');
 requireText(dialectSmoke, "'/api/dialect-labs/progress'", 'dialect progress lifecycle');
+requireText(dialectSmoke, 'ROUTE_PROPAGATION_ATTEMPTS = 8', 'bounded dialect route propagation retries');
+requireText(dialectSmoke, 'ROUTE_PROPAGATION_DELAY_MS = 4_000', 'dialect propagation retry delay');
+requireText(dialectSmoke, '...propagationOptions', 'new dialect route propagation options');
+requireText(dialectSmoke, 'routePropagationRetries: ROUTE_PROPAGATION_ATTEMPTS', 'dialect propagation summary evidence');
 requireText(dialectSmoke, 'dialect-policy-abuse', 'dialect policy abuse rejection');
 requireText(dialectSmoke, 'dialect-incomplete-contract', 'incomplete semantic contract rejection');
 requireText(dialectSmoke, 'expected: [409]', 'dialect optimistic conflict check');
@@ -150,4 +154,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Deployment smoke validation passed: curriculum, concepts, checkpoints, immutable capstone, atomic privacy-first assessment calibration and bounded dialect contract sandbox lifecycles include strict validation, conflicts, revoked sessions, cascade cleanup and redaction contracts.');
+console.log('Deployment smoke validation passed: curriculum, concepts, checkpoints, immutable capstone, atomic privacy-first assessment calibration and propagation-safe bounded dialect contract sandbox lifecycles include strict validation, conflicts, revoked sessions, cascade cleanup and redaction contracts.');
