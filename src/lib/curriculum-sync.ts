@@ -61,6 +61,16 @@ function safeTimestamp(value: unknown, fallback = now()) {
   return typeof value === 'string' && value.length <= 80 && Number.isFinite(Date.parse(value)) ? value : fallback;
 }
 
+function safeProjectFiles(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const files: Record<string, string> = {};
+  for (const [id, sql] of Object.entries(value).slice(0, 8)) {
+    if (!/^[a-z0-9][a-z0-9.-]{2,99}$/i.test(id) || typeof sql !== 'string') continue;
+    files[id] = sql.slice(0, 40_000);
+  }
+  return files;
+}
+
 function sanitizeEnvelope(value: unknown): CurriculumProgressV1 {
   const source = value && typeof value === 'object' && !Array.isArray(value)
     ? value as Partial<CurriculumProgressV1>
@@ -81,11 +91,18 @@ function sanitizeEnvelope(value: unknown): CurriculumProgressV1 {
     for (const [id, raw] of Object.entries(source.projectDrafts).slice(0, 12)) {
       if (!id || id.length > 100 || !raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
       const draft = raw as Partial<Draft>;
+      const updatedAt = safeTimestamp(draft.updatedAt);
+      const guidanceUses = Number(draft.guidanceUses);
+      const solutionViews = Number(draft.solutionViews);
       projectDrafts[id] = {
         sql: typeof draft.sql === 'string' ? draft.sql.slice(0, 40_000) : '',
+        files: safeProjectFiles(draft.files),
         notes: typeof draft.notes === 'string' ? draft.notes.slice(0, 12_000) : '',
         completedDeliverables: uniqueStrings(draft.completedDeliverables, 24),
-        updatedAt: safeTimestamp(draft.updatedAt)
+        startedAt: safeTimestamp(draft.startedAt, updatedAt),
+        guidanceUses: Number.isInteger(guidanceUses) && guidanceUses >= 0 && guidanceUses <= 1_000 ? guidanceUses : 0,
+        solutionViews: Number.isInteger(solutionViews) && solutionViews >= 0 && solutionViews <= 1_000 ? solutionViews : 0,
+        updatedAt
       };
     }
   }

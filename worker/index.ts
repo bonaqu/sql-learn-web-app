@@ -1,6 +1,7 @@
 import core from './core';
 import { handleAssessmentRequest } from './assessment';
 import { authenticateSession, handleAuthRequest } from './auth';
+import { handleCapstoneRequest } from './capstones';
 import { handleCheckpointRequest } from './checkpoints';
 import { handleCurriculumRequest } from './curriculum';
 import { handleMasteryProgressV1Request } from './mastery-progress-route';
@@ -17,7 +18,7 @@ const ALLOWED_ORIGINS = new Set([
 const CORS_METHODS = 'GET, PUT, POST, DELETE, OPTIONS';
 const CORS_HEADERS = 'authorization, content-type, x-profile-id';
 
-type Pipeline = 'auth' | 'assessment' | 'checkpoint' | 'curriculum' | 'onboarding';
+type Pipeline = 'auth' | 'assessment' | 'checkpoint' | 'capstone' | 'curriculum' | 'onboarding';
 
 function allowedOrigin(request: Request) {
   const origin = request.headers.get('origin');
@@ -58,9 +59,11 @@ function pipelineFailure(error: unknown, pathname: string, pipeline: Pipeline) {
       ? 'Assessment'
       : pipeline === 'checkpoint'
         ? 'Checkpoint'
-        : pipeline === 'onboarding'
-          ? 'Onboarding'
-          : 'Curriculum';
+        : pipeline === 'capstone'
+          ? 'Capstone'
+          : pipeline === 'onboarding'
+            ? 'Onboarding'
+            : 'Curriculum';
   return new Response(JSON.stringify({
     error: `${label} operation failed`,
     code: `${pipeline.toUpperCase()}_PIPELINE_UNHANDLED`,
@@ -145,6 +148,15 @@ export default {
         return origin ? withCors(response, origin) : response;
       }
       if (checkpointResponse) return origin ? withCors(checkpointResponse, origin) : checkpointResponse;
+
+      let capstoneResponse: Response | null;
+      try {
+        capstoneResponse = await handleCapstoneRequest(request, env, auth.userId);
+      } catch (error) {
+        const response = pipelineFailure(error, url.pathname, 'capstone');
+        return origin ? withCors(response, origin) : response;
+      }
+      if (capstoneResponse) return origin ? withCors(capstoneResponse, origin) : capstoneResponse;
 
       let curriculumResponse: Response | null;
       try {

@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom/client';
 import './lib/api-fetch';
 import App from './App';
 import AuthGate from './components/AuthGate';
+import CapstoneLauncher from './components/CapstoneLauncher';
+import CapstoneReportSyncAgent from './components/CapstoneReportSyncAgent';
 import CheckpointLauncher from './components/CheckpointLauncher';
 import ChunkErrorBoundary from './components/ChunkErrorBoundary';
 import CurriculumSyncAgent from './components/CurriculumSyncAgent';
@@ -26,9 +28,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <App />
         <CheckpointLauncher />
         <OnboardingLauncher />
+        <CapstoneLauncher />
         <DeferredFeaturePortals />
         <CurriculumSyncAgent />
         <EvidenceSyncAgent />
+        <CapstoneReportSyncAgent />
         <OnboardingAgent />
       </AuthGate>
       <PwaStatus />

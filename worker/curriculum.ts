@@ -1,6 +1,7 @@
 const MAX_CURRICULUM_BYTES = 180_000;
 const MAX_ANSWERS = 220;
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{2,99}$/;
+const FILE_ID_PATTERN = /^[a-z0-9][a-z0-9.-]{2,99}$/i;
 const LESSON_PATTERN = /^lesson-[a-z0-9-]{3,80}$/;
 const PROJECT_PATTERN = /^project-[a-z0-9-]{3,80}$/;
 
@@ -12,8 +13,12 @@ type CurriculumAnswer = {
 
 type CurriculumDraft = {
   sql: string;
+  files?: Record<string, string>;
   notes: string;
   completedDeliverables: string[];
+  startedAt?: string;
+  guidanceUses?: number;
+  solutionViews?: number;
   updatedAt: string;
 };
 
@@ -52,8 +57,15 @@ type ValidationCode =
   | 'projectDrafts.count'
   | 'projectDrafts.id'
   | 'projectDrafts.sql'
+  | 'projectDrafts.files.object'
+  | 'projectDrafts.files.count'
+  | 'projectDrafts.files.id'
+  | 'projectDrafts.files.sql'
   | 'projectDrafts.notes'
   | 'projectDrafts.completedDeliverables'
+  | 'projectDrafts.startedAt'
+  | 'projectDrafts.guidanceUses'
+  | 'projectDrafts.solutionViews'
   | 'projectDrafts.updatedAt'
   | 'bookmark'
   | 'bookmark.lessonId'
@@ -87,6 +99,10 @@ function validIdList(value: unknown, pattern: RegExp, max: number) {
     && value.every(item => typeof item === 'string' && pattern.test(item));
 }
 
+function boundedCounter(value: unknown) {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 1_000;
+}
+
 function answersValidationCode(value: unknown): ValidationCode | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return 'answers.object';
   const entries = Object.entries(value);
@@ -105,6 +121,18 @@ function answersValidationCode(value: unknown): ValidationCode | null {
   return null;
 }
 
+function draftFilesValidationCode(value: unknown): ValidationCode | null {
+  if (value === undefined) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return 'projectDrafts.files.object';
+  const entries = Object.entries(value);
+  if (entries.length > 8) return 'projectDrafts.files.count';
+  for (const [id, sql] of entries) {
+    if (!FILE_ID_PATTERN.test(id)) return 'projectDrafts.files.id';
+    if (typeof sql !== 'string' || sql.length > 40_000) return 'projectDrafts.files.sql';
+  }
+  return null;
+}
+
 function draftsValidationCode(value: unknown): ValidationCode | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return 'projectDrafts.object';
   const entries = Object.entries(value);
@@ -114,8 +142,13 @@ function draftsValidationCode(value: unknown): ValidationCode | null {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return 'projectDrafts.object';
     const draft = raw as Partial<CurriculumDraft>;
     if (typeof draft.sql !== 'string' || draft.sql.length > 40_000) return 'projectDrafts.sql';
+    const filesCode = draftFilesValidationCode(draft.files);
+    if (filesCode) return filesCode;
     if (typeof draft.notes !== 'string' || draft.notes.length > 12_000) return 'projectDrafts.notes';
     if (!validIdList(draft.completedDeliverables, ID_PATTERN, 24)) return 'projectDrafts.completedDeliverables';
+    if (draft.startedAt !== undefined && !safeTimestamp(draft.startedAt)) return 'projectDrafts.startedAt';
+    if (draft.guidanceUses !== undefined && !boundedCounter(draft.guidanceUses)) return 'projectDrafts.guidanceUses';
+    if (draft.solutionViews !== undefined && !boundedCounter(draft.solutionViews)) return 'projectDrafts.solutionViews';
     if (!safeTimestamp(draft.updatedAt)) return 'projectDrafts.updatedAt';
   }
   return null;
