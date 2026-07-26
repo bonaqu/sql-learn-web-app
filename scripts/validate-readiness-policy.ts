@@ -7,6 +7,7 @@ import {
 import { lessonChecks } from '../src/data/lesson-checks.ts';
 import { modules, tasks } from '../src/data/course-catalog.ts';
 import type { AssessmentMode, AssessmentReport, AssessmentStatus } from '../src/lib/assessment.ts';
+import type { CapstoneReport } from '../src/lib/capstone-evaluator.ts';
 import { CHECKPOINT_PHASE_READINESS, type CheckpointReport, type CheckpointStatus } from '../src/lib/checkpoints.ts';
 import { calculateCompleteReadiness } from '../src/lib/complete-readiness.ts';
 import {
@@ -141,6 +142,33 @@ function checkpointReport(
   };
 }
 
+function capstoneReport(projectId: string, score = 100): CapstoneReport {
+  return {
+    version: 1,
+    id: `capstone-report-${projectId}`,
+    userId: 'readiness-validator',
+    projectId,
+    status: 'passed',
+    startedAt: now,
+    completedAt: now,
+    durationSeconds: 1200,
+    attemptNumber: 1,
+    score,
+    bestScore: score,
+    passingScore: 80,
+    passed: true,
+    provenance: 'independent',
+    independence: 100,
+    guidanceUses: 0,
+    solutionViews: 0,
+    files: [],
+    submissionFiles: {},
+    checks: [],
+    reflection: 'Verified deterministic capstone fixture.',
+    remediation: []
+  };
+}
+
 const thresholds = READINESS_POLICY.thresholds;
 assert(PREREQUISITE_MASTERY === thresholds.curriculumPrerequisite, 'Curriculum prerequisite threshold drifted from policy');
 assert(DIAGNOSTIC_MODULE_BYPASS === thresholds.diagnosticModuleBypass, 'Module diagnostic bypass drifted from policy');
@@ -206,6 +234,21 @@ if (moduleWithoutProject) {
 const allProgress = progressFor(tasks.map(task => task.id));
 const allCurriculum = curriculumEvidence(curriculumLessons, true);
 const allCheckpointReports = curriculumCheckpoints.map(checkpoint => checkpointReport(checkpoint.id));
+const allCapstoneReports = capstoneProjects.map(project => capstoneReport(project.id));
+
+const legacyProjectReadiness = calculateCompleteReadiness(
+  allProgress,
+  allCurriculum,
+  [
+    assessmentReport('legacy-completed-production', 'production', 'completed', 100),
+    assessmentReport('legacy-completed-final', 'final', 'completed', 100)
+  ],
+  allCheckpointReports,
+  []
+);
+assert(legacyProjectReadiness.projectCompletion === 0, 'Legacy completedProjects must contribute zero project readiness');
+assert(!legacyProjectReadiness.certificateEligible, 'Legacy project checkboxes must not unlock certificate');
+
 const expiredExamReadiness = calculateCompleteReadiness(
   allProgress,
   allCurriculum,
@@ -213,7 +256,8 @@ const expiredExamReadiness = calculateCompleteReadiness(
     assessmentReport('expired-production', 'production', 'expired', 100),
     assessmentReport('abandoned-final', 'final', 'abandoned', 100)
   ],
-  allCheckpointReports
+  allCheckpointReports,
+  allCapstoneReports
 );
 assert((expiredExamReadiness.examScores.production || 0) === 0, 'Expired Production exam must not become best score');
 assert((expiredExamReadiness.examScores.final || 0) === 0, 'Abandoned Final exam must not become best score');
@@ -226,11 +270,27 @@ const completedExamReadiness = calculateCompleteReadiness(
     assessmentReport('completed-production', 'production', 'completed', 100),
     assessmentReport('completed-final', 'final', 'completed', 100)
   ],
-  allCheckpointReports
+  allCheckpointReports,
+  allCapstoneReports
 );
 assert(completedExamReadiness.examScores.production === 100, 'Completed Production score must be retained');
 assert(completedExamReadiness.examScores.final === 100, 'Completed Final score must be retained');
-assert(completedExamReadiness.certificateEligible, 'Complete valid evidence should unlock certificate');
+assert(completedExamReadiness.projectCompletion === 100, 'All passed capstone reports must produce 100% project readiness');
+assert(completedExamReadiness.certificateEligible, 'Complete valid report evidence should unlock certificate');
+
+const projectModule = capstoneProjects[0]?.moduleIds[0];
+if (projectModule) {
+  const graph = buildSkillEvidenceGraph(
+    allProgress,
+    allCurriculum,
+    [],
+    allCheckpointReports,
+    allCapstoneReports
+  );
+  const projectEvidence = graph.modules.find(item => item.moduleId === projectModule)?.evidence.project;
+  assert(projectEvidence?.sourceKinds.includes('capstone-report'), `${projectModule}: project evidence must name capstone-report source`);
+  assert(!projectEvidence?.sourceKinds.includes('project-progress'), `${projectModule}: legacy project-progress source must not remain authoritative`);
+}
 
 const prerequisiteModule = 'transactions';
 const prerequisiteCheckpoint = curriculumCheckpoints.find(checkpoint =>
@@ -255,4 +315,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Readiness policy validated: normalized weights, completed-only reports, ${modules.length} modules, ${curriculumLessons.length} multi-check lessons and ${curriculumCheckpoints.length} checkpoints.`);
+console.log(`Readiness policy validated: normalized weights, completed-only reports, ${modules.length} modules, ${curriculumLessons.length} multi-check lessons, ${curriculumCheckpoints.length} checkpoints and ${capstoneProjects.length} immutable capstones.`);
