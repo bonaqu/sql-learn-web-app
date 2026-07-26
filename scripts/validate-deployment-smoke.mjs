@@ -7,9 +7,11 @@ const checkpointSmoke = readFileSync('scripts/checkpoint-production-smoke.mjs', 
 const capstoneSmoke = readFileSync('scripts/capstone-production-smoke.mjs', 'utf8');
 const calibrationSmoke = readFileSync('scripts/assessment-calibration-production-smoke.mjs', 'utf8');
 const core = readFileSync('worker/core.ts', 'utf8');
+const workerIndex = readFileSync('worker/index.ts', 'utf8');
 const curriculumWorker = readFileSync('worker/curriculum.ts', 'utf8');
 const capstoneWorker = readFileSync('worker/capstones.ts', 'utf8');
 const assessmentWorker = readFileSync('worker/assessment.ts', 'utf8');
+const assessmentReportV2 = readFileSync('worker/assessment-report-v2-route.ts', 'utf8');
 const errors = [];
 const requireText = (source, text, label) => {
   if (!source.includes(text)) errors.push(`Missing ${label}: ${text}`);
@@ -68,9 +70,16 @@ requireText(capstoneSmoke, 'Object.keys(stored.submissionFiles || {}).length !==
 requireText(capstoneSmoke, 'tokenPresent: true', 'capstone registration redaction');
 
 requireText(assessmentWorker, "url.pathname === '/api/assessment/calibration'", 'assessment calibration Worker route');
-requireText(assessmentWorker, 'Assessment report is immutable', 'assessment immutable core guard');
-requireText(assessmentWorker, 'assessment_calibration_receipts', 'assessment deduplication receipt');
-requireText(assessmentWorker, 'assessment_item_aggregates', 'assessment anonymous item aggregate');
+requireText(workerIndex, 'handleAssessmentReportV2Request', 'strict assessment v2 route ordering');
+requireText(assessmentReportV2, "url.pathname !== '/api/assessment/reports'", 'strict calibrated report route');
+requireText(assessmentReportV2, 'env.DB.batch([', 'atomic report, receipt and aggregate batch');
+requireText(assessmentReportV2, 'reportInsertStatement(env, report, serialized)', 'atomic assessment report insert');
+requireText(assessmentReportV2, 'receiptInsertStatement(env, report)', 'atomic assessment receipt insert');
+requireText(assessmentReportV2, '...aggregateStatements(env, report)', 'atomic assessment aggregate contribution');
+requireText(assessmentReportV2, 'expectedExclusion', 'server-side telemetry exclusion recomputation');
+requireText(assessmentReportV2, 'immutableReport(stored) !== immutableReport(incoming)', 'canonical immutable report guard');
+requireText(assessmentReportV2, 'containsForbiddenEvidenceKey', 'learner SQL privacy guard');
+requireText(assessmentReportV2, 'recovered: telemetryContributed', 'replay telemetry recovery evidence');
 requireText(calibrationSmoke, "'/api/assessment/calibration'", 'assessment calibration endpoint lifecycle');
 requireText(calibrationSmoke, 'telemetryContributed !== true', 'assessment first contribution evidence');
 requireText(calibrationSmoke, 'idempotent !== true', 'assessment exact replay evidence');
@@ -82,6 +91,7 @@ requireText(calibrationSmoke, 'technicalErrorAttempts', 'technical-error exclusi
 requireText(calibrationSmoke, 'anonymousAggregateSurvivedDeletion', 'anonymous aggregate retention evidence');
 requireText(calibrationSmoke, "'--yes'", 'assessment non-interactive D1 execution');
 
+forbidText(assessmentReportV2, 'submissionSql', 'learner SQL in strict assessment route');
 forbidText(workflow, 'cloudflare-register-payload.json', 'password-bearing diagnostic');
 forbidText(workflow, 'cloudflare-delete-payload.json', 'recovery-bearing diagnostic');
 forbidText(workflow, 'cloudflare-register.json', 'token-bearing diagnostic');
@@ -107,4 +117,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Deployment smoke validation passed: curriculum, concepts, checkpoints, immutable capstone and privacy-first assessment calibration lifecycles include bounded payloads, conflicts, owner isolation, revoked sessions, cascade cleanup and redaction contracts.');
+console.log('Deployment smoke validation passed: curriculum, concepts, checkpoints, immutable capstone and atomic privacy-first assessment calibration lifecycles include bounded payloads, conflicts, owner isolation, replay recovery, revoked sessions, cascade cleanup and redaction contracts.');
