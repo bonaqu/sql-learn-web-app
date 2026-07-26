@@ -49,14 +49,28 @@ function practicedProgress() {
   };
 }
 
-test('desktop assessment uses an adaptive form, explains uncertainty and syncs report to a second device', async ({ page, browser }, testInfo) => {
+test('desktop assessment waits for evidence hydration, uses an adaptive form and syncs explainable measurement', async ({ page, browser }, testInfo) => {
   const auth = await authenticatePage(page, 'assess');
+  let releaseCalibration!: () => void;
+  const calibrationGate = new Promise<void>(resolve => { releaseCalibration = resolve; });
+  await page.route('**/api/assessment/calibration', async route => {
+    await calibrationGate;
+    await route.continue();
+  });
+
   await page.goto('./');
   await page.getByTestId('assessment-trigger').click();
   await expect(page.getByTestId('assessment-landing')).toBeVisible();
-  await expect(page.getByTestId('assessment-calibration-summary')).toBeVisible();
-  await expect(page.getByTestId('assessment-calibration-summary')).toContainText(/Blueprint v2|authored difficulty/i);
-  await page.getByTestId('start-quick').click();
+  const calibrationSummary = page.getByTestId('assessment-calibration-summary');
+  await expect(calibrationSummary).toBeVisible();
+  await expect(calibrationSummary).toContainText(/Blueprint v2|authored difficulty/i);
+  const quickStart = page.getByTestId('start-quick');
+  await expect(quickStart).toBeDisabled();
+  await expect(calibrationSummary).toContainText(/Синхронизирую reports/i);
+  releaseCalibration();
+  await expect(quickStart).toBeEnabled();
+  await expect(calibrationSummary).toContainText(/Cross-device evidence готов|локальную историю/i);
+  await quickStart.click();
 
   const center = page.getByTestId('assessment-center');
   await expect(page.getByTestId('assessment-session')).toBeVisible();
