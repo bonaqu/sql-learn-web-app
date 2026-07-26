@@ -85,7 +85,7 @@ function candidateValue(input: {
     + calibrationSelectionValue(input.task.id, input.calibration)
     + anchor
     + newModule
-    + taskHash(input.task.id, input.seed) * 160;
+    + taskHash(input.task.id, input.seed) * 12;
 }
 
 function chooseCandidate(input: {
@@ -93,6 +93,7 @@ function chooseCandidate(input: {
   selected: SqlTask[];
   known: Set<string>;
   allowKnown: boolean;
+  variant: number;
   slot?: AssessmentBlueprintSlot;
   progress: Progress;
   calibration: AssessmentCalibrationSnapshot;
@@ -101,10 +102,18 @@ function chooseCandidate(input: {
 }) {
   const selectedIds = new Set(input.selected.map(task => task.id));
   const usedModules = new Set(input.selected.map(task => task.module));
-  return input.pool
-    .filter(task => !selectedIds.has(task.id))
-    .filter(task => input.allowKnown || !input.known.has(task.id))
+  const stablePool = input.pool
     .filter(task => !input.slot || assessmentItem(task.id)?.reasoningSkill === input.slot.reasoningSkill)
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const preferredIds = new Set(stablePool
+    .filter((_, index) => index % 4 === input.variant - 1)
+    .map(task => task.id));
+  const available = stablePool
+    .filter(task => !selectedIds.has(task.id))
+    .filter(task => input.allowKnown || !input.known.has(task.id));
+  const preferred = available.filter(task => preferredIds.has(task.id));
+  const candidates = preferred.length ? preferred : available;
+  return candidates
     .map(task => ({
       task,
       value: candidateValue({
@@ -169,6 +178,7 @@ export function selectAssessmentForm(input: {
         selected,
         known,
         allowKnown: false,
+        variant,
         slot,
         progress: input.progress,
         calibration,
@@ -181,6 +191,7 @@ export function selectAssessmentForm(input: {
           selected,
           known,
           allowKnown: true,
+          variant,
           slot,
           progress: input.progress,
           calibration,
@@ -200,6 +211,7 @@ export function selectAssessmentForm(input: {
       selected,
       known,
       allowKnown: false,
+      variant,
       progress: input.progress,
       calibration,
       blueprint,
@@ -211,6 +223,7 @@ export function selectAssessmentForm(input: {
         selected,
         known,
         allowKnown: true,
+        variant,
         progress: input.progress,
         calibration,
         blueprint,
@@ -223,11 +236,12 @@ export function selectAssessmentForm(input: {
   }
 
   const result = selected.slice(0, blueprint.taskCount);
+  const knownInPool = pool.filter(task => known.has(task.id)).length;
   return {
     tasks: result,
     formId,
     blueprintVersion: blueprint.version,
-    excludedKnownSolutions: Math.max(0, known.size - fallbackKnownSolutions),
+    excludedKnownSolutions: Math.max(0, knownInPool - fallbackKnownSolutions),
     fallbackKnownSolutions,
     distinctModules: new Set(result.map(task => task.module)).size,
     distinctSkills: new Set(result.map(task => assessmentItem(task.id)?.reasoningSkill).filter(Boolean)).size
