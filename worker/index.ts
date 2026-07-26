@@ -1,5 +1,6 @@
 import core from './core';
 import { handleAssessmentRequest } from './assessment';
+import { handleAssessmentReportV2Request } from './assessment-report-v2-route';
 import { authenticateSession, handleAuthRequest } from './auth';
 import { handleCapstoneRequest } from './capstones';
 import { handleCheckpointRequest } from './checkpoints';
@@ -130,6 +131,15 @@ export default {
         return origin ? withCors(response, origin) : response;
       }
       if (auth instanceof Response) return origin ? withCors(auth, origin) : auth;
+
+      let assessmentV2Response: Response | null;
+      try {
+        assessmentV2Response = await handleAssessmentReportV2Request(request, env, auth.userId);
+      } catch (error) {
+        const response = pipelineFailure(error, url.pathname, 'assessment');
+        return origin ? withCors(response, origin) : response;
+      }
+      if (assessmentV2Response) return origin ? withCors(assessmentV2Response, origin) : assessmentV2Response;
 
       let assessmentResponse: Response | null;
       try {
