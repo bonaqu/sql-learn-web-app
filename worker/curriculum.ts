@@ -18,6 +18,7 @@ type CurriculumDraft = {
   completedDeliverables: string[];
   startedAt?: string;
   guidanceUses?: number;
+  solutionViews?: number;
   updatedAt: string;
 };
 
@@ -64,6 +65,7 @@ type ValidationCode =
   | 'projectDrafts.completedDeliverables'
   | 'projectDrafts.startedAt'
   | 'projectDrafts.guidanceUses'
+  | 'projectDrafts.solutionViews'
   | 'projectDrafts.updatedAt'
   | 'bookmark'
   | 'bookmark.lessonId'
@@ -95,6 +97,10 @@ function validIdList(value: unknown, pattern: RegExp, max: number) {
     && value.length <= max
     && new Set(value).size === value.length
     && value.every(item => typeof item === 'string' && pattern.test(item));
+}
+
+function boundedCounter(value: unknown) {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 1_000;
 }
 
 function answersValidationCode(value: unknown): ValidationCode | null {
@@ -141,11 +147,8 @@ function draftsValidationCode(value: unknown): ValidationCode | null {
     if (typeof draft.notes !== 'string' || draft.notes.length > 12_000) return 'projectDrafts.notes';
     if (!validIdList(draft.completedDeliverables, ID_PATTERN, 24)) return 'projectDrafts.completedDeliverables';
     if (draft.startedAt !== undefined && !safeTimestamp(draft.startedAt)) return 'projectDrafts.startedAt';
-    if (draft.guidanceUses !== undefined
-      && (typeof draft.guidanceUses !== 'number'
-        || !Number.isInteger(draft.guidanceUses)
-        || draft.guidanceUses < 0
-        || draft.guidanceUses > 1_000)) return 'projectDrafts.guidanceUses';
+    if (draft.guidanceUses !== undefined && !boundedCounter(draft.guidanceUses)) return 'projectDrafts.guidanceUses';
+    if (draft.solutionViews !== undefined && !boundedCounter(draft.solutionViews)) return 'projectDrafts.solutionViews';
     if (!safeTimestamp(draft.updatedAt)) return 'projectDrafts.updatedAt';
   }
   return null;
