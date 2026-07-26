@@ -210,13 +210,14 @@ export async function syncDialectLabProgress(progress: DialectLabProgress, confl
 
 export async function hydrateDialectLabProgress(userId = loadAuthSession()?.userId) {
   if (!userId) return null;
-  const local = loadDialectLabProgress(userId) || emptyDialectLabProgress(userId);
+  const initialLocal = loadDialectLabProgress(userId) || emptyDialectLabProgress(userId);
   const response = await fetch('/api/dialect-labs/progress');
-  if (!response.ok) return local;
+  if (!response.ok) return initialLocal;
   const payload = await response.json() as { progress?: DialectLabProgress | null; revision?: number };
   const remote = payload.progress
     ? sanitizeDialectLabProgress(payload.progress, userId)
     : emptyDialectLabProgress(userId);
-  const merged = mergeDialectLabProgress(local, { ...remote, revision: Number(payload.revision) || remote.revision });
+  const latestLocal = loadDialectLabProgress(userId) || initialLocal;
+  const merged = mergeDialectLabProgress(latestLocal, { ...remote, revision: Number(payload.revision) || remote.revision });
   return saveDialectLabProgress(merged);
 }
