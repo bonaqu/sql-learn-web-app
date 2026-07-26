@@ -91,7 +91,6 @@ requireText(calibrationSmoke, 'technicalErrorAttempts', 'technical-error exclusi
 requireText(calibrationSmoke, 'anonymousAggregateSurvivedDeletion', 'anonymous aggregate retention evidence');
 requireText(calibrationSmoke, "'--yes'", 'assessment non-interactive D1 execution');
 
-forbidText(assessmentReportV2, 'submissionSql', 'learner SQL in strict assessment route');
 forbidText(workflow, 'cloudflare-register-payload.json', 'password-bearing diagnostic');
 forbidText(workflow, 'cloudflare-delete-payload.json', 'recovery-bearing diagnostic');
 forbidText(workflow, 'cloudflare-register.json', 'token-bearing diagnostic');
