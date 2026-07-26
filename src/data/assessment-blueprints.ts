@@ -115,7 +115,7 @@ function eligibleModes(task: SqlTask): CalibratedAssessmentMode[] {
   if (task.mode === 'interview' || task.mode === 'practice') modes.push('interview');
   if (task.mode !== 'lesson' && task.mode !== 'puzzle' && task.difficulty !== 'База') modes.push('exam');
   if (task.mode !== 'puzzle') modes.push('diagnostic');
-  if (task.mode !== 'lesson' && task.mode !== 'puzzle' && task.difficulty !== 'База') modes.push('production', 'final');
+  if (task.mode !== 'lesson' && task.mode !== 'puzzle') modes.push('production', 'final');
   return Array.from(new Set(modes));
 }
 
@@ -212,8 +212,8 @@ export const assessmentBlueprints: Record<CalibratedAssessmentMode, AssessmentBl
     minimumDistinctModules: 12,
     minimumDistinctSkills: 8,
     slots: [
-      { reasoningSkill: 'result-contract', count: 1, difficultyBands: ['working', 'advanced'] },
-      { reasoningSkill: 'row-selection', count: 1, difficultyBands: ['working', 'advanced'] },
+      { reasoningSkill: 'result-contract', count: 1, difficultyBands: ['foundation', 'working', 'advanced'] },
+      { reasoningSkill: 'row-selection', count: 1, difficultyBands: ['foundation', 'working', 'advanced'] },
       { reasoningSkill: 'aggregation', count: 2, difficultyBands: ['working', 'advanced', 'expert'] },
       { reasoningSkill: 'relationships', count: 2, difficultyBands: ['working', 'advanced', 'expert'] },
       { reasoningSkill: 'data-shaping', count: 2, difficultyBands: ['working', 'advanced'] },
