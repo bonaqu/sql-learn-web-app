@@ -61,7 +61,7 @@ function difficultyFit(task: SqlTask, slot?: AssessmentBlueprintSlot) {
 function weaknessValue(task: SqlTask, progress: Progress) {
   const stats = progress.taskStats[task.id];
   if (!stats) return progress.completed.includes(task.id) ? -2 : 5;
-  return Math.min(24, stats.incorrect * 5 + stats.hintsUsed * 4 + Math.max(0, stats.attempts - (stats.independentPasses || 0)));
+  return Math.min(18, stats.incorrect * 4 + stats.hintsUsed * 3 + Math.max(0, stats.attempts - (stats.independentPasses || 0)));
 }
 
 function candidateValue(input: {
@@ -74,8 +74,8 @@ function candidateValue(input: {
   seed: string;
 }) {
   const item = assessmentItem(input.task.id);
-  const anchor = input.blueprint.anchorTaskIds?.includes(input.task.id) ? 5 : 0;
-  const newModule = input.usedModules.has(input.task.module) ? -4 : 7;
+  const anchor = input.blueprint.anchorTaskIds?.includes(input.task.id) ? 2 : 0;
+  const newModule = input.usedModules.has(input.task.module) ? -6 : 8;
   const slotFit = input.slot && item?.reasoningSkill === input.slot.reasoningSkill ? 20 : input.slot ? -30 : 0;
   return slotFit
     + difficultyFit(input.task, input.slot)
@@ -83,7 +83,7 @@ function candidateValue(input: {
     + calibrationSelectionValue(input.task.id, input.calibration)
     + anchor
     + newModule
-    + taskHash(input.task.id, input.seed) * 6;
+    + taskHash(input.task.id, input.seed) * 42;
 }
 
 function chooseCandidate(input: {
@@ -103,23 +103,19 @@ function chooseCandidate(input: {
     .filter(task => !selectedIds.has(task.id))
     .filter(task => input.allowKnown || !input.known.has(task.id))
     .filter(task => !input.slot || assessmentItem(task.id)?.reasoningSkill === input.slot.reasoningSkill)
-    .sort((left, right) => candidateValue({
-      task: right,
-      slot: input.slot,
-      progress: input.progress,
-      calibration: input.calibration,
-      blueprint: input.blueprint,
-      usedModules,
-      seed: input.seed
-    }) - candidateValue({
-      task: left,
-      slot: input.slot,
-      progress: input.progress,
-      calibration: input.calibration,
-      blueprint: input.blueprint,
-      usedModules,
-      seed: input.seed
-    }) || left.id.localeCompare(right.id))[0] || null;
+    .map(task => ({
+      task,
+      value: candidateValue({
+        task,
+        slot: input.slot,
+        progress: input.progress,
+        calibration: input.calibration,
+        blueprint: input.blueprint,
+        usedModules,
+        seed: input.seed
+      })
+    }))
+    .sort((left, right) => right.value - left.value || left.task.id.localeCompare(right.task.id))[0]?.task || null;
 }
 
 export function assessmentFormId(mode: CalibratedAssessmentMode, userId: string, attemptNumber: number) {
@@ -139,7 +135,7 @@ export function selectAssessmentForm(input: {
   const calibration = input.calibration || emptyCalibrationSnapshot();
   const attemptNumber = reports.filter(report => report.mode === input.mode).length + 1;
   const formId = assessmentFormId(input.mode, input.userId, attemptNumber);
-  const seed = `${formId}:${input.userId}`;
+  const seed = `${formId}:${input.userId}:${attemptNumber}`;
   const known = completedKnownTasks(reports);
 
   if (blueprint.fixedTaskIds?.length) {
@@ -151,7 +147,7 @@ export function selectAssessmentForm(input: {
       excludedKnownSolutions: fixed.filter(task => known.has(task.id)).length,
       fallbackKnownSolutions: fixed.filter(task => known.has(task.id)).length,
       distinctModules: new Set(fixed.map(task => task.module)).size,
-      distinctSkills: new Set(fixed.map(task => assessmentItem(task.id)?.reasoningSkill)).size
+      distinctSkills: new Set(fixed.map(task => assessmentItem(task.id)?.reasoningSkill).filter(Boolean)).size
     };
   }
 
@@ -170,7 +166,7 @@ export function selectAssessmentForm(input: {
         progress: input.progress,
         calibration,
         blueprint,
-        seed
+        seed: `${seed}:${slot.reasoningSkill}:${index}`
       });
       if (!candidate) {
         candidate = chooseCandidate({
@@ -182,7 +178,7 @@ export function selectAssessmentForm(input: {
           progress: input.progress,
           calibration,
           blueprint,
-          seed
+          seed: `${seed}:${slot.reasoningSkill}:${index}:fallback`
         });
         if (candidate && known.has(candidate.id)) fallbackKnownSolutions += 1;
       }
@@ -191,6 +187,7 @@ export function selectAssessmentForm(input: {
   }
 
   while (selected.length < blueprint.taskCount) {
+    const index = selected.length;
     let candidate = chooseCandidate({
       pool,
       selected,
@@ -199,7 +196,7 @@ export function selectAssessmentForm(input: {
       progress: input.progress,
       calibration,
       blueprint,
-      seed
+      seed: `${seed}:fill:${index}`
     });
     if (!candidate) {
       candidate = chooseCandidate({
@@ -210,7 +207,7 @@ export function selectAssessmentForm(input: {
         progress: input.progress,
         calibration,
         blueprint,
-        seed
+        seed: `${seed}:fill:${index}:fallback`
       });
       if (candidate && known.has(candidate.id)) fallbackKnownSolutions += 1;
     }
@@ -226,7 +223,7 @@ export function selectAssessmentForm(input: {
     excludedKnownSolutions: Math.max(0, known.size - fallbackKnownSolutions),
     fallbackKnownSolutions,
     distinctModules: new Set(result.map(task => task.module)).size,
-    distinctSkills: new Set(result.map(task => assessmentItem(task.id)?.reasoningSkill)).size
+    distinctSkills: new Set(result.map(task => assessmentItem(task.id)?.reasoningSkill).filter(Boolean)).size
   };
 }
 
@@ -241,15 +238,16 @@ export function assessmentFormCoverage(mode: CalibratedAssessmentMode, form: Sql
     const missing = Math.max(0, slot.count - (skillCounts.get(slot.reasoningSkill) || 0));
     return Array.from({ length: missing }, () => slot.reasoningSkill);
   });
+  const skills = form.map(task => assessmentItem(task.id)?.reasoningSkill).filter(Boolean);
   return {
     taskCount: form.length,
     distinctModules: new Set(form.map(task => task.module)).size,
-    distinctSkills: new Set(form.map(task => assessmentItem(task.id)?.reasoningSkill)).size,
+    distinctSkills: new Set(skills).size,
     duplicateTasks: form.length - new Set(form.map(task => task.id)).size,
     missingSlots,
     valid: form.length === blueprint.taskCount
       && new Set(form.map(task => task.module)).size >= blueprint.minimumDistinctModules
-      && new Set(form.map(task => assessmentItem(task.id)?.reasoningSkill)).size >= blueprint.minimumDistinctSkills
+      && new Set(skills).size >= blueprint.minimumDistinctSkills
       && missingSlots.length === 0
   };
 }
