@@ -1,0 +1,307 @@
+.learning-analytics-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 92;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, #05070d 76%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.learning-analytics-shell {
+  width: min(1080px, 100%);
+  max-height: min(900px, calc(100dvh - 48px));
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 26px;
+  padding: 24px;
+  background: var(--panel);
+  box-shadow: 0 32px 90px rgba(0, 0, 0, .42);
+}
+
+.learning-analytics-shell > header,
+.learning-analytics-sharing,
+.learning-analytics-actions,
+.learning-cloud-actions,
+.learning-sharing-choice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.learning-analytics-shell > header {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.learning-analytics-shell h2,
+.learning-analytics-shell h3,
+.learning-analytics-shell p {
+  margin-top: 0;
+}
+
+.learning-analytics-shell > header p,
+.learning-analytics-sharing p,
+.learning-cohort p {
+  color: var(--muted);
+}
+
+.learning-analytics-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--accent);
+  font-size: .78rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.learning-analytics-privacy {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 20px 0;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel-2));
+}
+
+.learning-analytics-privacy svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.learning-analytics-actions {
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.learning-analytics-actions button,
+.learning-sharing-choice button,
+.learning-cloud-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.learning-analytics-actions button:hover,
+.learning-sharing-choice button:hover,
+.learning-cloud-actions button:hover,
+.learning-sharing-choice button.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
+}
+
+.learning-analytics-actions .danger {
+  margin-left: auto;
+  color: var(--danger);
+}
+
+.learning-analytics-actions .danger.armed {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, var(--panel-2));
+}
+
+.learning-analytics-funnel {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.learning-analytics-funnel > div,
+.learning-analytics-grid > article,
+.learning-analytics-sharing,
+.learning-cohort {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--panel-2);
+}
+
+.learning-analytics-funnel > div {
+  padding: 14px;
+  text-align: center;
+}
+
+.learning-analytics-funnel strong,
+.learning-analytics-funnel span {
+  display: block;
+}
+
+.learning-analytics-funnel strong {
+  font-size: 1.55rem;
+}
+
+.learning-analytics-funnel span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: .78rem;
+  text-transform: capitalize;
+}
+
+.learning-analytics-grid {
+  display: grid;
+  grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+  gap: 16px;
+}
+
+.learning-analytics-grid > article,
+.learning-analytics-sharing,
+.learning-cohort {
+  padding: 18px;
+}
+
+.learning-analytics-grid dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.learning-analytics-grid dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.learning-analytics-grid dt {
+  color: var(--muted);
+}
+
+.learning-analytics-grid dd {
+  margin: 0;
+  font-weight: 800;
+}
+
+.learning-interventions {
+  display: grid;
+  gap: 10px;
+}
+
+.learning-intervention,
+.learning-analytics-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+}
+
+.learning-intervention.important {
+  background: color-mix(in srgb, var(--warning) 10%, var(--panel));
+}
+
+.learning-intervention svg,
+.learning-analytics-empty svg {
+  flex: 0 0 auto;
+}
+
+.learning-intervention p,
+.learning-intervention small {
+  display: block;
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.learning-analytics-sharing {
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.learning-sharing-choice,
+.learning-cloud-actions {
+  flex-wrap: wrap;
+}
+
+.learning-cloud-actions {
+  width: 100%;
+}
+
+.learning-cohort {
+  margin-top: 16px;
+}
+
+.learning-cohort > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 0;
+  border-top: 1px solid var(--border);
+}
+
+.learning-cohort span {
+  color: var(--muted);
+  text-align: right;
+}
+
+.learning-analytics-message {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 9%, var(--panel-2));
+}
+
+@media (max-width: 760px) {
+  .learning-analytics-backdrop {
+    padding: 0;
+    align-items: stretch;
+  }
+
+  .learning-analytics-shell {
+    max-height: 100dvh;
+    border-radius: 0;
+    padding: 18px;
+  }
+
+  .learning-analytics-funnel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .learning-analytics-funnel > div:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .learning-analytics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .learning-analytics-actions .danger {
+    margin-left: 0;
+  }
+
+  .learning-analytics-actions button,
+  .learning-sharing-choice button,
+  .learning-cloud-actions button {
+    flex: 1 1 160px;
+  }
+
+  .learning-cohort > div {
+    display: grid;
+  }
+
+  .learning-cohort span {
+    text-align: left;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .learning-analytics-backdrop {
+    backdrop-filter: none;
+  }
+}
