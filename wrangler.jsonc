@@ -1,8 +1,9 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "sql-learn-web-app",
-  "main": "worker/index.ts",
-  "compatibility_date": "2026-07-24",
+  "main": "worker/index-real-engines.ts",
+  "compatibility_date": "2026-07-27",
+  "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
@@ -26,7 +27,36 @@
   "ai": {
     "binding": "AI"
   },
+  "containers": [
+    {
+      "class_name": "Sandbox",
+      "image": "./containers/dialect-engines/Dockerfile",
+      "instance_type": "basic",
+      "max_instances": 2
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "DIALECT_SANDBOX",
+        "class_name": "Sandbox"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "dialect-sandbox-v1",
+      "new_sqlite_classes": ["Sandbox"]
+    }
+  ],
+  "vars": {
+    "DIALECT_ENGINE_MODE": "real-optional",
+    "SANDBOX_TRANSPORT": "rpc",
+    "SANDBOX_LOG_LEVEL": "warn",
+    "SANDBOX_LOG_FORMAT": "json"
+  },
   "observability": {
-    "enabled": true
+    "enabled": true,
+    "head_sampling_rate": 1
   }
 }
