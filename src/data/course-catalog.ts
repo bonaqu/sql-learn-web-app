@@ -12,7 +12,10 @@ export type {
   TaskMode
 } from './course';
 
-export const modules = [...coreModules, ...advancedModules] as const;
+export const modules: readonly (readonly [string, string, string])[] = [
+  ...coreModules,
+  ...advancedModules
+];
 export const tasks = [...coreTasks, ...advancedTasks];
 
 export const achievements = [
