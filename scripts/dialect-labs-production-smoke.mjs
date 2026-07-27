@@ -27,7 +27,7 @@ function parseJson(text, label) {
 function writeJson(path, value) { writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`); }
 
 async function request(path, {
-  method = 'GET', headers = {}, body, expected = [200], attempts = 1, delayMs = 2500, diagnosticFile
+  method = 'GET', headers = {}, body, expected = [200], attempts = 1, delayMs = 3000, diagnosticFile
 } = {}) {
   let last = null;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -72,28 +72,49 @@ function findCount(value) {
   return null;
 }
 
-function progressPayload(userId, revision, digest) {
+function assertRealExecution(value, dialect) {
+  if (!value?.passed || !value?.evidenceEligible || value.offlinePreview || value.executionMode !== 'remote-sandbox') {
+    throw new Error(`${dialect} did not produce eligible real-engine evidence: ${JSON.stringify(value)}`);
+  }
+  if (value.verificationMode !== 'real-engine-v1') throw new Error(`${dialect} verificationMode is not real-engine-v1`);
+  if (value.runnerVersion !== 'dialect-real-engine-v1') throw new Error(`${dialect} runnerVersion is invalid`);
+  if (value.sandboxDestroyed !== true) throw new Error(`${dialect} sandbox destroy was not confirmed`);
+  if (typeof value.engineVersion !== 'string' || !/\d+\.\d+/.test(value.engineVersion)) throw new Error(`${dialect} engineVersion is missing`);
+  if (dialect === 'mysql' && !/^8\.4(?:\.|$)/.test(value.engineVersion)) throw new Error(`Expected Oracle MySQL 8.4, got ${value.engineVersion}`);
+  if (!/^fnv1a-[a-f0-9]{8}$/.test(String(value.resultDigest || ''))) throw new Error(`${dialect} evidence digest is invalid`);
+  if (!Array.isArray(value.output?.rows) || value.output.rows.length !== 14) throw new Error(`${dialect} result row count is invalid`);
+  const lastRows = value.output.rows.slice(-4);
+  if (!lastRows.every(row => row?.[1] === null)) throw new Error(`${dialect} NULLS LAST result contract failed`);
+}
+
+function evidenceItem(dialect, execution) {
+  const now = new Date().toISOString();
+  return {
+    version: 1,
+    labId: 'dialect-null-ordering',
+    dialect,
+    manifestVersion: 1,
+    executionMode: 'remote-sandbox',
+    passed: true,
+    evidenceEligible: true,
+    independent: true,
+    attempts: 1,
+    bestDurationMs: Math.max(1, Math.min(60_000, Math.trunc(execution.durationMs || 1))),
+    resultDigest: execution.resultDigest,
+    completedAt: now,
+    lastAttemptAt: now
+  };
+}
+
+function progressPayload(userId, revision, executions) {
   const now = new Date().toISOString();
   return {
     version: 1,
     userId,
     revision,
     evidence: {
-      'dialect-null-ordering:postgresql': {
-        version: 1,
-        labId: 'dialect-null-ordering',
-        dialect: 'postgresql',
-        manifestVersion: 1,
-        executionMode: 'remote-sandbox',
-        passed: true,
-        evidenceEligible: true,
-        independent: true,
-        attempts: 1,
-        bestDurationMs: 12,
-        resultDigest: digest,
-        completedAt: now,
-        lastAttemptAt: now
-      }
+      'dialect-null-ordering:postgresql': evidenceItem('postgresql', executions.postgresql),
+      'dialect-null-ordering:mysql': evidenceItem('mysql', executions.mysql)
     },
     updatedAt: now
   };
@@ -187,49 +208,71 @@ try {
     body: JSON.stringify({ version: 1, labId: 'dialect-null-ordering', dialect: 'postgresql', sql: 'SELECT ticket_id, closed_at FROM tickets ORDER BY closed_at, ticket_id;' }),
     expected: [200], ...propagationOptions
   })).text, 'Incomplete dialect contract');
-  if (incomplete.passed !== false || incomplete.evidenceEligible !== false || !Array.isArray(incomplete.errors) || incomplete.errors.length === 0) {
-    throw new Error('Incomplete semantic contract unexpectedly passed');
+  if (incomplete.passed !== false || incomplete.evidenceEligible !== false || incomplete.engineVersion !== null || !Array.isArray(incomplete.errors) || incomplete.errors.length === 0) {
+    throw new Error('Incomplete semantic contract unexpectedly reached/passed the real engine');
   }
   endStage();
 
-  stage('dialect-remote-contract');
-  const referenceSql = 'SELECT ticket_id, closed_at FROM tickets ORDER BY closed_at NULLS LAST, ticket_id;';
-  const executed = parseJson((await request('/api/dialect-labs/execute', {
-    method: 'POST', headers,
-    body: JSON.stringify({ version: 1, labId: 'dialect-null-ordering', dialect: 'postgresql', sql: referenceSql }),
-    expected: [200], ...propagationOptions
-  })).text, 'Dialect remote contract');
-  if (!executed.passed || !executed.evidenceEligible || executed.offlinePreview || executed.executionMode !== 'remote-sandbox') {
-    throw new Error(`Remote contract sandbox did not produce eligible evidence: ${JSON.stringify(executed)}`);
+  const referenceSql = {
+    postgresql: 'SELECT ticket_id, closed_at FROM tickets ORDER BY closed_at NULLS LAST, ticket_id;',
+    mysql: 'SELECT ticket_id, closed_at FROM tickets ORDER BY (closed_at IS NULL), closed_at, ticket_id;'
+  };
+  const executions = {};
+  for (const dialect of ['postgresql', 'mysql']) {
+    stage(`dialect-real-${dialect}`);
+    const executed = parseJson((await request('/api/dialect-labs/execute', {
+      method: 'POST', headers,
+      body: JSON.stringify({ version: 1, labId: 'dialect-null-ordering', dialect, sql: referenceSql[dialect] }),
+      expected: [200], attempts: 4, delayMs: 5000,
+      diagnosticFile: `cloudflare-dialect-${dialect}.json`
+    })).text, `Dialect ${dialect} real contract`);
+    assertRealExecution(executed, dialect);
+    executions[dialect] = executed;
+    endStage();
   }
-  if (!/^fnv1a-[a-f0-9]{8}$/.test(String(executed.resultDigest || ''))) throw new Error('Remote contract digest is invalid');
-  writeJson('cloudflare-dialect-execution-redacted.json', {
-    labId: executed.labId,
-    dialect: executed.dialect,
-    passed: executed.passed,
-    resultDigest: executed.resultDigest,
-    rowCount: executed.output?.rows?.length || 0,
-    sqlStored: false
-  });
+
+  stage('dialect-engine-error-cleanup');
+  const failedExecution = parseJson((await request('/api/dialect-labs/execute', {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      version: 1,
+      labId: 'dialect-null-ordering',
+      dialect: 'postgresql',
+      sql: 'SELECT ticket_id, closed_at FROM tickets ORDER BY closed_at NULLS LAST, ticket_id BROKEN;'
+    }),
+    expected: [200], attempts: 2,
+    diagnosticFile: 'cloudflare-dialect-engine-error.json'
+  })).text, 'Dialect engine error cleanup');
+  if (failedExecution.passed !== false || failedExecution.evidenceEligible !== false || failedExecution.sandboxDestroyed !== true) {
+    throw new Error('Failed real-engine execution did not prove non-eligibility and destroy cleanup');
+  }
+  if (JSON.stringify(failedExecution).includes('ticket_id BROKEN')) throw new Error('Learner SQL leaked through the engine error response');
   endStage();
 
   stage('dialect-progress-create');
-  const progress = progressPayload(smokeUserId, 0, executed.resultDigest);
+  const progress = progressPayload(smokeUserId, 0, executions);
   const created = parseJson((await request('/api/dialect-labs/progress', {
     method: 'PUT', headers, body: JSON.stringify({ progress, baseRevision: 0 }), expected: [200], attempts: 3
   })).text, 'Dialect progress create');
-  if (!created.ok || created.revision !== 1 || created.progress?.evidence?.['dialect-null-ordering:postgresql']?.resultDigest !== executed.resultDigest) {
-    throw new Error('Dialect progress create contract failed');
+  if (!created.ok || created.revision !== 1) throw new Error('Dialect progress create contract failed');
+  for (const dialect of ['postgresql', 'mysql']) {
+    if (created.progress?.evidence?.[`dialect-null-ordering:${dialect}`]?.resultDigest !== executions[dialect].resultDigest) {
+      throw new Error(`${dialect} evidence digest did not survive progress create`);
+    }
   }
   endStage();
 
   stage('dialect-progress-round-trip');
   const roundTrip = parseJson((await request('/api/dialect-labs/progress', { headers, attempts: 3 })).text, 'Dialect progress round-trip');
-  const stored = roundTrip.progress?.evidence?.['dialect-null-ordering:postgresql'];
-  if (roundTrip.revision !== 1 || !stored?.passed || !stored?.independent || stored.resultDigest !== executed.resultDigest) {
-    throw new Error('Dialect progress round-trip mismatch');
+  if (roundTrip.revision !== 1) throw new Error('Dialect progress revision mismatch');
+  for (const dialect of ['postgresql', 'mysql']) {
+    const stored = roundTrip.progress?.evidence?.[`dialect-null-ordering:${dialect}`];
+    if (!stored?.passed || !stored?.independent || stored.resultDigest !== executions[dialect].resultDigest) {
+      throw new Error(`${dialect} progress round-trip mismatch`);
+    }
   }
-  if (JSON.stringify(roundTrip).toLowerCase().includes('select ticket_id')) throw new Error('Learner SQL leaked into dialect progress payload');
+  const roundTripText = JSON.stringify(roundTrip).toLowerCase();
+  if (roundTripText.includes('select ticket_id') || roundTripText.includes('nulls last')) throw new Error('Learner SQL leaked into dialect progress payload');
   endStage();
 
   stage('dialect-progress-conflict');
@@ -258,22 +301,27 @@ try {
   stage('dialect-revoked-session');
   await request('/api/dialect-labs/progress', { headers, expected: [401], attempts: 2 });
   await request('/api/dialect-labs/execute', {
-    method: 'POST', headers, body: JSON.stringify({ version: 1, labId: 'dialect-null-ordering', dialect: 'postgresql', sql: referenceSql }),
+    method: 'POST', headers,
+    body: JSON.stringify({ version: 1, labId: 'dialect-null-ordering', dialect: 'postgresql', sql: referenceSql.postgresql }),
     expected: [401], attempts: 2
   });
   endStage();
 
   writeJson('cloudflare-dialect-summary.json', {
     labId: 'dialect-null-ordering',
-    dialect: 'postgresql',
-    contractSandboxPassed: true,
+    engines: {
+      postgresql: { version: executions.postgresql.engineVersion, destroyed: executions.postgresql.sandboxDestroyed },
+      mysql: { version: executions.mysql.engineVersion, destroyed: executions.mysql.sandboxDestroyed }
+    },
     routePropagationRetries: ROUTE_PROPAGATION_ATTEMPTS,
+    realEngineEvidencePassed: true,
+    engineFailureCleanupPassed: true,
     policyAbuseRejected: true,
     progressRoundTrip: true,
     sqlPersisted: false,
     cascadeVerified: true
   });
-  console.log('Dialect lab production smoke passed: propagation-safe routes, authenticated contract sandbox, policy rejection, progress conflict, privacy, cascade cleanup and revoked session.');
+  console.log('Dialect lab production smoke passed: propagation-safe real PostgreSQL/MySQL execution, failure cleanup, evidence lifecycle, privacy, cascade and revoked session.');
 } catch (error) {
   writeFileSync('cloudflare-dialect-failure.txt', `stage=${stageName}\n${error instanceof Error ? error.stack || error.message : String(error)}\n`);
   await deleteSmokeAccount();
