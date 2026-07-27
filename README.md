@@ -19,7 +19,7 @@ Open-source SQL-платформа для 2nd Support Engineer. Репозито
 - **8 curriculum checkpoints** от fundamentals до production operations.
 - **5 learning tracks:** Fundamentals, Support SQL, Analytics SQL, Performance SQL и Interview Readiness.
 - **3 graded exams:** Diagnostic SQL Check, Production SQL Exam и SQL Academy Final.
-- **Dialect Lab:** переносимые patterns для SQLite, PostgreSQL, MySQL и SQL Server.
+- **Dialect Lab:** 11 executable portability patterns для SQLite, PostgreSQL и Oracle MySQL 8.4; SQL Server представлен только reference-only syntax matrix и не считается engine evidence.
 - Project Lab с тремя production-like T-Bonk capstone-проектами, deliverables, drafts и rubric.
 - Cross-device curriculum sync через D1 с optimistic concurrency и deterministic conflict merge.
 - Adaptive Learning Path с восемью последовательными фазами.
@@ -39,9 +39,9 @@ Open-source SQL-платформа для 2nd Support Engineer. Репозито
 - Обязательная авторизация по логину и паролю без email, SMS и OAuth.
 - Восемь одноразовых recovery-кодов после регистрации.
 - Отдельная отзываемая сессия для каждого устройства.
-- Cloudflare D1 для пользователей, сессий, recovery-кодов, task progress, curriculum drafts и assessment reports.
-- Cloudflare KV для настроек и лимитов AI.
-- Автоматический CI/CD в GitHub Pages и Cloudflare Workers Static Assets.
+- Cloudflare D1 для пользователей, сессий, recovery-кодов, task progress, curriculum drafts, dialect evidence и assessment reports.
+- Cloudflare KV для настроек и лимитов AI/real-engine execution.
+- Автоматический CI/CD в GitHub Pages и Cloudflare Workers Static Assets + Containers.
 
 ## Полная программа SQL
 
@@ -88,7 +88,7 @@ Open-source SQL-платформа для 2nd Support Engineer. Репозито
 Syllabus Center — отдельный lazy-loaded экран, который отвечает на три вопроса:
 
 1. **Что учить дальше?** Карта пяти tracks показывает модули, часы, outcomes и текущий mastery.
-2. **Как переносить SQL между СУБД?** Dialect Lab сравнивает один и тот же pattern в SQLite, PostgreSQL, MySQL и SQL Server.
+2. **Как переносить SQL между СУБД?** Dialect Lab исполняет один pattern в SQLite, PostgreSQL и MySQL, а SQL Server показывает как reference-only syntax без ложного engine evidence.
 3. **Когда готов к проверке?** Экзаменационный раздел показывает duration, passing score, prerequisites, rules и readiness weight.
 
 Syllabus Center не дублирует практику. Он объясняет структуру курса и ведёт в Curriculum Studio, Assessment Center и рабочий каталог.
@@ -189,7 +189,7 @@ Skill report учитывает правильность, попытки, вре
 - `prefers-reduced-motion: reduce` отключает необязательные анимации;
 - serious/critical axe violations блокируют merge.
 
-Service worker кэширует production HTML, CSS, JavaScript chunks, SVG и WASM. После первого успешного открытия доступны статические материалы, локальный прогресс и SQLite workspace. Сеть обязательна для входа, cloud sync, профиля и AI-функций.
+Service worker кэширует production HTML, CSS, JavaScript chunks, SVG и WASM. После первого успешного открытия доступны статические материалы, локальный прогресс и SQLite workspace. Сеть обязательна для входа, cloud sync, профиля, real PostgreSQL/MySQL execution и AI-функций.
 
 Новая версия не активируется автоматически. Пользователь выбирает «Обновить сейчас» или «Позже». При изменённом SQL либо активной assessment-сессии приложение требует дополнительное подтверждение.
 
@@ -218,7 +218,8 @@ npm run validate:bundle
 - prerequisite DAG;
 - 8 checkpoints;
 - 5 tracks, 3 exams и competency map;
-- 10+ Dialect Lab patterns × 4 dialects;
+- 11 Dialect Lab patterns × 3 executable dialects и SQL Server reference-only matrix;
+- 22 isolated PostgreSQL/MySQL Docker contracts, включая две реальные concurrent sessions;
 - project rubric/deliverable uniqueness;
 - D1 cascade foreign keys и deployment-smoke contract.
 
@@ -226,16 +227,18 @@ Bundle gate ограничивает initial entry, общий CSS и кажды
 
 Browser gate проверяет auth/recovery, multi-device task и curriculum sync, Learning Path, Curriculum Studio, Project Lab, Syllabus Center, Dialect Lab, Assessment Center, offline/update UX, keyboard focus, desktop, Pixel 7 и axe-core.
 
-## Cloudflare Free-first
+## Cloudflare production stack
 
-Workflow автоматически собирает приложение, применяет D1 migrations, разворачивает Worker + Static Assets, проверяет health/auth/progress/curriculum APIs, optimistic conflict и cascade cleanup временного smoke-аккаунта.
+Workflow автоматически собирает приложение, применяет D1 migrations, разворачивает Worker + Static Assets + Sandbox Container и проверяет health/auth/progress/curriculum APIs, все 22 PostgreSQL/MySQL production contracts, optimistic conflict, privacy, destroy cleanup и cascade временного smoke-аккаунта.
+
+Cloudflare Containers не доступны на Workers Free. Для real PostgreSQL/MySQL execution нужен Workers Paid; актуальные условия опубликованы в [официальной документации Containers pricing](https://developers.cloudflare.com/containers/pricing/). Без Container binding приложение сохраняет SQLite и preview-only portability workflow, но не выдаёт его за server-engine evidence.
 
 Требуются GitHub Actions secrets:
 
 - `CLOUDFLARE_API_TOKEN`
 - `CLOUDFLARE_ACCOUNT_ID`
 
-R2 и Hyperdrive намеренно не используются: для текущей архитектуры достаточно Workers Static Assets, D1 и KV.
+R2 и Hyperdrive намеренно не используются: для текущей архитектуры достаточно Workers Static Assets, Containers, D1 и KV.
 
 ## API
 
@@ -259,6 +262,8 @@ Endpoints с `Authorization: Bearer <session-token>`:
 - `GET|PUT /api/progress`
 - `GET|PUT /api/settings`
 - `GET|PUT /api/curriculum/progress`
+- `GET|PUT /api/dialect-labs/progress`
+- `POST /api/dialect-labs/execute`
 - `POST /api/mentor`
 - `GET|POST /api/assessment/reports`
 - `POST /api/assessment/interviewer`
@@ -276,5 +281,6 @@ Endpoints с `Authorization: Bearer <session-token>`:
 - Service worker не получает и не кэширует password, recovery-коды или bearer token.
 - Recovery-коды после подтверждения не сохраняются приложением.
 - Assessment session/report не содержит password, recovery-коды или bearer token.
+- Dialect evidence хранит только lab/dialect/version, pass state, duration и digest; learner SQL в D1 не сохраняется.
 - В AI Mentor/Interviewer отправляются только контекст задачи, вопрос, SQL и техническая статистика попыток.
 - В AI Coach/Debrief отправляется только агрегированный mastery/assessment-профиль без login, password, recovery-кодов и session token.
