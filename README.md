@@ -18,7 +18,7 @@ Open-source SQL-платформа для быстрого профессион�
 - **8 checkpoints**, **5 learning tracks** и **3 graded exams**.
 - Adaptive Learning Path, module mastery, readiness и spaced review.
 - Assessment Center с resumable timer и cross-device reports.
-- Privacy-first learning analytics с объяснимыми intervention rules, default-off sharing и k=5 suppression.
+- Privacy-first learning analytics с объяснимыми intervention rules, actionable course-health, default-off sharing и layered k=5 suppression.
 - Три production-like capstone-проекта T-Bonk.
 - AI Mentor, Interviewer, Debrief и Coach с deterministic fallback.
 - PWA, offline cache, keyboard focus management, reduced motion и axe-core gate.
@@ -137,22 +137,40 @@ Assessment runtime не начисляет обычный XP, не показы�
 
 Он **не содержит** learner SQL, result rows, текст задач, free-form notes, username, display name, email, телефон, работодателя, recovery-коды или bearer token.
 
-Server sharing по умолчанию `off`. При явном `coarse-opt-in` отправляется только weekly module-level snapshot:
+Server sharing по умолчанию `off`. При явном `coarse-opt-in` отправляется одна replaceable weekly snapshot:
 
-- opened → attempted → understood → independent → retained;
-- lapses и remediation counters;
-- coarse study-time bucket;
+- module-level funnel `opened → attempted → understood → independent → retained`;
+- lapses, remediation outcomes и coarse study-time bucket;
 - bounded overload/stalled/review-debt flags;
-- allowlisted diagnostic family и experiment variant.
+- allowlisted diagnostic family;
+- пять coarse time-to-mastery buckets;
+- deterministic variant только для allowlisted content experiment.
 
-Task IDs и локальный event log на сервер не отправляются. Cohort report скрывает каждый module/week slice меньше пяти contributors и не возвращает user rows, ranks или leaderboards. Opt-out удаляет server snapshots; отдельные export/delete доступны пользователю; account deletion очищает обе D1 analytics tables через cascade.
+Task IDs, точные timestamps, user ID и локальный event log в snapshot не входят. Сервер связывает строку с authenticated account только для честного export/delete lifecycle.
 
-Interventions детерминированы и объясняют причину:
+Course-health API применяет k=5 отдельно к трём типам slices:
+
+1. week + module;
+2. week для time-to-mastery;
+3. week + experiment + variant.
+
+Experiment slice намеренно не пересекается с module ID. Report не возвращает user rows, ranks или leaderboards и не объявляет variant победителем автоматически. Интерфейс требует нескольких недель, одинакового направления independent/retained и отсутствия ухудшения remediation.
+
+Course actions формируются детерминированно из уже разрешённых cohort rows:
+
+- проверить prerequisites при низком independent rate;
+- добавить retrieval practice при слабом retained rate;
+- переписать remediation при низком recovery rate;
+- разделить lesson при частых overload/stalled signals.
+
+Learner interventions тоже детерминированы и объясняют причину:
 
 - overload — ≥6 попыток и ≤30% успешных в текущей сессии;
 - repeated misconception — одна diagnostic family ≥3 раз в ≥2 задачах за 7 дней;
 - stalled module — ≥5 попыток без independent evidence;
 - review debt — ≥5 due reviews или oldest due ≥7 дней.
+
+Opt-out удаляет server snapshots; отдельные export/delete доступны пользователю; account deletion очищает обе D1 analytics tables через cascade.
 
 Подробный threat model: [`docs/learning-analytics-privacy.md`](docs/learning-analytics-privacy.md).
 
@@ -194,7 +212,7 @@ npm run validate:bundle
 npm run test:e2e
 ```
 
-`npm run check` валидирует TypeScript/Worker types, 240 task contracts, curriculum DAG, lessons, checkpoints, tracks, exams, 11×3 dialect cases, learning analytics privacy contracts, deployment smoke и D1 cascade invariants.
+`npm run check` валидирует TypeScript/Worker types, 240 task contracts, curriculum DAG, lessons, checkpoints, tracks, exams, 11×3 dialect cases, learning analytics privacy/effectiveness contracts, deployment smoke и D1 cascade invariants.
 
 PR Quality дополнительно:
 
@@ -202,7 +220,8 @@ PR Quality дополнительно:
 - выполняет все 22 PostgreSQL/MySQL Docker contracts;
 - поднимает локальную D1;
 - запускает desktop и Pixel 7 Playwright;
-- перехватывает analytics snapshot request и запрещает SQL/task IDs/user ID в payload;
+- перехватывает analytics snapshot request и проверяет allowlist `rows + mastery + experiments` без SQL/task IDs/user ID;
+- проверяет actionable course-health, experiment guardrails и layered suppression UI;
 - блокирует serious/critical axe violations.
 
 ## Cloudflare Free production stack
@@ -216,6 +235,8 @@ Production workflow использует только:
 - Workers AI binding.
 
 Не используются Containers, R2 или Hyperdrive. Workflow применяет migrations, разворачивает Worker/assets и запускает production smoke для auth, curriculum, concepts, checkpoints, capstones, assessment, privacy-first analytics, mastery, onboarding и всех 22 server-dialect reference previews.
+
+Analytics production smoke проверяет default-off, opt-in, strict snapshot/mastery schemas, module/mastery/experiment k=5 suppression, export round-trip, opt-out deletion, account cascade и revoked session.
 
 GitHub Actions secrets:
 
@@ -252,7 +273,7 @@ Worker не доверяет клиентскому `x-profile-id`: user ID оп
 
 - Нет сторонних аналитических трекеров.
 - Learning analytics default-off; server snapshot не содержит SQL, task IDs или user ID.
-- Cohorts меньше пяти contributors подавляются.
+- Module, mastery и experiment cohorts меньше пяти contributors подавляются независимо.
 - Аккаунту не нужны email, телефон или внешний профиль.
 - Seed data полностью вымышлены.
 - Password и recovery-коды не попадают в client diagnostics.
