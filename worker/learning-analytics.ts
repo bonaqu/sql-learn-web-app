@@ -15,7 +15,8 @@ const MODULE_IDS = new Set<string>(ANALYTICS_MODULE_IDS);
 const DIAGNOSTIC_KINDS = new Set<string>(ANALYTICS_DIAGNOSTIC_KINDS);
 const EXPERIMENT_IDS = new Set<string>(ANALYTICS_EXPERIMENT_IDS);
 const VARIANTS = new Set<string>(ANALYTICS_VARIANTS);
-const SNAPSHOT_KEYS = new Set(['version', 'periodStart', 'courseVersion', 'rows', 'experiments']);
+const SNAPSHOT_KEYS = new Set(['version', 'periodStart', 'courseVersion', 'rows', 'mastery', 'experiments']);
+const MASTERY_KEYS = new Set(['same-session', 'same-day', '2-7-days', '8-30-days', 'over-30-days']);
 const ROW_KEYS = new Set([
   'moduleId', 'opened', 'attempted', 'understood', 'independent', 'retained', 'lapses',
   'remediations', 'remediationSuccesses', 'studyMinutesBucket', 'overload', 'stalled',
@@ -23,6 +24,7 @@ const ROW_KEYS = new Set([
 ]);
 
 type Sharing = 'off' | 'coarse-opt-in';
+type MasteryBuckets = Record<'same-session' | 'same-day' | '2-7-days' | '8-30-days' | 'over-30-days', number>;
 type SnapshotRow = {
   moduleId: string;
   opened: number;
@@ -44,6 +46,7 @@ type Snapshot = {
   periodStart: string;
   courseVersion: 3;
   rows: SnapshotRow[];
+  mastery: MasteryBuckets;
   experiments: Record<string, AnalyticsVariant>;
 };
 type StoredRow = { period_start: string; course_version: number; payload: string; updated_at: string };
@@ -92,6 +95,12 @@ function validPeriod(value: unknown) {
   return age >= -7 * 86_400_000 && age <= 180 * 86_400_000;
 }
 
+function validMastery(value: unknown): value is MasteryBuckets {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const mastery = value as Record<string, unknown>;
+  return exactKeys(mastery, MASTERY_KEYS) && [...MASTERY_KEYS].every(key => boundedInteger(mastery[key]));
+}
+
 function validRow(value: unknown): value is SnapshotRow {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const row = value as Record<string, unknown>;
@@ -124,6 +133,7 @@ function validSnapshot(value: unknown): value is Snapshot {
     || snapshot.rows.length > MAX_ROWS
     || !snapshot.rows.every(validRow)
     || new Set(snapshot.rows.map(row => (row as SnapshotRow).moduleId)).size !== snapshot.rows.length
+    || !validMastery(snapshot.mastery)
     || !snapshot.experiments
     || typeof snapshot.experiments !== 'object'
     || Array.isArray(snapshot.experiments)) return false;
@@ -210,6 +220,16 @@ function reportCutoff() {
   return date.toISOString().slice(0, 10);
 }
 
+function snapshotTotals(snapshot: Snapshot) {
+  return snapshot.rows.reduce((totals, row) => ({
+    attempted: totals.attempted + row.attempted,
+    independent: totals.independent + row.independent,
+    retained: totals.retained + row.retained,
+    remediations: totals.remediations + row.remediations,
+    remediationSuccesses: totals.remediationSuccesses + row.remediationSuccesses
+  }), { attempted: 0, independent: 0, retained: 0, remediations: 0, remediationSuccesses: 0 });
+}
+
 async function cohortReport(env: Cloudflare.Env) {
   const result = await env.DB.prepare(`SELECT period_start, course_version, payload, updated_at
     FROM learning_analytics_snapshots WHERE period_start >= ?
@@ -231,6 +251,18 @@ async function cohortReport(env: Cloudflare.Env) {
     stalled: number;
     reviewDebt: number;
     diagnostics: Map<AnalyticsDiagnosticKind, number>;
+  }>();
+  const masteryGroups = new Map<string, { periodStart: string; contributors: number; mastery: MasteryBuckets }>();
+  const experimentGroups = new Map<string, {
+    periodStart: string;
+    experimentId: string;
+    variant: AnalyticsVariant;
+    contributors: number;
+    attempted: number;
+    independent: number;
+    retained: number;
+    remediations: number;
+    remediationSuccesses: number;
   }>();
 
   for (const stored of result.results || []) {
@@ -274,6 +306,38 @@ async function cohortReport(env: Cloudflare.Env) {
       }
       groups.set(key, group);
     }
+
+    const mastery = masteryGroups.get(snapshot.periodStart) || {
+      periodStart: snapshot.periodStart,
+      contributors: 0,
+      mastery: { 'same-session': 0, 'same-day': 0, '2-7-days': 0, '8-30-days': 0, 'over-30-days': 0 }
+    };
+    mastery.contributors += 1;
+    for (const key of MASTERY_KEYS) mastery.mastery[key as keyof MasteryBuckets] += snapshot.mastery[key as keyof MasteryBuckets];
+    masteryGroups.set(snapshot.periodStart, mastery);
+
+    const totals = snapshotTotals(snapshot);
+    for (const [experimentId, variant] of Object.entries(snapshot.experiments)) {
+      const key = `${snapshot.periodStart}:${experimentId}:${variant}`;
+      const experiment = experimentGroups.get(key) || {
+        periodStart: snapshot.periodStart,
+        experimentId,
+        variant,
+        contributors: 0,
+        attempted: 0,
+        independent: 0,
+        retained: 0,
+        remediations: 0,
+        remediationSuccesses: 0
+      };
+      experiment.contributors += 1;
+      experiment.attempted += totals.attempted;
+      experiment.independent += totals.independent;
+      experiment.retained += totals.retained;
+      experiment.remediations += totals.remediations;
+      experiment.remediationSuccesses += totals.remediationSuccesses;
+      experimentGroups.set(key, experiment);
+    }
   }
 
   let suppressedRows = 0;
@@ -305,12 +369,36 @@ async function cohortReport(env: Cloudflare.Env) {
     }];
   }).sort((left, right) => right.periodStart.localeCompare(left.periodStart) || left.moduleId.localeCompare(right.moduleId));
 
+  let suppressedMasteryPeriods = 0;
+  const mastery = [...masteryGroups.values()].flatMap(group => {
+    if (group.contributors < MINIMUM_COHORT) {
+      suppressedMasteryPeriods += 1;
+      return [];
+    }
+    return [{ periodStart: group.periodStart, contributors: group.contributors, suppressed: false as const, ...group.mastery }];
+  }).sort((left, right) => right.periodStart.localeCompare(left.periodStart));
+
+  let suppressedExperiments = 0;
+  const experiments = [...experimentGroups.values()].flatMap(group => {
+    if (group.contributors < MINIMUM_COHORT) {
+      suppressedExperiments += 1;
+      return [];
+    }
+    return [{ ...group, suppressed: false as const }];
+  }).sort((left, right) => right.periodStart.localeCompare(left.periodStart)
+    || left.experimentId.localeCompare(right.experimentId)
+    || left.variant.localeCompare(right.variant));
+
   return json({
     version: 1,
     minimumCohort: MINIMUM_COHORT,
     generatedAt: new Date().toISOString(),
     rows,
-    suppressedRows
+    mastery,
+    experiments,
+    suppressedRows,
+    suppressedMasteryPeriods,
+    suppressedExperiments
   });
 }
 
