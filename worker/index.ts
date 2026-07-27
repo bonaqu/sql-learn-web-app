@@ -6,8 +6,11 @@ import { handleCapstoneRequest } from './capstones';
 import { handleCheckpointRequest } from './checkpoints';
 import { handleCurriculumRequest } from './curriculum';
 import { handleDialectLabRequest } from './dialect-labs';
+import { handleDialectRealEngineRequest } from './dialect-real-engine-route';
 import { handleMasteryProgressV1Request } from './mastery-progress-route';
 import { handleOnboardingRequest } from './onboarding';
+
+export { Sandbox } from '@cloudflare/sandbox';
 
 const ALLOWED_ORIGINS = new Set([
   'https://bonaqu.github.io',
@@ -170,6 +173,15 @@ export default {
         return origin ? withCors(response, origin) : response;
       }
       if (capstoneResponse) return origin ? withCors(capstoneResponse, origin) : capstoneResponse;
+
+      let realDialectResponse: Response | null;
+      try {
+        realDialectResponse = await handleDialectRealEngineRequest(request, env, auth.userId);
+      } catch (error) {
+        const response = pipelineFailure(error, url.pathname, 'dialect');
+        return origin ? withCors(response, origin) : response;
+      }
+      if (realDialectResponse) return origin ? withCors(realDialectResponse, origin) : realDialectResponse;
 
       let dialectResponse: Response | null;
       try {

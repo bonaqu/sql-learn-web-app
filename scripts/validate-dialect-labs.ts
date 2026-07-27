@@ -11,6 +11,7 @@ import {
   recordDialectLabExecution
 } from '../src/lib/dialect-lab-progress.ts';
 import { trainingSeedSql } from '../src/data/training-dataset.ts';
+import { realEngineContracts } from '../worker/dialect-real-engine-contracts.ts';
 
 const failures: string[] = [];
 const assert = (condition: unknown, message: string) => { if (!condition) failures.push(message); };
@@ -45,10 +46,13 @@ function normalizedLastResult(results: ReturnType<typeof executeSqlite>) {
   };
 }
 
-assert(dialectLabManifests.length === 6, `Expected 6 published dialect labs, got ${dialectLabManifests.length}`);
+assert(dialectLabManifests.length === 11, `Expected 11 published dialect labs, got ${dialectLabManifests.length}`);
+assert(dialectLabCases.length === 33, `Expected 33 executable dialect cases, got ${dialectLabCases.length}`);
 assert(dialectLabCases.length === dialectLabManifests.length * dialects.length, 'Every lab must publish one case per executable dialect');
+assert(realEngineContracts.length === dialectLabManifests.length * 2, 'Every lab must publish PostgreSQL and MySQL real-engine contracts');
 assert(new Set(dialectLabManifests.map(lab => lab.id)).size === dialectLabManifests.length, 'Dialect lab IDs must be unique');
 assert(new Set(dialectLabCases.map(item => `${item.labId}:${item.dialect}`)).size === dialectLabCases.length, 'Dialect case keys must be unique');
+assert(new Set(realEngineContracts.map(item => `${item.labId}:${item.dialect}`)).size === realEngineContracts.length, 'Real-engine contract keys must be unique');
 
 for (const lab of dialectLabManifests) {
   assert(lab.version === 1, `${lab.id}: unsupported manifest version`);
@@ -76,6 +80,11 @@ for (const lab of dialectLabManifests) {
     assert(reference.ok, `${lab.id}:${dialect}: reference rejected: ${reference.errors.join(' | ')}`);
     const starter = evaluateDialectCaseSql(labCase.starterSql, labCase, lab.statementPolicy);
     assert(!starter.ok, `${lab.id}:${dialect}: unfinished starter unexpectedly passes`);
+    if (dialect !== 'sqlite') {
+      const contract = realEngineContracts.find(item => item.labId === lab.id && item.dialect === dialect);
+      assert(Boolean(contract), `${lab.id}:${dialect}: missing real-engine fixture contract`);
+      if (lab.kind === 'transaction') assert(Boolean(contract?.transactionKind), `${lab.id}:${dialect}: transaction kind is not explicit`);
+    }
     if (dialect === 'sqlite' && behavior.executionMode === 'local-sqlite') {
       try {
         const result = executeSqlite(labCase.referenceSql, labCase.setupSql);
@@ -106,9 +115,14 @@ assert(validateDialectSqlPolicy('SELECT 1 /* DROP TABLE tickets; */;', readOnly)
 assert(validateDialectSqlPolicy('SELECT 1; -- ordinary EOF comment', readOnly).ok, 'EOF line comment must be treated as terminated');
 assert(!validateDialectSqlPolicy('SELECT 1; DROP TABLE tickets;', readOnly).ok, 'Second unsafe statement bypassed policy');
 assert(!validateDialectSqlPolicy('SELECT SLEEP(10);', readOnly).ok, 'SLEEP abuse bypassed denylist');
+assert(!validateDialectSqlPolicy('SELECT PG_SLEEP(10);', readOnly).ok, 'PG_SLEEP abuse bypassed global denylist');
+assert(!validateDialectSqlPolicy("SELECT LOAD_FILE('/etc/passwd');", readOnly).ok, 'LOAD_FILE escape bypassed global denylist');
+assert(!validateDialectSqlPolicy("SELECT 'x' INTO DUMPFILE '/tmp/x';", readOnly).ok, 'INTO DUMPFILE escape bypassed global denylist');
 assert(!validateDialectSqlPolicy('ATTACH DATABASE \'x\' AS x;', readOnly).ok, 'ATTACH abuse bypassed denylist');
 assert(!validateDialectSqlPolicy('SELECT 1 /* unterminated', readOnly).ok, 'Unterminated block comment bypassed parser');
 assert(validateDialectSqlPolicy('WITH x AS (SELECT 1 AS id) SELECT id FROM x;', readOnly).ok, 'Safe CTE was rejected');
+assert(!validateDialectSqlPolicy('WITH removed AS (DELETE FROM tickets RETURNING ticket_id) SELECT * FROM removed;', readOnly).ok, 'DML hidden inside a read-only CTE bypassed policy');
+assert(!validateDialectSqlPolicy("WITH changed AS (UPDATE tickets SET priority = 'High' RETURNING ticket_id) SELECT * FROM changed;", readOnly).ok, 'UPDATE hidden inside a read-only CTE bypassed policy');
 
 const userId = '12345678-1234-4234-9234-123456789abc';
 let progress = emptyDialectLabProgress(userId);
@@ -154,13 +168,59 @@ assert(dialectLabCompletion(merged, dialectLabManifests[0].id).complete, 'Stale 
 
 const migration = readFileSync(new URL('../migrations/0016_dialect_lab_progress.sql', import.meta.url), 'utf8');
 const worker = readFileSync(new URL('../worker/dialect-labs.ts', import.meta.url), 'utf8');
+const indexWorker = readFileSync(new URL('../worker/index.ts', import.meta.url), 'utf8');
+const realRoute = readFileSync(new URL('../worker/dialect-real-engine-route.ts', import.meta.url), 'utf8');
+const adapter = readFileSync(new URL('../worker/dialect-real-engine.ts', import.meta.url), 'utf8');
+const runner = readFileSync(new URL('../containers/dialect-engines/runner.mjs', import.meta.url), 'utf8');
+const dockerfile = readFileSync(new URL('../containers/dialect-engines/Dockerfile', import.meta.url), 'utf8');
+const wrangler = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
+const workflow = readFileSync(new URL('../.github/workflows/cloudflare.yml', import.meta.url), 'utf8');
+const productionSmoke = readFileSync(new URL('./dialect-labs-production-smoke.ts', import.meta.url), 'utf8');
+
 assert(/REFERENCES\s+users\s*\(\s*user_id\s*\)\s+ON DELETE CASCADE/i.test(migration), 'Dialect progress must cascade with account deletion');
 assert(!/\bsql\s+TEXT\b/i.test(migration), 'Dialect progress schema must not store learner SQL');
-assert(worker.includes("'/api/dialect-labs/execute'"), 'Worker execute route is missing');
-assert(worker.includes('HOURLY_EXECUTION_LIMIT = 120'), 'Sandbox rate limit is missing');
-assert(worker.includes('validateDialectSqlPolicy'), 'Worker is not using the shared policy scanner');
-assert(worker.includes("sandboxModelVersion: 'dialect-sandbox-v1'"), 'Remote contract sandbox version is not explicit');
-assert(!/console\.(log|error)\([^\n]*\bsql\b/i.test(worker), 'Worker appears to log learner SQL');
+assert(worker.includes("'/api/dialect-labs/execute'"), 'Fallback Worker execute route is missing');
+assert(worker.includes('HOURLY_EXECUTION_LIMIT = 120'), 'Fallback sandbox rate limit is missing');
+assert(worker.includes('dialectLabManifests.reduce'), 'Fallback progress evidence ceiling is not derived from published manifests');
+assert(worker.includes('validateDialectSqlPolicy'), 'Fallback Worker is not using the shared policy scanner');
+assert(worker.includes("sandboxModelVersion: 'dialect-sandbox-v1'"), 'Fallback contract sandbox version is not explicit');
+assert(indexWorker.includes('handleDialectRealEngineRequest'), 'Canonical Worker pipeline does not route real dialect execution');
+assert(indexWorker.includes("export { Sandbox } from '@cloudflare/sandbox'"), 'Canonical Worker does not export the Sandbox Durable Object');
+assert(!indexWorker.includes('index-real-engines'), 'Canonical Worker still depends on the deleted wrapper entrypoint');
+assert(realRoute.includes('DIALECT_REAL_ENGINE_RUNNER_VERSION'), 'Real route does not bind evidence to the runner contract');
+assert(realRoute.includes('sandboxDestroyed'), 'Real route does not publish destroy evidence');
+assert(realRoute.includes('dialect-sandbox-v1'), 'Real route must preserve the v1 evidence digest contract');
+assert(adapter.includes("transport: 'rpc'"), 'Sandbox adapter is not pinned to RPC transport');
+assert(adapter.includes('enableDefaultSession: false'), 'Sandbox adapter still permits implicit default sessions');
+assert(adapter.includes('file.content'), 'Sandbox adapter does not use the current readFile result contract');
+assert(adapter.includes('await sandbox.destroy()'), 'Sandbox adapter does not unconditionally destroy attempts');
+assert(adapter.includes('passed: outcome.passed && destroyed'), 'Sandbox destroy is not a prerequisite for eligible evidence');
+assert(adapter.includes('transactionKind: contract.transactionKind'), 'Sandbox adapter does not publish the transaction scenario contract');
+assert(!adapter.includes("contract.scenario === 'transaction'"), 'Sandbox adapter still rejects real transaction scenarios');
+assert(runner.includes("commandPath('mysqld')"), 'Runner does not start Oracle MySQL');
+assert(runner.includes('--initialize-insecure'), 'Runner does not initialize an ephemeral MySQL data directory');
+assert(!/mariadb/i.test(runner), 'Runner still contains MariaDB runtime code');
+assert(runner.includes('class InteractiveSession'), 'Runner does not create independent database sessions');
+assert(runner.includes("request.transactionKind === 'optimistic-conflict'"), 'Runner does not execute the lost-update contract');
+assert(runner.includes("request.transactionKind === 'skip-locked'"), 'Runner does not execute the queue locking contract');
+assert(runner.includes('POSTGRES_NULL_MARKER'), 'Runner does not preserve PostgreSQL NULL values over CSV');
+assert(runner.includes("await b.exec(request.learnerSql"), 'Runner does not execute session B before transaction completion');
+assert(dockerfile.includes('mysql-8.4-lts'), 'Container image is not sourced from the official MySQL 8.4 LTS repository');
+assert(dockerfile.includes('mysql-community-server-core'), 'Container image does not install Oracle MySQL server core');
+assert(dockerfile.includes('RPM-GPG-KEY-mysql-2025'), 'Container image does not use the current MySQL repository signing key');
+assert(dockerfile.includes('BCA43417C3B485DD128EC6D4B7B3B788A8D3785C'), 'Container image does not pin the MySQL signing-key fingerprint');
+assert(!/mariadb-(client|server)/i.test(dockerfile), 'Container image still substitutes MariaDB for MySQL');
+assert(wrangler.includes('"nodejs_compat"'), 'Wrangler config is missing nodejs_compat');
+assert(wrangler.includes('"SANDBOX_TRANSPORT": "rpc"'), 'Wrangler config is missing RPC transport');
+assert(workflow.includes("main: 'worker/index.ts'"), 'Production workflow does not deploy the canonical Worker entrypoint');
+assert(workflow.includes("SANDBOX_TRANSPORT: 'rpc'"), 'Production workflow is missing RPC transport');
+assert(workflow.includes('npx tsx scripts/dialect-labs-production-smoke.ts'), 'Production workflow does not execute the typed dialect smoke');
+assert(productionSmoke.includes("const REAL_DIALECTS = ['postgresql', 'mysql'] as const"), 'Production smoke does not exercise both real engines');
+assert(productionSmoke.includes('for (const lab of dialectLabManifests)'), 'Production smoke does not iterate every published dialect lab');
+assert(productionSmoke.includes("value.verificationMode !== 'real-engine-v1'"), 'Production smoke does not verify the real adapter contract');
+assert(productionSmoke.includes('value.sandboxDestroyed !== true'), 'Production smoke does not prove destroy cleanup');
+assert(productionSmoke.includes('allPublishedPatternsPassed: true'), 'Production smoke does not publish complete-pattern evidence');
+assert(!/console\.(log|error)\([^\n]*\bsql\b/i.test(worker + realRoute + adapter), 'Worker appears to log learner SQL');
 
 if (failures.length) {
   console.error(`Dialect lab validation failed with ${failures.length} issue(s):`);
@@ -168,4 +228,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Dialect lab validation passed: ${dialectLabManifests.length} labs, ${dialectLabCases.length} engine cases, exact SQLite fixtures, policy abuse, evidence merge and D1 privacy contract.`);
+console.log(`Dialect lab validation passed: ${dialectLabManifests.length} labs, ${dialectLabCases.length} engine cases, exact SQLite fixtures, hidden-DML/escape policy, canonical RPC adapter, real two-session contracts, Oracle MySQL image, complete production lifecycle evidence and D1 privacy contract.`);

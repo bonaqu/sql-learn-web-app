@@ -17,7 +17,7 @@ jobs:
   deploy:
     name: Validate and deploy Worker
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -35,7 +35,7 @@ jobs:
               sha: context.sha,
               state: 'pending',
               context: 'deployment/cloudflare',
-              description: 'Building and smoke-testing Cloudflare Worker'
+              description: 'Building and smoke-testing Cloudflare Worker and Containers'
             });
 
       - name: Validate deployment credentials
@@ -43,6 +43,7 @@ jobs:
         run: |
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
+          docker info >/dev/null
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -93,7 +94,8 @@ jobs:
             $schema: './node_modules/wrangler/config-schema.json',
             name: 'sql-learn-web-app',
             main: 'worker/index.ts',
-            compatibility_date: '2026-07-24',
+            compatibility_date: '2026-07-27',
+            compatibility_flags: ['nodejs_compat'],
             assets: {
               directory: './dist',
               binding: 'ASSETS',
@@ -108,18 +110,37 @@ jobs:
             }],
             kv_namespaces: [{ binding: 'SETTINGS', id: process.env.KV_ID }],
             ai: { binding: 'AI' },
+            containers: [{
+              class_name: 'Sandbox',
+              image: './containers/dialect-engines/Dockerfile',
+              instance_type: 'basic',
+              max_instances: 2
+            }],
+            durable_objects: {
+              bindings: [{ name: 'DIALECT_SANDBOX', class_name: 'Sandbox' }]
+            },
+            migrations: [{
+              tag: 'dialect-sandbox-v1',
+              new_sqlite_classes: ['Sandbox']
+            }],
+            vars: {
+              DIALECT_ENGINE_MODE: 'real-required',
+              SANDBOX_TRANSPORT: 'rpc',
+              SANDBOX_LOG_LEVEL: 'warn',
+              SANDBOX_LOG_FORMAT: 'json'
+            },
             observability: { enabled: true, head_sampling_rate: 1 }
           };
           fs.writeFileSync('wrangler.deploy.jsonc', JSON.stringify(config, null, 2));
           NODE
 
-      - name: Validate production Worker bundle
+      - name: Validate production Worker and Container bundle
         run: npx wrangler deploy --dry-run --config wrangler.deploy.jsonc
 
       - name: Apply D1 migrations
         run: npx wrangler d1 migrations apply sql-academy --remote --config wrangler.deploy.jsonc
 
-      - name: Deploy Worker and static assets
+      - name: Deploy Worker, Container and static assets
         id: deploy
         shell: bash
         run: |
@@ -154,10 +175,10 @@ jobs:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
         run: node scripts/assessment-calibration-production-smoke.mjs
 
-      - name: Smoke-test dialect lab contract and evidence lifecycle
+      - name: Smoke-test every real PostgreSQL and MySQL dialect pattern
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-        run: node scripts/dialect-labs-production-smoke.mjs
+        run: npx tsx scripts/dialect-labs-production-smoke.ts
 
       - name: Smoke-test Mastery progress evidence lifecycle
         env:
@@ -192,8 +213,8 @@ jobs:
           script: |
             const success = process.env.JOB_STATUS === 'success';
             let description = success
-              ? 'Cloudflare deployed; curriculum, concepts, checkpoints, capstones, assessment calibration, dialect labs, Mastery and onboarding verified'
-              : 'Cloudflare deployment or production smoke failed';
+              ? 'Cloudflare deployed; real dialect engines and learning evidence lifecycles verified'
+              : 'Cloudflare deployment, Container startup or production smoke failed';
             try {
               const fs = require('fs');
               const onboardingStage = fs.existsSync('cloudflare-onboarding-stage.txt')

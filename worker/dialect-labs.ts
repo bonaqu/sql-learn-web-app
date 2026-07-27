@@ -4,7 +4,7 @@ import { evaluateDialectCaseSql, validateDialectSqlPolicy } from '../src/lib/dia
 
 const MAX_PROGRESS_BYTES = 96_000;
 const MAX_EXECUTION_BYTES = 28_000;
-const MAX_EVIDENCE = 18;
+const MAX_EVIDENCE = dialectLabManifests.reduce((total, lab) => total + lab.behaviors.length, 0);
 const HOURLY_EXECUTION_LIMIT = 120;
 const DIGEST_PATTERN = /^fnv1a-[a-f0-9]{8}$/;
 
@@ -172,8 +172,7 @@ async function currentProgress(env: Cloudflare.Env, userId: string) {
 }
 
 async function readProgress(env: Cloudflare.Env, userId: string) {
-  const current = await currentProgress(env, userId);
-  return json(current);
+  return json(await currentProgress(env, userId));
 }
 
 async function writeProgress(request: Request, env: Cloudflare.Env, userId: string) {
@@ -237,11 +236,11 @@ async function executeSandbox(request: Request, env: Cloudflare.Env, userId: str
   if (!manifest || !labCase || !behavior) return json({ error: 'Published dialect lab case not found' }, 404);
   if (behavior.executionMode !== 'remote-sandbox') return json({ error: 'This lab uses deterministic simulation instead of remote execution' }, 409);
 
+  const policy = validateDialectSqlPolicy(sql, manifest.statementPolicy);
+  if (!policy.ok) return json({ error: 'SQL rejected by dialect sandbox policy', details: policy.errors }, 400);
   const quota = await consumeExecutionQuota(env, userId);
   if (!quota.allowed) return json({ error: 'Dialect sandbox hourly limit reached' }, 429, { 'retry-after': '3600' });
 
-  const policy = validateDialectSqlPolicy(sql, manifest.statementPolicy);
-  if (!policy.ok) return json({ error: 'SQL rejected by dialect sandbox policy', details: policy.errors }, 400);
   const started = Date.now();
   const verdict = evaluateDialectCaseSql(sql, labCase, manifest.statementPolicy);
   const output = {
