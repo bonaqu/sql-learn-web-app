@@ -10,6 +10,8 @@ import ChunkErrorBoundary from './components/ChunkErrorBoundary';
 import CurriculumSyncAgent from './components/CurriculumSyncAgent';
 import DeferredFeaturePortals from './components/DeferredFeaturePortals';
 import EvidenceSyncAgent from './components/EvidenceSyncAgent';
+import LearningAnalyticsAgent from './components/LearningAnalyticsAgent';
+import LearningAnalyticsLauncher from './components/LearningAnalyticsLauncher';
 import OnboardingAgent from './components/OnboardingAgent';
 import OnboardingLauncher from './components/OnboardingLauncher';
 import PwaStatus from './components/PwaStatus';
@@ -28,12 +30,14 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <App />
         <CheckpointLauncher />
         <OnboardingLauncher />
+        <LearningAnalyticsLauncher />
         <CapstoneLauncher />
         <DeferredFeaturePortals />
         <CurriculumSyncAgent />
         <EvidenceSyncAgent />
         <CapstoneReportSyncAgent />
         <OnboardingAgent />
+        <LearningAnalyticsAgent />
       </AuthGate>
       <PwaStatus />
     </ChunkErrorBoundary>
