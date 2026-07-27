@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { authenticatePage } from './auth-helper';
-import { guidedHome, openAllTools } from './navigation-helper';
+import { guidedHome, openAdvancedTool, openAllTools } from './navigation-helper';
 
 async function expectNoSeriousAxeViolations(page: import('@playwright/test').Page) {
   const result = await new AxeBuilder({ page })
@@ -88,7 +88,7 @@ test('desktop accessibility and PWA resilience preserve keyboard work', async ({
 test('mobile accessibility keeps Assessment Center within Pixel 7 focus boundary', async ({ page }, testInfo) => {
   await authenticatePage(page, 'mobilea11y');
   await page.goto('./');
-  await page.getByTestId('assessment-mobile-trigger').click();
+  await openAdvancedTool(page, 'assessment-trigger');
   const dialog = page.getByRole('dialog', { name: /Assessment Center/i });
   await expect(dialog).toBeVisible();
   await page.keyboard.press('Tab');

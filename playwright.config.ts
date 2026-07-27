@@ -36,12 +36,12 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop-chromium',
-      grep: /desktop academy|desktop password account|desktop password recovery|desktop adaptive learning|desktop assessment|desktop checkpoint|desktop accessibility|desktop curriculum|desktop syllabus|desktop mastery|desktop onboarding|desktop capstone|desktop dialect/,
+      grep: /desktop academy|desktop guided journey|desktop password account|desktop password recovery|desktop adaptive learning|desktop assessment|desktop checkpoint|desktop accessibility|desktop curriculum|desktop syllabus|desktop mastery|desktop onboarding|desktop capstone|desktop dialect/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } }
     },
     {
       name: 'mobile-chromium',
-      grep: /mobile task flow|mobile password registration|mobile adaptive learning|mobile assessment|mobile checkpoint|mobile accessibility|mobile curriculum|mobile syllabus|mobile mastery|mobile onboarding|mobile capstone|mobile dialect/,
+      grep: /mobile task flow|mobile guided journey|mobile password registration|mobile adaptive learning|mobile assessment|mobile checkpoint|mobile accessibility|mobile curriculum|mobile syllabus|mobile mastery|mobile onboarding|mobile capstone|mobile dialect/,
       use: { ...devices['Pixel 7'] }
     }
   ]

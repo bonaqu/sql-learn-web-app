@@ -216,7 +216,7 @@ test('desktop assessment interview allows bounded clarification without exposing
 test('mobile assessment landing, adaptive session and measurement panel fit Pixel 7', async ({ page }, testInfo) => {
   await authenticatePage(page, 'mobileassess');
   await page.goto('./');
-  await page.getByTestId('assessment-mobile-trigger').click();
+  await openAdvancedTool(page, 'assessment-trigger');
   await expect(page.getByTestId('assessment-landing')).toBeVisible();
   await expect(page.locator('.assessment-mode-card')).toHaveCount(6);
   await expect(page.getByTestId('assessment-calibration-summary')).toBeVisible();

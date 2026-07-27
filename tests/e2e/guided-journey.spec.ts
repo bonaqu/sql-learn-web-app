@@ -16,7 +16,7 @@ async function completeDeferredOnboarding(page: import('@playwright/test').Page)
   await dialog.getByRole('button', { name: 'Закрыть стартовый план' }).click();
 }
 
-test('new learner is guided into one route and returning home exposes one primary action', async ({ page }) => {
+test('desktop guided journey turns a first goal into one primary action', async ({ page }) => {
   await authenticatePage(page, 'guided');
   await page.goto('./');
 
@@ -34,4 +34,15 @@ test('new learner is guided into one route and returning home exposes one primar
   await expect(page.getByRole('button', { name: 'Каталог задач' })).toBeVisible();
   await expect(page.getByTestId('checkpoint-trigger')).toBeVisible();
   await expect(page.getByTestId('learning-analytics-trigger')).toBeVisible();
+});
+
+test('mobile guided journey presents one clear first-run choice without overflow', async ({ page }) => {
+  await authenticatePage(page, 'mobileguided');
+  await page.goto('./');
+  await expect(page.getByTestId('guided-first-run')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Настроить мой маршрут' })).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+  expect(overflow).toBe(false);
+  await page.getByRole('button', { name: 'Настроить мой маршрут' }).click();
+  await expect(page.getByTestId('onboarding-portal')).toBeVisible();
 });
