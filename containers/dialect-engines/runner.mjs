@@ -9,6 +9,7 @@ const MAX_REQUEST_BYTES = 96_000;
 const MAX_SQL_BYTES = 24_000;
 const DEFAULT_TIMEOUT_MS = 4_000;
 const STARTUP_TIMEOUT_MS = 30_000;
+const MAX_COMMAND_BUFFER = 2_000_000;
 
 function fail(message, code = 'runner_error') {
   const error = new Error(message);
@@ -32,16 +33,30 @@ function boundedSql(value, label) {
   return value;
 }
 
+function sanitizeEngineError(value) {
+  return String(value)
+    .replace(/^LINE\s+\d+:.*$/gim, '')
+    .replace(/^.*at line \d+.*$/gim, '')
+    .replace(/\/tmp\/sql-academy-[^\s:]+/g, '<runtime>')
+    .replace(/\/workspace\/dialect-(?:request|result)\.json/g, '<contract-file>')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 500) || 'Database engine rejected the statement';
+}
+
 function command(commandName, args, options = {}) {
   const result = spawnSync(commandName, args, {
     encoding: 'utf8',
-    maxBuffer: 2_000_000,
+    maxBuffer: MAX_COMMAND_BUFFER,
     timeout: options.timeout ?? STARTUP_TIMEOUT_MS,
     input: options.input,
     env: { ...process.env, ...(options.env || {}) },
     stdio: ['pipe', 'pipe', 'pipe']
   });
-  if (result.error) throw result.error;
+  if (result.error) {
+    result.error.code = result.error.code === 'ETIMEDOUT' ? 'engine_timeout' : result.error.code;
+    throw result.error;
+  }
   if (result.status !== 0) {
     const error = new Error(sanitizeEngineError(result.stderr || result.stdout || `${commandName} failed`));
     error.code = result.signal === 'SIGTERM' || result.signal === 'SIGKILL' ? 'engine_timeout' : 'engine_error';
@@ -52,15 +67,6 @@ function command(commandName, args, options = {}) {
 
 function commandPath(name) {
   return command('sh', ['-lc', `command -v ${name}`]).trim();
-}
-
-function sanitizeEngineError(value) {
-  return String(value)
-    .replace(/^LINE\s+\d+:.*$/gim, '')
-    .replace(/^.*at line \d+.*$/gim, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 500) || 'Database engine rejected the statement';
 }
 
 function writePrivate(path, content) {
@@ -99,6 +105,7 @@ function parseCsv(source) {
       field += character;
     }
   }
+  if (quoted) fail('PostgreSQL returned malformed CSV', 'engine_error');
   if (field.length || row.length) {
     row.push(field);
     rows.push(row);
@@ -110,7 +117,9 @@ function parseTsv(source) {
   return source
     .split(/\r?\n/)
     .filter(Boolean)
-    .map(line => line.split('\t').map(value => value === 'NULL' ? null : value.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\\\/g, '\\')));
+    .map(line => line.split('\t').map(value => value === 'NULL'
+      ? null
+      : value.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\\\/g, '\\')));
 }
 
 function normalizeValue(value) {
@@ -124,14 +133,32 @@ function normalizeValue(value) {
   return value;
 }
 
+function truncateUtf8(value, maximumBytes) {
+  const source = String(value);
+  const bytes = Buffer.from(source, 'utf8');
+  if (bytes.byteLength <= maximumBytes) return source;
+  const suffix = '…[truncated]';
+  const suffixBytes = Buffer.byteLength(suffix, 'utf8');
+  const budget = Math.max(0, maximumBytes - suffixBytes);
+  let prefix = bytes.subarray(0, budget).toString('utf8');
+  while (prefix.endsWith('\uFFFD')) prefix = prefix.slice(0, -1);
+  return `${prefix}${suffix}`;
+}
+
 function boundedTable(columns, rows, limits) {
-  const selectedRows = rows.slice(0, limits.maximumRows).map(row => row.map(value => {
-    if (value === null || typeof value === 'number' || typeof value === 'boolean') return value;
-    return Buffer.byteLength(String(value), 'utf8') <= limits.maximumCellBytes
-      ? String(value)
-      : `${String(value).slice(0, Math.max(0, limits.maximumCellBytes - 16))}…[truncated]`;
-  }));
-  const output = { columns, rows: selectedRows, truncated: rows.length > selectedRows.length };
+  if (!Array.isArray(columns) || !Array.isArray(rows) || columns.length > 100) fail('Invalid result table', 'engine_error');
+  const selectedRows = rows.slice(0, limits.maximumRows).map(row => {
+    if (!Array.isArray(row) || row.length !== columns.length) fail('Invalid result row', 'engine_error');
+    return row.map(value => {
+      if (value === null || typeof value === 'number' || typeof value === 'boolean') return value;
+      return truncateUtf8(value, limits.maximumCellBytes);
+    });
+  });
+  const output = {
+    columns: columns.map(column => truncateUtf8(column, 256)),
+    rows: selectedRows,
+    truncated: rows.length > selectedRows.length
+  };
   const serialized = JSON.stringify(output);
   if (Buffer.byteLength(serialized, 'utf8') > limits.maximumResultBytes) fail('Result exceeds the published size limit', 'result_too_large');
   return output;
@@ -139,15 +166,19 @@ function boundedTable(columns, rows, limits) {
 
 function waitFor(check, timeoutMs = STARTUP_TIMEOUT_MS) {
   const deadline = Date.now() + timeoutMs;
+  let lastError = null;
   while (Date.now() < deadline) {
     try {
       check();
       return;
-    } catch {
+    } catch (error) {
+      lastError = error;
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150);
     }
   }
-  fail('Database engine did not become ready', 'engine_startup_timeout');
+  const error = new Error(lastError instanceof Error ? lastError.message : 'Database engine did not become ready');
+  error.code = 'engine_startup_timeout';
+  throw error;
 }
 
 function postgresRuntime(root, timeoutMs) {
@@ -162,22 +193,23 @@ function postgresRuntime(root, timeoutMs) {
   chownSync(socket, postgresUid, postgresGid);
 
   command('runuser', ['-u', 'postgres', '--', `${pgBin}/initdb`, '-D', data, '--auth=trust', '--encoding=UTF8', '--no-locale']);
-  command('runuser', ['-u', 'postgres', '--', `${pgBin}/pg_ctl`, '-D', data, '-w', 'start', '-o', `-F -k ${socket} -p 55432 -c listen_addresses='' -c statement_timeout=${timeoutMs}`]);
+  command('runuser', ['-u', 'postgres', '--', `${pgBin}/pg_ctl`, '-D', data, '-w', 'start', '-o', `-F -k ${socket} -p 55432 -c listen_addresses='' -c statement_timeout=${timeoutMs} -c timezone=UTC`]);
   command(`${pgBin}/psql`, ['-X', '-v', 'ON_ERROR_STOP=1', '-h', socket, '-p', '55432', '-U', 'postgres', '-d', 'postgres'], {
     input: "CREATE ROLE learner LOGIN;\nCREATE DATABASE dialect_lab OWNER learner;\n"
   });
 
   const baseArgs = ['-X', '-v', 'ON_ERROR_STOP=1', '-h', socket, '-p', '55432', '-U', 'learner', '-d', 'dialect_lab'];
+  const env = { PGOPTIONS: `-c statement_timeout=${timeoutMs} -c timezone=UTC` };
   return {
-    version: command(`${pgBin}/psql`, [...baseArgs, '-Atc', 'SHOW server_version;']).trim(),
+    version: command(`${pgBin}/psql`, [...baseArgs, '-Atc', 'SHOW server_version;'], { env }).trim(),
     setup(sql) {
-      command(`${pgBin}/psql`, [...baseArgs, '-q'], { input: sql, timeout: timeoutMs });
+      command(`${pgBin}/psql`, [...baseArgs, '-q'], { input: sql, timeout: timeoutMs, env });
     },
     execute(sql) {
-      const source = command(`${pgBin}/psql`, [...baseArgs, '--csv', '-q'], { input: sql, timeout: timeoutMs });
+      const source = command(`${pgBin}/psql`, [...baseArgs, '--csv', '-q'], { input: sql, timeout: timeoutMs, env });
       const parsed = parseCsv(source);
       if (!parsed.length) return { columns: [], rows: [] };
-      return { columns: parsed[0], rows: parsed.slice(1).map(row => row.map(value => normalizeValue(value))) };
+      return { columns: parsed[0], rows: parsed.slice(1).map(row => row.map(normalizeValue)) };
     },
     stop() {
       try { command('runuser', ['-u', 'postgres', '--', `${pgBin}/pg_ctl`, '-D', data, '-m', 'immediate', '-w', 'stop']); } catch {}
@@ -186,44 +218,77 @@ function postgresRuntime(root, timeoutMs) {
 }
 
 function mysqlRuntime(root, timeoutMs) {
-  const data = `${root}/mysql`;
+  const data = `${root}/mysql-data`;
   const socket = `${root}/mysql.sock`;
   const pidFile = `${root}/mysql.pid`;
+  const errorLog = `${root}/mysql-error.log`;
+  const mysqld = commandPath('mysqld');
+  const client = commandPath('mysql');
+  const admin = commandPath('mysqladmin');
   mkdirSync(data, { recursive: true });
   const mysqlUid = Number(command('id', ['-u', 'mysql']).trim());
   const mysqlGid = Number(command('id', ['-g', 'mysql']).trim());
   chownSync(data, mysqlUid, mysqlGid);
-  const install = commandPath('mariadb-install-db');
-  command('runuser', ['-u', 'mysql', '--', install, `--datadir=${data}`, '--auth-root-authentication-method=normal', '--skip-test-db']);
-  const server = commandPath('mariadbd');
-  const child = spawn('runuser', ['-u', 'mysql', '--', server,
+
+  command(mysqld, [
+    '--no-defaults',
+    '--initialize-insecure',
+    `--datadir=${data}`,
+    '--user=mysql'
+  ], { timeout: STARTUP_TIMEOUT_MS });
+
+  const child = spawn(mysqld, [
+    '--no-defaults',
+    '--user=mysql',
     `--datadir=${data}`,
     `--socket=${socket}`,
     `--pid-file=${pidFile}`,
-    '--skip-networking',
+    `--log-error=${errorLog}`,
+    '--skip-networking=ON',
     '--skip-log-bin',
-    '--log-error-verbosity=2'
+    '--local-infile=OFF',
+    '--secure-file-priv=NULL',
+    '--max-connections=20',
+    `--max-execution-time=${timeoutMs}`,
+    '--innodb-lock-wait-timeout=2'
   ], { stdio: 'ignore' });
 
-  const client = commandPath('mariadb');
-  waitFor(() => command(client, [`--socket=${socket}`, '-uroot', '-e', 'SELECT 1;'], { timeout: 1_000 }));
-  command(client, [`--socket=${socket}`, '-uroot'], {
-    input: "CREATE DATABASE dialect_lab CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;\nCREATE USER 'learner'@'localhost';\nGRANT ALL PRIVILEGES ON dialect_lab.* TO 'learner'@'localhost';\nFLUSH PRIVILEGES;\n"
+  waitFor(() => command(admin, [`--socket=${socket}`, '-uroot', '--connect-timeout=1', 'ping'], { timeout: 1_000 }));
+  command(client, [`--socket=${socket}`, '-uroot', '--batch', '--raw'], {
+    input: [
+      "CREATE DATABASE dialect_lab CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;",
+      "CREATE USER 'learner'@'localhost' IDENTIFIED BY '';",
+      "GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES ON dialect_lab.* TO 'learner'@'localhost';",
+      'FLUSH PRIVILEGES;'
+    ].join('\n')
   });
-  const baseArgs = [`--socket=${socket}`, '-ulearner', '--database=dialect_lab', '--batch', '--raw'];
+
+  const baseArgs = [
+    `--socket=${socket}`,
+    '-ulearner',
+    '--database=dialect_lab',
+    '--batch',
+    '--raw',
+    '--connect-timeout=2',
+    '--default-character-set=utf8mb4'
+  ];
+  const sessionPrefix = `SET SESSION time_zone = '+00:00'; SET SESSION max_execution_time = ${timeoutMs};\n`;
   return {
     version: command(client, [...baseArgs, '--skip-column-names', '-e', 'SELECT VERSION();']).trim(),
     setup(sql) {
-      command(client, baseArgs, { input: sql, timeout: timeoutMs });
+      command(client, baseArgs, { input: `${sessionPrefix}${sql}`, timeout: timeoutMs });
     },
     execute(sql) {
-      const source = command(client, baseArgs, { input: sql, timeout: timeoutMs });
+      const source = command(client, baseArgs, { input: `${sessionPrefix}${sql}`, timeout: timeoutMs });
       const parsed = parseTsv(source);
       if (!parsed.length) return { columns: [], rows: [] };
-      return { columns: parsed[0].map(String), rows: parsed.slice(1).map(row => row.map(value => typeof value === 'string' ? normalizeValue(value) : value)) };
+      return {
+        columns: parsed[0].map(String),
+        rows: parsed.slice(1).map(row => row.map(value => typeof value === 'string' ? normalizeValue(value) : value))
+      };
     },
     stop() {
-      try { command(commandPath('mariadb-admin'), [`--socket=${socket}`, '-uroot', 'shutdown']); } catch {}
+      try { command(admin, [`--socket=${socket}`, '-uroot', '--connect-timeout=1', 'shutdown'], { timeout: 5_000 }); } catch {}
       try { child.kill('SIGKILL'); } catch {}
     }
   };
@@ -256,8 +321,9 @@ if (!requestPath || !resultPath) fail('Usage: runner.mjs <request.json> <result.
 const startedAt = Date.now();
 let runtime = null;
 let root = null;
+let request = null;
 try {
-  const request = readRequest(requestPath);
+  request = readRequest(requestPath);
   root = `/tmp/sql-academy-${request.requestId}`;
   mkdirSync(root, { recursive: true, mode: 0o700 });
   runtime = request.engine === 'postgresql'
@@ -280,6 +346,7 @@ try {
   writePrivate(resultPath, JSON.stringify({
     version: 1,
     runnerVersion: RUNNER_VERSION,
+    engine: request?.engine,
     success: false,
     durationMs: Math.max(1, Date.now() - startedAt),
     errorCode: typeof error?.code === 'string' ? error.code : 'runner_error',
