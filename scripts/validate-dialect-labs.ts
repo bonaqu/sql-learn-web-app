@@ -106,9 +106,14 @@ assert(validateDialectSqlPolicy('SELECT 1 /* DROP TABLE tickets; */;', readOnly)
 assert(validateDialectSqlPolicy('SELECT 1; -- ordinary EOF comment', readOnly).ok, 'EOF line comment must be treated as terminated');
 assert(!validateDialectSqlPolicy('SELECT 1; DROP TABLE tickets;', readOnly).ok, 'Second unsafe statement bypassed policy');
 assert(!validateDialectSqlPolicy('SELECT SLEEP(10);', readOnly).ok, 'SLEEP abuse bypassed denylist');
+assert(!validateDialectSqlPolicy('SELECT PG_SLEEP(10);', readOnly).ok, 'PG_SLEEP abuse bypassed global denylist');
+assert(!validateDialectSqlPolicy("SELECT LOAD_FILE('/etc/passwd');", readOnly).ok, 'LOAD_FILE escape bypassed global denylist');
+assert(!validateDialectSqlPolicy("SELECT 'x' INTO DUMPFILE '/tmp/x';", readOnly).ok, 'INTO DUMPFILE escape bypassed global denylist');
 assert(!validateDialectSqlPolicy('ATTACH DATABASE \'x\' AS x;', readOnly).ok, 'ATTACH abuse bypassed denylist');
 assert(!validateDialectSqlPolicy('SELECT 1 /* unterminated', readOnly).ok, 'Unterminated block comment bypassed parser');
 assert(validateDialectSqlPolicy('WITH x AS (SELECT 1 AS id) SELECT id FROM x;', readOnly).ok, 'Safe CTE was rejected');
+assert(!validateDialectSqlPolicy('WITH removed AS (DELETE FROM tickets RETURNING ticket_id) SELECT * FROM removed;', readOnly).ok, 'DML hidden inside a read-only CTE bypassed policy');
+assert(!validateDialectSqlPolicy("WITH changed AS (UPDATE tickets SET priority = 'High' RETURNING ticket_id) SELECT * FROM changed;", readOnly).ok, 'UPDATE hidden inside a read-only CTE bypassed policy');
 
 const userId = '12345678-1234-4234-9234-123456789abc';
 let progress = emptyDialectLabProgress(userId);
@@ -154,13 +159,46 @@ assert(dialectLabCompletion(merged, dialectLabManifests[0].id).complete, 'Stale 
 
 const migration = readFileSync(new URL('../migrations/0016_dialect_lab_progress.sql', import.meta.url), 'utf8');
 const worker = readFileSync(new URL('../worker/dialect-labs.ts', import.meta.url), 'utf8');
+const indexWorker = readFileSync(new URL('../worker/index.ts', import.meta.url), 'utf8');
+const realRoute = readFileSync(new URL('../worker/dialect-real-engine-route.ts', import.meta.url), 'utf8');
+const adapter = readFileSync(new URL('../worker/dialect-real-engine.ts', import.meta.url), 'utf8');
+const runner = readFileSync(new URL('../containers/dialect-engines/runner.mjs', import.meta.url), 'utf8');
+const dockerfile = readFileSync(new URL('../containers/dialect-engines/Dockerfile', import.meta.url), 'utf8');
+const wrangler = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
+const workflow = readFileSync(new URL('../.github/workflows/cloudflare.yml', import.meta.url), 'utf8');
+const productionSmoke = readFileSync(new URL('./dialect-labs-production-smoke.mjs', import.meta.url), 'utf8');
+
 assert(/REFERENCES\s+users\s*\(\s*user_id\s*\)\s+ON DELETE CASCADE/i.test(migration), 'Dialect progress must cascade with account deletion');
 assert(!/\bsql\s+TEXT\b/i.test(migration), 'Dialect progress schema must not store learner SQL');
-assert(worker.includes("'/api/dialect-labs/execute'"), 'Worker execute route is missing');
-assert(worker.includes('HOURLY_EXECUTION_LIMIT = 120'), 'Sandbox rate limit is missing');
-assert(worker.includes('validateDialectSqlPolicy'), 'Worker is not using the shared policy scanner');
-assert(worker.includes("sandboxModelVersion: 'dialect-sandbox-v1'"), 'Remote contract sandbox version is not explicit');
-assert(!/console\.(log|error)\([^\n]*\bsql\b/i.test(worker), 'Worker appears to log learner SQL');
+assert(worker.includes("'/api/dialect-labs/execute'"), 'Fallback Worker execute route is missing');
+assert(worker.includes('HOURLY_EXECUTION_LIMIT = 120'), 'Fallback sandbox rate limit is missing');
+assert(worker.includes('validateDialectSqlPolicy'), 'Fallback Worker is not using the shared policy scanner');
+assert(worker.includes("sandboxModelVersion: 'dialect-sandbox-v1'"), 'Fallback contract sandbox version is not explicit');
+assert(indexWorker.includes('handleDialectRealEngineRequest'), 'Canonical Worker pipeline does not route real dialect execution');
+assert(indexWorker.includes("export { Sandbox } from '@cloudflare/sandbox'"), 'Canonical Worker does not export the Sandbox Durable Object');
+assert(!indexWorker.includes('index-real-engines'), 'Canonical Worker still depends on the deleted wrapper entrypoint');
+assert(realRoute.includes('DIALECT_REAL_ENGINE_RUNNER_VERSION'), 'Real route does not bind evidence to the runner contract');
+assert(realRoute.includes('sandboxDestroyed'), 'Real route does not publish destroy evidence');
+assert(realRoute.includes('dialect-sandbox-v1'), 'Real route must preserve the v1 evidence digest contract');
+assert(adapter.includes("transport: 'rpc'"), 'Sandbox adapter is not pinned to RPC transport');
+assert(adapter.includes('enableDefaultSession: false'), 'Sandbox adapter still permits implicit default sessions');
+assert(adapter.includes('file.content'), 'Sandbox adapter does not use the current readFile result contract');
+assert(adapter.includes('await sandbox.destroy()'), 'Sandbox adapter does not unconditionally destroy attempts');
+assert(adapter.includes('passed: outcome.passed && destroyed'), 'Sandbox destroy is not a prerequisite for eligible evidence');
+assert(runner.includes("commandPath('mysqld')"), 'Runner does not start Oracle MySQL');
+assert(runner.includes('--initialize-insecure'), 'Runner does not initialize an ephemeral MySQL data directory');
+assert(!/mariadb/i.test(runner), 'Runner still contains MariaDB runtime code');
+assert(dockerfile.includes('mysql-8.4-lts'), 'Container image is not sourced from the official MySQL 8.4 LTS repository');
+assert(dockerfile.includes('mysql-community-server-core'), 'Container image does not install Oracle MySQL server core');
+assert(!/mariadb-(client|server)/i.test(dockerfile), 'Container image still substitutes MariaDB for MySQL');
+assert(wrangler.includes('"nodejs_compat"'), 'Wrangler config is missing nodejs_compat');
+assert(wrangler.includes('"SANDBOX_TRANSPORT": "rpc"'), 'Wrangler config is missing RPC transport');
+assert(workflow.includes("main: 'worker/index.ts'"), 'Production workflow does not deploy the canonical Worker entrypoint');
+assert(workflow.includes("SANDBOX_TRANSPORT: 'rpc'"), 'Production workflow is missing RPC transport');
+assert(productionSmoke.includes("['postgresql', 'mysql']"), 'Production smoke does not exercise both real engines');
+assert(productionSmoke.includes("verificationMode !== 'real-engine-v1'"), 'Production smoke does not verify the real adapter contract');
+assert(productionSmoke.includes('sandboxDestroyed !== true'), 'Production smoke does not prove destroy cleanup');
+assert(!/console\.(log|error)\([^\n]*\bsql\b/i.test(worker + realRoute + adapter), 'Worker appears to log learner SQL');
 
 if (failures.length) {
   console.error(`Dialect lab validation failed with ${failures.length} issue(s):`);
@@ -168,4 +206,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Dialect lab validation passed: ${dialectLabManifests.length} labs, ${dialectLabCases.length} engine cases, exact SQLite fixtures, policy abuse, evidence merge and D1 privacy contract.`);
+console.log(`Dialect lab validation passed: ${dialectLabManifests.length} labs, ${dialectLabCases.length} engine cases, exact SQLite fixtures, hidden-DML/escape policy, canonical RPC adapter, Oracle MySQL image, production lifecycle evidence and D1 privacy contract.`);
