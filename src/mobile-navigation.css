@@ -1,0 +1,26 @@
+@media (max-width: 760px) {
+  .sidebar {
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  }
+
+  .sidebar .logo,
+  .sidebar nav,
+  .sidebar .nav-more,
+  .sidebar .sidebar-bottom {
+    flex: 0 0 auto;
+  }
+
+  .sidebar .sidebar-bottom {
+    margin-top: 24px;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .sidebar .nav-more > summary {
+    scroll-margin-block: 18px 96px;
+  }
+}
