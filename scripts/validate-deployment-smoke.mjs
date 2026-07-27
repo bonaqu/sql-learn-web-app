@@ -14,6 +14,8 @@ const capstoneWorker = readFileSync('worker/capstones.ts', 'utf8');
 const assessmentWorker = readFileSync('worker/assessment.ts', 'utf8');
 const assessmentReportV2 = readFileSync('worker/assessment-report-v2-route.ts', 'utf8');
 const dialectWorker = readFileSync('worker/dialect-labs.ts', 'utf8');
+const dialectRealRoute = readFileSync('worker/dialect-real-engine-route.ts', 'utf8');
+const dialectRealAdapter = readFileSync('worker/dialect-real-engine.ts', 'utf8');
 const errors = [];
 const requireText = (source, text, label) => {
   if (!source.includes(text)) errors.push(`Missing ${label}: ${text}`);
@@ -35,6 +37,10 @@ requireText(workflow, 'cloudflare-checkpoint-stage.txt', 'checkpoint stage diagn
 requireText(workflow, 'cloudflare-capstone-stage.txt', 'capstone stage diagnostics');
 requireText(workflow, 'cloudflare-assessment-calibration-stage.txt', 'assessment calibration stage diagnostics');
 requireText(workflow, 'cloudflare-dialect-stage.txt', 'dialect stage diagnostics');
+requireText(workflow, "main: 'worker/index.ts'", 'canonical production Worker entrypoint');
+requireText(workflow, "compatibility_flags: ['nodejs_compat']", 'Container Node compatibility');
+requireText(workflow, "SANDBOX_TRANSPORT: 'rpc'", 'Sandbox RPC transport');
+requireText(workflow, "DIALECT_ENGINE_MODE: 'real-required'", 'production real-engine requirement');
 requireText(smoke, 'expected: [409]', 'stale-write conflict check');
 requireText(smoke, 'expected: [401]', 'revoked session check');
 requireText(smoke, "'--yes'", 'non-interactive D1 execution');
@@ -103,27 +109,38 @@ requireText(calibrationSmoke, 'rejectedStatePreserved: true', 'rejected state pr
 requireText(calibrationSmoke, 'anonymousAggregateSurvivedDeletion', 'anonymous aggregate retention evidence');
 requireText(calibrationSmoke, "'--yes'", 'assessment non-interactive D1 execution');
 
+requireText(workerIndex, 'handleDialectRealEngineRequest', 'real dialect route before fallback');
 requireText(workerIndex, 'handleDialectLabRequest', 'authenticated dialect lab route ordering');
+requireText(workerIndex, "export { Sandbox } from '@cloudflare/sandbox'", 'Sandbox Durable Object export');
 requireText(dialectWorker, "url.pathname === '/api/dialect-labs/execute'", 'dialect execute Worker route');
 requireText(dialectWorker, "url.pathname === '/api/dialect-labs/progress'", 'dialect progress Worker route');
-requireText(dialectWorker, 'HOURLY_EXECUTION_LIMIT = 120', 'dialect execution quota');
+requireText(dialectWorker, 'HOURLY_EXECUTION_LIMIT = 120', 'dialect fallback execution quota');
 requireText(dialectWorker, 'validateDialectSqlPolicy', 'shared dialect SQL policy');
 requireText(dialectWorker, 'Published dialect lab case not found', 'published-case isolation');
+requireText(dialectRealRoute, 'DIALECT_REAL_ENGINE_RUNNER_VERSION', 'real-engine runner version contract');
+requireText(dialectRealRoute, 'sandboxDestroyed', 'real-engine destroy evidence');
+requireText(dialectRealAdapter, "transport: 'rpc'", 'real-engine RPC transport');
+requireText(dialectRealAdapter, 'await sandbox.destroy()', 'unconditional real-engine destroy');
 requireText(dialectSmoke, "'/api/dialect-labs/execute'", 'dialect execution lifecycle');
 requireText(dialectSmoke, "'/api/dialect-labs/progress'", 'dialect progress lifecycle');
 requireText(dialectSmoke, 'ROUTE_PROPAGATION_ATTEMPTS = 8', 'bounded dialect route propagation retries');
 requireText(dialectSmoke, 'ROUTE_PROPAGATION_DELAY_MS = 4_000', 'dialect propagation retry delay');
 requireText(dialectSmoke, '...propagationOptions', 'new dialect route propagation options');
 requireText(dialectSmoke, 'routePropagationRetries: ROUTE_PROPAGATION_ATTEMPTS', 'dialect propagation summary evidence');
+requireText(dialectSmoke, "['postgresql', 'mysql']", 'both real dialect engines');
+requireText(dialectSmoke, "verificationMode !== 'real-engine-v1'", 'real-engine verification proof');
+requireText(dialectSmoke, 'sandboxDestroyed !== true', 'destroy cleanup proof');
 requireText(dialectSmoke, 'dialect-policy-abuse', 'dialect policy abuse rejection');
 requireText(dialectSmoke, 'dialect-incomplete-contract', 'incomplete semantic contract rejection');
+requireText(dialectSmoke, 'dialect-engine-error-cleanup', 'failed real-engine cleanup');
 requireText(dialectSmoke, 'expected: [409]', 'dialect optimistic conflict check');
 requireText(dialectSmoke, 'expected: [401]', 'dialect revoked session check');
 requireText(dialectSmoke, 'verifyCascade()', 'dialect progress cascade verification');
 requireText(dialectSmoke, 'FROM dialect_lab_progress', 'dialect progress cleanup query');
 requireText(dialectSmoke, "'--yes'", 'dialect non-interactive D1 execution');
 requireText(dialectSmoke, 'sqlPersisted: false', 'dialect privacy summary');
-requireText(dialectSmoke, 'contractSandboxPassed: true', 'dialect contract sandbox summary');
+requireText(dialectSmoke, 'realEngineEvidencePassed: true', 'real-engine evidence summary');
+requireText(dialectSmoke, 'engineFailureCleanupPassed: true', 'real-engine failure cleanup summary');
 
 forbidText(workflow, 'cloudflare-register-payload.json', 'password-bearing diagnostic');
 forbidText(workflow, 'cloudflare-delete-payload.json', 'recovery-bearing diagnostic');
@@ -147,6 +164,8 @@ forbidText(dialectSmoke, 'authToken:', 'dialect token diagnostic write');
 forbidText(dialectSmoke, 'recoveryCode:', 'dialect recovery diagnostic write');
 forbidText(dialectWorker, 'console.log(sql', 'dialect learner SQL logging');
 forbidText(dialectWorker, 'console.error(sql', 'dialect learner SQL error logging');
+forbidText(dialectRealRoute, 'console.log(sql', 'real dialect learner SQL logging');
+forbidText(dialectRealRoute, 'console.error(sql', 'real dialect learner SQL error logging');
 
 if (errors.length) {
   console.error(`Deployment smoke validation failed with ${errors.length} issue(s):`);
@@ -154,4 +173,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Deployment smoke validation passed: curriculum, concepts, checkpoints, immutable capstone, atomic privacy-first assessment calibration and propagation-safe bounded dialect contract sandbox lifecycles include strict validation, conflicts, revoked sessions, cascade cleanup and redaction contracts.');
+console.log('Deployment smoke validation passed: curriculum, concepts, checkpoints, immutable capstone, atomic privacy-first assessment calibration and propagation-safe real PostgreSQL/MySQL dialect lifecycles include strict validation, destroy evidence, conflicts, revoked sessions, cascade cleanup and redaction contracts.');
