@@ -121,15 +121,24 @@ requireText(workerIndex, 'handleLearningAnalyticsRequest', 'authenticated analyt
 requireText(workerIndex, 'x-learning-analytics-contract', 'analytics CORS response header');
 requireText(analyticsWorker, "current.sharing !== 'coarse-opt-in'", 'analytics opt-in guard');
 requireText(analyticsWorker, 'const MINIMUM_COHORT = 5', 'analytics k=5 suppression');
-requireText(analyticsWorker, 'exactKeys(row, ROW_KEYS)', 'analytics unknown-field rejection');
+requireText(analyticsWorker, 'exactKeys(row, ROW_KEYS)', 'analytics row unknown-field rejection');
+requireText(analyticsWorker, 'exactKeys(mastery, MASTERY_KEYS)', 'analytics mastery unknown-field rejection');
+requireText(analyticsWorker, 'masteryGroups', 'weekly mastery aggregation');
+requireText(analyticsWorker, 'experimentGroups', 'weekly experiment aggregation');
+requireText(analyticsWorker, 'suppressedMasteryPeriods', 'mastery cohort suppression');
+requireText(analyticsWorker, 'suppressedExperiments', 'experiment cohort suppression');
 requireText(analyticsWorker, 'DELETE FROM learning_analytics_snapshots', 'analytics opt-out deletion');
 requireText(analyticsSmoke, 'analytics must default off', 'analytics default-off production proof');
 requireText(analyticsSmoke, 'forbidden SQL field', 'analytics SQL-field rejection');
-requireText(analyticsSmoke, 'small cohort was not suppressed', 'analytics cohort suppression proof');
+requireText(analyticsSmoke, 'unknown mastery field', 'analytics mastery-field rejection');
+requireText(analyticsSmoke, 'mastery or experiment round-trip mismatch', 'analytics extended snapshot round-trip');
+requireText(analyticsSmoke, 'small module/mastery/experiment cohorts were not suppressed', 'analytics layered cohort suppression proof');
 requireText(analyticsSmoke, 'opt-out did not delete snapshots', 'analytics opt-out deletion proof');
 requireText(analyticsSmoke, "d1Count('learning_analytics_preferences')", 'analytics preference cascade proof');
 requireText(analyticsSmoke, "d1Count('learning_analytics_snapshots')", 'analytics snapshot cascade proof');
 requireText(analyticsSmoke, 'revoked analytics session', 'analytics revoked session proof');
+requireText(analyticsSmoke, 'forgedMasteryRejected: true', 'analytics strict mastery summary');
+requireText(analyticsSmoke, 'allSmallCohortsSuppressed: true', 'analytics layered suppression summary');
 
 requireText(workerIndex, 'handleDialectRealEngineRequest', 'optional paid real route before fallback');
 requireText(workerIndex, 'handleDialectLabRequest', 'authenticated dialect fallback route');
@@ -187,4 +196,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Deployment smoke validation passed: Cloudflare Free keeps all learning lifecycles production-tested, privacy-first analytics is default-off and SQL-free with k=5 suppression, 22 server-dialect previews create zero false mastery, and real PostgreSQL/MySQL execution remains mandatory in Docker CI.');
+console.log('Deployment smoke validation passed: Cloudflare Free keeps every learning lifecycle production-tested, analytics is default-off and SQL-free with layered module/mastery/experiment k=5 suppression, 22 dialect previews create zero false mastery, and real PostgreSQL/MySQL execution remains mandatory in Docker CI.');
