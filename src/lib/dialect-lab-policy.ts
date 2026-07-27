@@ -9,6 +9,27 @@ export type DialectPolicyVerdict = {
 };
 
 const MAX_SQL_BYTES = 24_000;
+const GLOBAL_DENY = [
+  'PG_SLEEP',
+  'PG_SLEEP_FOR',
+  'PG_SLEEP_UNTIL',
+  'LOAD_FILE',
+  'INTO DUMPFILE',
+  'LO_IMPORT',
+  'LO_EXPORT',
+  'PG_READ_FILE',
+  'PG_READ_BINARY_FILE',
+  'PG_LS_DIR',
+  'DBLINK',
+  'CREATE EXTENSION',
+  'CREATE FUNCTION',
+  'CREATE PROCEDURE',
+  'CREATE TRIGGER',
+  'CREATE EVENT',
+  'SET ROLE',
+  'SET SESSION AUTHORIZATION'
+] as const;
+const DML_ACTIONS = ['INSERT', 'UPDATE', 'DELETE', 'MERGE', 'REPLACE'] as const;
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -149,6 +170,20 @@ function statementPrefix(statement: string) {
   return statement.replace(/^\s+/, '').toUpperCase();
 }
 
+function actionAllowed(action: string, policy: DialectStatementPolicy) {
+  return policy.allow.some(item => {
+    const allowed = item.toUpperCase();
+    return allowed === action || allowed.startsWith(`${action} `) || action.startsWith(`${allowed} `);
+  });
+}
+
+function dmlSurface(statement: string) {
+  return statement
+    .toUpperCase()
+    .replace(/ON\s+DUPLICATE\s+KEY\s+UPDATE/g, 'ON DUPLICATE KEY CLAUSE')
+    .replace(/DO\s+UPDATE/g, 'DO UPDATE CLAUSE');
+}
+
 export function validateDialectSqlPolicy(sql: string, policy: DialectStatementPolicy): DialectPolicyVerdict {
   const errors: string[] = [];
   const bytes = new TextEncoder().encode(sql).byteLength;
@@ -162,7 +197,7 @@ export function validateDialectSqlPolicy(sql: string, policy: DialectStatementPo
     errors.push(`Разрешено не более ${policy.maximumStatements} statements.`);
   }
 
-  for (const denied of policy.deny) {
+  for (const denied of [...policy.deny, ...GLOBAL_DENY]) {
     if (phrasePattern(denied).test(scanned.scrubbed)) errors.push(`Запрещённая конструкция: ${denied}.`);
   }
 
@@ -170,6 +205,13 @@ export function validateDialectSqlPolicy(sql: string, policy: DialectStatementPo
     const prefix = statementPrefix(statement);
     const allowed = policy.allow.some(item => prefix === item || prefix.startsWith(`${item} `) || prefix.startsWith(`${item}\n`));
     if (!allowed) errors.push(`Statement не входит в allowlist: ${prefix.slice(0, 80)}.`);
+
+    const surface = dmlSurface(statement);
+    for (const action of DML_ACTIONS) {
+      if (phrasePattern(action).test(surface) && !actionAllowed(action, policy)) {
+        errors.push(`DML ${action} скрыт внутри разрешённого statement.`);
+      }
+    }
   }
 
   return {
