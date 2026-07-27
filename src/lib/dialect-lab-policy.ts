@@ -180,8 +180,8 @@ function actionAllowed(action: string, policy: DialectStatementPolicy) {
 function dmlSurface(statement: string) {
   return statement
     .toUpperCase()
-    .replace(/ON\s+DUPLICATE\s+KEY\s+UPDATE/g, 'ON DUPLICATE KEY CLAUSE')
-    .replace(/DO\s+UPDATE/g, 'DO UPDATE CLAUSE');
+    .replace(/ON\s+DUPLICATE\s+KEY\s+UPDATE/g, 'ON DUPLICATE KEY ACTION')
+    .replace(/DO\s+UPDATE/g, 'CONFLICT ACTION');
 }
 
 export function validateDialectSqlPolicy(sql: string, policy: DialectStatementPolicy): DialectPolicyVerdict {
