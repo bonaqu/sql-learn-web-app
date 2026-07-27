@@ -175,12 +175,13 @@ const runner = readFileSync(new URL('../containers/dialect-engines/runner.mjs', 
 const dockerfile = readFileSync(new URL('../containers/dialect-engines/Dockerfile', import.meta.url), 'utf8');
 const wrangler = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
 const workflow = readFileSync(new URL('../.github/workflows/cloudflare.yml', import.meta.url), 'utf8');
-const productionSmoke = readFileSync(new URL('./dialect-labs-production-smoke.mjs', import.meta.url), 'utf8');
+const productionSmoke = readFileSync(new URL('./dialect-labs-production-smoke.ts', import.meta.url), 'utf8');
 
 assert(/REFERENCES\s+users\s*\(\s*user_id\s*\)\s+ON DELETE CASCADE/i.test(migration), 'Dialect progress must cascade with account deletion');
 assert(!/\bsql\s+TEXT\b/i.test(migration), 'Dialect progress schema must not store learner SQL');
 assert(worker.includes("'/api/dialect-labs/execute'"), 'Fallback Worker execute route is missing');
 assert(worker.includes('HOURLY_EXECUTION_LIMIT = 120'), 'Fallback sandbox rate limit is missing');
+assert(worker.includes('dialectLabManifests.reduce'), 'Fallback progress evidence ceiling is not derived from published manifests');
 assert(worker.includes('validateDialectSqlPolicy'), 'Fallback Worker is not using the shared policy scanner');
 assert(worker.includes("sandboxModelVersion: 'dialect-sandbox-v1'"), 'Fallback contract sandbox version is not explicit');
 assert(indexWorker.includes('handleDialectRealEngineRequest'), 'Canonical Worker pipeline does not route real dialect execution');
@@ -202,6 +203,7 @@ assert(!/mariadb/i.test(runner), 'Runner still contains MariaDB runtime code');
 assert(runner.includes('class InteractiveSession'), 'Runner does not create independent database sessions');
 assert(runner.includes("request.transactionKind === 'optimistic-conflict'"), 'Runner does not execute the lost-update contract');
 assert(runner.includes("request.transactionKind === 'skip-locked'"), 'Runner does not execute the queue locking contract');
+assert(runner.includes('POSTGRES_NULL_MARKER'), 'Runner does not preserve PostgreSQL NULL values over CSV');
 assert(runner.includes("await b.exec(request.learnerSql"), 'Runner does not execute session B before transaction completion');
 assert(dockerfile.includes('mysql-8.4-lts'), 'Container image is not sourced from the official MySQL 8.4 LTS repository');
 assert(dockerfile.includes('mysql-community-server-core'), 'Container image does not install Oracle MySQL server core');
@@ -212,9 +214,12 @@ assert(wrangler.includes('"nodejs_compat"'), 'Wrangler config is missing nodejs_
 assert(wrangler.includes('"SANDBOX_TRANSPORT": "rpc"'), 'Wrangler config is missing RPC transport');
 assert(workflow.includes("main: 'worker/index.ts'"), 'Production workflow does not deploy the canonical Worker entrypoint');
 assert(workflow.includes("SANDBOX_TRANSPORT: 'rpc'"), 'Production workflow is missing RPC transport');
-assert(productionSmoke.includes("['postgresql', 'mysql']"), 'Production smoke does not exercise both real engines');
-assert(productionSmoke.includes("verificationMode !== 'real-engine-v1'"), 'Production smoke does not verify the real adapter contract');
-assert(productionSmoke.includes('sandboxDestroyed !== true'), 'Production smoke does not prove destroy cleanup');
+assert(workflow.includes('npx tsx scripts/dialect-labs-production-smoke.ts'), 'Production workflow does not execute the typed dialect smoke');
+assert(productionSmoke.includes("const REAL_DIALECTS = ['postgresql', 'mysql'] as const"), 'Production smoke does not exercise both real engines');
+assert(productionSmoke.includes('for (const lab of dialectLabManifests)'), 'Production smoke does not iterate every published dialect lab');
+assert(productionSmoke.includes("value.verificationMode !== 'real-engine-v1'"), 'Production smoke does not verify the real adapter contract');
+assert(productionSmoke.includes('value.sandboxDestroyed !== true'), 'Production smoke does not prove destroy cleanup');
+assert(productionSmoke.includes('allPublishedPatternsPassed: true'), 'Production smoke does not publish complete-pattern evidence');
 assert(!/console\.(log|error)\([^\n]*\bsql\b/i.test(worker + realRoute + adapter), 'Worker appears to log learner SQL');
 
 if (failures.length) {
@@ -223,4 +228,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Dialect lab validation passed: ${dialectLabManifests.length} labs, ${dialectLabCases.length} engine cases, exact SQLite fixtures, hidden-DML/escape policy, canonical RPC adapter, real two-session contracts, Oracle MySQL image, production lifecycle evidence and D1 privacy contract.`);
+console.log(`Dialect lab validation passed: ${dialectLabManifests.length} labs, ${dialectLabCases.length} engine cases, exact SQLite fixtures, hidden-DML/escape policy, canonical RPC adapter, real two-session contracts, Oracle MySQL image, complete production lifecycle evidence and D1 privacy contract.`);
