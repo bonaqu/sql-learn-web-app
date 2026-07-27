@@ -26,31 +26,7 @@
   "ai": {
     "binding": "AI"
   },
-  "containers": [
-    {
-      "class_name": "Sandbox",
-      "image": "./containers/dialect-engines/Dockerfile",
-      "instance_type": "basic",
-      "max_instances": 2
-    }
-  ],
-  "durable_objects": {
-    "bindings": [
-      {
-        "name": "DIALECT_SANDBOX",
-        "class_name": "Sandbox"
-      }
-    ]
-  },
-  "migrations": [
-    {
-      "tag": "dialect-sandbox-v1",
-      "new_sqlite_classes": ["Sandbox"]
-    }
-  ],
   "vars": {
-    "SANDBOX_TRANSPORT": "rpc",
-    "SANDBOX_LOG_LEVEL": "warn",
-    "SANDBOX_LOG_FORMAT": "json"
+    "DIALECT_ENGINE_MODE": "preview-only"
   }
 }

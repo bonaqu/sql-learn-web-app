@@ -8,6 +8,9 @@ const MAX_EVIDENCE = dialectLabManifests.reduce((total, lab) => total + lab.beha
 const HOURLY_EXECUTION_LIMIT = 120;
 const DIGEST_PATTERN = /^fnv1a-[a-f0-9]{8}$/;
 
+const PREVIEW_VERIFICATION_MODE = 'ci-reference-preview-v1';
+const PREVIEW_SUMMARY = 'Reference preview only: PostgreSQL/MySQL contracts are executed by real Docker engines in CI, while the Cloudflare Free deployment does not run server database engines.';
+
 type StoredProgress = {
   version: 1;
   userId: string;
@@ -32,7 +35,11 @@ function sqliteTime(date = new Date()) {
 }
 
 async function readJson(request: Request) {
-  try { return await request.json<unknown>(); } catch { return null; }
+  try {
+    return await request.json<unknown>();
+  } catch {
+    return null;
+  }
 }
 
 function bodyTooLarge(request: Request, maximum: number) {
@@ -115,7 +122,7 @@ function validProgress(value: unknown, userId: string): value is StoredProgress 
     || typeof progress.evidence !== 'object'
     || Array.isArray(progress.evidence)) return false;
   const entries = Object.entries(progress.evidence as Record<string, unknown>);
-  return entries.length <= MAX_EVIDENCE && entries.every(([key, evidence]) => validEvidence(evidence, key));
+  return entries.length <= MAX_EVIDENCE && entries.every(([evidenceKey, evidence]) => validEvidence(evidence, evidenceKey));
 }
 
 function parseStoredProgress(payload: string, userId: string) {
@@ -153,7 +160,7 @@ function monotonicProgress(previous: StoredProgress | null, next: StoredProgress
 async function consumeExecutionQuota(env: Cloudflare.Env, userId: string) {
   if (!env.SETTINGS) return { allowed: true, remaining: null as number | null };
   const hour = new Date().toISOString().slice(0, 13);
-  const key = `dialect-labs:execute:${hour}:${userId}`;
+  const key = `dialect-labs:preview:${hour}:${userId}`;
   const current = Math.max(0, Number(await env.SETTINGS.get(key)) || 0);
   if (current >= HOURLY_EXECUTION_LIMIT) return { allowed: false, remaining: 0 };
   await env.SETTINGS.put(key, String(current + 1), { expirationTtl: 7_200 });
@@ -194,9 +201,15 @@ async function writeProgress(request: Request, env: Cloudflare.Env, userId: stri
   }
 
   const nextRevision = current.revision + 1;
-  const progress: StoredProgress = { ...body.progress, revision: nextRevision, updatedAt: new Date().toISOString() };
+  const progress: StoredProgress = {
+    ...body.progress,
+    revision: nextRevision,
+    updatedAt: new Date().toISOString()
+  };
   const serialized = JSON.stringify(progress);
-  if (new TextEncoder().encode(serialized).byteLength > MAX_PROGRESS_BYTES) return json({ error: 'Dialect progress payload is too large' }, 413);
+  if (new TextEncoder().encode(serialized).byteLength > MAX_PROGRESS_BYTES) {
+    return json({ error: 'Dialect progress payload is too large' }, 413);
+  }
   const updatedAt = sqliteTime();
 
   if (!current.progress) {
@@ -218,7 +231,7 @@ async function writeProgress(request: Request, env: Cloudflare.Env, userId: stri
   return json({ ok: true, progress, revision: nextRevision, updatedAt });
 }
 
-async function executeSandbox(request: Request, env: Cloudflare.Env, userId: string) {
+async function executeReferencePreview(request: Request, env: Cloudflare.Env, userId: string) {
   if (bodyTooLarge(request, MAX_EXECUTION_BYTES)) return json({ error: 'Dialect execution payload is too large' }, 413);
   const body = await readJson(request) as { version?: unknown; labId?: unknown; dialect?: unknown; sql?: unknown } | null;
   if (!body
@@ -234,38 +247,43 @@ async function executeSandbox(request: Request, env: Cloudflare.Env, userId: str
   const labCase = dialectLabCase(labId, dialect);
   const behavior = manifest?.behaviors.find(item => item.dialect === dialect);
   if (!manifest || !labCase || !behavior) return json({ error: 'Published dialect lab case not found' }, 404);
-  if (behavior.executionMode !== 'remote-sandbox') return json({ error: 'This lab uses deterministic simulation instead of remote execution' }, 409);
+  if (behavior.executionMode !== 'remote-sandbox') {
+    return json({ error: 'This lab does not use the server-engine contract' }, 409);
+  }
 
   const policy = validateDialectSqlPolicy(sql, manifest.statementPolicy);
-  if (!policy.ok) return json({ error: 'SQL rejected by dialect sandbox policy', details: policy.errors }, 400);
+  if (!policy.ok) return json({ error: 'SQL rejected by dialect preview policy', details: policy.errors }, 400);
   const quota = await consumeExecutionQuota(env, userId);
-  if (!quota.allowed) return json({ error: 'Dialect sandbox hourly limit reached' }, 429, { 'retry-after': '3600' });
+  if (!quota.allowed) return json({ error: 'Dialect preview hourly limit reached' }, 429, { 'retry-after': '3600' });
 
   const started = Date.now();
-  const verdict = evaluateDialectCaseSql(sql, labCase, manifest.statementPolicy);
-  const output = {
+  const semantic = evaluateDialectCaseSql(sql, labCase, manifest.statementPolicy);
+  const durationMs = Math.max(1, Date.now() - started);
+  const output = semantic.ok ? {
     columns: [...labCase.expected.columns],
     rows: labCase.expected.rows.map(row => [...row])
-  };
-  const serialized = JSON.stringify(output);
-  const durationMs = Math.max(1, Date.now() - started);
-  const resultDigest = digest(`${labId}:${dialect}:${serialized}:${verdict.ok}:dialect-sandbox-v1`);
+  } : null;
+  const resultDigest = digest(`${labId}:${dialect}:${PREVIEW_VERIFICATION_MODE}:${semantic.ok}`);
 
   return json({
     version: 1,
     labId,
     dialect,
     executionMode: 'remote-sandbox',
-    sandboxModelVersion: 'dialect-sandbox-v1',
-    passed: verdict.ok,
-    evidenceEligible: verdict.ok,
-    offlinePreview: false,
+    verificationMode: PREVIEW_VERIFICATION_MODE,
+    engineVersion: null,
+    runnerVersion: null,
+    sandboxDestroyed: false,
+    passed: false,
+    evidenceEligible: false,
+    offlinePreview: true,
+    ciVerifiedReference: true,
     durationMs,
-    summary: verdict.ok ? labCase.expected.summary : 'Sandbox contract не подтверждён.',
-    errors: verdict.errors,
+    summary: semantic.ok ? PREVIEW_SUMMARY : 'Semantic contract не подтверждён; доступен только CI reference preview.',
+    errors: semantic.errors,
     output,
-    normalizedPlan: [...(labCase.expected.normalizedPlan || [])],
-    timeline: [...(labCase.expected.timeline || [])],
+    normalizedPlan: semantic.ok ? [...(labCase.expected.normalizedPlan || [])] : [],
+    timeline: semantic.ok ? [...(labCase.expected.timeline || [])] : [],
     resultDigest,
     remaining: quota.remaining
   });
@@ -282,7 +300,7 @@ export async function handleDialectLabRequest(request: Request, env: Cloudflare.
     return json({ error: 'Method not allowed' }, 405, { allow: 'GET, PUT' });
   }
   if (url.pathname === '/api/dialect-labs/execute') {
-    if (request.method === 'POST') return executeSandbox(request, env, userId);
+    if (request.method === 'POST') return executeReferencePreview(request, env, userId);
     return json({ error: 'Method not allowed' }, 405, { allow: 'POST' });
   }
   return json({ error: 'Not found' }, 404);

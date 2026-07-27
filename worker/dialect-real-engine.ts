@@ -12,7 +12,9 @@ const RESULT_PATH = '/workspace/dialect-result.json';
 const TOTAL_TIMEOUT_MS = 45_000;
 const MAX_RUNNER_ERROR_BYTES = 500;
 
-type RealEngineEnv = Cloudflare.Env & {
+// This optional profile is deliberately wider than the generated Cloudflare Free Env.
+// The production typegen pins DIALECT_ENGINE_MODE to "preview-only" and has no Sandbox binding.
+type RealEngineEnv = {
   DIALECT_SANDBOX?: Parameters<typeof getSandbox>[0];
   DIALECT_ENGINE_MODE?: string;
 };
@@ -44,6 +46,10 @@ export type RealEngineExecution = {
   errors: string[];
   sandboxDestroyed: boolean;
 };
+
+function optionalEnv(env: Cloudflare.Env): RealEngineEnv {
+  return env as unknown as RealEngineEnv;
+}
 
 function emptyExecution(error: string, available = false): RealEngineExecution {
   return {
@@ -91,7 +97,9 @@ function parseRunnerResult(value: unknown, dialect: RealEngineDialect): RunnerRe
     || result.durationMs > TOTAL_TIMEOUT_MS + 10_000) {
     throw new Error('Real engine runner response does not match the published contract');
   }
-  if (result.error !== undefined && (typeof result.error !== 'string' || new TextEncoder().encode(result.error).byteLength > MAX_RUNNER_ERROR_BYTES)) {
+  if (result.error !== undefined
+    && (typeof result.error !== 'string'
+      || new TextEncoder().encode(result.error).byteLength > MAX_RUNNER_ERROR_BYTES)) {
     throw new Error('Real engine runner error payload is invalid');
   }
   return result as RunnerResult;
@@ -104,7 +112,11 @@ function normalizeValue(value: unknown): DialectResultValue {
 }
 
 function normalizedOutput(value: RunnerResult['output']) {
-  if (!value || !Array.isArray(value.columns) || !Array.isArray(value.rows) || value.columns.length > 100 || value.rows.length > 500) return null;
+  if (!value
+    || !Array.isArray(value.columns)
+    || !Array.isArray(value.rows)
+    || value.columns.length > 100
+    || value.rows.length > 500) return null;
   if (!value.rows.every(row => Array.isArray(row) && row.length === value.columns.length)) return null;
   return {
     columns: value.columns.map(column => String(column).toLowerCase()),
@@ -121,13 +133,18 @@ function normalizeTimestamp(value: string) {
 
 function cellsEqual(actual: DialectResultValue, expected: DialectResultValue) {
   if (actual === expected) return true;
-  if (typeof actual === 'string' && typeof expected === 'string') return normalizeTimestamp(actual) === normalizeTimestamp(expected);
+  if (typeof actual === 'string' && typeof expected === 'string') {
+    return normalizeTimestamp(actual) === normalizeTimestamp(expected);
+  }
   if (typeof actual === 'number' && typeof expected === 'string') return Number(expected) === actual;
   if (typeof actual === 'string' && typeof expected === 'number') return Number(actual) === expected;
   return false;
 }
 
-function outputMatches(actual: ReturnType<typeof normalizedOutput>, expected: { columns: readonly string[]; rows: readonly (readonly DialectResultValue[])[] }) {
+function outputMatches(
+  actual: ReturnType<typeof normalizedOutput>,
+  expected: { columns: readonly string[]; rows: readonly (readonly DialectResultValue[])[] }
+) {
   if (!actual || actual.columns.length !== expected.columns.length || actual.rows.length !== expected.rows.length) return false;
   if (!actual.columns.every((column, index) => column === expected.columns[index].toLowerCase())) return false;
   return actual.rows.every((row, rowIndex) => row.length === expected.rows[rowIndex].length
@@ -149,7 +166,9 @@ function normalizePostgresPlan(output: ReturnType<typeof normalizedOutput>) {
       if (typeof index === 'string') normalized.add(`index=${index.toLowerCase()}`);
       if (node === 'sort') normalized.add('sort=explicit');
       const children = plan.Plans;
-      if (Array.isArray(children)) for (const child of children) visit(child as Record<string, unknown>);
+      if (Array.isArray(children)) {
+        for (const child of children) visit(child as Record<string, unknown>);
+      }
     };
     visit(parsed[0]?.Plan);
     if (![...normalized].some(item => item.startsWith('sort='))) normalized.add('sort=none');
@@ -176,13 +195,18 @@ function normalizeMysqlPlan(output: ReturnType<typeof normalizedOutput>) {
 }
 
 function planPasses(dialect: RealEngineDialect, normalizedPlan: string[]) {
-  if (dialect === 'postgresql') return normalizedPlan.includes('access=index-scan') && normalizedPlan.includes('index=idx_tickets_service');
+  if (dialect === 'postgresql') {
+    return normalizedPlan.includes('access=index-scan') && normalizedPlan.includes('index=idx_tickets_service');
+  }
   return normalizedPlan.includes('access=ref') && normalizedPlan.includes('index=idx_tickets_service');
 }
 
 async function opaqueSandboxId(userId: string, requestId: string) {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${userId}:${requestId}`));
-  return `dialect-${Array.from(new Uint8Array(bytes)).slice(0, 16).map(value => value.toString(16).padStart(2, '0')).join('')}`;
+  return `dialect-${Array.from(new Uint8Array(bytes))
+    .slice(0, 16)
+    .map(value => value.toString(16).padStart(2, '0'))
+    .join('')}`;
 }
 
 function runnerRequest(input: { requestId: string; dialect: RealEngineDialect; labId: string; sql: string }) {
@@ -206,11 +230,11 @@ function runnerRequest(input: { requestId: string; dialect: RealEngineDialect; l
 }
 
 export function realEngineRequired(env: Cloudflare.Env) {
-  return (env as RealEngineEnv).DIALECT_ENGINE_MODE === 'real-required';
+  return optionalEnv(env).DIALECT_ENGINE_MODE === 'real-required';
 }
 
 export function realEngineConfigured(env: Cloudflare.Env) {
-  return Boolean((env as RealEngineEnv).DIALECT_SANDBOX);
+  return Boolean(optionalEnv(env).DIALECT_SANDBOX);
 }
 
 export async function executeRealDialectEngine(input: {
@@ -221,7 +245,7 @@ export async function executeRealDialectEngine(input: {
   dialect: RealEngineDialect;
   sql: string;
 }): Promise<RealEngineExecution> {
-  const binding = (input.env as RealEngineEnv).DIALECT_SANDBOX;
+  const binding = optionalEnv(input.env).DIALECT_SANDBOX;
   const request = runnerRequest(input);
   if (!binding) return emptyExecution('Cloudflare Sandbox binding is unavailable.');
   if (!request) return emptyExecution('Real engine scenario is not published yet.');
@@ -237,6 +261,7 @@ export async function executeRealDialectEngine(input: {
   });
   let outcome = emptyExecution('Real engine did not return a result.', true);
   let destroyed = false;
+
   try {
     await sandbox.writeFile(REQUEST_PATH, JSON.stringify(request));
     const session = await sandbox.createSession({ id: 'dialect-engine', commandTimeoutMs: TOTAL_TIMEOUT_MS });
@@ -259,7 +284,9 @@ export async function executeRealDialectEngine(input: {
       const output = normalizedOutput(result.output);
       if (!output) throw new Error('Real engine output is invalid');
       const normalizedPlan = labCase.expected.normalizedPlan
-        ? input.dialect === 'postgresql' ? normalizePostgresPlan(output) : normalizeMysqlPlan(output)
+        ? input.dialect === 'postgresql'
+          ? normalizePostgresPlan(output)
+          : normalizeMysqlPlan(output)
         : [];
       const passed = labCase.expected.normalizedPlan
         ? planPasses(input.dialect, normalizedPlan)
@@ -278,7 +305,12 @@ export async function executeRealDialectEngine(input: {
     }
   } catch (error) {
     const name = error instanceof Error ? error.name : 'UnknownError';
-    console.error('dialect_real_engine_execution_failed', { requestId: input.requestId, labId: input.labId, dialect: input.dialect, name });
+    console.error('dialect_real_engine_execution_failed', {
+      requestId: input.requestId,
+      labId: input.labId,
+      dialect: input.dialect,
+      name
+    });
     outcome = emptyExecution('Real database engine execution failed.', true);
   } finally {
     try {
