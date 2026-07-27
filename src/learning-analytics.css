@@ -38,6 +38,7 @@
 
 .learning-analytics-shell h2,
 .learning-analytics-shell h3,
+.learning-analytics-shell h4,
 .learning-analytics-shell p {
   margin-top: 0;
 }
@@ -187,12 +188,14 @@
   font-weight: 800;
 }
 
-.learning-interventions {
+.learning-interventions,
+.learning-course-actions {
   display: grid;
   gap: 10px;
 }
 
 .learning-intervention,
+.learning-course-action,
 .learning-analytics-empty {
   display: flex;
   align-items: flex-start;
@@ -202,22 +205,27 @@
   background: color-mix(in srgb, var(--accent) 7%, var(--panel));
 }
 
-.learning-intervention.important {
+.learning-intervention.important,
+.learning-course-action.important {
   background: color-mix(in srgb, var(--warning) 10%, var(--panel));
 }
 
 .learning-intervention > svg,
+.learning-course-action > svg,
 .learning-analytics-empty svg {
   flex: 0 0 auto;
 }
 
-.learning-intervention > div {
+.learning-intervention > div,
+.learning-course-action > div {
   min-width: 0;
   flex: 1;
 }
 
 .learning-intervention p,
-.learning-intervention small {
+.learning-intervention small,
+.learning-course-action p,
+.learning-course-action small {
   display: block;
   margin: 4px 0 0;
   color: var(--muted);
@@ -247,17 +255,66 @@
   margin-top: 16px;
 }
 
-.learning-cohort > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 9px 0;
+.learning-cohort-section {
+  margin-top: 18px;
+  padding-top: 18px;
   border-top: 1px solid var(--border);
 }
 
-.learning-cohort span {
+.learning-cohort-section h4 {
+  margin-bottom: 10px;
+  font-size: .92rem;
+  letter-spacing: .02em;
+}
+
+.learning-mastery-period,
+.learning-experiment-row,
+.learning-module-row {
+  display: grid;
+  gap: 6px;
+  padding: 11px 0;
+  border-top: 1px solid var(--border);
+}
+
+.learning-mastery-period:first-of-type,
+.learning-experiment-row:first-of-type,
+.learning-module-row:first-of-type {
+  border-top: 0;
+}
+
+.learning-mastery-period > div {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.learning-mastery-period span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--panel));
+  color: var(--muted);
+  font-size: .75rem;
+}
+
+.learning-mastery-period b {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.learning-experiment-row,
+.learning-module-row {
+  grid-template-columns: minmax(180px, .8fr) minmax(0, 1.2fr);
+  align-items: baseline;
+}
+
+.learning-experiment-row span,
+.learning-module-row span {
   color: var(--muted);
   text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .learning-analytics-message {
@@ -305,11 +362,21 @@
     flex: 1 1 160px;
   }
 
-  .learning-cohort > div {
-    display: grid;
+  .learning-mastery-period > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .learning-cohort span {
+  .learning-mastery-period span:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .learning-experiment-row,
+  .learning-module-row {
+    grid-template-columns: 1fr;
+  }
+
+  .learning-experiment-row span,
+  .learning-module-row span {
     text-align: left;
   }
 }
