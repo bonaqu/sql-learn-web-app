@@ -65,14 +65,14 @@ INSERT INTO ticket_events(event_id, ticket_id, event_type, event_at, payload) VA
 const jsonReference: Record<SqlDialect, string> = {
   sqlite: "SELECT event_id, json_extract(payload, '$.channel') AS channel, CASE WHEN json_type(payload, '$.channel') IS NULL THEN 1 ELSE 0 END AS channel_missing FROM ticket_events WHERE event_id >= 101 ORDER BY event_id;",
   postgresql: "SELECT event_id, payload ->> 'channel' AS channel, CASE WHEN payload ? 'channel' THEN 0 ELSE 1 END AS channel_missing FROM ticket_events WHERE event_id >= 101 ORDER BY event_id;",
-  mysql: "SELECT event_id, JSON_UNQUOTE(JSON_EXTRACT(payload, '$.channel')) AS channel, CASE WHEN JSON_CONTAINS_PATH(payload, 'one', '$.channel') = 0 THEN 1 ELSE 0 END AS channel_missing FROM ticket_events WHERE event_id >= 101 ORDER BY event_id;"
+  mysql: "SELECT event_id, CASE WHEN JSON_TYPE(JSON_EXTRACT(payload, '$.channel')) = 'NULL' THEN NULL ELSE JSON_UNQUOTE(JSON_EXTRACT(payload, '$.channel')) END AS channel, CASE WHEN JSON_CONTAINS_PATH(payload, 'one', '$.channel') = 0 THEN 1 ELSE 0 END AS channel_missing FROM ticket_events WHERE event_id >= 101 ORDER BY event_id;"
 };
 for (const dialect of dialects) add(dialect, {
   labId: 'dialect-json-extraction',
   ...(dialect === 'sqlite' ? { setupSql: jsonSetup } : {}),
   starterSql: "SELECT event_id, payload FROM ticket_events WHERE event_id >= 101 ORDER BY event_id;",
   referenceSql: jsonReference[dialect],
-  requiredPatterns: dialect === 'sqlite' ? ['JSON_EXTRACT', 'JSON_TYPE', 'CHANNEL_MISSING'] : dialect === 'postgresql' ? ["->> 'CHANNEL'", "PAYLOAD ? 'CHANNEL'", 'CHANNEL_MISSING'] : ['JSON_EXTRACT', 'JSON_UNQUOTE', 'JSON_CONTAINS_PATH'],
+  requiredPatterns: dialect === 'sqlite' ? ['JSON_EXTRACT', 'JSON_TYPE', 'CHANNEL_MISSING'] : dialect === 'postgresql' ? ["->> 'CHANNEL'", "PAYLOAD ? 'CHANNEL'", 'CHANNEL_MISSING'] : ['JSON_EXTRACT', 'JSON_UNQUOTE', 'JSON_TYPE', 'JSON_CONTAINS_PATH'],
   forbiddenPatterns: [],
   expected: { columns: ['event_id', 'channel', 'channel_missing'], rows: [[101, null, 0], [102, null, 1]], summary: 'JSON null and missing path remain observably different.' }
 });
