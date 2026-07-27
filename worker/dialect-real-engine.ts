@@ -3,13 +3,16 @@ import { dialectLabCase, type DialectResultValue } from '../src/data/dialect-lab
 import { dialectLabManifest } from '../src/data/dialect-lab-manifests';
 import { realEngineContract, type RealEngineDialect } from './dialect-real-engine-contracts';
 
-const ADAPTER_VERSION = 'real-engine-v1';
+export const DIALECT_REAL_ENGINE_ADAPTER_VERSION = 'real-engine-v1';
+export const DIALECT_REAL_ENGINE_RUNNER_VERSION = 'dialect-real-engine-v1';
+
 const RUNNER_PATH = '/opt/sql-academy-dialect-runner/runner.mjs';
 const REQUEST_PATH = '/workspace/dialect-request.json';
 const RESULT_PATH = '/workspace/dialect-result.json';
 const TOTAL_TIMEOUT_MS = 45_000;
+const MAX_RUNNER_ERROR_BYTES = 500;
 
-type RealEngineEnv = Cloudflare.Env & {
+ type RealEngineEnv = Cloudflare.Env & {
   DIALECT_SANDBOX?: Parameters<typeof getSandbox>[0];
   DIALECT_ENGINE_MODE?: string;
 };
@@ -42,8 +45,56 @@ export type RealEngineExecution = {
   sandboxDestroyed: boolean;
 };
 
+function emptyExecution(error: string, available = false): RealEngineExecution {
+  return {
+    available,
+    passed: false,
+    engineVersion: null,
+    runnerVersion: null,
+    durationMs: 0,
+    output: null,
+    normalizedPlan: [],
+    errors: [error],
+    sandboxDestroyed: false
+  };
+}
+
 function boundedEngineVersion(value: unknown) {
   return typeof value === 'string' && /^[a-z0-9.+_()\- ]{1,120}$/i.test(value) ? value.trim() : null;
+}
+
+function boundedRunnerVersion(value: unknown) {
+  return typeof value === 'string' && /^[a-z0-9._\-]{1,80}$/i.test(value) ? value : null;
+}
+
+function safeRunnerError(code: unknown) {
+  switch (code) {
+    case 'engine_timeout': return 'Database statement exceeded the published timeout.';
+    case 'engine_startup_timeout': return 'Database engine did not become ready before the startup deadline.';
+    case 'result_too_large': return 'Database result exceeded the published size limit.';
+    case 'invalid_request': return 'Real engine runner rejected its internal request contract.';
+    case 'engine_error': return 'Database engine rejected the statement.';
+    default: return 'Real database engine execution failed.';
+  }
+}
+
+function parseRunnerResult(value: unknown, dialect: RealEngineDialect): RunnerResult {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid real engine runner response');
+  const result = value as Record<string, unknown>;
+  if (result.version !== 1
+    || result.runnerVersion !== DIALECT_REAL_ENGINE_RUNNER_VERSION
+    || result.engine !== dialect
+    || typeof result.success !== 'boolean'
+    || typeof result.durationMs !== 'number'
+    || !Number.isFinite(result.durationMs)
+    || result.durationMs < 0
+    || result.durationMs > TOTAL_TIMEOUT_MS + 10_000) {
+    throw new Error('Real engine runner response does not match the published contract');
+  }
+  if (result.error !== undefined && (typeof result.error !== 'string' || new TextEncoder().encode(result.error).byteLength > MAX_RUNNER_ERROR_BYTES)) {
+    throw new Error('Real engine runner error payload is invalid');
+  }
+  return result as RunnerResult;
 }
 
 function normalizeValue(value: unknown): DialectResultValue {
@@ -53,26 +104,26 @@ function normalizeValue(value: unknown): DialectResultValue {
 }
 
 function normalizedOutput(value: RunnerResult['output']) {
-  if (!value || !Array.isArray(value.columns) || !Array.isArray(value.rows)) return null;
+  if (!value || !Array.isArray(value.columns) || !Array.isArray(value.rows) || value.columns.length > 100 || value.rows.length > 500) return null;
+  if (!value.rows.every(row => Array.isArray(row) && row.length === value.columns.length)) return null;
   return {
     columns: value.columns.map(column => String(column).toLowerCase()),
     rows: value.rows.map(row => row.map(normalizeValue))
   };
 }
 
-function timestampsEquivalent(actual: string, expected: string) {
-  const normalize = (value: string) => value
-    .replace(/T/, ' ')
+function normalizeTimestamp(value: string) {
+  return value
+    .replace('T', ' ')
     .replace(/(?:\.0+)?(?:\+00(?::00)?|Z)$/, '')
     .trim();
-  return normalize(actual) === normalize(expected);
 }
 
 function cellsEqual(actual: DialectResultValue, expected: DialectResultValue) {
   if (actual === expected) return true;
-  if (typeof actual === 'string' && typeof expected === 'string') return timestampsEquivalent(actual, expected);
-  if (typeof actual === 'number' && typeof expected === 'string' && Number(expected) === actual) return true;
-  if (typeof actual === 'string' && typeof expected === 'number' && Number(actual) === expected) return true;
+  if (typeof actual === 'string' && typeof expected === 'string') return normalizeTimestamp(actual) === normalizeTimestamp(expected);
+  if (typeof actual === 'number' && typeof expected === 'string') return Number(expected) === actual;
+  if (typeof actual === 'string' && typeof expected === 'number') return Number(actual) === expected;
   return false;
 }
 
@@ -112,8 +163,7 @@ function normalizeMysqlPlan(output: ReturnType<typeof normalizedOutput>) {
   const raw = output?.rows.flat().find(value => typeof value === 'string' && value.trim().startsWith('{'));
   if (typeof raw !== 'string') return [];
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const serialized = JSON.stringify(parsed).toLowerCase();
+    const serialized = JSON.stringify(JSON.parse(raw)).toLowerCase();
     const normalized = new Set<string>();
     if (serialized.includes('idx_tickets_service')) normalized.add('index=idx_tickets_service');
     if (serialized.includes('"access_type":"ref"') || serialized.includes('"access_type": "ref"')) normalized.add('access=ref');
@@ -135,12 +185,7 @@ async function opaqueSandboxId(userId: string, requestId: string) {
   return `dialect-${Array.from(new Uint8Array(bytes)).slice(0, 16).map(value => value.toString(16).padStart(2, '0')).join('')}`;
 }
 
-function runnerRequest(input: {
-  requestId: string;
-  dialect: RealEngineDialect;
-  labId: string;
-  sql: string;
-}) {
+function runnerRequest(input: { requestId: string; dialect: RealEngineDialect; labId: string; sql: string }) {
   const manifest = dialectLabManifest(input.labId);
   const contract = realEngineContract(input.labId, input.dialect);
   if (!manifest || !contract || contract.scenario === 'transaction') return null;
@@ -177,83 +222,63 @@ export async function executeRealDialectEngine(input: {
 }): Promise<RealEngineExecution> {
   const binding = (input.env as RealEngineEnv).DIALECT_SANDBOX;
   const request = runnerRequest(input);
-  if (!binding || !request) {
-    return {
-      available: false,
-      passed: false,
-      engineVersion: null,
-      runnerVersion: null,
-      durationMs: 0,
-      output: null,
-      normalizedPlan: [],
-      errors: [binding ? 'Real engine scenario is not published yet.' : 'Cloudflare Sandbox binding is unavailable.'],
-      sandboxDestroyed: false
-    };
-  }
+  if (!binding) return emptyExecution('Cloudflare Sandbox binding is unavailable.');
+  if (!request) return emptyExecution('Real engine scenario is not published yet.');
 
-  const sandboxId = await opaqueSandboxId(input.userId, input.requestId);
-  const sandbox = getSandbox(binding, sandboxId, {
+  const sandbox = getSandbox(binding, await opaqueSandboxId(input.userId, input.requestId), {
     enableDefaultSession: false,
+    transport: 'rpc',
     sleepAfter: '30s',
     containerTimeouts: {
       instanceGetTimeoutMS: 45_000,
       portReadyTimeoutMS: 120_000
     }
   });
+  let outcome = emptyExecution('Real engine did not return a result.', true);
   let destroyed = false;
   try {
     await sandbox.writeFile(REQUEST_PATH, JSON.stringify(request));
     const session = await sandbox.createSession({ id: 'dialect-engine', commandTimeoutMs: TOTAL_TIMEOUT_MS });
     const execution = await session.exec(`node ${RUNNER_PATH} ${REQUEST_PATH} ${RESULT_PATH}`, { timeout: TOTAL_TIMEOUT_MS });
-    const raw = await sandbox.readFile(RESULT_PATH);
-    const serialized = typeof raw === 'string' ? raw : new TextDecoder().decode(raw as Uint8Array);
-    const result = JSON.parse(serialized) as RunnerResult;
-    if (!result.success || execution.exitCode !== 0) {
-      return {
+    const file = await sandbox.readFile(RESULT_PATH, { encoding: 'utf-8' });
+    const result = parseRunnerResult(JSON.parse(file.content), input.dialect);
+    const engine = boundedEngineVersion(result.serverVersion);
+    const runner = boundedRunnerVersion(result.runnerVersion);
+
+    if (!result.success || !execution.success || execution.exitCode !== 0) {
+      outcome = {
+        ...emptyExecution(safeRunnerError(result.errorCode), true),
+        engineVersion: engine,
+        runnerVersion: runner,
+        durationMs: Math.max(1, Math.trunc(result.durationMs) || 1)
+      };
+    } else {
+      const labCase = dialectLabCase(input.labId, input.dialect);
+      if (!labCase) throw new Error('Published dialect case is missing');
+      const output = normalizedOutput(result.output);
+      if (!output) throw new Error('Real engine output is invalid');
+      const normalizedPlan = labCase.expected.normalizedPlan
+        ? input.dialect === 'postgresql' ? normalizePostgresPlan(output) : normalizeMysqlPlan(output)
+        : [];
+      const passed = labCase.expected.normalizedPlan
+        ? planPasses(input.dialect, normalizedPlan)
+        : outputMatches(output, labCase.expected);
+      outcome = {
         available: true,
-        passed: false,
-        engineVersion: boundedEngineVersion(result.serverVersion),
-        runnerVersion: typeof result.runnerVersion === 'string' ? result.runnerVersion.slice(0, 80) : null,
-        durationMs: Math.max(1, Number(result.durationMs) || 1),
-        output: null,
-        normalizedPlan: [],
-        errors: [result.error || `Real engine process exited with ${execution.exitCode}.`],
+        passed,
+        engineVersion: engine,
+        runnerVersion: runner,
+        durationMs: Math.max(1, Math.trunc(result.durationMs) || 1),
+        output,
+        normalizedPlan,
+        errors: passed ? [] : ['Real engine result/plan does not match the published semantic contract.'],
         sandboxDestroyed: false
       };
     }
-
-    const labCase = dialectLabCase(input.labId, input.dialect);
-    if (!labCase) throw new Error('Published dialect case is missing');
-    const output = normalizedOutput(result.output);
-    const normalizedPlan = labCase.expected.normalizedPlan
-      ? input.dialect === 'postgresql' ? normalizePostgresPlan(output) : normalizeMysqlPlan(output)
-      : [];
-    const passed = labCase.expected.normalizedPlan
-      ? planPasses(input.dialect, normalizedPlan)
-      : outputMatches(output, labCase.expected);
-    return {
-      available: true,
-      passed,
-      engineVersion: boundedEngineVersion(result.serverVersion),
-      runnerVersion: typeof result.runnerVersion === 'string' ? result.runnerVersion.slice(0, 80) : null,
-      durationMs: Math.max(1, Number(result.durationMs) || 1),
-      output,
-      normalizedPlan,
-      errors: passed ? [] : ['Real engine result/plan does not match the published semantic contract.'],
-      sandboxDestroyed: false
-    };
   } catch (error) {
-    return {
-      available: true,
-      passed: false,
-      engineVersion: null,
-      runnerVersion: null,
-      durationMs: 0,
-      output: null,
-      normalizedPlan: [],
-      errors: [error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500)],
-      sandboxDestroyed: false
-    };
+    const name = error instanceof Error ? error.name : 'UnknownError';
+    console.error('dialect_real_engine_execution_failed', { requestId: input.requestId, labId: input.labId, dialect: input.dialect, name });
+    outcome = emptyExecution('Real database engine execution failed.', true);
   } finally {
     try {
       await sandbox.destroy();
@@ -264,8 +289,12 @@ export async function executeRealDialectEngine(input: {
         name: error instanceof Error ? error.name : 'UnknownError'
       });
     }
-    void destroyed;
   }
-}
 
-export const DIALECT_REAL_ENGINE_ADAPTER_VERSION = ADAPTER_VERSION;
+  return {
+    ...outcome,
+    passed: outcome.passed && destroyed,
+    errors: destroyed ? outcome.errors : [...outcome.errors, 'Sandbox destroy was not confirmed.'],
+    sandboxDestroyed: destroyed
+  };
+}
