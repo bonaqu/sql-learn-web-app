@@ -6,7 +6,7 @@ const conceptSmoke = readFileSync('scripts/concept-progress-production-smoke.mjs
 const checkpointSmoke = readFileSync('scripts/checkpoint-production-smoke.mjs', 'utf8');
 const capstoneSmoke = readFileSync('scripts/capstone-production-smoke.mjs', 'utf8');
 const calibrationSmoke = readFileSync('scripts/assessment-calibration-production-smoke.mjs', 'utf8');
-const dialectSmoke = readFileSync('scripts/dialect-labs-production-smoke.mjs', 'utf8');
+const dialectSmoke = readFileSync('scripts/dialect-labs-production-smoke.ts', 'utf8');
 const core = readFileSync('worker/core.ts', 'utf8');
 const workerIndex = readFileSync('worker/index.ts', 'utf8');
 const curriculumWorker = readFileSync('worker/curriculum.ts', 'utf8');
@@ -30,7 +30,7 @@ requireText(workflow, 'node scripts/concept-progress-production-smoke.mjs', 'con
 requireText(workflow, 'node scripts/checkpoint-production-smoke.mjs', 'checkpoint smoke entrypoint');
 requireText(workflow, 'node scripts/capstone-production-smoke.mjs', 'capstone smoke entrypoint');
 requireText(workflow, 'node scripts/assessment-calibration-production-smoke.mjs', 'assessment calibration smoke entrypoint');
-requireText(workflow, 'node scripts/dialect-labs-production-smoke.mjs', 'dialect lab smoke entrypoint');
+requireText(workflow, 'npx tsx scripts/dialect-labs-production-smoke.ts', 'complete dialect matrix smoke entrypoint');
 requireText(workflow, 'cloudflare-smoke-stage.txt', 'curriculum stage diagnostics');
 requireText(workflow, 'cloudflare-concepts-stage.txt', 'concept stage diagnostics');
 requireText(workflow, 'cloudflare-checkpoint-stage.txt', 'checkpoint stage diagnostics');
@@ -115,6 +115,7 @@ requireText(workerIndex, "export { Sandbox } from '@cloudflare/sandbox'", 'Sandb
 requireText(dialectWorker, "url.pathname === '/api/dialect-labs/execute'", 'dialect execute Worker route');
 requireText(dialectWorker, "url.pathname === '/api/dialect-labs/progress'", 'dialect progress Worker route');
 requireText(dialectWorker, 'HOURLY_EXECUTION_LIMIT = 120', 'dialect fallback execution quota');
+requireText(dialectWorker, 'dialectLabManifests.reduce', 'dynamic dialect evidence ceiling');
 requireText(dialectWorker, 'validateDialectSqlPolicy', 'shared dialect SQL policy');
 requireText(dialectWorker, 'Published dialect lab case not found', 'published-case isolation');
 requireText(dialectRealRoute, 'DIALECT_REAL_ENGINE_RUNNER_VERSION', 'real-engine runner version contract');
@@ -127,9 +128,10 @@ requireText(dialectSmoke, 'ROUTE_PROPAGATION_ATTEMPTS = 8', 'bounded dialect rou
 requireText(dialectSmoke, 'ROUTE_PROPAGATION_DELAY_MS = 4_000', 'dialect propagation retry delay');
 requireText(dialectSmoke, '...propagationOptions', 'new dialect route propagation options');
 requireText(dialectSmoke, 'routePropagationRetries: ROUTE_PROPAGATION_ATTEMPTS', 'dialect propagation summary evidence');
-requireText(dialectSmoke, "['postgresql', 'mysql']", 'both real dialect engines');
-requireText(dialectSmoke, "verificationMode !== 'real-engine-v1'", 'real-engine verification proof');
-requireText(dialectSmoke, 'sandboxDestroyed !== true', 'destroy cleanup proof');
+requireText(dialectSmoke, "const REAL_DIALECTS = ['postgresql', 'mysql'] as const", 'both real dialect engines');
+requireText(dialectSmoke, 'for (const lab of dialectLabManifests)', 'every published pattern production loop');
+requireText(dialectSmoke, "value.verificationMode !== 'real-engine-v1'", 'real-engine verification proof');
+requireText(dialectSmoke, 'value.sandboxDestroyed !== true', 'destroy cleanup proof');
 requireText(dialectSmoke, 'dialect-policy-abuse', 'dialect policy abuse rejection');
 requireText(dialectSmoke, 'dialect-incomplete-contract', 'incomplete semantic contract rejection');
 requireText(dialectSmoke, 'dialect-engine-error-cleanup', 'failed real-engine cleanup');
@@ -138,6 +140,7 @@ requireText(dialectSmoke, 'expected: [401]', 'dialect revoked session check');
 requireText(dialectSmoke, 'verifyCascade()', 'dialect progress cascade verification');
 requireText(dialectSmoke, 'FROM dialect_lab_progress', 'dialect progress cleanup query');
 requireText(dialectSmoke, "'--yes'", 'dialect non-interactive D1 execution');
+requireText(dialectSmoke, 'allPublishedPatternsPassed: true', 'complete production pattern summary');
 requireText(dialectSmoke, 'sqlPersisted: false', 'dialect privacy summary');
 requireText(dialectSmoke, 'realEngineEvidencePassed: true', 'real-engine evidence summary');
 requireText(dialectSmoke, 'engineFailureCleanupPassed: true', 'real-engine failure cleanup summary');
@@ -173,4 +176,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Deployment smoke validation passed: curriculum, concepts, checkpoints, immutable capstone, atomic privacy-first assessment calibration and propagation-safe real PostgreSQL/MySQL dialect lifecycles include strict validation, destroy evidence, conflicts, revoked sessions, cascade cleanup and redaction contracts.');
+console.log('Deployment smoke validation passed: curriculum, concepts, checkpoints, immutable capstone, atomic privacy-first assessment calibration and complete real PostgreSQL/MySQL dialect matrix include strict validation, destroy evidence, conflicts, revoked sessions, cascade cleanup and redaction contracts.');
