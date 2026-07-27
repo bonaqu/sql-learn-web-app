@@ -78,6 +78,37 @@ assert(!serialized.includes('task-001') && !serialized.includes('task-002'), 'Se
 assert(!serialized.includes('select ') && !serialized.includes(' sql'), 'Server snapshot must not contain learner SQL');
 assert(!serialized.includes(userId), 'Server snapshot must not contain the user ID in its payload');
 
+const historicalTime = new Date(start.getTime() - 8 * 86_400_000).toISOString();
+const historicalState = sanitizeLearningAnalyticsState({
+  ...state,
+  events: [
+    {
+      version: 1,
+      id: 'historical-event-open-0001',
+      sessionId: 'historical-session-1234',
+      occurredAt: historicalTime,
+      type: 'task_opened',
+      taskId: 'task-003',
+      moduleId: 'sql-thinking'
+    },
+    {
+      version: 1,
+      id: 'historical-event-pass-0002',
+      sessionId: 'historical-session-1234',
+      occurredAt: new Date(new Date(historicalTime).getTime() + 60_000).toISOString(),
+      type: 'independent_pass',
+      taskId: 'task-003',
+      moduleId: 'sql-thinking',
+      correct: true,
+      independent: true
+    },
+    ...state.events
+  ]
+}, userId);
+const weeklySnapshot = buildLearningAnalyticsSnapshot(historicalState, defaultProgress);
+assert(weeklySnapshot.rows[0]?.opened === 2, 'Weekly snapshot must not repeat task events from earlier weeks');
+assert(weeklySnapshot.mastery['same-session'] === 1, 'Weekly snapshot must not repeat prior-week mastery completions');
+
 const migration = readFileSync(new URL('../migrations/0017_learning_analytics.sql', import.meta.url), 'utf8');
 const worker = readFileSync(new URL('../worker/learning-analytics.ts', import.meta.url), 'utf8');
 const index = readFileSync(new URL('../worker/index.ts', import.meta.url), 'utf8');
@@ -105,6 +136,8 @@ assert(library.includes("sharing: 'off'"), 'Local analytics must default to off'
 assert(library.includes('MAX_EVENTS = 5_000'), 'Local event retention ceiling is missing');
 assert(library.includes('MAX_EVENT_AGE_MS = 180'), 'Local event age boundary is missing');
 assert(library.includes('KNOWN_EXPERIMENTS'), 'Experiment IDs are not allowlisted');
+assert(library.includes('const periodEvents = state.events.filter'), 'Weekly snapshots do not isolate the current period');
+assert(library.includes('completionSince = Number.NEGATIVE_INFINITY'), 'Time-to-mastery lacks a weekly completion boundary');
 assert(agent.includes('PROGRESS_CHANGED_EVENT'), 'Analytics collector is not driven by progress deltas');
 assert(agent.includes("ensureExperimentVariant('remediation-copy-v1'"), 'Experiment assignment is not activated for authenticated learners');
 assert(portal.includes('Не собирается:'), 'UI does not disclose excluded data');
@@ -126,4 +159,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('Learning analytics validation passed: local evidence, deterministic interventions, SQL-free module/mastery/experiment snapshots, explicit opt-in, layered k=5 suppression, actionable reports, export/delete and D1 cascade contracts.');
+console.log('Learning analytics validation passed: non-cumulative weekly evidence, deterministic interventions, SQL-free module/mastery/experiment snapshots, explicit opt-in, layered k=5 suppression, actionable reports, export/delete and D1 cascade contracts.');
