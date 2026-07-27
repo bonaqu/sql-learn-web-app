@@ -14,7 +14,6 @@ import {
   Code2,
   Download,
   Flame,
-  Github,
   GraduationCap,
   Home,
   Lightbulb,
@@ -423,7 +422,7 @@ function App() {
         <Nav icon={<Sparkles />} label="AI Mentor" active={view === 'mentor'} onClick={() => navigate('mentor')} />
       </nav>
       <div className="sidebar-bottom">
-        <a href="https://github.com/bonaqu/sql-learn-web-app" target="_blank" rel="noreferrer"><Github size={17} /> GitHub</a>
+        <a href="https://github.com/bonaqu/sql-learn-web-app" target="_blank" rel="noreferrer"><Code2 size={17} /> GitHub</a>
         <span className="privacy">Open-source · privacy-first</span>
       </div>
     </aside>
