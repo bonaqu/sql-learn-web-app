@@ -42,6 +42,7 @@ export type LearningAnalyticsEvent = {
 
 export type LearningAnalyticsSharing = 'off' | 'coarse-opt-in';
 export type ExperimentVariant = 'control' | 'variant-a' | 'variant-b';
+export type TimeToMasteryBuckets = Record<'same-session' | 'same-day' | '2-7-days' | '8-30-days' | 'over-30-days', number>;
 
 export type LearningAnalyticsState = {
   version: 1;
@@ -72,7 +73,7 @@ export type LocalLearningAnalyticsReport = {
   remediationStarts: number;
   remediationSuccesses: number;
   misconceptionCounts: Partial<Record<AttemptErrorKind, number>>;
-  timeToMastery: Record<'same-session' | 'same-day' | '2-7-days' | '8-30-days' | 'over-30-days', number>;
+  timeToMastery: TimeToMasteryBuckets;
   interventions: LearningIntervention[];
 };
 
@@ -98,6 +99,7 @@ export type LearningAnalyticsSnapshot = {
   periodStart: string;
   courseVersion: 3;
   rows: LearningAnalyticsSnapshotRow[];
+  mastery: TimeToMasteryBuckets;
   experiments: Record<string, ExperimentVariant>;
 };
 
@@ -108,12 +110,35 @@ export type CohortAnalyticsRow = Omit<LearningAnalyticsSnapshotRow, 'studyMinute
   studyMinutesAverage: number;
 };
 
+export type CohortMasteryRow = TimeToMasteryBuckets & {
+  periodStart: string;
+  contributors: number;
+  suppressed: false;
+};
+
+export type CohortExperimentRow = {
+  periodStart: string;
+  experimentId: string;
+  variant: ExperimentVariant;
+  contributors: number;
+  attempted: number;
+  independent: number;
+  retained: number;
+  remediations: number;
+  remediationSuccesses: number;
+  suppressed: false;
+};
+
 export type CohortAnalyticsReport = {
   version: 1;
   minimumCohort: number;
   generatedAt: string;
   rows: CohortAnalyticsRow[];
+  mastery: CohortMasteryRow[];
+  experiments: CohortExperimentRow[];
   suppressedRows: number;
+  suppressedMasteryPeriods: number;
+  suppressedExperiments: number;
 };
 
 const eventTypes = new Set<LearningAnalyticsEventType>([
@@ -281,8 +306,8 @@ function latestSessionEvents(events: LearningAnalyticsEvent[]) {
   return session ? events.filter(event => event.sessionId === session) : [];
 }
 
-function timeToMastery(events: LearningAnalyticsEvent[]): LocalLearningAnalyticsReport['timeToMastery'] {
-  const result = { 'same-session': 0, 'same-day': 0, '2-7-days': 0, '8-30-days': 0, 'over-30-days': 0 };
+function timeToMastery(events: LearningAnalyticsEvent[]): TimeToMasteryBuckets {
+  const result: TimeToMasteryBuckets = { 'same-session': 0, 'same-day': 0, '2-7-days': 0, '8-30-days': 0, 'over-30-days': 0 };
   const opened = new Map<string, LearningAnalyticsEvent>();
   for (const event of events) {
     if (!event.taskId) continue;
@@ -327,11 +352,22 @@ function interventions(state: LearningAnalyticsState, progress?: Progress): Lear
   }
   const cutoff = Date.now() - 7 * 86_400_000;
   const diagnostics = state.events.filter(event => event.type === 'diagnostic_observed' && event.diagnosticKind && new Date(event.occurredAt).getTime() >= cutoff);
+  const remediationVariant = state.experimentVariants['remediation-copy-v1'] || 'control';
   for (const kind of diagnosticKinds) {
     const matching = diagnostics.filter(event => event.diagnosticKind === kind);
     const taskCount = new Set(matching.map(event => event.taskId).filter(Boolean)).size;
     if (matching.length >= 3 && taskCount >= 2) {
-      result.push({ id: 'repeated-misconception', severity: 'important', title: 'Повторяется одна модель ошибки', reason: `${kind}: ${matching.length} наблюдений в ${taskCount} задачах за 7 дней.`, action: 'Разбери counterexample и реши новую задачу без reference.', moduleId: matching.find(event => event.moduleId)?.moduleId, diagnosticKind: kind });
+      result.push({
+        id: 'repeated-misconception',
+        severity: 'important',
+        title: 'Повторяется одна модель ошибки',
+        reason: `${kind}: ${matching.length} наблюдений в ${taskCount} задачах за 7 дней.`,
+        action: remediationVariant === 'variant-a'
+          ? 'Сначала напиши минимальный counterexample, затем реши новую задачу без reference.'
+          : 'Разбери counterexample и реши новую задачу без reference.',
+        moduleId: matching.find(event => event.moduleId)?.moduleId,
+        diagnosticKind: kind
+      });
       break;
     }
   }
@@ -428,7 +464,14 @@ export function buildLearningAnalyticsSnapshot(state: LearningAnalyticsState, pr
       topDiagnosticKind
     });
   }
-  return { version: 1, periodStart: weekStart(), courseVersion: 3, rows, experiments: { ...state.experimentVariants } };
+  return {
+    version: 1,
+    periodStart: weekStart(),
+    courseVersion: 3,
+    rows,
+    mastery: { ...report.timeToMastery },
+    experiments: { ...state.experimentVariants }
+  };
 }
 
 function deterministicVariant(userId: string, experimentId: string): ExperimentVariant {
