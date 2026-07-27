@@ -6,6 +6,7 @@ const conceptSmoke = readFileSync('scripts/concept-progress-production-smoke.mjs
 const checkpointSmoke = readFileSync('scripts/checkpoint-production-smoke.mjs', 'utf8');
 const capstoneSmoke = readFileSync('scripts/capstone-production-smoke.mjs', 'utf8');
 const calibrationSmoke = readFileSync('scripts/assessment-calibration-production-smoke.mjs', 'utf8');
+const analyticsSmoke = readFileSync('scripts/learning-analytics-production-smoke.mjs', 'utf8');
 const dialectFreeSmoke = readFileSync('scripts/dialect-labs-free-production-smoke.ts', 'utf8');
 const core = readFileSync('worker/core.ts', 'utf8');
 const workerIndex = readFileSync('worker/index.ts', 'utf8');
@@ -13,6 +14,7 @@ const curriculumWorker = readFileSync('worker/curriculum.ts', 'utf8');
 const capstoneWorker = readFileSync('worker/capstones.ts', 'utf8');
 const assessmentWorker = readFileSync('worker/assessment.ts', 'utf8');
 const assessmentReportV2 = readFileSync('worker/assessment-report-v2-route.ts', 'utf8');
+const analyticsWorker = readFileSync('worker/learning-analytics.ts', 'utf8');
 const dialectWorker = readFileSync('worker/dialect-labs.ts', 'utf8');
 const dialectRealRoute = readFileSync('worker/dialect-real-engine-route.ts', 'utf8');
 const dialectRealAdapter = readFileSync('worker/dialect-real-engine.ts', 'utf8');
@@ -35,6 +37,7 @@ requireText(workflow, 'node scripts/concept-progress-production-smoke.mjs', 'con
 requireText(workflow, 'node scripts/checkpoint-production-smoke.mjs', 'checkpoint smoke entrypoint');
 requireText(workflow, 'node scripts/capstone-production-smoke.mjs', 'capstone smoke entrypoint');
 requireText(workflow, 'node scripts/assessment-calibration-production-smoke.mjs', 'assessment calibration smoke entrypoint');
+requireText(workflow, 'node scripts/learning-analytics-production-smoke.mjs', 'learning analytics smoke entrypoint');
 requireText(workflow, 'npx tsx scripts/dialect-labs-free-production-smoke.ts', 'free-tier dialect matrix smoke entrypoint');
 requireText(workflow, 'node scripts/mastery-progress-production-smoke.mjs', 'mastery smoke entrypoint');
 requireText(workflow, 'node scripts/onboarding-production-smoke.mjs', 'onboarding smoke entrypoint');
@@ -43,6 +46,7 @@ requireText(workflow, 'cloudflare-concepts-stage.txt', 'concept stage diagnostic
 requireText(workflow, 'cloudflare-checkpoint-stage.txt', 'checkpoint stage diagnostics');
 requireText(workflow, 'cloudflare-capstone-stage.txt', 'capstone stage diagnostics');
 requireText(workflow, 'cloudflare-assessment-calibration-stage.txt', 'assessment calibration stage diagnostics');
+requireText(workflow, 'cloudflare-learning-analytics-stage.txt', 'learning analytics stage diagnostics');
 requireText(workflow, 'cloudflare-dialect-stage.txt', 'dialect stage diagnostics');
 requireText(workflow, "main: 'worker/index.ts'", 'canonical production Worker entrypoint');
 requireText(workflow, "compatibility_flags: ['nodejs_compat']", 'Worker Node compatibility');
@@ -113,6 +117,29 @@ requireText(calibrationSmoke, 'expected: [401]', 'assessment revoked session che
 requireText(calibrationSmoke, 'verifyD1Lifecycle', 'assessment D1 lifecycle');
 requireText(calibrationSmoke, 'anonymousAggregateSurvivedDeletion', 'anonymous aggregate retention evidence');
 
+requireText(workerIndex, 'handleLearningAnalyticsRequest', 'authenticated analytics route');
+requireText(workerIndex, 'x-learning-analytics-contract', 'analytics CORS response header');
+requireText(analyticsWorker, "current.sharing !== 'coarse-opt-in'", 'analytics opt-in guard');
+requireText(analyticsWorker, 'const MINIMUM_COHORT = 5', 'analytics k=5 suppression');
+requireText(analyticsWorker, 'exactKeys(row, ROW_KEYS)', 'analytics row unknown-field rejection');
+requireText(analyticsWorker, 'exactKeys(mastery, MASTERY_KEYS)', 'analytics mastery unknown-field rejection');
+requireText(analyticsWorker, 'masteryGroups', 'weekly mastery aggregation');
+requireText(analyticsWorker, 'experimentGroups', 'weekly experiment aggregation');
+requireText(analyticsWorker, 'suppressedMasteryPeriods', 'mastery cohort suppression');
+requireText(analyticsWorker, 'suppressedExperiments', 'experiment cohort suppression');
+requireText(analyticsWorker, 'DELETE FROM learning_analytics_snapshots', 'analytics opt-out deletion');
+requireText(analyticsSmoke, 'analytics must default off', 'analytics default-off production proof');
+requireText(analyticsSmoke, 'forbidden SQL field', 'analytics SQL-field rejection');
+requireText(analyticsSmoke, 'unknown mastery field', 'analytics mastery-field rejection');
+requireText(analyticsSmoke, 'mastery or experiment round-trip mismatch', 'analytics extended snapshot round-trip');
+requireText(analyticsSmoke, 'small module/mastery/experiment cohorts were not suppressed', 'analytics layered cohort suppression proof');
+requireText(analyticsSmoke, 'opt-out did not delete snapshots', 'analytics opt-out deletion proof');
+requireText(analyticsSmoke, "d1Count('learning_analytics_preferences')", 'analytics preference cascade proof');
+requireText(analyticsSmoke, "d1Count('learning_analytics_snapshots')", 'analytics snapshot cascade proof');
+requireText(analyticsSmoke, 'revoked analytics session', 'analytics revoked session proof');
+requireText(analyticsSmoke, 'forgedMasteryRejected: true', 'analytics strict mastery summary');
+requireText(analyticsSmoke, 'allSmallCohortsSuppressed: true', 'analytics layered suppression summary');
+
 requireText(workerIndex, 'handleDialectRealEngineRequest', 'optional paid real route before fallback');
 requireText(workerIndex, 'handleDialectLabRequest', 'authenticated dialect fallback route');
 requireText(dialectWorker, "url.pathname === '/api/dialect-labs/execute'", 'dialect execute route');
@@ -152,8 +179,12 @@ forbidText(conceptSmoke, 'fs.writeFile(recoveryCode', 'concept recovery diagnost
 forbidText(checkpointSmoke, "writeJson('cloudflare-checkpoint-register.json'", 'raw checkpoint registration write');
 forbidText(capstoneSmoke, "writeJson('cloudflare-capstone-register.json'", 'raw capstone registration write');
 forbidText(calibrationSmoke, "writeJson('cloudflare-assessment-calibration-register.json'", 'raw assessment registration write');
+forbidText(analyticsSmoke, 'token:', 'analytics token diagnostic write');
+forbidText(analyticsSmoke, 'recoveryCode:', 'analytics recovery diagnostic write');
 forbidText(dialectFreeSmoke, 'authToken:', 'dialect token diagnostic write');
 forbidText(dialectFreeSmoke, 'recoveryCode:', 'dialect recovery diagnostic write');
+forbidText(analyticsWorker, 'console.log(payload', 'analytics payload logging');
+forbidText(analyticsWorker, 'console.error(payload', 'analytics payload error logging');
 forbidText(dialectWorker, 'console.log(sql', 'dialect learner SQL logging');
 forbidText(dialectWorker, 'console.error(sql', 'dialect learner SQL error logging');
 forbidText(dialectRealRoute, 'console.log(sql', 'real dialect learner SQL logging');
@@ -165,4 +196,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Deployment smoke validation passed: Cloudflare Free deploys Worker/D1/KV/assets only, all learning lifecycles remain production-tested, 22 server-dialect previews create zero false mastery, and real PostgreSQL/MySQL execution stays mandatory in Docker CI.');
+console.log('Deployment smoke validation passed: Cloudflare Free keeps every learning lifecycle production-tested, analytics is default-off and SQL-free with layered module/mastery/experiment k=5 suppression, 22 dialect previews create zero false mastery, and real PostgreSQL/MySQL execution remains mandatory in Docker CI.');

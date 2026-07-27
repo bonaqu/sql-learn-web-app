@@ -158,6 +158,11 @@ jobs:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
         run: node scripts/assessment-calibration-production-smoke.mjs
 
+      - name: Smoke-test privacy-first learning analytics lifecycle
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+        run: node scripts/learning-analytics-production-smoke.mjs
+
       - name: Smoke-test all server-dialect CI reference previews
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
@@ -196,7 +201,7 @@ jobs:
           script: |
             const success = process.env.JOB_STATUS === 'success';
             let description = success
-              ? 'Cloudflare Free deployed; learning lifecycles and honest dialect previews verified'
+              ? 'Cloudflare Free deployed; privacy-safe learning lifecycles and dialect previews verified'
               : 'Cloudflare Free deployment or production smoke failed';
             try {
               const fs = require('fs');
@@ -204,6 +209,7 @@ jobs:
                 'cloudflare-onboarding-stage.txt',
                 'cloudflare-mastery-stage.txt',
                 'cloudflare-dialect-stage.txt',
+                'cloudflare-learning-analytics-stage.txt',
                 'cloudflare-assessment-calibration-stage.txt',
                 'cloudflare-capstone-stage.txt',
                 'cloudflare-checkpoint-stage.txt',
