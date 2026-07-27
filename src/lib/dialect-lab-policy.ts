@@ -45,12 +45,13 @@ function semanticMarker(value: string) {
     .replace(/'(?:''|[^'])*'/g, ' ')
     .replace(/"(?:""|[^"])*"/g, ' ')
     .replace(/\s+/g, ' ')
+    .replace(/\s*([+\-])\s*/g, '$1')
     .trim();
 }
 
 function includesSemanticMarker(normalizedSql: string, value: string) {
   const marker = semanticMarker(value);
-  return Boolean(marker) && normalizedSql.includes(marker);
+  return Boolean(marker) && semanticMarker(normalizedSql).includes(marker);
 }
 
 function scrubSql(source: string) {
