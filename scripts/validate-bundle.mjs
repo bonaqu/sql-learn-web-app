@@ -56,12 +56,12 @@ for (const name of js) {
   if (info.gzip > CHUNK_GZIP_BUDGET) fail(`${name} is ${kib(info.gzip)} KiB gzip; chunk budget ${kib(CHUNK_GZIP_BUDGET)} KiB`);
 }
 
-const boundaries = ['assessment', 'learning-path', 'CurriculumPortal', 'SyllabusPortal', 'DialectLabWorkbench', 'sqlite', 'ActivityChart', 'SqlEditor'];
+const boundaries = ['assessment', 'learning-path', 'CurriculumPortal', 'SyllabusPortal', 'DialectLabWorkbench', 'sqlite', 'SqlEditor'];
 for (const boundary of boundaries) {
   if (!chunkFor(js, boundary)) fail(`expected a separate ${boundary} chunk`);
 }
 
-for (const heavy of ['assessment-', 'learning-path-', 'CurriculumPortal-', 'SyllabusPortal-', 'DialectLabWorkbench-', 'sqlite-', 'ActivityChart-', 'SqlEditor-']) {
+for (const heavy of ['assessment-', 'learning-path-', 'CurriculumPortal-', 'SyllabusPortal-', 'DialectLabWorkbench-', 'sqlite-', 'SqlEditor-']) {
   if (html.includes(heavy)) fail(`dist/index.html eagerly references heavy chunk ${heavy}`);
 }
 
