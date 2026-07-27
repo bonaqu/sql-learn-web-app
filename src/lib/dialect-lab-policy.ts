@@ -45,7 +45,8 @@ function semanticMarker(value: string) {
     .replace(/'(?:''|[^'])*'/g, ' ')
     .replace(/"(?:""|[^"])*"/g, ' ')
     .replace(/\s+/g, ' ')
-    .replace(/\s*([+\-])\s*/g, '$1')
+    .replace(/\s*(<=|>=|<>|!=|::|=|<|>|\+|-|\*|\/)\s*/g, '$1')
+    .replace(/\s*([(),])\s*/g, '$1')
     .trim();
 }
 
