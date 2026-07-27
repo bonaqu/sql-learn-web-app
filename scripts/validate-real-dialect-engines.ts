@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { dialectLabCase, type DialectResultValue } from '../src/data/dialect-lab-cases.ts';
@@ -9,6 +9,18 @@ import { realEngineContracts } from '../worker/dialect-real-engine-contracts.ts'
 const image = process.env.DIALECT_ENGINE_IMAGE || 'sql-academy-dialect-engines:pr';
 const runner = '/opt/sql-academy-dialect-runner/runner.mjs';
 const failures: string[] = [];
+
+type RunnerResult = {
+  version?: unknown;
+  runnerVersion?: unknown;
+  engine?: unknown;
+  serverVersion?: unknown;
+  success?: unknown;
+  durationMs?: unknown;
+  output?: { columns?: unknown; rows?: unknown };
+  errorCode?: unknown;
+  error?: unknown;
+};
 
 function normalizedTimestamp(value: string) {
   return value.replace('T', ' ').replace(/(?:\.0+)?(?:\+00(?::00)?|Z)$/, '').trim();
@@ -46,6 +58,22 @@ function planMatches(dialect: 'postgresql' | 'mysql', output: { rows?: unknown }
   }
 }
 
+function runContainer(directory: string) {
+  const shell = `node ${runner} /workspace/request.json /workspace/result.json; status=$?; cat /workspace/result.json; exit $status`;
+  try {
+    return execFileSync('docker', [
+      'run', '--rm', '--platform', 'linux/amd64',
+      '--entrypoint', 'sh',
+      '--mount', `type=bind,source=${directory},target=/workspace`,
+      image, '-lc', shell
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 90_000 });
+  } catch (error) {
+    const output = error && typeof error === 'object' && 'stdout' in error ? String(error.stdout || '') : '';
+    if (output.trim()) return output;
+    throw error;
+  }
+}
+
 function executeContract(contract: (typeof realEngineContracts)[number]) {
   const manifest = dialectLabManifest(contract.labId);
   const labCase = dialectLabCase(contract.labId, contract.dialect);
@@ -68,24 +96,7 @@ function executeContract(contract: (typeof realEngineContracts)[number]) {
       maximumResultBytes: manifest.statementPolicy.maximumResultBytes
     };
     writeFileSync(join(directory, 'request.json'), JSON.stringify(request), { mode: 0o644 });
-    execFileSync('docker', [
-      'run', '--rm', '--platform', 'linux/amd64',
-      '--entrypoint', 'node',
-      '--mount', `type=bind,source=${directory},target=/workspace`,
-      image, runner, '/workspace/request.json', '/workspace/result.json'
-    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 90_000 });
-
-    const result = JSON.parse(readFileSync(join(directory, 'result.json'), 'utf8')) as {
-      version?: unknown;
-      runnerVersion?: unknown;
-      engine?: unknown;
-      serverVersion?: unknown;
-      success?: unknown;
-      durationMs?: unknown;
-      output?: { columns?: unknown; rows?: unknown };
-      errorCode?: unknown;
-      error?: unknown;
-    };
+    const result = JSON.parse(runContainer(directory)) as RunnerResult;
     if (result.version !== 1 || result.runnerVersion !== 'dialect-real-engine-v1' || result.engine !== contract.dialect || result.success !== true) {
       throw new Error(`runner failure: ${JSON.stringify(result)}`);
     }
