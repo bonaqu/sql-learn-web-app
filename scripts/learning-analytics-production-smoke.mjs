@@ -213,7 +213,7 @@ try {
     || report.body?.suppressedRows < 1
     || report.body?.suppressedMasteryPeriods < 1
     || report.body?.suppressedExperiments < 1) {
-    throw new Error(`isolated module/mastery/experiment cohorts were not suppressed: ${report.text}`);
+    throw new Error(`small module/mastery/experiment cohorts were not suppressed in isolated period: ${report.text}`);
   }
 
   await mark('opt-out-delete');
@@ -256,6 +256,7 @@ try {
     experimentRoundTrip: true,
     allReleasedCohortsMeetMinimum: true,
     isolatedSmallCohortsSuppressed: true,
+    allSmallCohortsSuppressed: true,
     optOutDeleted: true,
     cascadeVerified: true,
     revokedSessionVerified: true
