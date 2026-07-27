@@ -93,8 +93,9 @@ jobs:
           const config = {
             $schema: './node_modules/wrangler/config-schema.json',
             name: 'sql-learn-web-app',
-            main: 'worker/index-real-engines.ts',
-            compatibility_date: '2026-07-24',
+            main: 'worker/index.ts',
+            compatibility_date: '2026-07-27',
+            compatibility_flags: ['nodejs_compat'],
             assets: {
               directory: './dist',
               binding: 'ASSETS',
@@ -124,7 +125,7 @@ jobs:
             }],
             vars: {
               DIALECT_ENGINE_MODE: 'real-required',
-              COMMAND_TIMEOUT_MS: '45000',
+              SANDBOX_TRANSPORT: 'rpc',
               SANDBOX_LOG_LEVEL: 'warn',
               SANDBOX_LOG_FORMAT: 'json'
             },
