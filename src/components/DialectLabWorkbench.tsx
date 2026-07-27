@@ -71,7 +71,7 @@ const dialectTitles: Record<SqlDialect, string> = {
 
 const modeTitles: Record<DialectExecutionMode, string> = {
   'local-sqlite': 'Local WASM',
-  'remote-sandbox': 'Remote sandbox',
+  'remote-sandbox': 'Server contract',
   'deterministic-simulation': 'Session simulator'
 };
 
@@ -151,7 +151,7 @@ export default function DialectLabWorkbench() {
       const next = saveDialectLabProgress(recordDialectLabExecution(progress, result, !solutionViewed));
       setProgress(next);
       setSyncMessage(result.offlinePreview
-        ? 'Offline preview не засчитан: нужен authenticated remote sandbox.'
+        ? 'CI reference preview не засчитан: Cloudflare Free не запускает server engine; реальные PostgreSQL/MySQL контракты проверяются в Docker CI.'
         : result.passed && solutionViewed
           ? 'Результат верный, но reference был открыт: evidence отмечен как guided.'
           : result.passed
@@ -160,7 +160,9 @@ export default function DialectLabWorkbench() {
       try {
         const synced = await syncDialectLabProgress(next);
         setProgress(synced);
-        if (result.passed && !solutionViewed && !result.offlinePreview) setSyncMessage('Independent evidence синхронизирован между устройствами.');
+        if (result.passed && !solutionViewed && !result.offlinePreview) {
+          setSyncMessage('Independent evidence синхронизирован между устройствами.');
+        }
       } catch {
         setSyncMessage(current => `${current} Cloud sync повторится при следующем открытии.`.trim());
       }
@@ -196,6 +198,14 @@ export default function DialectLabWorkbench() {
 
       <section className="dialect-failure-mode"><AlertTriangle /><div><strong>Production failure mode</strong><p>{lab.productionFailureMode}</p></div></section>
 
+      <section className="dialect-free-boundary" role="note">
+        <Cloud />
+        <div>
+          <strong>Cloudflare Free boundary</strong>
+          <p>SQLite выполняется локально. PostgreSQL и MySQL показывают CI-verified reference contract, но не создают mastery без настоящего server engine.</p>
+        </div>
+      </section>
+
       <section className="dialect-engine-tabs" aria-label="Executable SQL engines">
         {executableDialects.map(engine => {
           const engineBehavior = lab.behaviors.find(item => item.dialect === engine)!;
@@ -229,7 +239,7 @@ export default function DialectLabWorkbench() {
             />
           </Suspense>
           <div className="dialect-editor-actions">
-            <button className="primary" onClick={() => void run()} disabled={running || !sql.trim()} data-testid="run-dialect-lab"><Play />{running ? 'Проверяю…' : behavior.executionMode === 'remote-sandbox' ? 'Запустить sandbox' : behavior.executionMode === 'local-sqlite' ? 'Выполнить SQLite' : 'Проиграть сессии'}</button>
+            <button className="primary" onClick={() => void run()} disabled={running || !sql.trim()} data-testid="run-dialect-lab"><Play />{running ? 'Проверяю…' : behavior.executionMode === 'remote-sandbox' ? 'Проверить server contract' : behavior.executionMode === 'local-sqlite' ? 'Выполнить SQLite' : 'Проиграть сессии'}</button>
             <button onClick={() => { setSql(labCase?.starterSql || ''); setExecution(null); setSolutionViewed(false); }}><RefreshCw />Сбросить</button>
             <button onClick={revealReference} disabled={(currentEvidence?.attempts || 0) < 2}><Eye />Reference после 2 попыток</button>
           </div>
@@ -237,7 +247,7 @@ export default function DialectLabWorkbench() {
         </article>
 
         <article className={`dialect-evidence-card ${execution?.passed ? 'passed' : execution ? 'failed' : ''}`} data-testid="dialect-evidence-card">
-          <header>{execution?.passed ? <CheckCircle2 /> : execution ? <AlertTriangle /> : <FlaskConical />}<div><strong>{execution ? execution.passed ? 'Contract подтверждён' : execution.offlinePreview ? 'Только offline preview' : 'Нужна коррекция' : 'Execution evidence'}</strong><small>{execution ? `${execution.durationMs} ms · ${execution.executionMode}` : 'Запусти SQL, чтобы получить evidence'}</small></div></header>
+          <header>{execution?.passed ? <CheckCircle2 /> : execution ? <AlertTriangle /> : <FlaskConical />}<div><strong>{execution ? execution.passed ? 'Contract подтверждён' : execution.offlinePreview ? 'CI reference preview' : 'Нужна коррекция' : 'Execution evidence'}</strong><small>{execution ? `${execution.durationMs} ms · ${execution.executionMode}` : 'Запусти SQL, чтобы получить evidence'}</small></div></header>
           {!execution && <div className="dialect-empty-evidence"><Database /><p>Результат, normalized plan или concurrent timeline появятся здесь. SQL не отправляется в progress storage.</p></div>}
           {execution && <>
             <p>{execution.summary}</p>
