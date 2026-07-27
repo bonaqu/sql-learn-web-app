@@ -227,9 +227,12 @@ function mysqlRuntime(root, timeoutMs) {
   };
 }
 
-function lastInteger(output) {
+function lastInteger(output, fallback) {
   const matches = String(output).match(/-?\d+/g);
-  if (!matches?.length) fail('Transaction statement did not return an integer outcome', 'engine_error');
+  if (!matches?.length) {
+    if (fallback !== undefined) return fallback;
+    fail('Transaction statement did not return an integer outcome', 'engine_error');
+  }
   return Number(matches.at(-1));
 }
 async function transactionOutput(runtime, request) {
@@ -244,9 +247,9 @@ async function transactionOutput(runtime, request) {
       const aVersion = lastInteger(await a.exec('SELECT version FROM ticket_versions WHERE ticket_id=1002;', request.timeoutMs));
       const bVersion = lastInteger(await b.exec('SELECT version FROM ticket_versions WHERE ticket_id=1002;', request.timeoutMs));
       if (aVersion !== 7 || bVersion !== 7) fail('Both sessions must observe version 7 before the write', 'engine_error');
-      const aAffected = lastInteger(await a.exec(request.learnerSql, request.timeoutMs));
+      const aAffected = lastInteger(await a.exec(request.learnerSql, request.timeoutMs), 0);
       await a.exec('COMMIT;', request.timeoutMs);
-      const bAffected = lastInteger(await b.exec(request.learnerSql, request.timeoutMs));
+      const bAffected = lastInteger(await b.exec(request.learnerSql, request.timeoutMs), 0);
       await b.exec('COMMIT;', request.timeoutMs);
       return { columns: ['session', 'outcome'], rows: [['A', aAffected > 0 ? 'updated' : 'conflict'], ['B', bAffected > 0 ? 'updated' : 'conflict']] };
     }
