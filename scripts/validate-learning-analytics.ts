@@ -64,6 +64,7 @@ assert(report.funnel.understood === 1, `Expected one understood task, got ${repo
 assert(report.funnel.independent === 1, `Expected one independent task, got ${report.funnel.independent}`);
 assert(report.attempts === 6, `Expected six attempts, got ${report.attempts}`);
 assert(report.remediationSuccesses === 1, 'Remediation success was not counted');
+assert(report.timeToMastery['same-session'] === 1, 'Same-session time-to-mastery was not counted');
 assert(report.interventions.some(item => item.id === 'overload'), 'Overload rule did not fire for a 1/6 correct session');
 assert(report.interventions.some(item => item.id === 'repeated-misconception'), 'Repeated misconception rule did not fire across two tasks');
 
@@ -71,6 +72,8 @@ const snapshot = buildLearningAnalyticsSnapshot(state, defaultProgress);
 const serialized = JSON.stringify(snapshot).toLowerCase();
 assert(snapshot.version === 1 && snapshot.courseVersion === 3, 'Snapshot version contract changed');
 assert(snapshot.rows.length === 1 && snapshot.rows[0].moduleId === 'sql-thinking', 'Snapshot must aggregate at module level');
+assert(snapshot.mastery['same-session'] === 1, 'Snapshot must include coarse time-to-mastery buckets');
+assert(snapshot.experiments['remediation-copy-v1'] === 'control', 'Snapshot must include only allowlisted deterministic experiment assignment');
 assert(!serialized.includes('task-001') && !serialized.includes('task-002'), 'Server snapshot must not contain task IDs');
 assert(!serialized.includes('select ') && !serialized.includes(' sql'), 'Server snapshot must not contain learner SQL');
 assert(!serialized.includes(userId), 'Server snapshot must not contain the user ID in its payload');
@@ -82,12 +85,18 @@ const library = readFileSync(new URL('../src/lib/learning-analytics.ts', import.
 const portal = readFileSync(new URL('../src/components/LearningAnalyticsPortal.tsx', import.meta.url), 'utf8');
 const agent = readFileSync(new URL('../src/components/LearningAnalyticsAgent.tsx', import.meta.url), 'utf8');
 const privacy = readFileSync(new URL('../docs/learning-analytics-privacy.md', import.meta.url), 'utf8');
+const productionSmoke = readFileSync(new URL('./learning-analytics-production-smoke.mjs', import.meta.url), 'utf8');
 
 assert((migration.match(/ON DELETE CASCADE/gi) || []).length === 2, 'Both analytics tables must cascade with account deletion');
 assert(!/\bsql\s+TEXT\b/i.test(migration), 'Analytics D1 schema must not add a SQL text column');
 assert(worker.includes('const MINIMUM_COHORT = 5'), 'Cohort suppression threshold must be five');
 assert(worker.includes("current.sharing !== 'coarse-opt-in'"), 'Snapshot writes must require explicit opt-in');
 assert(worker.includes('exactKeys(row, ROW_KEYS)'), 'Snapshot rows must reject unknown/free-text fields');
+assert(worker.includes('exactKeys(mastery, MASTERY_KEYS)'), 'Mastery buckets must reject unknown fields');
+assert(worker.includes('masteryGroups'), 'Weekly time-to-mastery aggregation is missing');
+assert(worker.includes('experimentGroups'), 'Experiment effectiveness aggregation is missing');
+assert(worker.includes('suppressedMasteryPeriods'), 'Mastery k=5 suppression is missing');
+assert(worker.includes('suppressedExperiments'), 'Experiment k=5 suppression is missing');
 assert(worker.includes('DELETE FROM learning_analytics_snapshots'), 'Opt-out/delete must remove account snapshots');
 assert(worker.includes('Number(row.retained) <= Number(row.independent)'), 'Impossible funnel states need validation');
 assert(!/console\.(log|error)\([^\n]*payload/i.test(worker), 'Worker appears to log an analytics payload');
@@ -97,12 +106,19 @@ assert(library.includes('MAX_EVENTS = 5_000'), 'Local event retention ceiling is
 assert(library.includes('MAX_EVENT_AGE_MS = 180'), 'Local event age boundary is missing');
 assert(library.includes('KNOWN_EXPERIMENTS'), 'Experiment IDs are not allowlisted');
 assert(agent.includes('PROGRESS_CHANGED_EVENT'), 'Analytics collector is not driven by progress deltas');
+assert(agent.includes("ensureExperimentVariant('remediation-copy-v1'"), 'Experiment assignment is not activated for authenticated learners');
 assert(portal.includes('Не собирается:'), 'UI does not disclose excluded data');
 assert(portal.includes('Coarse opt-in'), 'UI does not expose explicit opt-in');
 assert(portal.includes('Удалить данные'), 'UI does not expose deletion');
 assert(portal.includes('Скрыть сигнал'), 'Interventions are not dismissible');
+assert(portal.includes('Course actions'), 'Course-health report lacks actionable recommendations');
+assert(portal.includes('Time-to-mastery'), 'Course-health report does not display time-to-mastery');
+assert(portal.includes('Experiment guardrails'), 'Experiment report does not explain interpretation guardrails');
 assert(privacy.includes('minimum cohort is five'), 'Privacy threat model does not document suppression');
 assert(privacy.includes('Non-goals'), 'Privacy threat model does not state non-goals');
+assert(productionSmoke.includes('forgedMasteryRejected'), 'Production smoke does not prove strict mastery schema');
+assert(productionSmoke.includes('suppressedMasteryPeriods'), 'Production smoke does not prove mastery cohort suppression');
+assert(productionSmoke.includes('suppressedExperiments'), 'Production smoke does not prove experiment cohort suppression');
 
 if (failures.length) {
   console.error(`Learning analytics validation failed with ${failures.length} issue(s):`);
@@ -110,4 +126,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('Learning analytics validation passed: versioned local events, deterministic interventions, SQL-free snapshots, explicit opt-in, k=5 suppression, export/delete and D1 cascade privacy contracts.');
+console.log('Learning analytics validation passed: local evidence, deterministic interventions, SQL-free module/mastery/experiment snapshots, explicit opt-in, layered k=5 suppression, actionable reports, export/delete and D1 cascade contracts.');
