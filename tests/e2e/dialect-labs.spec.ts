@@ -48,8 +48,8 @@ async function expectAccessible(page: Page) {
   expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
 }
 
-test('desktop dialect lab executes independent SQLite and PostgreSQL contract evidence and hydrates a second device', async ({ page, browser }, testInfo) => {
-  const auth = await authenticatePage(page, 'dialect');
+test('desktop keeps SQLite evidence executable while PostgreSQL stays an honest CI reference preview across devices', async ({ page, browser }, testInfo) => {
+  const auth = await authenticatePage(page, 'dialectfree');
   await openDialectLab(page);
 
   await page.getByTestId('run-dialect-lab').click();
@@ -67,14 +67,19 @@ test('desktop dialect lab executes independent SQLite and PostgreSQL contract ev
   await page.getByRole('button', { name: /PostgreSQL Remote sandbox/i }).click();
   await replaceSql(page, POSTGRES_NULL_ORDERING);
   await page.getByTestId('run-dialect-lab').click();
-  await expect(evidence).toContainText('Contract подтверждён');
+  await expect(evidence).toContainText('Только offline preview');
+  await expect(evidence).toContainText('CI');
+  await expect(evidence).toContainText('not evidence eligible');
   await expect(evidence).toContainText('remote-sandbox');
-  await expect(page.locator('.dialect-sync-message')).toContainText(/Independent evidence синхронизирован|Cloud sync повторится/);
-  await expect(page.locator('.dialect-executable-hero')).toContainText('2/3');
+  await expect(page.locator('.dialect-sync-message')).toContainText('Offline preview не засчитан');
+  await expect(page.locator('.dialect-executable-hero')).toContainText('1/3');
+  await expect(page.getByRole('button', { name: /PostgreSQL Remote sandbox/i }).locator('svg.passed')).toHaveCount(0);
 
   const storageKey = `sql-academy-dialect-lab-progress-v1:${String(auth.session.userId)}`;
   const storedProgress = await page.evaluate(key => localStorage.getItem(key) || '', storageKey);
   expect(storedProgress).toContain('fnv1a-');
+  expect(storedProgress).toContain('"passed":false');
+  expect(storedProgress).toContain('"evidenceEligible":false');
   expect(storedProgress.toUpperCase()).not.toContain('SELECT TICKET_ID');
   expect(storedProgress.toUpperCase()).not.toContain('NULLS LAST');
 
@@ -92,23 +97,23 @@ test('desktop dialect lab executes independent SQLite and PostgreSQL contract ev
   await expect(page.locator('.dialect-executable-hero')).toContainText('0/3');
 
   await expectAccessible(page);
-  await page.screenshot({ path: testInfo.outputPath('desktop-dialect-evidence.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('desktop-dialect-free-preview.png'), fullPage: true });
 
   const secondContext = await browser.newContext();
   const secondPage = await secondContext.newPage();
   await loginPage(secondPage, auth.username);
   await openDialectLab(secondPage);
-  await expect(secondPage.locator('.dialect-executable-hero')).toContainText('2/3');
+  await expect(secondPage.locator('.dialect-executable-hero')).toContainText('1/3');
   await expect(secondPage.getByRole('button', { name: /SQLite Local WASM/i }).locator('svg.passed')).toBeVisible();
-  await expect(secondPage.getByRole('button', { name: /PostgreSQL Remote sandbox/i }).locator('svg.passed')).toBeVisible();
+  await expect(secondPage.getByRole('button', { name: /PostgreSQL Remote sandbox/i }).locator('svg.passed')).toHaveCount(0);
   const secondStored = await secondPage.evaluate(key => localStorage.getItem(key) || '', storageKey);
   expect(secondStored.toUpperCase()).not.toContain('SELECT TICKET_ID');
   await expectAccessible(secondPage);
   await secondContext.close();
 });
 
-test('mobile dialect lab blocks unsafe SQL and renders real two-session concurrency evidence without overflow', async ({ page }, testInfo) => {
-  await authenticatePage(page, 'dialectmobile');
+test('mobile blocks unsafe SQL and shows concurrency reference timeline without false MySQL mastery or overflow', async ({ page }, testInfo) => {
+  await authenticatePage(page, 'dialectmobilefree');
   await openDialectLab(page, true);
 
   await replaceSql(page, 'SELECT 1; DROP TABLE tickets;');
@@ -121,11 +126,13 @@ test('mobile dialect lab blocks unsafe SQL and renders real two-session concurre
   await page.getByRole('button', { name: /MySQL Remote sandbox/i }).click();
   await replaceSql(page, MYSQL_OPTIMISTIC_UPDATE);
   await page.getByTestId('run-dialect-lab').click();
-  await expect(evidence).toContainText('Contract подтверждён');
-  await expect(evidence).toContainText('remote-sandbox');
+  await expect(evidence).toContainText('Только offline preview');
+  await expect(evidence).toContainText('not evidence eligible');
   await expect(page.locator('.dialect-timeline')).toContainText('B affects zero rows');
   await expect(page.locator('.dialect-result-table')).toContainText('conflict');
+  await expect(page.locator('.dialect-executable-hero')).toContainText('0/3');
+  await expect(page.getByRole('button', { name: /MySQL Remote sandbox/i }).locator('svg.passed')).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
   await expectAccessible(page);
-  await page.screenshot({ path: testInfo.outputPath('mobile-dialect-real-concurrency.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('mobile-dialect-free-concurrency-preview.png'), fullPage: true });
 });
