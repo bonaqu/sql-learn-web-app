@@ -16,7 +16,7 @@ RUN apt-get update \
     postgresql \
     postgresql-client \
   && curl -fsSL https://repo.mysql.com/RPM-GPG-KEY-mysql-2025 -o /tmp/mysql-repo.asc \
-  && test "$(gpg --show-keys --with-colons /tmp/mysql-repo.asc | awk -F: '$1 == \"fpr\" { print $10; exit }')" = "BCA43417C3B485DD128EC6D4B7B3B788A8D3785C" \
+  && test "$(gpg --show-keys --with-colons /tmp/mysql-repo.asc | awk -F: '$1 == "fpr" { print $10; exit }')" = "BCA43417C3B485DD128EC6D4B7B3B788A8D3785C" \
   && gpg --dearmor -o /usr/share/keyrings/mysql-archive-keyring.gpg /tmp/mysql-repo.asc \
   && rm -f /tmp/mysql-repo.asc \
   && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/mysql-archive-keyring.gpg] https://repo.mysql.com/apt/ubuntu/ jammy mysql-8.4-lts" \
