@@ -166,12 +166,13 @@ class InteractiveSession {
 
 function postgresRuntime(root, timeoutMs, mode) {
   const data = `${root}/pgdata`, socket = `${root}/pgsocket`, pgBin = command('pg_config', ['--bindir']).trim();
+  const log = `${data}/postgres.log`;
   mkdirSync(data, { recursive: true, mode: 0o700 });
   mkdirSync(socket, { recursive: true, mode: 0o755 });
   const uid = Number(command('id', ['-u', 'postgres']).trim()), gid = Number(command('id', ['-g', 'postgres']).trim());
   chownSync(data, uid, gid); chownSync(socket, uid, gid);
   command('runuser', ['-u', 'postgres', '--', `${pgBin}/initdb`, '-D', data, '--auth=trust', '--encoding=UTF8', '--no-locale']);
-  command('runuser', ['-u', 'postgres', '--', `${pgBin}/pg_ctl`, '-D', data, '-w', 'start', '-o', `-F -k ${socket} -p 55432 -c listen_addresses='' -c statement_timeout=${timeoutMs} -c timezone=UTC`]);
+  command('runuser', ['-u', 'postgres', '--', `${pgBin}/pg_ctl`, '-D', data, '-l', log, '-w', 'start', '-o', `-F -k ${socket} -p 55432 -c listen_addresses='' -c statement_timeout=${timeoutMs} -c timezone=UTC`]);
   command(`${pgBin}/psql`, ['-X', '-v', 'ON_ERROR_STOP=1', '-h', socket, '-p', '55432', '-U', 'postgres', '-d', 'postgres'], { input: "CREATE ROLE learner LOGIN;\nCREATE DATABASE dialect_lab OWNER learner;\n" });
   const baseArgs = ['-X', '-v', 'ON_ERROR_STOP=1', '-h', socket, '-p', '55432', '-U', 'learner', '-d', 'dialect_lab'];
   const pgOptions = [`-c statement_timeout=${timeoutMs}`, '-c timezone=UTC', ...(mode === 'plan' ? ['-c enable_seqscan=off'] : [])].join(' ');
@@ -183,13 +184,13 @@ function postgresRuntime(root, timeoutMs, mode) {
       const parsed = parseCsv(command(`${pgBin}/psql`, [...baseArgs, '--csv', '-q'], { input: sql, timeout: timeoutMs, env }));
       return parsed.length ? { columns: parsed[0], rows: parsed.slice(1).map(row => row.map(normalizeValue)) } : { columns: [], rows: [] };
     },
-    session() { return new InteractiveSession(`${pgBin}/psql`, [...baseArgs, '-A', '-t', '-q'], env); },
+    session() { return new InteractiveSession('stdbuf', ['-oL', '-eL', `${pgBin}/psql`, ...baseArgs, '-A', '-t', '-q'], env); },
     sessionPrelude: "SET TIME ZONE 'UTC'; SET statement_timeout = '4s';",
     stop() { try { command('runuser', ['-u', 'postgres', '--', `${pgBin}/pg_ctl`, '-D', data, '-m', 'immediate', '-w', 'stop']); } catch {} }
   };
 }
 
-function mysqlRuntime(root, timeoutMs) {
+function mysqlRuntime(root, timeoutMs, mode) {
   const data = `${root}/mysql-data`, run = `${root}/mysql-run`, socket = `${run}/mysql.sock`, pidFile = `${run}/mysql.pid`, errorLog = `${run}/mysql-error.log`;
   const mysqld = commandPath('mysqld'), client = commandPath('mysql'), admin = commandPath('mysqladmin');
   mkdirSync(data, { recursive: true, mode: 0o700 });
@@ -216,9 +217,12 @@ function mysqlRuntime(root, timeoutMs) {
     setup(sql) { command(client, baseArgs, { input: `${sessionPrefix}${sql}`, timeout: timeoutMs }); },
     execute(sql) {
       const parsed = parseTsv(command(client, baseArgs, { input: `${sessionPrefix}${sql}`, timeout: timeoutMs }));
+      if (mode === 'plan' && parsed.length > 1 && parsed.every(row => row.length === 1)) {
+        return { columns: [String(parsed[0][0])], rows: [[parsed.slice(1).map(row => String(row[0] ?? '')).join('\n')]] };
+      }
       return parsed.length ? { columns: parsed[0].map(String), rows: parsed.slice(1).map(row => row.map(value => typeof value === 'string' ? normalizeValue(value) : value)) } : { columns: [], rows: [] };
     },
-    session() { return new InteractiveSession(client, [...baseArgs, '--skip-column-names', '--silent'], {}); },
+    session() { return new InteractiveSession(client, [...baseArgs, '--unbuffered', '--skip-column-names', '--silent'], {}); },
     sessionPrelude: `SET SESSION time_zone = '+00:00'; SET SESSION max_execution_time = ${timeoutMs};`,
     stop() {
       try { command(admin, [`--socket=${socket}`, '-uroot', '--connect-timeout=1', 'shutdown'], { timeout: 5_000 }); } catch {}
@@ -296,7 +300,7 @@ try {
   request = readRequest(requestPath);
   root = `/tmp/sql-academy-${request.requestId}`;
   mkdirSync(root, { recursive: true, mode: 0o755 });
-  runtime = request.engine === 'postgresql' ? postgresRuntime(root, request.timeoutMs, request.mode) : mysqlRuntime(root, request.timeoutMs);
+  runtime = request.engine === 'postgresql' ? postgresRuntime(root, request.timeoutMs, request.mode) : mysqlRuntime(root, request.timeoutMs, request.mode);
   runtime.setup(request.setupSql);
   const learnerOutput = request.mode === 'transaction' ? await transactionOutput(runtime, request) : runtime.execute(request.learnerSql);
   const verifiedOutput = request.mode !== 'transaction' && request.verificationSql ? runtime.execute(request.verificationSql) : learnerOutput;
