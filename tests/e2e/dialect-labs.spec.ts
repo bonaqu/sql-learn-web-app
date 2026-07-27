@@ -107,7 +107,7 @@ test('desktop dialect lab executes independent SQLite and PostgreSQL contract ev
   await secondContext.close();
 });
 
-test('mobile dialect lab blocks unsafe SQL and renders deterministic concurrency evidence without overflow', async ({ page }, testInfo) => {
+test('mobile dialect lab blocks unsafe SQL and renders real two-session concurrency evidence without overflow', async ({ page }, testInfo) => {
   await authenticatePage(page, 'dialectmobile');
   await openDialectLab(page, true);
 
@@ -117,15 +117,15 @@ test('mobile dialect lab blocks unsafe SQL and renders deterministic concurrency
   await expect(evidence).toContainText('Нужна коррекция');
   await expect(evidence).toContainText(/Statement не входит в allowlist|Запрещённая конструкция/);
 
-  await page.getByRole('button', { name: /Lost update under concurrent sessions/i }).click();
-  await page.getByRole('button', { name: /MySQL Session simulator/i }).click();
+  await page.getByRole('button', { name: /Lost update under two sessions/i }).click();
+  await page.getByRole('button', { name: /MySQL Remote sandbox/i }).click();
   await replaceSql(page, MYSQL_OPTIMISTIC_UPDATE);
   await page.getByTestId('run-dialect-lab').click();
   await expect(evidence).toContainText('Contract подтверждён');
-  await expect(evidence).toContainText('deterministic-simulation');
-  await expect(page.locator('.dialect-timeline')).toContainText('B affected rows = 0');
+  await expect(evidence).toContainText('remote-sandbox');
+  await expect(page.locator('.dialect-timeline')).toContainText('B affects zero rows');
   await expect(page.locator('.dialect-result-table')).toContainText('conflict');
   await expectNoHorizontalOverflow(page);
   await expectAccessible(page);
-  await page.screenshot({ path: testInfo.outputPath('mobile-dialect-simulation.png'), fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('mobile-dialect-real-concurrency.png'), fullPage: true });
 });
