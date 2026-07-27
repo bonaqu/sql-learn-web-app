@@ -175,10 +175,10 @@ jobs:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
         run: node scripts/assessment-calibration-production-smoke.mjs
 
-      - name: Smoke-test real PostgreSQL and MySQL dialect lifecycle
+      - name: Smoke-test every real PostgreSQL and MySQL dialect pattern
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-        run: node scripts/dialect-labs-production-smoke.mjs
+        run: npx tsx scripts/dialect-labs-production-smoke.ts
 
       - name: Smoke-test Mastery progress evidence lifecycle
         env:
