@@ -11,7 +11,8 @@ const failures: string[] = [];
 const assert = (condition: unknown, message: string) => { if (!condition) failures.push(message); };
 const userId = '12345678-1234-4234-9234-123456789abc';
 const sessionId = 'analytics-session-1234';
-const start = new Date('2026-07-20T10:00:00.000Z');
+// Keep the seven-day intervention fixture stable regardless of the calendar day on which CI runs.
+const start = new Date(Date.now() - 2 * 60 * 60 * 1000);
 
 function event(index: number, input: Omit<LearningAnalyticsEvent, 'version' | 'id' | 'sessionId' | 'occurredAt'>): LearningAnalyticsEvent {
   return {
@@ -49,7 +50,7 @@ const rawState: LearningAnalyticsState = {
   sharing: 'coarse-opt-in',
   events: [...events, events[0]],
   experimentVariants: { 'remediation-copy-v1': 'control', 'unknown-experiment': 'variant-b' },
-  updatedAt: new Date('2026-07-20T10:16:00.000Z').toISOString()
+  updatedAt: new Date(start.getTime() + 16 * 60_000).toISOString()
 };
 
 const state = sanitizeLearningAnalyticsState(rawState, userId);
