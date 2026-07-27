@@ -5,13 +5,15 @@ export async function openAllTools(page: Page) {
   const mobileMenu = page.getByRole('button', { name: 'Открыть меню' });
   const mobile = await mobileMenu.isVisible();
   const sidebarOpen = await sidebar.evaluate(element => element.classList.contains('open'));
-  if (mobile && !sidebarOpen) await mobileMenu.click();
+  if (mobile && !sidebarOpen) {
+    await mobileMenu.click();
+    await page.waitForFunction(() => document.querySelector('.sidebar')?.classList.contains('open'));
+  }
 
   const tools = sidebar.locator('.nav-more');
-  if (mobile) await sidebar.evaluate(element => { element.scrollTop = element.scrollHeight; });
   await tools.scrollIntoViewIfNeeded();
   if (!(await tools.evaluate(element => (element as HTMLDetailsElement).open))) {
-    await tools.locator('summary').click({ force: mobile });
+    await tools.locator('summary').click();
   }
 }
 
