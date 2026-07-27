@@ -115,8 +115,8 @@ function simulationExecution(labId: string, dialect: SqlDialect, sql: string, st
   const labCase = dialectLabCase(labId, dialect);
   if (!manifest || !labCase) throw new Error('Dialect lab case not found');
   const verdict = evaluateDialectCaseSql(sql, labCase, manifest.statementPolicy);
-  const output = publishedOutput(labId, dialect);
-  const serialized = stableOutput(output);
+  const output = verdict.ok ? publishedOutput(labId, dialect) : null;
+  const serialized = output ? stableOutput(output) : 'semantic-failed';
   return {
     version: 1,
     labId,
@@ -129,8 +129,8 @@ function simulationExecution(labId: string, dialect: SqlDialect, sql: string, st
     summary: verdict.ok ? labCase.expected.summary : 'Simulation contract не подтверждён.',
     errors: verdict.errors,
     output,
-    normalizedPlan: [...(labCase.expected.normalizedPlan || [])],
-    timeline: [...(labCase.expected.timeline || [])],
+    normalizedPlan: verdict.ok ? [...(labCase.expected.normalizedPlan || [])] : [],
+    timeline: verdict.ok ? [...(labCase.expected.timeline || [])] : [],
     resultDigest: digest(`${labId}:${dialect}:${serialized}:${verdict.ok}`)
   };
 }
@@ -230,14 +230,14 @@ export async function executeRemoteDialectLab(labId: string, dialect: Exclude<Sq
       body: JSON.stringify({ version: 1, labId, dialect, sql })
     });
     const payload = await response.json() as RemoteExecutionResponse & { error?: string };
-    if (!response.ok) throw new Error(payload.error || `Remote sandbox HTTP ${response.status}`);
+    if (!response.ok) throw new Error(payload.error || `Server contract HTTP ${response.status}`);
     return { ...payload, offlinePreview: Boolean(payload.offlinePreview) };
   } catch (error) {
     const manifest = dialectLabManifest(labId);
     const labCase = dialectLabCase(labId, dialect);
     if (!manifest || !labCase) throw error;
     const verdict = evaluateDialectCaseSql(sql, labCase, manifest.statementPolicy);
-    const output = publishedOutput(labId, dialect);
+    const output = verdict.ok ? publishedOutput(labId, dialect) : null;
     return {
       version: 1,
       labId,
@@ -248,13 +248,13 @@ export async function executeRemoteDialectLab(labId: string, dialect: Exclude<Sq
       offlinePreview: true,
       durationMs: Math.max(1, Date.now() - started),
       summary: verdict.ok
-        ? 'Offline preview: semantic markers выглядят корректно, но remote engine evidence не получен.'
-        : 'Offline preview обнаружил проблемы; remote engine evidence недоступен.',
+        ? 'Local CI reference preview: semantic markers выглядят корректно, но server engine evidence не получен.'
+        : 'Local preview обнаружил policy/semantic проблемы; server engine evidence недоступен.',
       errors: [...verdict.errors, error instanceof Error ? error.message : String(error)],
       output,
-      normalizedPlan: [...(labCase.expected.normalizedPlan || [])],
-      timeline: [...(labCase.expected.timeline || [])],
-      resultDigest: digest(`${labId}:${dialect}:offline-preview`)
+      normalizedPlan: verdict.ok ? [...(labCase.expected.normalizedPlan || [])] : [],
+      timeline: verdict.ok ? [...(labCase.expected.timeline || [])] : [],
+      resultDigest: digest(`${labId}:${dialect}:offline-preview:${verdict.ok}`)
     };
   }
 }
