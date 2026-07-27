@@ -4,6 +4,7 @@ import { loadAuthSession } from '../lib/auth';
 import {
   activeLearningSession,
   appendLearningEvent,
+  ensureExperimentVariant,
   loadLearningAnalyticsState,
   taskForAnalyticsTitle
 } from '../lib/learning-analytics';
@@ -83,6 +84,7 @@ export default function LearningAnalyticsAgent() {
   useEffect(() => {
     const session = loadAuthSession();
     if (!session) return;
+    ensureExperimentVariant('remediation-copy-v1', session.userId);
     const sessionId = activeLearningSession(session.userId);
     if (!sessionId) return;
     const state = loadLearningAnalyticsState(session.userId);
