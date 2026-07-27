@@ -11,6 +11,7 @@
     "validate:assessment": "tsx scripts/validate-assessment.ts",
     "validate:assessment-calibration": "tsx scripts/validate-assessment-calibration.ts",
     "validate:dialect-labs": "tsx scripts/validate-dialect-labs.ts",
+    "validate:real-dialect-engines": "tsx scripts/validate-real-dialect-engines.ts",
     "validate:curriculum": "tsx scripts/validate-curriculum.ts",
     "validate:concepts": "tsx scripts/validate-concept-inventory.ts",
     "validate:capstones": "tsx scripts/validate-capstones.ts",
