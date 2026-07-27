@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { authenticatePage, loginPage } from './auth-helper';
+import { guidedHome, openAdvancedTool } from './navigation-helper';
 
 const PROGRESS_KEY = 'sql-academy-progress-v4';
 const AUTH_KEY = 'sql-academy-auth-session-v2';
@@ -31,7 +32,7 @@ async function waitForHydration(page: import('@playwright/test').Page) {
     return Number(session?.revision || 0);
   }, AUTH_KEY), { timeout: 30_000 }).toBeGreaterThan(0);
   await expect(page.locator('.auth-loading-screen')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: /SQL, который работает/i })).toBeVisible();
+  await expect(guidedHome(page)).toBeVisible();
   await page.waitForTimeout(900);
 }
 
@@ -57,7 +58,7 @@ test('desktop checkpoint retries offline evidence sync and hydrates Learning Pat
   await page.goto('./');
   await waitForHydration(page);
 
-  await page.getByTestId('checkpoint-trigger').click();
+  await openAdvancedTool(page, 'checkpoint-trigger');
   await expect(page.getByTestId('checkpoint-landing')).toBeVisible();
   await expect(page.locator('.assessment-mode-card')).toHaveCount(8);
   await expect(page.getByTestId('start-checkpoint-foundation')).toBeEnabled();
@@ -127,7 +128,7 @@ test('desktop checkpoint retries offline evidence sync and hydrates Learning Pat
   await expect(explainer.getByText(/completed checkpoint report/).first()).toBeVisible();
   await learningPath.getByRole('button', { name: 'Закрыть учебный путь' }).click();
 
-  await secondPage.getByTestId('checkpoint-trigger').click();
+  await openAdvancedTool(secondPage, 'checkpoint-trigger');
   await expect(secondPage.getByTestId('checkpoint-landing')).toBeVisible();
   await expect(secondPage.locator('.assessment-history-list').getByText('Checkpoint · Надёжная база').first()).toBeVisible();
   await expectNoHorizontalOverflow(secondPage);
@@ -143,7 +144,7 @@ test('mobile checkpoint center keeps integrity controls usable on Pixel 7', asyn
   await page.goto('./');
   await waitForHydration(page);
 
-  await page.getByTestId('checkpoint-mobile-trigger').click();
+  await openAdvancedTool(page, 'checkpoint-trigger');
   await expect(page.getByTestId('checkpoint-landing')).toBeVisible();
   await expect(page.locator('.assessment-mode-card')).toHaveCount(8);
   await page.getByTestId('start-checkpoint-foundation').click();

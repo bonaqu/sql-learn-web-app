@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { authenticatePage, loginPage } from './auth-helper';
+import { openAdvancedTool } from './navigation-helper';
 
 const SQLITE_NULL_ORDERING = `SELECT ticket_id, closed_at
 FROM tickets
@@ -21,7 +22,7 @@ SELECT ROW_COUNT() AS affected_rows;`;
 async function openDialectLab(page: Page, mobile = false) {
   await page.goto('./');
   if (mobile) await page.getByRole('button', { name: 'Открыть меню' }).click();
-  await page.getByTestId('syllabus-trigger').click();
+  await openAdvancedTool(page, 'syllabus-trigger');
   await page.getByRole('tab', { name: /Диалекты/i }).click();
   await expect(page.getByTestId('dialect-executable-lab')).toBeVisible();
 }

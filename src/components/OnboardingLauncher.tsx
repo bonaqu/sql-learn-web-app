@@ -11,18 +11,18 @@ export default function OnboardingLauncher() {
 
   useEffect(() => {
     const mount = () => {
-      const nav = document.querySelector('.sidebar nav');
+      const nav = document.querySelector('.nav-secondary-tools') || document.querySelector('.sidebar nav');
       if (!nav) return null;
       const existing = nav.querySelector<HTMLElement>('.onboarding-nav-slot');
       if (existing) {
         setSlot(existing);
         return () => undefined;
       }
-      const target = nav.querySelector('[data-testid="learning-path-trigger"]');
+      const target = nav.querySelector('[data-testid="syllabus-trigger"]');
       const next = document.createElement('span');
       next.className = 'onboarding-nav-slot';
       if (target) target.insertAdjacentElement('afterend', next);
-      else nav.prepend(next);
+      else nav.append(next);
       setSlot(next);
       return () => next.remove();
     };

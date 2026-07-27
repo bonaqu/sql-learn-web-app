@@ -42,7 +42,8 @@ test('desktop academy workflow is usable and shares the authenticated Cloudflare
   await mockMentorWithoutUsingQuota(page);
 
   await page.goto('./');
-  await expect(page.getByRole('heading', { name: /SQL, который работает/i })).toBeVisible();
+  await expect(page.getByTestId('guided-first-run')).toBeVisible();
+  await expect(page.getByRole('heading', { name: /Сначала выберем/i })).toBeVisible();
   await expect(page.locator('.mobile-bottom-nav')).toBeHidden();
   await expectNoHorizontalOverflow(page);
 

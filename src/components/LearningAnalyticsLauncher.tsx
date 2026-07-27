@@ -8,7 +8,7 @@ export default function LearningAnalyticsLauncher() {
 
   useEffect(() => {
     const mount = () => {
-      const nav = document.querySelector('.sidebar nav');
+      const nav = document.querySelector('.nav-secondary-tools') || document.querySelector('.sidebar nav');
       if (!nav) return null;
       const existing = nav.querySelector<HTMLElement>('.learning-analytics-nav-slot');
       if (existing) {

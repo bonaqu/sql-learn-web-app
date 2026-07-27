@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { tasks } from '../../src/data/course-catalog';
 import { authenticatePage, loginPage } from './auth-helper';
+import { guidedHome, openAdvancedTool } from './navigation-helper';
 
 const PROGRESS_KEY = 'sql-academy-progress-v4';
 const AUTH_KEY = 'sql-academy-auth-session-v2';
@@ -23,10 +24,10 @@ const waitForInitialCloudHydration = async (page: import('@playwright/test').Pag
     const session = JSON.parse(localStorage.getItem(key) || 'null');
     return Number(session?.revision || 0);
   }, AUTH_KEY), { timeout: 30_000 }).toBeGreaterThan(0);
-  await expect(page.getByRole('heading', { name: /SQL, который работает/i })).toBeVisible();
+  await expect(guidedHome(page)).toBeVisible();
   await page.waitForTimeout(900);
   await expect(page.locator('.auth-loading-screen')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: /SQL, который работает/i })).toBeVisible();
+  await expect(guidedHome(page)).toBeVisible();
 };
 
 function practicedProgress() {
@@ -59,7 +60,7 @@ test('desktop assessment waits for evidence hydration, uses an adaptive form and
   });
 
   await page.goto('./');
-  await page.getByTestId('assessment-trigger').click();
+  await openAdvancedTool(page, 'assessment-trigger');
   await expect(page.getByTestId('assessment-landing')).toBeVisible();
   const calibrationSummary = page.getByTestId('assessment-calibration-summary');
   await expect(calibrationSummary).toBeVisible();
@@ -125,7 +126,7 @@ test('desktop assessment waits for evidence hydration, uses an adaptive form and
   const secondPage = await secondContext.newPage();
   await loginPage(secondPage, auth.username);
   await secondPage.goto(page.url().split('#')[0]);
-  await secondPage.getByTestId('assessment-trigger').click();
+  await openAdvancedTool(secondPage, 'assessment-trigger');
   await expect(secondPage.getByTestId('assessment-landing')).toBeVisible();
   await expect(secondPage.getByTestId('assessment-calibration-summary')).toBeVisible();
   await expect(secondPage.locator('.assessment-history-list').getByText('Quick Check').first()).toBeVisible();
@@ -138,7 +139,7 @@ test('desktop assessment waits for evidence hydration, uses an adaptive form and
 test('desktop diagnostic exam uses its fixed 12-task protected pool and resumes', async ({ page }) => {
   const auth = await authenticatePage(page, 'diagnostic');
   await page.goto('./');
-  await page.getByTestId('assessment-trigger').click();
+  await openAdvancedTool(page, 'assessment-trigger');
   await expect(page.getByTestId('assessment-mode-diagnostic')).toBeVisible();
   await page.getByTestId('start-diagnostic').click();
 
@@ -170,7 +171,7 @@ test('desktop assessment enforces exam integrity and restores an expired session
   });
   await page.goto('./');
   await waitForInitialCloudHydration(page);
-  await page.getByTestId('assessment-trigger').click();
+  await openAdvancedTool(page, 'assessment-trigger');
   await page.getByTestId('start-exam').click();
 
   const center = page.getByTestId('assessment-center');
@@ -200,7 +201,7 @@ test('desktop assessment interview allows bounded clarification without exposing
   });
   await page.goto('./');
   await waitForInitialCloudHydration(page);
-  await page.getByTestId('assessment-trigger').click();
+  await openAdvancedTool(page, 'assessment-trigger');
   await page.getByTestId('start-interview').click();
   await expect(page.getByTestId('assessment-interviewer')).toBeVisible();
   await page.getByPlaceholder('Задай уточняющий вопрос о требованиях…').fill('Нужна ли стабильная сортировка результата?');

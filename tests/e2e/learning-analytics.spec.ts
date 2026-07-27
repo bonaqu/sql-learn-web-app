@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { authenticatePage } from './auth-helper';
+import { openAdvancedTool } from './navigation-helper';
 
 function analyticsState(userId: string) {
   const sessionId = 'playwright-analytics-session';
@@ -49,8 +50,8 @@ async function seedAnalytics(page: Page, userId: string) {
 
 async function openAnalytics(page: Page, mobile = false) {
   await page.goto('./');
-  if (mobile) await page.getByRole('button', { name: 'Открыть меню' }).click();
-  await page.getByTestId('learning-analytics-trigger').click();
+  void mobile;
+  await openAdvancedTool(page, 'learning-analytics-trigger');
   await expect(page.getByTestId('learning-analytics-portal')).toBeVisible();
 }
 

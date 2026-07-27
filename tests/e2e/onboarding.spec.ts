@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { authenticatePage, loginPage } from './auth-helper';
+import { openAdvancedTool } from './navigation-helper';
 
 const ASSESSMENT_REPORTS_CHANGED_EVENT = 'sql-academy-assessment-reports-changed';
 
@@ -32,6 +33,10 @@ function diagnosticReport(userId: string) {
   };
 }
 
+async function openOnboarding(page: import('@playwright/test').Page) {
+  await openAdvancedTool(page, 'onboarding-trigger');
+}
+
 async function chooseCoreContract(page: import('@playwright/test').Page) {
   const dialog = page.getByTestId('onboarding-portal');
   await dialog.getByRole('button', { name: /Support SQL/i }).click();
@@ -55,7 +60,7 @@ async function expectNoHorizontalOverflow(page: import('@playwright/test').Page)
 test('desktop onboarding uses executable placement and hydrates the accepted plan on a second device', async ({ page, browser }, testInfo) => {
   const auth = await authenticatePage(page, 'onboarding');
   await page.goto('./');
-  await page.getByTestId('onboarding-trigger').click();
+  await openOnboarding(page);
   const dialog = page.getByTestId('onboarding-portal');
   await expect(dialog).toBeVisible();
   await chooseCoreContract(page);
@@ -92,7 +97,7 @@ test('desktop onboarding uses executable placement and hydrates the accepted pla
   await loginPage(secondPage, auth.username, auth.password);
   await secondPage.goto('./');
   await secondPage.waitForTimeout(1200);
-  await secondPage.getByTestId('onboarding-trigger').click();
+  await openOnboarding(secondPage);
   const secondDialog = secondPage.getByTestId('onboarding-portal');
   await expect(secondDialog.getByTestId('onboarding-plan')).toBeVisible();
   await expect(secondDialog).toContainText('Support');
@@ -103,8 +108,7 @@ test('desktop onboarding uses executable placement and hydrates the accepted pla
 test('mobile onboarding supports a conservative deferred placement without horizontal overflow', async ({ page }, testInfo) => {
   await authenticatePage(page, 'mobileonboarding');
   await page.goto('./');
-  await page.getByRole('button', { name: 'Открыть меню' }).click();
-  await page.getByTestId('onboarding-trigger').click();
+  await openOnboarding(page);
   const dialog = page.getByTestId('onboarding-portal');
   await expect(dialog).toBeVisible();
 

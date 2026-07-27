@@ -8,10 +8,12 @@ import {
   BriefcaseBusiness,
   Bug,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   ClipboardCheck,
   Cloud,
   Code2,
+  Compass,
   Download,
   Flame,
   GraduationCap,
@@ -38,7 +40,7 @@ import {
   WifiOff,
   X
 } from 'lucide-react';
-import { achievements, modules, SqlTask, tasks, TOTAL_TASK_COUNT } from './data/course-catalog';
+import { achievements, modules, SqlTask, tasks } from './data/course-catalog';
 import { trainingSeedSql } from './data/training-dataset';
 import { classifySqlAttempt, type AttemptDiagnostic } from './lib/attempt-diagnostics';
 import { localMentor, MentorMode } from './lib/mentor';
@@ -53,9 +55,9 @@ import {
   weakTopics as calculateWeakTopics
 } from './lib/progress';
 import { openDeferredFeature, preloadDeferredFeature } from './lib/deferred-features';
+import GuidedHome from './components/GuidedHome';
 
 const Editor = lazy(() => import('./components/SqlEditor'));
-const ActivityChart = lazy(() => import('./components/ActivityChart'));
 type SqlEngine = SqlJsStatic;
 type View = 'home' | 'catalog' | 'practice' | 'review' | 'interview' | 'puzzle' | 'achievements' | 'mentor';
 type SqlTable = { columns: string[]; values: unknown[][] };
@@ -167,7 +169,6 @@ function App() {
   const queue = useMemo(() => reviewQueue(progress), [progress]);
   const focusTopics = useMemo(() => calculateWeakTopics(progress), [progress]);
   const completed = useMemo(() => new Set(progress.completed), [progress.completed]);
-  const completion = Math.round(progress.completed.length / tasks.length * 100);
   const currentStats = progress.taskStats[selected.id] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
   const solutionUnlocked = currentStats.attempts >= 3 || visibleHints >= selected.hints.length;
   const guidedSession = visibleHints > 0 || solutionViewedThisSession;
@@ -408,18 +409,24 @@ function App() {
       </button>
       <button className="close-mobile" onClick={() => setMobileNav(false)} aria-label="Закрыть меню"><X /></button>
       <nav aria-label="Разделы академии">
-        <Nav icon={<Home />} label="Главная" active={view === 'home'} onClick={() => navigate('home')} />
-        <button type="button" data-testid="learning-path-trigger" onMouseEnter={() => preloadDeferredFeature('learning-path')} onFocus={() => preloadDeferredFeature('learning-path')} onClick={() => openDeferredFeature('learning-path')}><Route /><span>Учебный путь</span></button>
-        <button type="button" data-testid="curriculum-trigger" onMouseEnter={() => preloadDeferredFeature('curriculum')} onFocus={() => preloadDeferredFeature('curriculum')} onClick={() => openDeferredFeature('curriculum')}><GraduationCap /><span>Уроки и проекты</span></button>
-        <button type="button" data-testid="syllabus-trigger" onMouseEnter={() => preloadDeferredFeature('syllabus')} onFocus={() => preloadDeferredFeature('syllabus')} onClick={() => openDeferredFeature('syllabus')}><ListChecks /><span>Карта курса и диалекты</span></button>
-        <Nav icon={<BookOpen />} label="Каталог" active={view === 'catalog'} onClick={() => navigate('catalog')} />
+        <span className="primary-nav-label">Твой маршрут</span>
+        <Nav icon={<Home />} label="Сегодня" active={view === 'home'} onClick={() => navigate('home')} />
+        <button type="button" data-testid="learning-path-trigger" onMouseEnter={() => preloadDeferredFeature('learning-path')} onFocus={() => preloadDeferredFeature('learning-path')} onClick={() => openDeferredFeature('learning-path')}><Route /><span>Мой план</span></button>
+        <button type="button" data-testid="curriculum-trigger" onMouseEnter={() => preloadDeferredFeature('curriculum')} onFocus={() => preloadDeferredFeature('curriculum')} onClick={() => openDeferredFeature('curriculum')}><GraduationCap /><span>Учиться</span></button>
         <Nav icon={<BrainCircuit />} label="Practice" active={view === 'practice'} onClick={() => navigate('practice')} />
         <Nav icon={<Repeat2 />} label={`Повторение${queue.length ? ` · ${queue.length}` : ''}`} active={view === 'review'} onClick={() => navigate('review')} />
-        <Nav icon={<BriefcaseBusiness />} label="Interview" active={view === 'interview'} onClick={() => navigate('interview')} />
-        <button type="button" data-testid="assessment-trigger" onMouseEnter={() => preloadDeferredFeature('assessment')} onFocus={() => preloadDeferredFeature('assessment')} onClick={() => openDeferredFeature('assessment')}><ClipboardCheck /><span>Assessment Center</span></button>
-        <Nav icon={<Puzzle />} label="SQL Puzzle" active={view === 'puzzle'} onClick={() => navigate('puzzle')} />
-        <Nav icon={<Trophy />} label="Достижения" active={view === 'achievements'} onClick={() => navigate('achievements')} />
-        <Nav icon={<Sparkles />} label="AI Mentor" active={view === 'mentor'} onClick={() => navigate('mentor')} />
+        <details className="nav-more">
+          <summary><ListChecks /><span>Все инструменты</span><ChevronDown /></summary>
+          <div className="nav-secondary-tools">
+            <Nav icon={<BookOpen />} label="Каталог задач" active={view === 'catalog'} onClick={() => navigate('catalog')} />
+            <Nav icon={<BriefcaseBusiness />} label="Interview" active={view === 'interview'} onClick={() => navigate('interview')} />
+            <button type="button" data-testid="assessment-trigger" onMouseEnter={() => preloadDeferredFeature('assessment')} onFocus={() => preloadDeferredFeature('assessment')} onClick={() => openDeferredFeature('assessment')}><ClipboardCheck /><span>Экзамены</span></button>
+            <button type="button" data-testid="syllabus-trigger" onMouseEnter={() => preloadDeferredFeature('syllabus')} onFocus={() => preloadDeferredFeature('syllabus')} onClick={() => openDeferredFeature('syllabus')}><ListChecks /><span>Диалекты и карта курса</span></button>
+            <Nav icon={<Puzzle />} label="SQL Puzzle" active={view === 'puzzle'} onClick={() => navigate('puzzle')} />
+            <Nav icon={<Trophy />} label="Достижения" active={view === 'achievements'} onClick={() => navigate('achievements')} />
+            <Nav icon={<Sparkles />} label="AI Mentor" active={view === 'mentor'} onClick={() => navigate('mentor')} />
+          </div>
+        </details>
       </nav>
       <div className="sidebar-bottom">
         <a href="https://github.com/bonaqu/sql-learn-web-app" target="_blank" rel="noreferrer"><Code2 size={17} /> GitHub</a>
@@ -430,11 +437,11 @@ function App() {
     <main id="main-content" tabIndex={-1}>
       <header className="topbar">
         <button className="mobile-menu" onClick={() => setMobileNav(true)} aria-label="Открыть меню"><Menu /></button>
-        <div className="search">
+        {view === 'home' ? <div className="topbar-context"><Compass /><span>Один следующий шаг вместо каталога функций</span></div> : <div className="search">
           <Search size={18} />
           <input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="Поиск по задачам и темам…" aria-label="Поиск по задачам и темам" />
           <kbd>Ctrl K</kbd>
-        </div>
+        </div>}
         <div className="header-actions">
           <span className="xp"><Flame size={17} />{progress.xp} XP</span>
           <button className="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label="Переключить тему">{theme === 'dark' ? <Sun /> : <Moon />}</button>
@@ -442,14 +449,15 @@ function App() {
         </div>
       </header>
 
-      {view === 'home' && <HomeView
+      {view === 'home' && <GuidedHome
         progress={progress}
-        completion={completion}
-        focusTopics={focusTopics}
         reviewCount={queue.length}
-        onStart={() => navigate('practice')}
+        onStartTask={task => { navigate('practice'); selectTask(task); }}
         onReview={() => navigate('review')}
-        onOpenTopic={id => { setModuleFilter(id); navigate('catalog'); }}
+        onOpenPlan={() => openDeferredFeature('learning-path')}
+        onOpenLessons={() => openDeferredFeature('curriculum')}
+        onConfigure={() => openDeferredFeature('onboarding')}
+        onExplore={() => navigate('catalog')}
       />}
 
       {(view === 'catalog' || view === 'practice' || view === 'review' || view === 'interview' || view === 'puzzle') &&
@@ -602,13 +610,11 @@ function App() {
     </main>
 
     <nav className="mobile-bottom-nav" aria-label="Мобильная навигация">
-      <MobileNav icon={<Home />} label="Главная" active={view === 'home'} onClick={() => navigate('home')} />
-      <button type="button" data-testid="learning-path-mobile-trigger" onTouchStart={() => preloadDeferredFeature('learning-path')} onFocus={() => preloadDeferredFeature('learning-path')} onClick={() => openDeferredFeature('learning-path')}><span className="mobile-nav-icon"><Route /></span><small>Путь</small></button>
-      <button type="button" data-testid="curriculum-mobile-trigger" onTouchStart={() => preloadDeferredFeature('curriculum')} onFocus={() => preloadDeferredFeature('curriculum')} onClick={() => openDeferredFeature('curriculum')}><span className="mobile-nav-icon"><GraduationCap /></span><small>Уроки</small></button>
+      <MobileNav icon={<Home />} label="Сегодня" active={view === 'home'} onClick={() => navigate('home')} />
+      <button type="button" data-testid="learning-path-mobile-trigger" onTouchStart={() => preloadDeferredFeature('learning-path')} onFocus={() => preloadDeferredFeature('learning-path')} onClick={() => openDeferredFeature('learning-path')}><span className="mobile-nav-icon"><Route /></span><small>План</small></button>
+      <button type="button" data-testid="curriculum-mobile-trigger" onTouchStart={() => preloadDeferredFeature('curriculum')} onFocus={() => preloadDeferredFeature('curriculum')} onClick={() => openDeferredFeature('curriculum')}><span className="mobile-nav-icon"><GraduationCap /></span><small>Учиться</small></button>
       <MobileNav icon={<BrainCircuit />} label="Практика" active={view === 'practice'} onClick={() => navigate('practice')} />
-      <MobileNav icon={<Repeat2 />} label="Повтор" active={view === 'review'} badge={queue.length} onClick={() => navigate('review')} />
-      <button type="button" data-testid="assessment-mobile-trigger" onTouchStart={() => preloadDeferredFeature('assessment')} onFocus={() => preloadDeferredFeature('assessment')} onClick={() => openDeferredFeature('assessment')}><span className="mobile-nav-icon"><ClipboardCheck /></span><small>Экзамен</small></button>
-      <MobileNav icon={<Sparkles />} label="Mentor" active={view === 'mentor'} onClick={() => navigate('mentor')} />
+      <button type="button" onClick={() => setMobileNav(true)}><span className="mobile-nav-icon"><Menu /></span><small>Ещё</small></button>
     </nav>
   </div></>;
 }
@@ -662,22 +668,6 @@ function MentorDashboard({ progress, focusTopics, queue, selected, answer, loadi
       <article className="review-preview"><h2>Следующие задачи</h2>{queue.slice(0, 5).map(task => <button key={task.id} onClick={() => onOpenTask(task)}><span>{task.id.replace('task-', '#')}</span><p><strong>{task.title}</strong><small>{task.topic}</small></p><ChevronRight /></button>)}</article>
     </div>
   </section>;
-}
-
-function HomeView({ progress, completion, focusTopics, reviewCount, onStart, onReview, onOpenTopic }: {
-  progress: Progress;
-  completion: number;
-  focusTopics: WeakTopic[];
-  reviewCount: number;
-  onStart: () => void;
-  onReview: () => void;
-  onOpenTopic: (id: string) => void;
-}) {
-  return <>
-    <section className="hero"><div><h1>SQL, который работает<br />в реальной поддержке.</h1><p>Практическая академия для 2nd Support Engineer: точная проверка результата, адаптивное повторение и Mentor в каждой задаче.</p><div className="hero-actions"><button className="primary" onClick={onStart}>Продолжить обучение <ChevronRight /></button>{reviewCount > 0 && <button onClick={onReview}><Repeat2 /> Повторить {reviewCount}</button>}</div><div className="hero-proof"><span><ShieldCheck /> без персональных данных</span><span><BrainCircuit /> {TOTAL_TASK_COUNT} задач</span><span><Sparkles /> AI + local fallback</span></div></div><div className="terminal"><div className="terminal-bar"><i /><i /><i /><span>support_analytics.sql</span></div><pre><b>WITH</b> service_stats <b>AS</b> ({'\n'}  <b>SELECT</b> service, COUNT(*) tickets,{'\n'}         AVG(resolution_minutes) avg_time{'\n'}  <b>FROM</b> tickets <b>GROUP BY</b> service{'\n'}){'\n'}<b>SELECT</b> *, RANK() <b>OVER</b> ({'\n'}  <b>ORDER BY</b> tickets <b>DESC</b>{'\n'}) load_rank <b>FROM</b> service_stats;</pre><div className="terminal-success">✓ Query completed · 5 rows</div></div></section>
-    <section className="stats"><article><small>Общий прогресс</small><strong>{completion}%</strong><div className="progress"><i style={{ width: `${completion}%` }} /></div></article><article><small>Решено задач</small><strong>{progress.completed.length}<span>/{TOTAL_TASK_COUNT}</span></strong></article><article><small>Текущий streak</small><strong>{progress.streak}<span> дней</span></strong></article><article><small>На повторение</small><strong>{reviewCount}</strong></article></section>
-    <section className="dashboard-grid"><article className="chart-card"><div><h2>Активность</h2><p>Правильно решённые задачи за неделю</p></div><Suspense fallback={<div className="loading" role="status">Загрузка графика активности…</div>}><ActivityChart data={progress.history} /></Suspense></article><article className="modules-card"><h2>Фокус повторения</h2><div>{focusTopics.map((topic, index) => <button className="weak-topic" key={topic.id} onClick={() => onOpenTopic(topic.id)}><span>{String(index + 1).padStart(2, '0')}</span><p><strong>{topic.title}</strong><small>{topic.independent}/{topic.total} independently solved</small></p><ChevronRight /></button>)}</div></article></section>
-  </>;
 }
 
 export default App;

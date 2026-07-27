@@ -1,5 +1,6 @@
 import { expect, test, type Locator } from '@playwright/test';
 import { authenticatePage } from './auth-helper';
+import { openAdvancedTool } from './navigation-helper';
 
 const FIRST_SOLUTION = "SELECT ticket_id, service, status FROM tickets WHERE service = 'VPN' ORDER BY ticket_id;";
 
@@ -72,7 +73,7 @@ test('desktop mastery loop distinguishes guided success, independent retry and r
   await page.screenshot({ path: testInfo.outputPath('desktop-mastery-loop.png'), fullPage: true });
   await studio.getByRole('button', { name: 'Закрыть Curriculum Studio' }).click();
 
-  await page.getByTestId('syllabus-trigger').click();
+  await openAdvancedTool(page, 'syllabus-trigger');
   const syllabus = page.getByRole('dialog', { name: /SQL Syllabus Center/i });
   await syllabus.getByRole('tab', { name: /Повторение/i }).click();
   await expect(syllabus.getByTestId('spaced-review')).toContainText('открыто по evidence');

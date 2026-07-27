@@ -12,40 +12,30 @@ export function openCheckpointCenter(checkpointId?: string) {
 }
 
 export default function CheckpointLauncher() {
-  const [desktopSlot, setDesktopSlot] = useState<HTMLElement | null>(null);
-  const [mobileSlot, setMobileSlot] = useState<HTMLElement | null>(null);
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     const mount = () => {
-      const sidebarNav = document.querySelector('.sidebar nav');
-      const mobileNav = document.querySelector('.mobile-bottom-nav');
-      if (!sidebarNav || !mobileNav || document.querySelector('[data-checkpoint-launcher-slot="desktop"]')) return null;
-
-      const desktop = document.createElement('span');
-      desktop.dataset.checkpointLauncherSlot = 'desktop';
-      desktop.className = 'assessment-nav-slot';
-
-      const mobile = document.createElement('span');
-      mobile.dataset.checkpointLauncherSlot = 'mobile';
-      mobile.className = 'assessment-mobile-slot';
-
-      const assessmentButton = Array.from(sidebarNav.querySelectorAll('button'))
-        .find(button => button.textContent?.includes('Assessment Center'));
-      if (assessmentButton) assessmentButton.insertAdjacentElement('afterend', desktop);
-      else sidebarNav.append(desktop);
-      mobileNav.append(mobile);
-
-      setDesktopSlot(desktop);
-      setMobileSlot(mobile);
-      return () => {
-        desktop.remove();
-        mobile.remove();
-      };
+      const nav = document.querySelector('.nav-secondary-tools') || document.querySelector('.sidebar nav');
+      if (!nav) return null;
+      const existing = nav.querySelector<HTMLElement>('[data-checkpoint-launcher-slot="desktop"]');
+      if (existing) {
+        setSlot(existing);
+        return () => undefined;
+      }
+      const next = document.createElement('span');
+      next.dataset.checkpointLauncherSlot = 'desktop';
+      next.className = 'assessment-nav-slot';
+      const assessmentButton = Array.from(nav.querySelectorAll('button'))
+        .find(button => button.textContent?.includes('Экзамены') || button.textContent?.includes('Assessment Center'));
+      if (assessmentButton) assessmentButton.insertAdjacentElement('afterend', next);
+      else nav.append(next);
+      setSlot(next);
+      return () => next.remove();
     };
 
     const cleanup = mount();
     if (cleanup) return cleanup;
-
     const observer = new MutationObserver(() => {
       const nextCleanup = mount();
       if (nextCleanup) observer.disconnect();
@@ -64,31 +54,14 @@ export default function CheckpointLauncher() {
     return () => window.removeEventListener(OPEN_CHECKPOINT_EVENT, onOpen);
   }, []);
 
-  const open = () => openDeferredFeature('checkpoints');
-  const preload = () => preloadDeferredFeature('checkpoints');
-
-  const desktopTrigger = <button
+  if (!slot) return null;
+  return createPortal(<button
     type="button"
-    onClick={open}
-    onMouseEnter={preload}
-    onFocus={preload}
+    onClick={() => openDeferredFeature('checkpoints')}
+    onMouseEnter={() => preloadDeferredFeature('checkpoints')}
+    onFocus={() => preloadDeferredFeature('checkpoints')}
     data-testid="checkpoint-trigger"
   >
-    <FlagTriangleRight /><span>Checkpoints</span>
-  </button>;
-
-  const mobileTrigger = <button
-    type="button"
-    onClick={open}
-    onTouchStart={preload}
-    onFocus={preload}
-    data-testid="checkpoint-mobile-trigger"
-  >
-    <span className="mobile-nav-icon"><FlagTriangleRight /></span><small>Этапы</small>
-  </button>;
-
-  return <>
-    {desktopSlot && createPortal(desktopTrigger, desktopSlot)}
-    {mobileSlot && createPortal(mobileTrigger, mobileSlot)}
-  </>;
+    <FlagTriangleRight /><span>Контрольные этапы</span>
+  </button>, slot);
 }

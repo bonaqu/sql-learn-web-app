@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { authenticatePage } from './auth-helper';
+import { guidedHome, openAllTools } from './navigation-helper';
 
 async function expectNoSeriousAxeViolations(page: import('@playwright/test').Page) {
   const result = await new AxeBuilder({ page })
@@ -21,7 +22,7 @@ test('desktop accessibility and PWA resilience preserve keyboard work', async ({
 
   await authenticatePage(page, 'a11ypwa');
   await page.goto('./');
-  await expect(page.getByRole('heading', { name: /SQL, который работает/i })).toBeVisible();
+  await expect(guidedHome(page)).toBeVisible();
 
   await page.keyboard.press('Tab');
   await expect(page.locator('.skip-link')).toBeFocused();
@@ -46,6 +47,7 @@ test('desktop accessibility and PWA resilience preserve keyboard work', async ({
   await page.keyboard.press('Escape');
   await expect(pathTrigger).toBeFocused();
 
+  await openAllTools(page);
   const assessmentTrigger = page.getByTestId('assessment-trigger');
   await assessmentTrigger.click();
   const assessmentDialog = page.getByRole('dialog', { name: /Assessment Center/i });
