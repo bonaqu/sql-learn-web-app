@@ -49,7 +49,6 @@
     }
   ],
   "vars": {
-    "DIALECT_ENGINE_MODE": "real-optional",
     "SANDBOX_TRANSPORT": "rpc",
     "SANDBOX_LOG_LEVEL": "warn",
     "SANDBOX_LOG_FORMAT": "json"
