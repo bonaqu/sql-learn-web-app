@@ -8,19 +8,24 @@ const stageFile = 'cloudflare-learning-analytics-stage.txt';
 const failureFile = 'cloudflare-learning-analytics-failure.txt';
 const username = `analytics_${Date.now().toString(36)}`.slice(0, 30);
 const password = `Analytics-${crypto.randomUUID()}-8z!`;
+const isolatedModuleId = 'incident-investigation';
+const isolatedExperimentId = 'remediation-copy-v1';
+const isolatedVariant = 'variant-b';
 let token = '';
 let recoveryCode = '';
 let userId = '';
 let deleted = false;
 let stage = 'unauthenticated';
 
-function weekStart() {
-  const date = new Date();
-  const copy = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const day = copy.getUTCDay() || 7;
-  copy.setUTCDate(copy.getUTCDate() - day + 1);
-  return copy.toISOString().slice(0, 10);
+function isolatedPeriodStart() {
+  const now = new Date();
+  const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const day = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + (8 - day));
+  return date.toISOString().slice(0, 10);
 }
+
+const periodStart = isolatedPeriodStart();
 
 async function mark(next) {
   stage = next;
@@ -47,10 +52,10 @@ function expectStatus(result, status, label) {
 function snapshot(extraRow = {}, extraSnapshot = {}) {
   return {
     version: 1,
-    periodStart: weekStart(),
+    periodStart,
     courseVersion: 3,
     rows: [{
-      moduleId: 'sql-thinking',
+      moduleId: isolatedModuleId,
       opened: 2,
       attempted: 2,
       understood: 1,
@@ -73,7 +78,7 @@ function snapshot(extraRow = {}, extraSnapshot = {}) {
       '8-30-days': 0,
       'over-30-days': 0
     },
-    experiments: { 'remediation-copy-v1': 'control' },
+    experiments: { [isolatedExperimentId]: isolatedVariant },
     ...extraSnapshot
   };
 }
@@ -111,6 +116,17 @@ function d1Count(table) {
     '--command', `SELECT COUNT(*) AS count FROM ${table} WHERE user_id = '${userId}'`, '--yes', '--json'
   ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   return findCount(JSON.parse(stdout));
+}
+
+function assertReleasedCohortsMeetThreshold(report) {
+  const released = [
+    ...(Array.isArray(report.rows) ? report.rows : []),
+    ...(Array.isArray(report.mastery) ? report.mastery : []),
+    ...(Array.isArray(report.experiments) ? report.experiments : [])
+  ];
+  if (released.some(row => !Number.isInteger(row?.contributors) || row.contributors < 5)) {
+    throw new Error(`course-health released a cohort below k=5: ${JSON.stringify(report).slice(0, 1200)}`);
+  }
 }
 
 try {
@@ -175,8 +191,10 @@ try {
   const exportedText = JSON.stringify(exported.body).toUpperCase();
   const storedSnapshot = exported.body?.snapshots?.[0];
   if (exported.body?.sharing !== 'coarse-opt-in' || exported.body?.snapshots?.length !== 1) throw new Error(`export mismatch: ${exported.text}`);
-  if (storedSnapshot?.mastery?.['same-session'] !== 1 || storedSnapshot?.experiments?.['remediation-copy-v1'] !== 'control') {
-    throw new Error(`mastery or experiment round-trip mismatch: ${exported.text}`);
+  if (storedSnapshot?.periodStart !== periodStart
+    || storedSnapshot?.mastery?.['same-session'] !== 1
+    || storedSnapshot?.experiments?.[isolatedExperimentId] !== isolatedVariant) {
+    throw new Error(`isolated mastery or experiment round-trip mismatch: ${exported.text}`);
   }
   if (exportedText.includes('SELECT * FROM USERS') || exportedText.includes(username.toUpperCase()) || exportedText.includes(userId.toUpperCase())) {
     throw new Error('private identity or SQL leaked into analytics export payload');
@@ -185,14 +203,17 @@ try {
   await mark('cohort-suppression');
   const report = await request('/api/learning-analytics/report');
   expectStatus(report, 200, 'cohort report');
-  if (report.body?.minimumCohort !== 5
-    || report.body?.rows?.length !== 0
-    || report.body?.mastery?.length !== 0
-    || report.body?.experiments?.length !== 0
+  if (report.body?.minimumCohort !== 5) throw new Error(`unexpected minimum cohort: ${report.text}`);
+  assertReleasedCohortsMeetThreshold(report.body || {});
+  const leakedModule = report.body?.rows?.some(row => row.periodStart === periodStart && row.moduleId === isolatedModuleId);
+  const leakedMastery = report.body?.mastery?.some(row => row.periodStart === periodStart);
+  const leakedExperiment = report.body?.experiments?.some(row => row.periodStart === periodStart
+    && row.experimentId === isolatedExperimentId && row.variant === isolatedVariant);
+  if (leakedModule || leakedMastery || leakedExperiment
     || report.body?.suppressedRows < 1
     || report.body?.suppressedMasteryPeriods < 1
     || report.body?.suppressedExperiments < 1) {
-    throw new Error(`small module/mastery/experiment cohorts were not suppressed: ${report.text}`);
+    throw new Error(`isolated module/mastery/experiment cohorts were not suppressed: ${report.text}`);
   }
 
   await mark('opt-out-delete');
@@ -230,14 +251,16 @@ try {
     explicitOptIn: true,
     sqlFieldRejected: true,
     forgedMasteryRejected: true,
+    isolatedPeriodStart: periodStart,
     masteryRoundTrip: true,
     experimentRoundTrip: true,
-    allSmallCohortsSuppressed: true,
+    allReleasedCohortsMeetMinimum: true,
+    isolatedSmallCohortsSuppressed: true,
     optOutDeleted: true,
     cascadeVerified: true,
     revokedSessionVerified: true
   }, null, 2));
-  console.log('Learning analytics production smoke passed: default-off, SQL-free module/mastery/experiment snapshots, k=5 suppression, export, opt-out deletion and account cascade.');
+  console.log('Learning analytics production smoke passed: isolated future-week slices stayed suppressed without assuming the global course-health report was empty.');
 } catch (error) {
   await fs.writeFile(failureFile, `stage=${stage}\n${error instanceof Error ? error.stack || error.message : String(error)}\n`);
   await deleteAccount();
