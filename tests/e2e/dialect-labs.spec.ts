@@ -51,6 +51,7 @@ async function expectAccessible(page: Page) {
 test('desktop keeps SQLite evidence executable while PostgreSQL stays an honest CI reference preview across devices', async ({ page, browser }, testInfo) => {
   const auth = await authenticatePage(page, 'dialectfree');
   await openDialectLab(page);
+  await expect(page.locator('.dialect-free-boundary')).toContainText('Cloudflare Free boundary');
 
   await page.getByTestId('run-dialect-lab').click();
   const evidence = page.getByTestId('dialect-evidence-card');
@@ -64,16 +65,15 @@ test('desktop keeps SQLite evidence executable while PostgreSQL stays an honest 
   await expect(page.locator('.dialect-sync-message')).toContainText(/Independent evidence синхронизирован|Cloud sync повторится/);
   await expect(page.locator('.dialect-executable-hero')).toContainText('1/3');
 
-  await page.getByRole('button', { name: /PostgreSQL Remote sandbox/i }).click();
+  await page.getByRole('button', { name: /PostgreSQL Server contract/i }).click();
   await replaceSql(page, POSTGRES_NULL_ORDERING);
   await page.getByTestId('run-dialect-lab').click();
-  await expect(evidence).toContainText('Только offline preview');
-  await expect(evidence).toContainText('CI');
+  await expect(evidence).toContainText('CI reference preview');
   await expect(evidence).toContainText('not evidence eligible');
   await expect(evidence).toContainText('remote-sandbox');
-  await expect(page.locator('.dialect-sync-message')).toContainText('Offline preview не засчитан');
+  await expect(page.locator('.dialect-sync-message')).toContainText('CI reference preview не засчитан');
   await expect(page.locator('.dialect-executable-hero')).toContainText('1/3');
-  await expect(page.getByRole('button', { name: /PostgreSQL Remote sandbox/i }).locator('svg.passed')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /PostgreSQL Server contract/i }).locator('svg.passed')).toHaveCount(0);
 
   const storageKey = `sql-academy-dialect-lab-progress-v1:${String(auth.session.userId)}`;
   const storedProgress = await page.evaluate(key => localStorage.getItem(key) || '', storageKey);
@@ -105,7 +105,7 @@ test('desktop keeps SQLite evidence executable while PostgreSQL stays an honest 
   await openDialectLab(secondPage);
   await expect(secondPage.locator('.dialect-executable-hero')).toContainText('1/3');
   await expect(secondPage.getByRole('button', { name: /SQLite Local WASM/i }).locator('svg.passed')).toBeVisible();
-  await expect(secondPage.getByRole('button', { name: /PostgreSQL Remote sandbox/i }).locator('svg.passed')).toHaveCount(0);
+  await expect(secondPage.getByRole('button', { name: /PostgreSQL Server contract/i }).locator('svg.passed')).toHaveCount(0);
   const secondStored = await secondPage.evaluate(key => localStorage.getItem(key) || '', storageKey);
   expect(secondStored.toUpperCase()).not.toContain('SELECT TICKET_ID');
   await expectAccessible(secondPage);
@@ -123,15 +123,15 @@ test('mobile blocks unsafe SQL and shows concurrency reference timeline without 
   await expect(evidence).toContainText(/Statement не входит в allowlist|Запрещённая конструкция/);
 
   await page.getByRole('button', { name: /Lost update under two sessions/i }).click();
-  await page.getByRole('button', { name: /MySQL Remote sandbox/i }).click();
+  await page.getByRole('button', { name: /MySQL Server contract/i }).click();
   await replaceSql(page, MYSQL_OPTIMISTIC_UPDATE);
   await page.getByTestId('run-dialect-lab').click();
-  await expect(evidence).toContainText('Только offline preview');
+  await expect(evidence).toContainText('CI reference preview');
   await expect(evidence).toContainText('not evidence eligible');
   await expect(page.locator('.dialect-timeline')).toContainText('B affects zero rows');
   await expect(page.locator('.dialect-result-table')).toContainText('conflict');
   await expect(page.locator('.dialect-executable-hero')).toContainText('0/3');
-  await expect(page.getByRole('button', { name: /MySQL Remote sandbox/i }).locator('svg.passed')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /MySQL Server contract/i }).locator('svg.passed')).toHaveCount(0);
   await expectNoHorizontalOverflow(page);
   await expectAccessible(page);
   await page.screenshot({ path: testInfo.outputPath('mobile-dialect-free-concurrency-preview.png'), fullPage: true });
