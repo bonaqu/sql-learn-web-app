@@ -12,7 +12,7 @@ const RESULT_PATH = '/workspace/dialect-result.json';
 const TOTAL_TIMEOUT_MS = 45_000;
 const MAX_RUNNER_ERROR_BYTES = 500;
 
- type RealEngineEnv = Cloudflare.Env & {
+type RealEngineEnv = Cloudflare.Env & {
   DIALECT_SANDBOX?: Parameters<typeof getSandbox>[0];
   DIALECT_ENGINE_MODE?: string;
 };
@@ -188,12 +188,13 @@ async function opaqueSandboxId(userId: string, requestId: string) {
 function runnerRequest(input: { requestId: string; dialect: RealEngineDialect; labId: string; sql: string }) {
   const manifest = dialectLabManifest(input.labId);
   const contract = realEngineContract(input.labId, input.dialect);
-  if (!manifest || !contract || contract.scenario === 'transaction') return null;
+  if (!manifest || !contract) return null;
   return {
     version: 1,
     requestId: input.requestId,
     engine: input.dialect,
     mode: contract.scenario,
+    transactionKind: contract.transactionKind,
     setupSql: contract.setupSql,
     learnerSql: input.sql,
     verificationSql: contract.verificationSql,
