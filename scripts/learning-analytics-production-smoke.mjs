@@ -44,7 +44,7 @@ function expectStatus(result, status, label) {
   }
 }
 
-function snapshot(extraRow = {}) {
+function snapshot(extraRow = {}, extraSnapshot = {}) {
   return {
     version: 1,
     periodStart: weekStart(),
@@ -66,7 +66,15 @@ function snapshot(extraRow = {}) {
       topDiagnosticKind: 'result-shape',
       ...extraRow
     }],
-    experiments: { 'remediation-copy-v1': 'control' }
+    mastery: {
+      'same-session': 1,
+      'same-day': 0,
+      '2-7-days': 0,
+      '8-30-days': 0,
+      'over-30-days': 0
+    },
+    experiments: { 'remediation-copy-v1': 'control' },
+    ...extraSnapshot
   };
 }
 
@@ -146,6 +154,14 @@ try {
   });
   expectStatus(rejected, 400, 'forbidden SQL field');
 
+  await mark('reject-forged-mastery');
+  const forgedMastery = await request('/api/learning-analytics/snapshot', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ snapshot: snapshot({}, { mastery: { 'same-session': 1, 'same-day': 0, '2-7-days': 0, '8-30-days': 0, 'over-30-days': 0, userId } }) })
+  });
+  expectStatus(forgedMastery, 400, 'unknown mastery field');
+
   await mark('write-snapshot');
   const stored = await request('/api/learning-analytics/snapshot', {
     method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ snapshot: snapshot() })
@@ -157,14 +173,26 @@ try {
   const exported = await request('/api/learning-analytics/export');
   expectStatus(exported, 200, 'analytics export');
   const exportedText = JSON.stringify(exported.body).toUpperCase();
+  const storedSnapshot = exported.body?.snapshots?.[0];
   if (exported.body?.sharing !== 'coarse-opt-in' || exported.body?.snapshots?.length !== 1) throw new Error(`export mismatch: ${exported.text}`);
-  if (exportedText.includes('SELECT * FROM USERS') || exportedText.includes(username.toUpperCase())) throw new Error('private identity or SQL leaked into analytics export');
+  if (storedSnapshot?.mastery?.['same-session'] !== 1 || storedSnapshot?.experiments?.['remediation-copy-v1'] !== 'control') {
+    throw new Error(`mastery or experiment round-trip mismatch: ${exported.text}`);
+  }
+  if (exportedText.includes('SELECT * FROM USERS') || exportedText.includes(username.toUpperCase()) || exportedText.includes(userId.toUpperCase())) {
+    throw new Error('private identity or SQL leaked into analytics export payload');
+  }
 
   await mark('cohort-suppression');
   const report = await request('/api/learning-analytics/report');
   expectStatus(report, 200, 'cohort report');
-  if (report.body?.minimumCohort !== 5 || report.body?.rows?.length !== 0 || report.body?.suppressedRows < 1) {
-    throw new Error(`small cohort was not suppressed: ${report.text}`);
+  if (report.body?.minimumCohort !== 5
+    || report.body?.rows?.length !== 0
+    || report.body?.mastery?.length !== 0
+    || report.body?.experiments?.length !== 0
+    || report.body?.suppressedRows < 1
+    || report.body?.suppressedMasteryPeriods < 1
+    || report.body?.suppressedExperiments < 1) {
+    throw new Error(`small module/mastery/experiment cohorts were not suppressed: ${report.text}`);
   }
 
   await mark('opt-out-delete');
@@ -201,12 +229,15 @@ try {
     defaultOff: true,
     explicitOptIn: true,
     sqlFieldRejected: true,
-    smallCohortSuppressed: true,
+    forgedMasteryRejected: true,
+    masteryRoundTrip: true,
+    experimentRoundTrip: true,
+    allSmallCohortsSuppressed: true,
     optOutDeleted: true,
     cascadeVerified: true,
     revokedSessionVerified: true
   }, null, 2));
-  console.log('Learning analytics production smoke passed: default-off, SQL-free snapshots, k=5 suppression, export, opt-out deletion and account cascade.');
+  console.log('Learning analytics production smoke passed: default-off, SQL-free module/mastery/experiment snapshots, k=5 suppression, export, opt-out deletion and account cascade.');
 } catch (error) {
   await fs.writeFile(failureFile, `stage=${stage}\n${error instanceof Error ? error.stack || error.message : String(error)}\n`);
   await deleteAccount();
