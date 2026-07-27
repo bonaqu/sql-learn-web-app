@@ -306,16 +306,18 @@ function latestSessionEvents(events: LearningAnalyticsEvent[]) {
   return session ? events.filter(event => event.sessionId === session) : [];
 }
 
-function timeToMastery(events: LearningAnalyticsEvent[]): TimeToMasteryBuckets {
+function timeToMastery(events: LearningAnalyticsEvent[], completionSince = Number.NEGATIVE_INFINITY): TimeToMasteryBuckets {
   const result: TimeToMasteryBuckets = { 'same-session': 0, 'same-day': 0, '2-7-days': 0, '8-30-days': 0, 'over-30-days': 0 };
   const opened = new Map<string, LearningAnalyticsEvent>();
   for (const event of events) {
     if (!event.taskId) continue;
     if ((event.type === 'task_opened' || event.type === 'attempted') && !opened.has(event.taskId)) opened.set(event.taskId, event);
     if (event.type !== 'independent_pass') continue;
+    const completedAt = new Date(event.occurredAt).getTime();
+    if (completedAt < completionSince) continue;
     const start = opened.get(event.taskId);
     if (!start) continue;
-    const days = Math.max(0, (new Date(event.occurredAt).getTime() - new Date(start.occurredAt).getTime()) / 86_400_000);
+    const days = Math.max(0, (completedAt - new Date(start.occurredAt).getTime()) / 86_400_000);
     if (event.sessionId === start.sessionId) result['same-session'] += 1;
     else if (days < 1) result['same-day'] += 1;
     else if (days <= 7) result['2-7-days'] += 1;
@@ -438,10 +440,13 @@ function weekStart(date = new Date()) {
 }
 
 export function buildLearningAnalyticsSnapshot(state: LearningAnalyticsState, progress?: Progress): LearningAnalyticsSnapshot {
+  const periodStart = weekStart();
+  const periodStartMs = new Date(`${periodStart}T00:00:00Z`).getTime();
+  const periodEvents = state.events.filter(event => new Date(event.occurredAt).getTime() >= periodStartMs);
   const report = localLearningAnalyticsReport(state, progress);
   const rows: LearningAnalyticsSnapshotRow[] = [];
   for (const [moduleId] of modules) {
-    const events = state.events.filter(event => event.moduleId === moduleId);
+    const events = periodEvents.filter(event => event.moduleId === moduleId);
     if (!events.length) continue;
     const diagnosticCounts = new Map<AttemptErrorKind, number>();
     for (const event of events) if (event.type === 'diagnostic_observed' && event.diagnosticKind) diagnosticCounts.set(event.diagnosticKind, (diagnosticCounts.get(event.diagnosticKind) || 0) + 1);
@@ -466,10 +471,10 @@ export function buildLearningAnalyticsSnapshot(state: LearningAnalyticsState, pr
   }
   return {
     version: 1,
-    periodStart: weekStart(),
+    periodStart,
     courseVersion: 3,
     rows,
-    mastery: { ...report.timeToMastery },
+    mastery: timeToMastery(state.events, periodStartMs),
     experiments: { ...state.experimentVariants }
   };
 }
