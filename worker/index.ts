@@ -7,6 +7,7 @@ import { handleCheckpointRequest } from './checkpoints';
 import { handleCurriculumRequest } from './curriculum';
 import { handleDialectLabRequest } from './dialect-labs';
 import { handleDialectRealEngineRequest } from './dialect-real-engine-route';
+import { handleLearningAnalyticsRequest } from './learning-analytics';
 import { handleMasteryProgressV1Request } from './mastery-progress-route';
 import { handleOnboardingRequest } from './onboarding';
 
@@ -23,7 +24,7 @@ const ALLOWED_ORIGINS = new Set([
 const CORS_METHODS = 'GET, PUT, POST, DELETE, OPTIONS';
 const CORS_HEADERS = 'authorization, content-type, x-profile-id';
 
-type Pipeline = 'auth' | 'assessment' | 'checkpoint' | 'capstone' | 'dialect' | 'curriculum' | 'onboarding';
+type Pipeline = 'auth' | 'assessment' | 'checkpoint' | 'capstone' | 'dialect' | 'analytics' | 'curriculum' | 'onboarding';
 
 function allowedOrigin(request: Request) {
   const origin = request.headers.get('origin');
@@ -37,7 +38,7 @@ function corsHeaders(origin: string) {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': CORS_METHODS,
     'access-control-allow-headers': CORS_HEADERS,
-    'access-control-expose-headers': 'retry-after, x-request-id, x-progress-contract, x-onboarding-contract, x-dialect-lab-contract',
+    'access-control-expose-headers': 'retry-after, x-request-id, x-progress-contract, x-onboarding-contract, x-dialect-lab-contract, x-learning-analytics-contract',
     'access-control-max-age': '86400',
     vary: 'Origin'
   };
@@ -68,9 +69,11 @@ function pipelineFailure(error: unknown, pathname: string, pipeline: Pipeline) {
           ? 'Capstone'
           : pipeline === 'dialect'
             ? 'Dialect lab'
-            : pipeline === 'onboarding'
-              ? 'Onboarding'
-              : 'Curriculum';
+            : pipeline === 'analytics'
+              ? 'Learning analytics'
+              : pipeline === 'onboarding'
+                ? 'Onboarding'
+                : 'Curriculum';
   return new Response(JSON.stringify({
     error: `${label} operation failed`,
     code: `${pipeline.toUpperCase()}_PIPELINE_UNHANDLED`,
@@ -191,6 +194,15 @@ export default {
         return origin ? withCors(response, origin) : response;
       }
       if (dialectResponse) return origin ? withCors(dialectResponse, origin) : dialectResponse;
+
+      let analyticsResponse: Response | null;
+      try {
+        analyticsResponse = await handleLearningAnalyticsRequest(request, env, auth.userId);
+      } catch (error) {
+        const response = pipelineFailure(error, url.pathname, 'analytics');
+        return origin ? withCors(response, origin) : response;
+      }
+      if (analyticsResponse) return origin ? withCors(analyticsResponse, origin) : analyticsResponse;
 
       let curriculumResponse: Response | null;
       try {
