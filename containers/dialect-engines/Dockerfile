@@ -23,6 +23,8 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     mysql-community-client \
     mysql-community-server-core \
+  && (getent group mysql >/dev/null || groupadd --system mysql) \
+  && (id -u mysql >/dev/null 2>&1 || useradd --system --gid mysql --home-dir /nonexistent --shell /usr/sbin/nologin mysql) \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /opt/sql-academy-dialect-runner \
   && chmod 0755 /opt/sql-academy-dialect-runner \
