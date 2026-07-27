@@ -1,4 +1,4 @@
-name: Deploy Cloudflare Full Stack
+name: Deploy Cloudflare Free Stack
 
 on:
   push:
@@ -15,9 +15,9 @@ concurrency:
 
 jobs:
   deploy:
-    name: Validate and deploy Worker
+    name: Validate and deploy free-tier Worker
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 40
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -35,7 +35,7 @@ jobs:
               sha: context.sha,
               state: 'pending',
               context: 'deployment/cloudflare',
-              description: 'Building and smoke-testing Cloudflare Worker and Containers'
+              description: 'Building and smoke-testing the Cloudflare Free Worker stack'
             });
 
       - name: Validate deployment credentials
@@ -43,7 +43,6 @@ jobs:
         run: |
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
-          docker info >/dev/null
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -85,7 +84,7 @@ jobs:
           test -n "$KV_ID"
           echo "KV_ID=$KV_ID" >> "$GITHUB_ENV"
 
-      - name: Generate production Wrangler config
+      - name: Generate free-tier production Wrangler config
         shell: bash
         run: |
           node - <<'NODE'
@@ -110,37 +109,21 @@ jobs:
             }],
             kv_namespaces: [{ binding: 'SETTINGS', id: process.env.KV_ID }],
             ai: { binding: 'AI' },
-            containers: [{
-              class_name: 'Sandbox',
-              image: './containers/dialect-engines/Dockerfile',
-              instance_type: 'basic',
-              max_instances: 2
-            }],
-            durable_objects: {
-              bindings: [{ name: 'DIALECT_SANDBOX', class_name: 'Sandbox' }]
-            },
-            migrations: [{
-              tag: 'dialect-sandbox-v1',
-              new_sqlite_classes: ['Sandbox']
-            }],
             vars: {
-              DIALECT_ENGINE_MODE: 'real-required',
-              SANDBOX_TRANSPORT: 'rpc',
-              SANDBOX_LOG_LEVEL: 'warn',
-              SANDBOX_LOG_FORMAT: 'json'
+              DIALECT_ENGINE_MODE: 'preview-only'
             },
             observability: { enabled: true, head_sampling_rate: 1 }
           };
           fs.writeFileSync('wrangler.deploy.jsonc', JSON.stringify(config, null, 2));
           NODE
 
-      - name: Validate production Worker and Container bundle
+      - name: Validate production free-tier bundle
         run: npx wrangler deploy --dry-run --config wrangler.deploy.jsonc
 
       - name: Apply D1 migrations
         run: npx wrangler d1 migrations apply sql-academy --remote --config wrangler.deploy.jsonc
 
-      - name: Deploy Worker, Container and static assets
+      - name: Deploy Worker, D1/KV and static assets
         id: deploy
         shell: bash
         run: |
@@ -175,10 +158,10 @@ jobs:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
         run: node scripts/assessment-calibration-production-smoke.mjs
 
-      - name: Smoke-test every real PostgreSQL and MySQL dialect pattern
+      - name: Smoke-test all server-dialect CI reference previews
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-        run: npx tsx scripts/dialect-labs-production-smoke.ts
+        run: npx tsx scripts/dialect-labs-free-production-smoke.ts
 
       - name: Smoke-test Mastery progress evidence lifecycle
         env:
@@ -213,35 +196,24 @@ jobs:
           script: |
             const success = process.env.JOB_STATUS === 'success';
             let description = success
-              ? 'Cloudflare deployed; real dialect engines and learning evidence lifecycles verified'
-              : 'Cloudflare deployment, Container startup or production smoke failed';
+              ? 'Cloudflare Free deployed; learning lifecycles and honest dialect previews verified'
+              : 'Cloudflare Free deployment or production smoke failed';
             try {
               const fs = require('fs');
-              const onboardingStage = fs.existsSync('cloudflare-onboarding-stage.txt')
-                ? fs.readFileSync('cloudflare-onboarding-stage.txt', 'utf8').trim()
-                : '';
-              const masteryStage = fs.existsSync('cloudflare-mastery-stage.txt')
-                ? fs.readFileSync('cloudflare-mastery-stage.txt', 'utf8').trim()
-                : '';
-              const dialectStage = fs.existsSync('cloudflare-dialect-stage.txt')
-                ? fs.readFileSync('cloudflare-dialect-stage.txt', 'utf8').trim()
-                : '';
-              const assessmentCalibrationStage = fs.existsSync('cloudflare-assessment-calibration-stage.txt')
-                ? fs.readFileSync('cloudflare-assessment-calibration-stage.txt', 'utf8').trim()
-                : '';
-              const capstoneStage = fs.existsSync('cloudflare-capstone-stage.txt')
-                ? fs.readFileSync('cloudflare-capstone-stage.txt', 'utf8').trim()
-                : '';
-              const checkpointStage = fs.existsSync('cloudflare-checkpoint-stage.txt')
-                ? fs.readFileSync('cloudflare-checkpoint-stage.txt', 'utf8').trim()
-                : '';
-              const conceptStage = fs.existsSync('cloudflare-concepts-stage.txt')
-                ? fs.readFileSync('cloudflare-concepts-stage.txt', 'utf8').trim()
-                : '';
-              const curriculumStage = fs.existsSync('cloudflare-smoke-stage.txt')
-                ? fs.readFileSync('cloudflare-smoke-stage.txt', 'utf8').trim()
-                : '';
-              const stage = onboardingStage || masteryStage || dialectStage || assessmentCalibrationStage || capstoneStage || checkpointStage || conceptStage || curriculumStage;
+              const files = [
+                'cloudflare-onboarding-stage.txt',
+                'cloudflare-mastery-stage.txt',
+                'cloudflare-dialect-stage.txt',
+                'cloudflare-assessment-calibration-stage.txt',
+                'cloudflare-capstone-stage.txt',
+                'cloudflare-checkpoint-stage.txt',
+                'cloudflare-concepts-stage.txt',
+                'cloudflare-smoke-stage.txt'
+              ];
+              const stage = files
+                .filter(file => fs.existsSync(file))
+                .map(file => fs.readFileSync(file, 'utf8').trim())
+                .find(Boolean) || '';
               if (!success && stage) description = `Cloudflare smoke failed at ${stage}`.slice(0, 140);
             } catch {}
             const params = {
