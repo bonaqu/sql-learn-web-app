@@ -68,7 +68,7 @@ async function expectNoHorizontalOverflow(page: Page) {
   expect(overflow).toBe(false);
 }
 
-test('desktop analytics stays local by default and sends only a coarse SQL-free opt-in snapshot', async ({ page }, testInfo) => {
+test('desktop analytics stays local by default and sends only coarse actionable opt-in evidence', async ({ page }, testInfo) => {
   const auth = await authenticatePage(page, 'analytics');
   const userId = String(auth.session.userId);
   await seedAnalytics(page, userId);
@@ -94,11 +94,23 @@ test('desktop analytics stays local by default and sends only a coarse SQL-free 
   });
   await portal.getByRole('button', { name: /Синхронизировать snapshot/i }).click();
   await expect(portal.getByRole('status')).toContainText('Coarse snapshot синхронизирован');
-  expect(snapshotBody).not.toContain('task-001');
-  expect(snapshotBody).not.toContain('task-002');
-  expect(snapshotBody).not.toContain(userId);
-  expect(snapshotBody.toUpperCase()).not.toContain('SELECT ');
-  await expect(page.getByTestId('learning-cohort-report')).toContainText(/Недостаточно contributors|suppressed/i);
+
+  const payload = JSON.parse(snapshotBody) as { snapshot: Record<string, unknown> };
+  const serialized = snapshotBody.toUpperCase();
+  expect(serialized).not.toContain('TASK-001');
+  expect(serialized).not.toContain('TASK-002');
+  expect(serialized).not.toContain(userId.toUpperCase());
+  expect(serialized).not.toContain('SELECT ');
+  expect(payload.snapshot).toHaveProperty('mastery.same-session', 1);
+  expect(payload.snapshot).toHaveProperty('experiments.remediation-copy-v1', 'control');
+  expect(Object.keys(payload.snapshot).sort()).toEqual(['courseVersion', 'experiments', 'mastery', 'periodStart', 'rows', 'version'].sort());
+
+  const cohort = page.getByTestId('learning-cohort-report');
+  await expect(cohort).toContainText(/Недостаточно contributors|suppressed/i);
+  await expect(cohort).toContainText('Course actions');
+  await expect(cohort).toContainText('Time-to-mastery');
+  await expect(cohort).toContainText('Experiment guardrails');
+  await expect(cohort).toContainText('не автоматический «победитель»');
 
   const downloadPromise = page.waitForEvent('download');
   await portal.getByRole('button', { name: 'Экспорт' }).click();
