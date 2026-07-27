@@ -88,8 +88,9 @@ test('desktop syllabus exposes tracks evidence-gated review tools executable dia
   await expect(dialectLab).toBeVisible();
   await expect(page.getByRole('heading', { name: 'NULL ordering across engines' })).toBeVisible();
   await expect(page.getByRole('button', { name: /SQLite Local WASM/i })).toBeVisible();
-  await expect(page.getByRole('button', { name: /PostgreSQL Remote sandbox/i })).toBeVisible();
-  await expect(page.getByRole('button', { name: /MySQL Remote sandbox/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /PostgreSQL Server contract/i })).toBeVisible();
+  await expect(page.getByRole('button', { name: /MySQL Server contract/i })).toBeVisible();
+  await expect(page.locator('.dialect-free-boundary')).toContainText('Cloudflare Free boundary');
   await page.getByText(/Reference-only syntax matrix/i).click();
   await expect(page.locator('.dialect-reference-matrix article').filter({ hasText: 'SQL Server' })).toBeVisible();
   await expectAccessible(page);
@@ -126,6 +127,7 @@ test('mobile syllabus and executable dialect lab remain usable without overflow'
 
   await page.getByRole('tab', { name: /Диалекты/i }).click();
   await expect(page.getByTestId('dialect-executable-lab')).toBeVisible();
+  await expect(page.locator('.dialect-free-boundary')).toBeVisible();
   await expect(page.getByTestId('dialect-evidence-card')).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await expectAccessible(page);
