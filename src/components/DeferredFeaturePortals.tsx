@@ -13,6 +13,7 @@ const CurriculumPortal = lazy(() => import('./CurriculumPortal'));
 const SyllabusPortal = lazy(() => import('./SyllabusPortal'));
 const CheckpointCenterPortal = lazy(() => import('./CheckpointCenterPortal'));
 const OnboardingPortal = lazy(() => import('./OnboardingPortal'));
+const LearningAnalyticsPortal = lazy(() => import('./LearningAnalyticsPortal'));
 const ONBOARDING_ASSESSMENT_INTENT_KEY = 'sql-academy-onboarding-assessment-intent-v1';
 
 function activeSessionExists(prefix: string) {
@@ -34,6 +35,7 @@ function preload(feature: DeferredFeature) {
   if (feature === 'syllabus') return void import('./SyllabusPortal');
   if (feature === 'checkpoints') return void import('./CheckpointCenterPortal');
   if (feature === 'onboarding') return void import('./OnboardingPortal');
+  if (feature === 'analytics') return void import('./LearningAnalyticsPortal');
   return void import('./CurriculumPortal');
 }
 
@@ -46,12 +48,14 @@ export default function DeferredFeaturePortals() {
   const [syllabusLoaded, setSyllabusLoaded] = useState(false);
   const [checkpointLoaded, setCheckpointLoaded] = useState(activeCheckpoint);
   const [onboardingLoaded, setOnboardingLoaded] = useState(false);
+  const [analyticsLoaded, setAnalyticsLoaded] = useState(false);
   const [pathRequest, setPathRequest] = useState(0);
   const [assessmentRequest, setAssessmentRequest] = useState(activeAssessment ? 1 : 0);
   const [curriculumRequest, setCurriculumRequest] = useState(0);
   const [syllabusRequest, setSyllabusRequest] = useState(0);
   const [checkpointRequest, setCheckpointRequest] = useState(activeCheckpoint ? 1 : 0);
   const [onboardingRequest, setOnboardingRequest] = useState(0);
+  const [analyticsRequest, setAnalyticsRequest] = useState(0);
 
   useEffect(() => {
     const onPreload = (event: Event) => {
@@ -79,6 +83,9 @@ export default function DeferredFeaturePortals() {
       } else if (feature === 'onboarding') {
         setOnboardingLoaded(true);
         setOnboardingRequest(value => value + 1);
+      } else if (feature === 'analytics') {
+        setAnalyticsLoaded(true);
+        setAnalyticsRequest(value => value + 1);
       }
     };
     window.addEventListener(PRELOAD_DEFERRED_FEATURE_EVENT, onPreload);
@@ -109,6 +116,9 @@ export default function DeferredFeaturePortals() {
     </Suspense>}
     {onboardingLoaded && <Suspense fallback={<div className="feature-loading" role="status">Загрузка стартового плана…</div>}>
       <OnboardingPortal openRequest={onboardingRequest || 1} />
+    </Suspense>}
+    {analyticsLoaded && <Suspense fallback={<div className="feature-loading" role="status">Загрузка аналитики обучения…</div>}>
+      <LearningAnalyticsPortal openRequest={analyticsRequest || 1} />
     </Suspense>}
   </>;
 }
