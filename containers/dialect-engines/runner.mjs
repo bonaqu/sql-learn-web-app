@@ -10,6 +10,7 @@ const MAX_SQL_BYTES = 24_000;
 const DEFAULT_TIMEOUT_MS = 4_000;
 const STARTUP_TIMEOUT_MS = 30_000;
 const MAX_COMMAND_BUFFER = 2_000_000;
+const POSTGRES_NULL_MARKER = '__SQL_ACADEMY_NULL__';
 
 function fail(message, code = 'runner_error') {
   const error = new Error(message);
@@ -181,8 +182,11 @@ function postgresRuntime(root, timeoutMs, mode) {
     version: command(`${pgBin}/psql`, [...baseArgs, '-Atc', 'SHOW server_version;'], { env }).trim(),
     setup(sql) { command(`${pgBin}/psql`, [...baseArgs, '-q'], { input: sql, timeout: timeoutMs, env }); },
     execute(sql) {
-      const parsed = parseCsv(command(`${pgBin}/psql`, [...baseArgs, '--csv', '-q'], { input: sql, timeout: timeoutMs, env }));
-      return parsed.length ? { columns: parsed[0], rows: parsed.slice(1).map(row => row.map(normalizeValue)) } : { columns: [], rows: [] };
+      const parsed = parseCsv(command(`${pgBin}/psql`, [...baseArgs, '--csv', '-P', `null=${POSTGRES_NULL_MARKER}`, '-q'], { input: sql, timeout: timeoutMs, env }));
+      return parsed.length ? {
+        columns: parsed[0],
+        rows: parsed.slice(1).map(row => row.map(value => value === POSTGRES_NULL_MARKER ? null : normalizeValue(value)))
+      } : { columns: [], rows: [] };
     },
     session() { return new InteractiveSession('stdbuf', ['-oL', '-eL', `${pgBin}/psql`, ...baseArgs, '-A', '-t', '-q'], env); },
     sessionPrelude: "SET TIME ZONE 'UTC'; SET statement_timeout = '4s';",
