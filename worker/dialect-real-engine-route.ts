@@ -3,10 +3,11 @@ import { dialectLabManifest } from '../src/data/dialect-lab-manifests';
 import { evaluateDialectCaseSql, validateDialectSqlPolicy } from '../src/lib/dialect-lab-policy';
 import {
   DIALECT_REAL_ENGINE_ADAPTER_VERSION,
+  DIALECT_REAL_ENGINE_RUNNER_VERSION,
   executeRealDialectEngine,
   realEngineConfigured,
   realEngineRequired
-} from './dialect-real-engine-v2';
+} from './dialect-real-engine';
 
 const MAX_EXECUTION_BYTES = 28_000;
 const HOURLY_EXECUTION_LIMIT = 30;
@@ -22,8 +23,8 @@ const json = (data: unknown, status = 200, headers: Record<string, string> = {})
   }
 });
 
-function bodyTooLarge(request: Request, maximum: number) {
-  const length = Number(request.headers.get('content-length') || 0);
+function bodyTooLarge(headers: { get(name: string): string | null }, maximum: number) {
+  const length = Number(headers.get('content-length') || 0);
   return Number.isFinite(length) && length > maximum;
 }
 
@@ -31,7 +32,7 @@ function boundedString(value: unknown, maximum: number) {
   return typeof value === 'string' && value.length <= maximum;
 }
 
-async function readJson(request: Request) {
+async function readJson(request: { json<T>(): Promise<T> }) {
   try { return await request.json<unknown>(); } catch { return null; }
 }
 
@@ -65,7 +66,7 @@ export async function handleDialectRealEngineRequest(
   const required = realEngineRequired(env);
   if (!configured && !required) return null;
   if (!configured) return json({ error: 'Real database engine binding is required but unavailable' }, 503);
-  if (bodyTooLarge(request, MAX_EXECUTION_BYTES)) return json({ error: 'Dialect execution payload is too large' }, 413);
+  if (bodyTooLarge(request.headers, MAX_EXECUTION_BYTES)) return json({ error: 'Dialect execution payload is too large' }, 413);
 
   const body = await readJson(request.clone()) as Record<string, unknown> | null;
   if (!body
@@ -122,8 +123,11 @@ export async function handleDialectRealEngineRequest(
     columns: [...labCase.expected.columns],
     rows: labCase.expected.rows.map(row => [...row])
   };
-  const eligible = result.passed && result.sandboxDestroyed && Boolean(result.engineVersion);
-  const resultDigest = digest(`${labId}:${dialect}:${JSON.stringify(publishedOutput)}:${eligible}:${DIALECT_REAL_ENGINE_ADAPTER_VERSION}:${result.engineVersion || 'unknown'}`);
+  const eligible = result.passed
+    && result.sandboxDestroyed
+    && Boolean(result.engineVersion)
+    && result.runnerVersion === DIALECT_REAL_ENGINE_RUNNER_VERSION;
+  const resultDigest = digest(`${labId}:${dialect}:${JSON.stringify(publishedOutput)}:${eligible}:${DIALECT_REAL_ENGINE_ADAPTER_VERSION}`);
   return json({
     version: 1,
     labId,
