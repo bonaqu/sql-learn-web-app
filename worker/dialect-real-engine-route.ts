@@ -127,7 +127,9 @@ export async function handleDialectRealEngineRequest(
     && result.sandboxDestroyed
     && Boolean(result.engineVersion)
     && result.runnerVersion === DIALECT_REAL_ENGINE_RUNNER_VERSION;
-  const resultDigest = digest(`${labId}:${dialect}:${JSON.stringify(publishedOutput)}:${eligible}:${DIALECT_REAL_ENGINE_ADAPTER_VERSION}`);
+  // Keep the v1 evidence digest stable so already-earned phase-1 progress remains valid;
+  // verificationMode/engineVersion prove that new attempts used the real engine.
+  const resultDigest = digest(`${labId}:${dialect}:${JSON.stringify(publishedOutput)}:${eligible}:dialect-sandbox-v1`);
   return json({
     version: 1,
     labId,
