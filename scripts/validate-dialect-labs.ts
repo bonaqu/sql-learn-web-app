@@ -11,6 +11,7 @@ import {
   recordDialectLabExecution
 } from '../src/lib/dialect-lab-progress.ts';
 import { trainingSeedSql } from '../src/data/training-dataset.ts';
+import { realEngineContracts } from '../worker/dialect-real-engine-contracts.ts';
 
 const failures: string[] = [];
 const assert = (condition: unknown, message: string) => { if (!condition) failures.push(message); };
@@ -45,10 +46,13 @@ function normalizedLastResult(results: ReturnType<typeof executeSqlite>) {
   };
 }
 
-assert(dialectLabManifests.length === 6, `Expected 6 published dialect labs, got ${dialectLabManifests.length}`);
+assert(dialectLabManifests.length === 11, `Expected 11 published dialect labs, got ${dialectLabManifests.length}`);
+assert(dialectLabCases.length === 33, `Expected 33 executable dialect cases, got ${dialectLabCases.length}`);
 assert(dialectLabCases.length === dialectLabManifests.length * dialects.length, 'Every lab must publish one case per executable dialect');
+assert(realEngineContracts.length === dialectLabManifests.length * 2, 'Every lab must publish PostgreSQL and MySQL real-engine contracts');
 assert(new Set(dialectLabManifests.map(lab => lab.id)).size === dialectLabManifests.length, 'Dialect lab IDs must be unique');
 assert(new Set(dialectLabCases.map(item => `${item.labId}:${item.dialect}`)).size === dialectLabCases.length, 'Dialect case keys must be unique');
+assert(new Set(realEngineContracts.map(item => `${item.labId}:${item.dialect}`)).size === realEngineContracts.length, 'Real-engine contract keys must be unique');
 
 for (const lab of dialectLabManifests) {
   assert(lab.version === 1, `${lab.id}: unsupported manifest version`);
@@ -76,6 +80,11 @@ for (const lab of dialectLabManifests) {
     assert(reference.ok, `${lab.id}:${dialect}: reference rejected: ${reference.errors.join(' | ')}`);
     const starter = evaluateDialectCaseSql(labCase.starterSql, labCase, lab.statementPolicy);
     assert(!starter.ok, `${lab.id}:${dialect}: unfinished starter unexpectedly passes`);
+    if (dialect !== 'sqlite') {
+      const contract = realEngineContracts.find(item => item.labId === lab.id && item.dialect === dialect);
+      assert(Boolean(contract), `${lab.id}:${dialect}: missing real-engine fixture contract`);
+      if (lab.kind === 'transaction') assert(Boolean(contract?.transactionKind), `${lab.id}:${dialect}: transaction kind is not explicit`);
+    }
     if (dialect === 'sqlite' && behavior.executionMode === 'local-sqlite') {
       try {
         const result = executeSqlite(labCase.referenceSql, labCase.setupSql);
@@ -185,11 +194,19 @@ assert(adapter.includes('enableDefaultSession: false'), 'Sandbox adapter still p
 assert(adapter.includes('file.content'), 'Sandbox adapter does not use the current readFile result contract');
 assert(adapter.includes('await sandbox.destroy()'), 'Sandbox adapter does not unconditionally destroy attempts');
 assert(adapter.includes('passed: outcome.passed && destroyed'), 'Sandbox destroy is not a prerequisite for eligible evidence');
+assert(adapter.includes('transactionKind: contract.transactionKind'), 'Sandbox adapter does not publish the transaction scenario contract');
+assert(!adapter.includes("contract.scenario === 'transaction'"), 'Sandbox adapter still rejects real transaction scenarios');
 assert(runner.includes("commandPath('mysqld')"), 'Runner does not start Oracle MySQL');
 assert(runner.includes('--initialize-insecure'), 'Runner does not initialize an ephemeral MySQL data directory');
 assert(!/mariadb/i.test(runner), 'Runner still contains MariaDB runtime code');
+assert(runner.includes('class InteractiveSession'), 'Runner does not create independent database sessions');
+assert(runner.includes("request.transactionKind === 'optimistic-conflict'"), 'Runner does not execute the lost-update contract');
+assert(runner.includes("request.transactionKind === 'skip-locked'"), 'Runner does not execute the queue locking contract');
+assert(runner.includes("await b.exec(request.learnerSql"), 'Runner does not execute session B before transaction completion');
 assert(dockerfile.includes('mysql-8.4-lts'), 'Container image is not sourced from the official MySQL 8.4 LTS repository');
 assert(dockerfile.includes('mysql-community-server-core'), 'Container image does not install Oracle MySQL server core');
+assert(dockerfile.includes('RPM-GPG-KEY-mysql-2025'), 'Container image does not use the current MySQL repository signing key');
+assert(dockerfile.includes('BCA43417C3B485DD128EC6D4B7B3B788A8D3785C'), 'Container image does not pin the MySQL signing-key fingerprint');
 assert(!/mariadb-(client|server)/i.test(dockerfile), 'Container image still substitutes MariaDB for MySQL');
 assert(wrangler.includes('"nodejs_compat"'), 'Wrangler config is missing nodejs_compat');
 assert(wrangler.includes('"SANDBOX_TRANSPORT": "rpc"'), 'Wrangler config is missing RPC transport');
@@ -206,4 +223,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Dialect lab validation passed: ${dialectLabManifests.length} labs, ${dialectLabCases.length} engine cases, exact SQLite fixtures, hidden-DML/escape policy, canonical RPC adapter, Oracle MySQL image, production lifecycle evidence and D1 privacy contract.`);
+console.log(`Dialect lab validation passed: ${dialectLabManifests.length} labs, ${dialectLabCases.length} engine cases, exact SQLite fixtures, hidden-DML/escape policy, canonical RPC adapter, real two-session contracts, Oracle MySQL image, production lifecycle evidence and D1 privacy contract.`);
