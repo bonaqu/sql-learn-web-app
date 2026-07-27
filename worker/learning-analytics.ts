@@ -1,17 +1,20 @@
-import { modules } from '../src/data/course-catalog';
-import type { AttemptErrorKind } from '../src/lib/attempt-diagnostics';
+import {
+  ANALYTICS_DIAGNOSTIC_KINDS,
+  ANALYTICS_EXPERIMENT_IDS,
+  ANALYTICS_MODULE_IDS,
+  ANALYTICS_VARIANTS,
+  type AnalyticsDiagnosticKind,
+  type AnalyticsVariant
+} from './learning-analytics-contract';
 
 const MAX_BODY_BYTES = 72_000;
-const MAX_ROWS = modules.length;
+const MAX_ROWS = ANALYTICS_MODULE_IDS.length;
 const MINIMUM_COHORT = 5;
 const REPORT_WEEKS = 12;
-const MODULE_IDS = new Set(modules.map(([id]) => id));
-const DIAGNOSTIC_KINDS = new Set<AttemptErrorKind>([
-  'syntax', 'schema', 'runtime', 'result-shape', 'row-set', 'ordering', 'values',
-  'null-filter', 'aggregation', 'join-cardinality'
-]);
-const EXPERIMENT_IDS = new Set(['remediation-copy-v1']);
-const VARIANTS = new Set(['control', 'variant-a', 'variant-b']);
+const MODULE_IDS = new Set<string>(ANALYTICS_MODULE_IDS);
+const DIAGNOSTIC_KINDS = new Set<string>(ANALYTICS_DIAGNOSTIC_KINDS);
+const EXPERIMENT_IDS = new Set<string>(ANALYTICS_EXPERIMENT_IDS);
+const VARIANTS = new Set<string>(ANALYTICS_VARIANTS);
 const SNAPSHOT_KEYS = new Set(['version', 'periodStart', 'courseVersion', 'rows', 'experiments']);
 const ROW_KEYS = new Set([
   'moduleId', 'opened', 'attempted', 'understood', 'independent', 'retained', 'lapses',
@@ -34,14 +37,14 @@ type SnapshotRow = {
   overload: 0 | 1;
   stalled: 0 | 1;
   reviewDebt: 0 | 1;
-  topDiagnosticKind: AttemptErrorKind | null;
+  topDiagnosticKind: AnalyticsDiagnosticKind | null;
 };
 type Snapshot = {
   version: 1;
   periodStart: string;
   courseVersion: 3;
   rows: SnapshotRow[];
-  experiments: Record<string, 'control' | 'variant-a' | 'variant-b'>;
+  experiments: Record<string, AnalyticsVariant>;
 };
 type StoredRow = { period_start: string; course_version: number; payload: string; updated_at: string };
 
@@ -66,7 +69,11 @@ function bodyTooLarge(request: Request) {
 }
 
 async function readJson(request: Request) {
-  try { return await request.json<unknown>(); } catch { return null; }
+  try {
+    return await request.json<unknown>();
+  } catch {
+    return null;
+  }
 }
 
 function exactKeys(value: Record<string, unknown>, allowed: Set<string>) {
@@ -89,14 +96,16 @@ function validRow(value: unknown): value is SnapshotRow {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const row = value as Record<string, unknown>;
   return exactKeys(row, ROW_KEYS)
-    && typeof row.moduleId === 'string' && MODULE_IDS.has(row.moduleId)
+    && typeof row.moduleId === 'string'
+    && MODULE_IDS.has(row.moduleId)
     && ['opened', 'attempted', 'understood', 'independent', 'retained', 'lapses', 'remediations', 'remediationSuccesses']
       .every(key => boundedInteger(row[key]))
     && [0, 5, 15, 30, 60].includes(Number(row.studyMinutesBucket))
     && (row.overload === 0 || row.overload === 1)
     && (row.stalled === 0 || row.stalled === 1)
     && (row.reviewDebt === 0 || row.reviewDebt === 1)
-    && (row.topDiagnosticKind === null || (typeof row.topDiagnosticKind === 'string' && DIAGNOSTIC_KINDS.has(row.topDiagnosticKind as AttemptErrorKind)))
+    && (row.topDiagnosticKind === null
+      || (typeof row.topDiagnosticKind === 'string' && DIAGNOSTIC_KINDS.has(row.topDiagnosticKind)))
     && Number(row.attempted) <= Number(row.opened)
     && Number(row.understood) <= Number(row.attempted)
     && Number(row.independent) <= Number(row.understood)
@@ -125,7 +134,11 @@ function validSnapshot(value: unknown): value is Snapshot {
 function parseStored(row: StoredRow): Snapshot | null {
   try {
     const value = JSON.parse(row.payload) as unknown;
-    return validSnapshot(value) && value.periodStart === row.period_start && value.courseVersion === row.course_version ? value : null;
+    return validSnapshot(value)
+      && value.periodStart === row.period_start
+      && value.courseVersion === row.course_version
+      ? value
+      : null;
   } catch {
     return null;
   }
@@ -155,7 +168,8 @@ async function writePreference(request: Request, env: Cloudflare.Env, userId: st
     await env.DB.batch([
       env.DB.prepare(`INSERT INTO learning_analytics_preferences(user_id, sharing, updated_at)
         VALUES(?, 'off', ?)
-        ON CONFLICT(user_id) DO UPDATE SET sharing = 'off', updated_at = excluded.updated_at`).bind(userId, updatedAt),
+        ON CONFLICT(user_id) DO UPDATE SET sharing = 'off', updated_at = excluded.updated_at`)
+        .bind(userId, updatedAt),
       env.DB.prepare('DELETE FROM learning_analytics_snapshots WHERE user_id = ?').bind(userId)
     ]);
   } else {
@@ -176,7 +190,9 @@ async function writeSnapshot(request: Request, env: Cloudflare.Env, userId: stri
   const current = await preference(env, userId);
   if (current.sharing !== 'coarse-opt-in') return json({ error: 'Learning analytics sharing is disabled' }, 403);
   const serialized = JSON.stringify(body.snapshot);
-  if (new TextEncoder().encode(serialized).byteLength > MAX_BODY_BYTES) return json({ error: 'Learning analytics payload is too large' }, 413);
+  if (new TextEncoder().encode(serialized).byteLength > MAX_BODY_BYTES) {
+    return json({ error: 'Learning analytics payload is too large' }, 413);
+  }
   const updatedAt = sqliteTime();
   await env.DB.prepare(`INSERT INTO learning_analytics_snapshots(user_id, period_start, course_version, payload, updated_at)
     VALUES(?, ?, ?, ?, ?)
@@ -199,20 +215,46 @@ async function cohortReport(env: Cloudflare.Env) {
     FROM learning_analytics_snapshots WHERE period_start >= ?
     ORDER BY period_start DESC LIMIT 5000`).bind(reportCutoff()).all<StoredRow>();
   const groups = new Map<string, {
-    periodStart: string; moduleId: string; contributors: number; opened: number; attempted: number;
-    understood: number; independent: number; retained: number; lapses: number; remediations: number;
-    remediationSuccesses: number; studyMinutes: number; overload: number; stalled: number; reviewDebt: number;
-    diagnostics: Map<AttemptErrorKind, number>;
+    periodStart: string;
+    moduleId: string;
+    contributors: number;
+    opened: number;
+    attempted: number;
+    understood: number;
+    independent: number;
+    retained: number;
+    lapses: number;
+    remediations: number;
+    remediationSuccesses: number;
+    studyMinutes: number;
+    overload: number;
+    stalled: number;
+    reviewDebt: number;
+    diagnostics: Map<AnalyticsDiagnosticKind, number>;
   }>();
+
   for (const stored of result.results || []) {
     const snapshot = parseStored(stored);
     if (!snapshot) continue;
     for (const row of snapshot.rows) {
       const key = `${snapshot.periodStart}:${row.moduleId}`;
       const group = groups.get(key) || {
-        periodStart: snapshot.periodStart, moduleId: row.moduleId, contributors: 0, opened: 0, attempted: 0,
-        understood: 0, independent: 0, retained: 0, lapses: 0, remediations: 0, remediationSuccesses: 0,
-        studyMinutes: 0, overload: 0, stalled: 0, reviewDebt: 0, diagnostics: new Map<AttemptErrorKind, number>()
+        periodStart: snapshot.periodStart,
+        moduleId: row.moduleId,
+        contributors: 0,
+        opened: 0,
+        attempted: 0,
+        understood: 0,
+        independent: 0,
+        retained: 0,
+        lapses: 0,
+        remediations: 0,
+        remediationSuccesses: 0,
+        studyMinutes: 0,
+        overload: 0,
+        stalled: 0,
+        reviewDebt: 0,
+        diagnostics: new Map<AnalyticsDiagnosticKind, number>()
       };
       group.contributors += 1;
       group.opened += row.opened;
@@ -227,17 +269,21 @@ async function cohortReport(env: Cloudflare.Env) {
       group.overload += row.overload;
       group.stalled += row.stalled;
       group.reviewDebt += row.reviewDebt;
-      if (row.topDiagnosticKind) group.diagnostics.set(row.topDiagnosticKind, (group.diagnostics.get(row.topDiagnosticKind) || 0) + 1);
+      if (row.topDiagnosticKind) {
+        group.diagnostics.set(row.topDiagnosticKind, (group.diagnostics.get(row.topDiagnosticKind) || 0) + 1);
+      }
       groups.set(key, group);
     }
   }
+
   let suppressedRows = 0;
   const rows = [...groups.values()].flatMap(group => {
     if (group.contributors < MINIMUM_COHORT) {
       suppressedRows += 1;
       return [];
     }
-    const topDiagnosticKind = [...group.diagnostics].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] || null;
+    const topDiagnosticKind = [...group.diagnostics]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0]?.[0] || null;
     return [{
       periodStart: group.periodStart,
       moduleId: group.moduleId,
@@ -258,7 +304,14 @@ async function cohortReport(env: Cloudflare.Env) {
       topDiagnosticKind
     }];
   }).sort((left, right) => right.periodStart.localeCompare(left.periodStart) || left.moduleId.localeCompare(right.moduleId));
-  return json({ version: 1, minimumCohort: MINIMUM_COHORT, generatedAt: new Date().toISOString(), rows, suppressedRows });
+
+  return json({
+    version: 1,
+    minimumCohort: MINIMUM_COHORT,
+    generatedAt: new Date().toISOString(),
+    rows,
+    suppressedRows
+  });
 }
 
 async function exportAnalytics(env: Cloudflare.Env, userId: string) {
@@ -278,10 +331,15 @@ async function deleteAnalytics(env: Cloudflare.Env, userId: string) {
   return json({ ok: true });
 }
 
-export async function handleLearningAnalyticsRequest(request: Request, env: Cloudflare.Env, userId: string): Promise<Response | null> {
+export async function handleLearningAnalyticsRequest(
+  request: Request,
+  env: Cloudflare.Env,
+  userId: string
+): Promise<Response | null> {
   const url = new URL(request.url);
   if (!url.pathname.startsWith('/api/learning-analytics')) return null;
   if (!env.DB) return json({ error: 'D1 binding is not configured' }, 503);
+
   if (url.pathname === '/api/learning-analytics/preferences') {
     if (request.method === 'GET') return readPreference(env, userId);
     if (request.method === 'PUT') return writePreference(request, env, userId);
