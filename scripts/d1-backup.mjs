@@ -23,7 +23,8 @@ execFileSync(npx, [
 
 const bytes = readFileSync(output);
 const sql = bytes.toString('utf8');
-if (bytes.byteLength < 256 || !/CREATE TABLE\s+[`"]?users[`"]?/i.test(sql) || !/CREATE TABLE\s+[`"]?progress[`"]?/i.test(sql)) {
+const tablePattern = table => new RegExp('CREATE TABLE\\s+(?:IF NOT EXISTS\\s+)?[`"]?' + table + '[`"]?', 'i');
+if (bytes.byteLength < 256 || !tablePattern('users').test(sql) || !tablePattern('progress').test(sql)) {
   throw new Error('Export does not look like a complete SQL Academy D1 backup');
 }
 const sha256 = createHash('sha256').update(bytes).digest('hex');
