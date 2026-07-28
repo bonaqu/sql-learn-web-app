@@ -4,6 +4,7 @@ import { handleAssessmentReportV2Request } from './assessment-report-v2-route';
 import { authenticateSession, handleAuthRequest } from './auth';
 import { handleCapstoneRequest } from './capstones';
 import { handleCheckpointRequest } from './checkpoints';
+import { handleCommercialCapabilitiesRequest } from './commercial-capabilities';
 import { handleCurriculumRequest } from './curriculum';
 import { handleDialectLabRequest } from './dialect-labs';
 import { handleDialectRealEngineRequest } from './dialect-real-engine-route';
@@ -13,23 +14,36 @@ import { handleOnboardingRequest } from './onboarding';
 
 export { Sandbox } from '@cloudflare/sandbox';
 
-const ALLOWED_ORIGINS = new Set([
-  'https://bonaqu.github.io',
-  'http://localhost:4173',
-  'http://127.0.0.1:4173',
-  'http://localhost:5173',
-  'http://127.0.0.1:5173'
-]);
-
 const CORS_METHODS = 'GET, PUT, POST, DELETE, OPTIONS';
 const CORS_HEADERS = 'authorization, content-type, x-profile-id';
 
-type Pipeline = 'auth' | 'assessment' | 'checkpoint' | 'capstone' | 'dialect' | 'analytics' | 'curriculum' | 'onboarding';
+type Pipeline = 'auth' | 'assessment' | 'checkpoint' | 'capstone' | 'dialect' | 'analytics' | 'curriculum' | 'onboarding' | 'commercial';
+type OriginEnvironment = Cloudflare.Env & Partial<Record<'ALLOWED_ORIGINS', string>>;
 
-function allowedOrigin(request: Request) {
+function configuredOrigins(env: OriginEnvironment) {
+  const origins = new Set<string>();
+  const entries = (env.ALLOWED_ORIGINS || '').split(',').map(value => value.trim()).filter(Boolean).slice(0, 24);
+  for (const entry of entries) {
+    try {
+      const parsed = new URL(entry);
+      if ((parsed.protocol === 'https:' || parsed.protocol === 'http:')
+        && parsed.origin === entry.replace(/\/$/, '')
+        && !parsed.username
+        && !parsed.password
+        && parsed.pathname === '/'
+        && !parsed.search
+        && !parsed.hash) origins.add(parsed.origin);
+    } catch {
+      // Invalid configured origins are ignored. Missing valid configuration fails closed.
+    }
+  }
+  return origins;
+}
+
+function allowedOrigin(request: Request, env: OriginEnvironment) {
   const origin = request.headers.get('origin');
   if (!origin) return null;
-  if (origin === new URL(request.url).origin || ALLOWED_ORIGINS.has(origin)) return origin;
+  if (origin === new URL(request.url).origin || configuredOrigins(env).has(origin)) return origin;
   return false;
 }
 
@@ -38,7 +52,7 @@ function corsHeaders(origin: string) {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': CORS_METHODS,
     'access-control-allow-headers': CORS_HEADERS,
-    'access-control-expose-headers': 'retry-after, x-request-id, x-progress-contract, x-onboarding-contract, x-dialect-lab-contract, x-learning-analytics-contract',
+    'access-control-expose-headers': 'retry-after, x-request-id, x-progress-contract, x-onboarding-contract, x-dialect-lab-contract, x-learning-analytics-contract, x-commercial-capabilities-contract',
     'access-control-max-age': '86400',
     vary: 'Origin'
   };
@@ -73,7 +87,9 @@ function pipelineFailure(error: unknown, pathname: string, pipeline: Pipeline) {
               ? 'Learning analytics'
               : pipeline === 'onboarding'
                 ? 'Onboarding'
-                : 'Curriculum';
+                : pipeline === 'commercial'
+                  ? 'Commercial capability'
+                  : 'Curriculum';
   return new Response(JSON.stringify({
     error: `${label} operation failed`,
     code: `${pipeline.toUpperCase()}_PIPELINE_UNHANDLED`,
@@ -94,7 +110,7 @@ export default {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) return core.fetch(request, env);
 
-    const origin = allowedOrigin(request);
+    const origin = allowedOrigin(request, env);
     if (origin === false) {
       return new Response(JSON.stringify({ error: 'Origin is not allowed' }), {
         status: 403,
@@ -111,6 +127,15 @@ export default {
       if (!origin) return new Response(null, { status: 204, headers: { allow: CORS_METHODS } });
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
+
+    let commercialResponse: Response | null;
+    try {
+      commercialResponse = handleCommercialCapabilitiesRequest(request, env);
+    } catch (error) {
+      const response = pipelineFailure(error, url.pathname, 'commercial');
+      return origin ? withCors(response, origin) : response;
+    }
+    if (commercialResponse) return origin ? withCors(commercialResponse, origin) : commercialResponse;
 
     let masteryProgressResponse: Response | null;
     try {
