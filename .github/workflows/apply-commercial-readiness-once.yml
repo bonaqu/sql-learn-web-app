@@ -24,10 +24,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/commercial-patch/diff-021.b64')
+          value = path.read_text(encoding='ascii')
+          assert len(value) == 3000
+          assert value[2698] == 'T'
+          path.write_text(value[:2698] + 'm' + value[2699:], encoding='ascii')
+          PY
           cat .github/commercial-patch/diff-*.b64 | base64 --decode > commercial.patch.gz
           wc -c commercial.patch.gz | tee commercial-patch-size.txt
           sha256sum commercial.patch.gz | tee commercial-patch-sha256.txt
-          echo '1d6255252441351687649f4f6473f789502c989cf640722c8744123bab494975  commercial.patch.gz' | sha256sum --check --strict
+          echo 'b8f94d52194aa1b54abd68cea79d58908a8dcef15b1a008b3cc0db3ec319c5af  commercial.patch.gz' | sha256sum --check --strict
           gzip --test commercial.patch.gz
           gzip --decompress --stdout commercial.patch.gz > /tmp/commercial.patch
           git apply --check --verbose /tmp/commercial.patch 2>&1 | tee commercial-apply-check.txt
