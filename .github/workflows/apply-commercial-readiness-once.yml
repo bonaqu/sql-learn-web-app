@@ -1,0 +1,45 @@
+name: Apply commercial readiness patch once
+
+on:
+  push:
+    branches:
+      - agent/commercial-readiness
+    paths:
+      - .github/workflows/apply-commercial-readiness-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact commercial branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/commercial-readiness
+          fetch-depth: 0
+
+      - name: Reconstruct and verify patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/commercial-patch/diff-*.b64 | base64 --decode > /tmp/commercial.patch.gz
+          echo '1d6255252441351687649f4f6473f789502c989cf640722c8744123bab494975  /tmp/commercial.patch.gz' | sha256sum --check --strict
+          gzip --decompress --stdout /tmp/commercial.patch.gz > /tmp/commercial.patch
+          git apply --check /tmp/commercial.patch
+
+      - name: Apply product changes and remove transport files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply /tmp/commercial.patch
+          rm -rf .github/commercial-patch
+          rm -f .github/workflows/export-commercial-source-once.yml
+          rm -f .github/workflows/apply-commercial-readiness-once.yml
+          git add -A
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Add guided learning UX and commercial readiness baseline'
+          git push origin HEAD:agent/commercial-readiness
