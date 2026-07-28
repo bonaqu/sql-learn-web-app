@@ -2,11 +2,18 @@ import type { Page } from '@playwright/test';
 
 export async function openAllTools(page: Page) {
   const sidebar = page.locator('.sidebar');
-  const mobileMenu = page.getByRole('button', { name: 'Открыть меню' });
-  const mobile = await mobileMenu.isVisible();
   const sidebarOpen = await sidebar.evaluate(element => element.classList.contains('open'));
-  if (mobile && !sidebarOpen) {
-    await mobileMenu.click();
+
+  if (!sidebarOpen) {
+    const mobileMore = page.getByRole('button', { name: 'Ещё', exact: true });
+    const mobileMenu = page.getByRole('button', { name: 'Открыть меню' });
+
+    if (await mobileMore.isVisible()) {
+      await mobileMore.click();
+    } else if (await mobileMenu.isVisible()) {
+      await mobileMenu.click();
+    }
+
     await page.waitForFunction(() => document.querySelector('.sidebar')?.classList.contains('open'));
   }
 
