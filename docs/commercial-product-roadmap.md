@@ -14,17 +14,19 @@ Advanced tools remain available, but they do not compete with the primary learni
 
 ## Phase 1 — guided learner experience
 
-- [ ] Automatically open the goal / schedule / placement setup for a new account.
-- [ ] Replace the feature-directory home screen with a “Today” screen and one primary action.
-- [ ] Reduce permanent navigation to Today, My plan, Learn, Practice and Review.
-- [ ] Move catalog, interview, exams, checkpoints, projects, dialects, achievements, mentor and analytics under one “All tools” disclosure.
-- [ ] Keep all existing deep features accessible and preserve keyboard/mobile accessibility.
-- [ ] Add regression tests for first-run and returning-user journeys.
+Completed in the guided learner journey delivered by PR #83.
+
+- [x] Automatically open the goal / schedule / placement setup for a new account.
+- [x] Replace the feature-directory home screen with a “Today” screen and one primary action.
+- [x] Reduce permanent navigation to Today, My plan, Learn, Practice and Review.
+- [x] Move catalog, interview, exams, checkpoints, projects, dialects, achievements, mentor and analytics under one “All tools” disclosure.
+- [x] Keep all existing deep features accessible and preserve keyboard/mobile accessibility.
+- [x] Add regression tests for first-run and returning-user journeys.
 
 ## Phase 2 — transferable product package
 
-- [ ] Replace hard-coded owner/domain branding with environment-driven product configuration.
-- [ ] Add a clean-install deployment runbook for a buyer-owned GitHub and Cloudflare account.
+- [x] Replace hard-coded owner/domain branding and API origins with environment-driven product configuration.
+- [x] Add a clean-install deployment runbook for a buyer-owned GitHub and Cloudflare account.
 - [ ] Add staging/production environment guidance and rollback/restore procedures.
 - [ ] Add deterministic package locking and a dependency/license inventory.
 - [ ] Add explicit source-code licensing and third-party notices.
@@ -41,7 +43,7 @@ Advanced tools remain available, but they do not compete with the primary learni
 
 All integrations are default-off and fail closed on the current Cloudflare Free deployment.
 
-- [ ] Capability endpoint exposing only enabled/disabled states.
+- [x] Capability endpoint exposing only enabled/disabled states.
 - [ ] Turnstile verification adapter.
 - [ ] Email delivery adapter and verified-email auth flow.
 - [ ] SMS delivery adapter and verified-phone auth flow.
