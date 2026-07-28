@@ -88,7 +88,9 @@ export function commercialCapabilities(env: Cloudflare.Env) {
     && providerReady(source.EMAIL_PROVIDER, source.EMAIL_PROVIDER_ENDPOINT, source.EMAIL_API_KEY, source.EMAIL_FROM);
   const smsVerification = featureRequested(env, 'smsVerification')
     && providerReady(source.SMS_PROVIDER, source.SMS_PROVIDER_ENDPOINT, source.SMS_API_KEY, source.SMS_FROM);
-  const turnstile = featureRequested(env, 'turnstile') && turnstileSecret(env).length >= 8;
+  const turnstile = featureRequested(env, 'turnstile')
+    && turnstileSecret(env).length >= 8
+    && expectedTurnstileHostnames(env).size > 0;
   const adminConsole = featureRequested(env, 'adminConsole') && adminAllowedUserIds(env).size > 0;
 
   return Object.freeze({
@@ -113,7 +115,10 @@ export function commercialConfigurationErrors(env: Cloudflare.Env) {
     && !providerReady(source.SMS_PROVIDER, source.SMS_PROVIDER_ENDPOINT, source.SMS_API_KEY, source.SMS_FROM)) {
     errors.push('SMS_VERIFICATION_INCOMPLETE');
   }
-  if (featureRequested(env, 'turnstile') && turnstileSecret(env).length < 8) errors.push('TURNSTILE_INCOMPLETE');
+  if (featureRequested(env, 'turnstile')
+    && (turnstileSecret(env).length < 8 || expectedTurnstileHostnames(env).size === 0)) {
+    errors.push('TURNSTILE_INCOMPLETE');
+  }
   if (featureRequested(env, 'adminConsole') && adminAllowedUserIds(env).size === 0) errors.push('ADMIN_ALLOWLIST_EMPTY');
   return errors;
 }
