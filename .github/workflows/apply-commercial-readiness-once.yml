@@ -37,7 +37,31 @@ jobs:
           sha256sum commercial.patch.gz | tee commercial-patch-sha256.txt
           echo 'b8f94d52194aa1b54abd68cea79d58908a8dcef15b1a008b3cc0db3ec319c5af  commercial.patch.gz' | sha256sum --check --strict
           gzip --test commercial.patch.gz
-          gzip --decompress --stdout commercial.patch.gz > /tmp/commercial.patch
+          gzip --decompress --stdout commercial.patch.gz > /tmp/commercial.patch.raw
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('/tmp/commercial.patch.raw').read_text(encoding='utf-8', errors='surrogateescape')
+          sections = []
+          current = []
+          for line in source.splitlines(keepends=True):
+              if line.startswith('--- a/') and current:
+                  sections.append(current)
+                  current = []
+              current.append(line)
+          if current:
+              sections.append(current)
+          kept = []
+          removed = []
+          for section in sections:
+              header = section[0] if section else ''
+              if header.startswith('--- a/') and '.tsbuildinfo' in header:
+                  removed.append(header.strip())
+              else:
+                  kept.extend(section)
+          assert len(removed) == 3, removed
+          Path('/tmp/commercial.patch').write_text(''.join(kept), encoding='utf-8', errors='surrogateescape')
+          print('Excluded local build caches:', *removed, sep='\n- ')
+          PY
           git apply --check --verbose /tmp/commercial.patch 2>&1 | tee commercial-apply-check.txt
 
       - name: Upload patch diagnostics
