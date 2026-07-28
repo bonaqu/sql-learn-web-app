@@ -19,6 +19,9 @@ const json = (data: unknown, status = 200, extraHeaders: Record<string, string> 
 
 export function handlePublicCommercialRequest(request: Request, env: Cloudflare.Env): Response | null {
   const pathname = new URL(request.url).pathname;
+  if (pathname === '/api/admin/health' && !featureRequested(env, 'adminConsole')) {
+    return json({ error: 'Not found' }, 404);
+  }
   if (pathname !== '/api/capabilities') return null;
   if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405, { allow: 'GET' });
 
@@ -46,7 +49,6 @@ export async function handleAdminCommercialRequest(
   const pathname = new URL(request.url).pathname;
   if (pathname !== '/api/admin/health') return null;
 
-  // Hide the complete surface unless the buyer explicitly enables it.
   if (!featureRequested(env, 'adminConsole')) return json({ error: 'Not found' }, 404);
   const capabilities = commercialCapabilities(env);
   if (!capabilities.adminConsole) {
