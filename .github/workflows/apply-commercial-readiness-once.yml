@@ -24,12 +24,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .github/commercial-patch/diff-*.b64 | base64 --decode > /tmp/commercial.patch.gz
-          wc -c /tmp/commercial.patch.gz | tee commercial-patch-size.txt
-          sha256sum /tmp/commercial.patch.gz | tee commercial-patch-sha256.txt
-          echo '1d6255252441351687649f4f6473f789502c989cf640722c8744123bab494975  /tmp/commercial.patch.gz' | sha256sum --check --strict
-          gzip --test /tmp/commercial.patch.gz
-          gzip --decompress --stdout /tmp/commercial.patch.gz > /tmp/commercial.patch
+          cat .github/commercial-patch/diff-*.b64 | base64 --decode > commercial.patch.gz
+          wc -c commercial.patch.gz | tee commercial-patch-size.txt
+          sha256sum commercial.patch.gz | tee commercial-patch-sha256.txt
+          echo '1d6255252441351687649f4f6473f789502c989cf640722c8744123bab494975  commercial.patch.gz' | sha256sum --check --strict
+          gzip --test commercial.patch.gz
+          gzip --decompress --stdout commercial.patch.gz > /tmp/commercial.patch
           git apply --check --verbose /tmp/commercial.patch 2>&1 | tee commercial-apply-check.txt
 
       - name: Upload patch diagnostics
@@ -38,6 +38,7 @@ jobs:
         with:
           name: commercial-patch-diagnostics
           path: |
+            commercial.patch.gz
             commercial-patch-size.txt
             commercial-patch-sha256.txt
             commercial-apply-check.txt
@@ -52,6 +53,7 @@ jobs:
           rm -rf .github/commercial-patch
           rm -f .github/workflows/export-commercial-source-once.yml
           rm -f .github/workflows/apply-commercial-readiness-once.yml
+          rm -f commercial.patch.gz commercial-patch-size.txt commercial-patch-sha256.txt commercial-apply-check.txt
           git add -A
           git diff --cached --check
           git config user.name 'github-actions[bot]'
