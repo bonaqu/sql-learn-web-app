@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.playwright/
+test-results/
+playwright-report/
+.wrangler/
+.dev.vars
+.dev.vars.*
+.env
+.env.local
+.env.*.local
+backups/
+production-health-result.json
+*.local.sql
