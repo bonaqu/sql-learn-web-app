@@ -42,8 +42,13 @@ function analyticsState(userId: string) {
 }
 
 async function seedAnalytics(page: Page, userId: string) {
-  await page.addInitScript(({ key, value }) => localStorage.setItem(key, JSON.stringify(value)), {
+  await page.addInitScript(({ key, sessionKey, sessionId, value }) => {
+    localStorage.setItem(key, JSON.stringify(value));
+    sessionStorage.setItem(sessionKey, sessionId);
+  }, {
     key: `sql-academy-learning-analytics-v1:${userId}`,
+    sessionKey: `sql-academy-learning-analytics-session-v1:${userId}`,
+    sessionId: 'playwright-analytics-session',
     value: analyticsState(userId)
   });
 }
