@@ -2,7 +2,6 @@ import {
   adminAllowedUserIds,
   commercialCapabilities,
   commercialConfigurationErrors,
-  featureRequested,
   productRuntime
 } from './runtime-config';
 
@@ -19,7 +18,7 @@ const json = (data: unknown, status = 200, extraHeaders: Record<string, string> 
 
 export function handlePublicCommercialRequest(request: Request, env: Cloudflare.Env): Response | null {
   const pathname = new URL(request.url).pathname;
-  if (pathname === '/api/admin/health' && !featureRequested(env, 'adminConsole')) {
+  if (pathname === '/api/admin/health' && !commercialCapabilities(env).adminConsole) {
     return json({ error: 'Not found' }, 404);
   }
   if (pathname !== '/api/capabilities') return null;
@@ -49,11 +48,8 @@ export async function handleAdminCommercialRequest(
   const pathname = new URL(request.url).pathname;
   if (pathname !== '/api/admin/health') return null;
 
-  if (!featureRequested(env, 'adminConsole')) return json({ error: 'Not found' }, 404);
   const capabilities = commercialCapabilities(env);
-  if (!capabilities.adminConsole) {
-    return json({ error: 'Operator console is unavailable', code: 'ADMIN_MISCONFIGURED' }, 503);
-  }
+  if (!capabilities.adminConsole) return json({ error: 'Not found' }, 404);
   if (!adminAllowedUserIds(env).has(userId)) return json({ error: 'Not found' }, 404);
   if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405, { allow: 'GET' });
   if (!env.DB) return json({ error: 'D1 binding is not configured' }, 503);
