@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { handlePublicCommercialRequest } from '../worker/commercial-routes';
 import { withSecurityHeaders } from '../worker/http-security';
 import {
@@ -49,6 +50,12 @@ assert.deepEqual(commercialConfigurationErrors(incomplete).sort(), [
   'SMS_VERIFICATION_INCOMPLETE',
   'TURNSTILE_INCOMPLETE'
 ]);
+const hiddenIncompleteAdmin = handlePublicCommercialRequest(
+  new Request('https://api.example.com/api/admin/health'),
+  incomplete
+);
+assert(hiddenIncompleteAdmin);
+assert.equal(hiddenIncompleteAdmin.status, 404);
 
 const configured = env({
   FEATURE_EMAIL_VERIFICATION: 'on',
@@ -114,4 +121,28 @@ assert.equal(secured.headers.get('x-frame-options'), 'DENY');
 assert.match(secured.headers.get('content-security-policy') || '', /frame-ancestors 'none'/);
 assert.match(secured.headers.get('strict-transport-security') || '', /max-age=31536000/);
 
-console.log('Commercial runtime validation passed: default-off capabilities, configuration completeness, CORS, hidden admin surface, Turnstile actions and security headers.');
+const deploymentWorkflow = readFileSync('.github/workflows/cloudflare.yml', 'utf8');
+const productionSmoke = readFileSync('scripts/commercial-runtime-production-smoke.mjs', 'utf8');
+for (const required of [
+  "ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS || 'https://bonaqu.github.io' }}",
+  'PRODUCT_NAME: process.env.PRODUCT_NAME',
+  'FEATURE_TURNSTILE: process.env.FEATURE_TURNSTILE',
+  'node scripts/commercial-runtime-production-smoke.mjs',
+  'cloudflare-commercial-stage.txt'
+]) {
+  assert(deploymentWorkflow.includes(required), `Cloudflare deployment is missing commercial runtime wiring: ${required}`);
+}
+for (const required of [
+  "expected: [expectedAdmin ? 401 : 404]",
+  "origin: 'https://commercial-smoke-rejected.invalid'",
+  "capabilities.usernamePassword !== true",
+  "capabilities.recoveryCodes !== true",
+  "'strict-transport-security'"
+]) {
+  assert(productionSmoke.includes(required), `Commercial production smoke is missing: ${required}`);
+}
+for (const forbidden of ['EMAIL_API_KEY:', 'SMS_API_KEY:', 'TURNSTILE_SECRET_KEY:']) {
+  assert(!deploymentWorkflow.includes(forbidden), `Secret must not be written to deployment config: ${forbidden}`);
+}
+
+console.log('Commercial runtime validation passed: default-off completeness, CORS, hidden admin, Turnstile actions, security headers and production deployment wiring.');
