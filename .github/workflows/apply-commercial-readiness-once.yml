@@ -1,17 +1,17 @@
 name: Apply commercial readiness patch once
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/commercial-readiness
-    paths:
-      - .github/workflows/apply-commercial-readiness-once.yml
+      - bonaqu_projects
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
 
 jobs:
   apply:
+    if: github.head_ref == 'agent/commercial-readiness'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout exact commercial branch
