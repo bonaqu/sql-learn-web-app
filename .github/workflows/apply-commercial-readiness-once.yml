@@ -25,9 +25,24 @@ jobs:
         run: |
           set -euo pipefail
           cat .github/commercial-patch/diff-*.b64 | base64 --decode > /tmp/commercial.patch.gz
+          wc -c /tmp/commercial.patch.gz | tee commercial-patch-size.txt
+          sha256sum /tmp/commercial.patch.gz | tee commercial-patch-sha256.txt
           echo '1d6255252441351687649f4f6473f789502c989cf640722c8744123bab494975  /tmp/commercial.patch.gz' | sha256sum --check --strict
+          gzip --test /tmp/commercial.patch.gz
           gzip --decompress --stdout /tmp/commercial.patch.gz > /tmp/commercial.patch
-          git apply --check /tmp/commercial.patch
+          git apply --check --verbose /tmp/commercial.patch 2>&1 | tee commercial-apply-check.txt
+
+      - name: Upload patch diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: commercial-patch-diagnostics
+          path: |
+            commercial-patch-size.txt
+            commercial-patch-sha256.txt
+            commercial-apply-check.txt
+          if-no-files-found: ignore
+          retention-days: 2
 
       - name: Apply product changes and remove transport files
         shell: bash
