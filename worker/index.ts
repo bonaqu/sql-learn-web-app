@@ -4,34 +4,23 @@ import { handleAssessmentReportV2Request } from './assessment-report-v2-route';
 import { authenticateSession, handleAuthRequest } from './auth';
 import { handleCapstoneRequest } from './capstones';
 import { handleCheckpointRequest } from './checkpoints';
+import { handleAdminCommercialRequest, handlePublicCommercialRequest } from './commercial-routes';
 import { handleCurriculumRequest } from './curriculum';
 import { handleDialectLabRequest } from './dialect-labs';
 import { handleDialectRealEngineRequest } from './dialect-real-engine-route';
+import { withSecurityHeaders } from './http-security';
 import { handleLearningAnalyticsRequest } from './learning-analytics';
 import { handleMasteryProgressV1Request } from './mastery-progress-route';
 import { handleOnboardingRequest } from './onboarding';
+import { requestOriginAllowed } from './runtime-config';
+import { enforceTurnstile } from './turnstile';
 
 export { Sandbox } from '@cloudflare/sandbox';
 
-const ALLOWED_ORIGINS = new Set([
-  'https://bonaqu.github.io',
-  'http://localhost:4173',
-  'http://127.0.0.1:4173',
-  'http://localhost:5173',
-  'http://127.0.0.1:5173'
-]);
-
 const CORS_METHODS = 'GET, PUT, POST, DELETE, OPTIONS';
-const CORS_HEADERS = 'authorization, content-type, x-profile-id';
+const CORS_HEADERS = 'authorization, content-type, x-profile-id, cf-turnstile-response';
 
-type Pipeline = 'auth' | 'assessment' | 'checkpoint' | 'capstone' | 'dialect' | 'analytics' | 'curriculum' | 'onboarding';
-
-function allowedOrigin(request: Request) {
-  const origin = request.headers.get('origin');
-  if (!origin) return null;
-  if (origin === new URL(request.url).origin || ALLOWED_ORIGINS.has(origin)) return origin;
-  return false;
-}
+type Pipeline = 'auth' | 'assessment' | 'checkpoint' | 'capstone' | 'dialect' | 'analytics' | 'curriculum' | 'onboarding' | 'commercial';
 
 function corsHeaders(origin: string) {
   return {
@@ -54,6 +43,10 @@ function withCors(response: Response, origin: string) {
   });
 }
 
+function finalize(response: Response, request: Request, origin: string | null) {
+  return withSecurityHeaders(origin ? withCors(response, origin) : response, request);
+}
+
 function pipelineFailure(error: unknown, pathname: string, pipeline: Pipeline) {
   const requestId = crypto.randomUUID();
   const name = error instanceof Error ? error.name.slice(0, 80) : 'UnknownError';
@@ -73,7 +66,9 @@ function pipelineFailure(error: unknown, pathname: string, pipeline: Pipeline) {
               ? 'Learning analytics'
               : pipeline === 'onboarding'
                 ? 'Onboarding'
-                : 'Curriculum';
+                : pipeline === 'commercial'
+                  ? 'Commercial runtime'
+                  : 'Curriculum';
   return new Response(JSON.stringify({
     error: `${label} operation failed`,
     code: `${pipeline.toUpperCase()}_PIPELINE_UNHANDLED`,
@@ -92,11 +87,13 @@ function pipelineFailure(error: unknown, pathname: string, pipeline: Pipeline) {
 export default {
   async fetch(request: Request, env: Cloudflare.Env): Promise<Response> {
     const url = new URL(request.url);
-    if (!url.pathname.startsWith('/api/')) return core.fetch(request, env);
+    if (!url.pathname.startsWith('/api/')) {
+      return withSecurityHeaders(await core.fetch(request, env), request);
+    }
 
-    const origin = allowedOrigin(request);
+    const origin = requestOriginAllowed(request, env);
     if (origin === false) {
-      return new Response(JSON.stringify({ error: 'Origin is not allowed' }), {
+      return withSecurityHeaders(new Response(JSON.stringify({ error: 'Origin is not allowed' }), {
         status: 403,
         headers: {
           'content-type': 'application/json; charset=utf-8',
@@ -104,31 +101,45 @@ export default {
           'x-content-type-options': 'nosniff',
           vary: 'Origin'
         }
-      });
+      }), request);
     }
 
     if (request.method === 'OPTIONS') {
-      if (!origin) return new Response(null, { status: 204, headers: { allow: CORS_METHODS } });
-      return new Response(null, { status: 204, headers: corsHeaders(origin) });
+      if (!origin) return withSecurityHeaders(new Response(null, { status: 204, headers: { allow: CORS_METHODS } }), request);
+      return finalize(new Response(null, { status: 204, headers: corsHeaders(origin) }), request, null);
     }
+
+    let publicCommercialResponse: Response | null;
+    try {
+      publicCommercialResponse = handlePublicCommercialRequest(request, env);
+    } catch (error) {
+      return finalize(pipelineFailure(error, url.pathname, 'commercial'), request, origin);
+    }
+    if (publicCommercialResponse) return finalize(publicCommercialResponse, request, origin);
+
+    let turnstileResponse: Response | null;
+    try {
+      turnstileResponse = await enforceTurnstile(request, env);
+    } catch (error) {
+      return finalize(pipelineFailure(error, url.pathname, 'commercial'), request, origin);
+    }
+    if (turnstileResponse) return finalize(turnstileResponse, request, origin);
 
     let masteryProgressResponse: Response | null;
     try {
       masteryProgressResponse = await handleMasteryProgressV1Request(request, env);
     } catch (error) {
-      const response = pipelineFailure(error, url.pathname, 'auth');
-      return origin ? withCors(response, origin) : response;
+      return finalize(pipelineFailure(error, url.pathname, 'auth'), request, origin);
     }
-    if (masteryProgressResponse) return origin ? withCors(masteryProgressResponse, origin) : masteryProgressResponse;
+    if (masteryProgressResponse) return finalize(masteryProgressResponse, request, origin);
 
     let authResponse: Response | null;
     try {
       authResponse = await handleAuthRequest(request, env);
     } catch (error) {
-      const response = pipelineFailure(error, url.pathname, 'auth');
-      return origin ? withCors(response, origin) : response;
+      return finalize(pipelineFailure(error, url.pathname, 'auth'), request, origin);
     }
-    if (authResponse) return origin ? withCors(authResponse, origin) : authResponse;
+    if (authResponse) return finalize(authResponse, request, origin);
 
     let routedRequest = request;
     if (url.pathname !== '/api/health') {
@@ -136,98 +147,95 @@ export default {
       try {
         auth = await authenticateSession(request, env);
       } catch (error) {
-        const response = pipelineFailure(error, url.pathname, 'auth');
-        return origin ? withCors(response, origin) : response;
+        return finalize(pipelineFailure(error, url.pathname, 'auth'), request, origin);
       }
-      if (auth instanceof Response) return origin ? withCors(auth, origin) : auth;
+      if (auth instanceof Response) return finalize(auth, request, origin);
+
+      let adminCommercialResponse: Response | null;
+      try {
+        adminCommercialResponse = await handleAdminCommercialRequest(request, env, auth.userId);
+      } catch (error) {
+        return finalize(pipelineFailure(error, url.pathname, 'commercial'), request, origin);
+      }
+      if (adminCommercialResponse) return finalize(adminCommercialResponse, request, origin);
 
       let assessmentV2Response: Response | null;
       try {
         assessmentV2Response = await handleAssessmentReportV2Request(request, env, auth.userId);
       } catch (error) {
-        const response = pipelineFailure(error, url.pathname, 'assessment');
-        return origin ? withCors(response, origin) : response;
+        return finalize(pipelineFailure(error, url.pathname, 'assessment'), request, origin);
       }
-      if (assessmentV2Response) return origin ? withCors(assessmentV2Response, origin) : assessmentV2Response;
+      if (assessmentV2Response) return finalize(assessmentV2Response, request, origin);
 
       let assessmentResponse: Response | null;
       try {
         assessmentResponse = await handleAssessmentRequest(request, env, auth.userId);
       } catch (error) {
-        const response = pipelineFailure(error, url.pathname, 'assessment');
-        return origin ? withCors(response, origin) : response;
+        return finalize(pipelineFailure(error, url.pathname, 'assessment'), request, origin);
       }
-      if (assessmentResponse) return origin ? withCors(assessmentResponse, origin) : assessmentResponse;
+      if (assessmentResponse) return finalize(assessmentResponse, request, origin);
 
       let checkpointResponse: Response | null;
       try {
         checkpointResponse = await handleCheckpointRequest(request, env, auth.userId);
       } catch (error) {
-        const response = pipelineFailure(error, url.pathname, 'checkpoint');
-        return origin ? withCors(response, origin) : response;
+        return finalize(pipelineFailure(error, url.pathname, 'checkpoint'), request, origin);
       }
-      if (checkpointResponse) return origin ? withCors(checkpointResponse, origin) : checkpointResponse;
+      if (checkpointResponse) return finalize(checkpointResponse, request, origin);
 
       let capstoneResponse: Response | null;
       try {
         capstoneResponse = await handleCapstoneRequest(request, env, auth.userId);
       } catch (error) {
-        const response = pipelineFailure(error, url.pathname, 'capstone');
-        return origin ? withCors(response, origin) : response;
+        return finalize(pipelineFailure(error, url.pathname, 'capstone'), request, origin);
       }
-      if (capstoneResponse) return origin ? withCors(capstoneResponse, origin) : capstoneResponse;
+      if (capstoneResponse) return finalize(capstoneResponse, request, origin);
 
       let realDialectResponse: Response | null;
       try {
         realDialectResponse = await handleDialectRealEngineRequest(request, env, auth.userId);
       } catch (error) {
-        const response = pipelineFailure(error, url.pathname, 'dialect');
-        return origin ? withCors(response, origin) : response;
+        return finalize(pipelineFailure(error, url.pathname, 'dialect'), request, origin);
       }
-      if (realDialectResponse) return origin ? withCors(realDialectResponse, origin) : realDialectResponse;
+      if (realDialectResponse) return finalize(realDialectResponse, request, origin);
 
       let dialectResponse: Response | null;
       try {
         dialectResponse = await handleDialectLabRequest(request, env, auth.userId);
       } catch (error) {
-        const response = pipelineFailure(error, url.pathname, 'dialect');
-        return origin ? withCors(response, origin) : response;
+        return finalize(pipelineFailure(error, url.pathname, 'dialect'), request, origin);
       }
-      if (dialectResponse) return origin ? withCors(dialectResponse, origin) : dialectResponse;
+      if (dialectResponse) return finalize(dialectResponse, request, origin);
 
       let analyticsResponse: Response | null;
       try {
         analyticsResponse = await handleLearningAnalyticsRequest(request, env, auth.userId);
       } catch (error) {
-        const response = pipelineFailure(error, url.pathname, 'analytics');
-        return origin ? withCors(response, origin) : response;
+        return finalize(pipelineFailure(error, url.pathname, 'analytics'), request, origin);
       }
-      if (analyticsResponse) return origin ? withCors(analyticsResponse, origin) : analyticsResponse;
+      if (analyticsResponse) return finalize(analyticsResponse, request, origin);
 
       let curriculumResponse: Response | null;
       try {
         curriculumResponse = await handleCurriculumRequest(request, env, auth.userId);
       } catch (error) {
-        const response = pipelineFailure(error, url.pathname, 'curriculum');
-        return origin ? withCors(response, origin) : response;
+        return finalize(pipelineFailure(error, url.pathname, 'curriculum'), request, origin);
       }
-      if (curriculumResponse) return origin ? withCors(curriculumResponse, origin) : curriculumResponse;
+      if (curriculumResponse) return finalize(curriculumResponse, request, origin);
 
       let onboardingResponse: Response | null;
       try {
         onboardingResponse = await handleOnboardingRequest(request, env, auth.userId);
       } catch (error) {
-        const response = pipelineFailure(error, url.pathname, 'onboarding');
-        return origin ? withCors(response, origin) : response;
+        return finalize(pipelineFailure(error, url.pathname, 'onboarding'), request, origin);
       }
-      if (onboardingResponse) return origin ? withCors(onboardingResponse, origin) : onboardingResponse;
+      if (onboardingResponse) return finalize(onboardingResponse, request, origin);
 
       const headers = new Headers(request.headers);
       headers.set('x-profile-id', auth.userId);
       routedRequest = new Request(request, { headers });
     }
 
-    const response = await core.fetch(routedRequest, env);
-    return origin ? withCors(response, origin) : response;
+    return finalize(await core.fetch(routedRequest, env), request, origin);
   }
 } satisfies ExportedHandler<Cloudflare.Env>;
