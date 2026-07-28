@@ -18,7 +18,7 @@ if (manifest.sha256 !== sha256) throw new Error('Backup checksum does not match 
 if (Number(manifest.bytes) !== bytes.byteLength) throw new Error('Backup byte count does not match the manifest');
 
 const required = ['users', 'user_profiles', 'auth_sessions', 'progress'];
-const missing = required.filter(table => !new RegExp('CREATE TABLE\\s+[`"]?' + table + '[`"]?', 'i').test(sql));
+const missing = required.filter(table => !new RegExp('CREATE TABLE\\s+(?:IF NOT EXISTS\\s+)?[`"]?' + table + '[`"]?', 'i').test(sql));
 if (missing.length) throw new Error(`Backup is missing required schema markers: ${missing.join(', ')}`);
 if (/\b(?:DROP|DELETE)\s+(?:DATABASE|ACCOUNT)\b/i.test(sql)) throw new Error('Backup contains an unexpected destructive database/account statement');
 
