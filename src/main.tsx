@@ -22,6 +22,8 @@ import './learning-path.css';
 import './assessment.css';
 import './mastery-loop.css';
 import './accessibility.css';
+import './guided-home.css';
+import './mobile-navigation.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

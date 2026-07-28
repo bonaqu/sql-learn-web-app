@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { authenticatePage } from './auth-helper';
+import { openAdvancedTool } from './navigation-helper';
 
 const PROGRESS_KEY = 'sql-academy-progress-v4';
 
@@ -51,7 +52,7 @@ test('desktop syllabus exposes tracks evidence-gated review tools executable dia
   await authenticatePage(page, 'syllabus');
   await seedOneTopic(page);
   await page.goto('./');
-  await page.getByTestId('syllabus-trigger').click();
+  await openAdvancedTool(page, 'syllabus-trigger');
 
   const dialog = page.getByRole('dialog', { name: /SQL Syllabus Center/i });
   await expect(dialog).toBeVisible();
@@ -111,7 +112,7 @@ test('mobile syllabus and executable dialect lab remain usable without overflow'
   await seedOneTopic(page);
   await page.goto('./');
   await page.getByRole('button', { name: 'Открыть меню' }).click();
-  await page.getByTestId('syllabus-trigger').click();
+  await openAdvancedTool(page, 'syllabus-trigger');
 
   await expect(page.getByRole('dialog', { name: /SQL Syllabus Center/i })).toBeVisible();
   await page.getByRole('tab', { name: /Повторение/i }).click();

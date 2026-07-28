@@ -4,6 +4,9 @@ const applicationPath = process.env.GITHUB_ACTIONS ? '/sql-learn-web-app/' : '/'
 const applicationUrl = `http://127.0.0.1:4173${applicationPath}`;
 const workerUrl = 'http://127.0.0.1:8787/api/health';
 
+const desktop = { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } };
+const mobile = { ...devices['Pixel 7'] };
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: false,
@@ -35,14 +38,24 @@ export default defineConfig({
   ],
   projects: [
     {
-      name: 'desktop-chromium',
-      grep: /desktop academy|desktop password account|desktop password recovery|desktop adaptive learning|desktop assessment|desktop checkpoint|desktop accessibility|desktop curriculum|desktop syllabus|desktop mastery|desktop onboarding|desktop capstone|desktop dialect/,
-      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } }
+      name: 'desktop-foundation',
+      grep: /desktop academy|desktop accessibility|desktop password|desktop assessment|desktop diagnostic exam|desktop capstone|desktop checkpoint/,
+      use: desktop
     },
     {
-      name: 'mobile-chromium',
-      grep: /mobile task flow|mobile password registration|mobile adaptive learning|mobile assessment|mobile checkpoint|mobile accessibility|mobile curriculum|mobile syllabus|mobile mastery|mobile onboarding|mobile capstone|mobile dialect/,
-      use: { ...devices['Pixel 7'] }
+      name: 'desktop-learning',
+      grep: /desktop curriculum|desktop guided journey|desktop adaptive learning|desktop mastery|desktop onboarding|desktop syllabus|desktop keeps SQLite|desktop analytics/,
+      use: desktop
+    },
+    {
+      name: 'mobile-foundation',
+      grep: /mobile task flow|mobile guided journey|mobile password|mobile assessment|mobile checkpoint|mobile accessibility|mobile capstone/,
+      use: mobile
+    },
+    {
+      name: 'mobile-learning',
+      grep: /mobile misconception|mobile adaptive learning|mobile mastery|mobile onboarding|mobile syllabus|mobile blocks unsafe|mobile analytics/,
+      use: mobile
     }
   ]
 });

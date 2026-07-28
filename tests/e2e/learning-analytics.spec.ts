@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { authenticatePage } from './auth-helper';
+import { openAdvancedTool } from './navigation-helper';
 
 function analyticsState(userId: string) {
   const sessionId = 'playwright-analytics-session';
@@ -41,16 +42,21 @@ function analyticsState(userId: string) {
 }
 
 async function seedAnalytics(page: Page, userId: string) {
-  await page.addInitScript(({ key, value }) => localStorage.setItem(key, JSON.stringify(value)), {
+  await page.addInitScript(({ key, sessionKey, sessionId, value }) => {
+    localStorage.setItem(key, JSON.stringify(value));
+    sessionStorage.setItem(sessionKey, sessionId);
+  }, {
     key: `sql-academy-learning-analytics-v1:${userId}`,
+    sessionKey: `sql-academy-learning-analytics-session-v1:${userId}`,
+    sessionId: 'playwright-analytics-session',
     value: analyticsState(userId)
   });
 }
 
 async function openAnalytics(page: Page, mobile = false) {
   await page.goto('./');
-  if (mobile) await page.getByRole('button', { name: 'Открыть меню' }).click();
-  await page.getByTestId('learning-analytics-trigger').click();
+  void mobile;
+  await openAdvancedTool(page, 'learning-analytics-trigger');
   await expect(page.getByTestId('learning-analytics-portal')).toBeVisible();
 }
 

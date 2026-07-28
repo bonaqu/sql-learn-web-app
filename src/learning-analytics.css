@@ -54,11 +54,15 @@
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
-  color: var(--accent);
+  color: var(--accent-2);
   font-size: .78rem;
   font-weight: 800;
   letter-spacing: .08em;
   text-transform: uppercase;
+}
+
+:root[data-theme='light'] .learning-analytics-kicker {
+  color: var(--accent-hover);
 }
 
 .learning-analytics-privacy {

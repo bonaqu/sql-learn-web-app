@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { TEST_PASSWORD } from './auth-helper';
+import { guidedHome } from './navigation-helper';
 
 const WORKER_URL = 'http://127.0.0.1:8787';
 
@@ -26,7 +27,7 @@ test('desktop password account requires login and syncs progress across two devi
   const username = uniqueUsername('desktop_auth');
   await page.goto('./');
   await expect(page.getByRole('heading', { name: 'Войти в академию' })).toBeVisible();
-  await expect(page.getByRole('heading', { name: /SQL, который работает/i })).toBeHidden();
+  await expect(guidedHome(page)).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Регистрация' }).click();
   await page.getByTestId('auth-username').fill(username);
@@ -46,7 +47,7 @@ test('desktop password account requires login and syncs progress across two devi
   await page.getByLabel(/Я сохранил все 8 кодов/).check();
   await page.getByTestId('recovery-confirm').click();
 
-  await expect(page.getByRole('heading', { name: /SQL, который работает/i })).toBeVisible();
+  await expect(guidedHome(page)).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Войти в академию' })).toBeHidden();
   await page.locator('.sidebar nav').getByRole('button', { name: 'Practice' }).click();
   await page.locator('.task-row').first().click();
@@ -62,7 +63,7 @@ test('desktop password account requires login and syncs progress across two devi
   await secondPage.getByTestId('auth-username').fill(username);
   await secondPage.getByTestId('auth-password').fill(TEST_PASSWORD);
   await secondPage.getByTestId('auth-submit').click();
-  await expect(secondPage.getByRole('heading', { name: /SQL, который работает/i })).toBeVisible();
+  await expect(guidedHome(secondPage)).toBeVisible();
 
   await expect.poll(async () => secondPage.evaluate(() => {
     const progress = JSON.parse(localStorage.getItem('sql-academy-progress-v4') || '{}');
@@ -114,7 +115,7 @@ test('desktop password recovery consumes a code and revokes sessions', async ({ 
   await page.getByTestId('auth-username').fill(username);
   await page.getByTestId('auth-password').fill(newPassword);
   await page.getByTestId('auth-submit').click();
-  await expect(page.getByRole('heading', { name: /SQL, который работает/i })).toBeVisible();
+  await expect(guidedHome(page)).toBeVisible();
 
   const reused = await page.request.post(`${WORKER_URL}/api/auth/password/reset`, {
     data: { username, recoveryCode: firstCode, newPassword: 'Third secure password value 2026!' }
