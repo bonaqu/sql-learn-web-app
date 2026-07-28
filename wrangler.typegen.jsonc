@@ -27,6 +27,21 @@
     "binding": "AI"
   },
   "vars": {
-    "DIALECT_ENGINE_MODE": "preview-only"
+    "DIALECT_ENGINE_MODE": "preview-only",
+    "PRODUCT_NAME": "SQL Academy",
+    "DEPLOYMENT_ENVIRONMENT": "test",
+    "ALLOWED_ORIGINS": "http://127.0.0.1:4173,http://localhost:4173",
+    "FEATURE_EMAIL_VERIFICATION": "off",
+    "FEATURE_SMS_VERIFICATION": "off",
+    "FEATURE_TURNSTILE": "off",
+    "FEATURE_ADMIN_CONSOLE": "off",
+    "EMAIL_PROVIDER": "disabled",
+    "EMAIL_PROVIDER_ENDPOINT": "",
+    "EMAIL_FROM": "",
+    "SMS_PROVIDER": "disabled",
+    "SMS_PROVIDER_ENDPOINT": "",
+    "SMS_FROM": "",
+    "TURNSTILE_EXPECTED_HOSTNAMES": "",
+    "ADMIN_ALLOWED_USER_IDS": ""
   }
 }
