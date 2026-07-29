@@ -39,7 +39,7 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop-foundation',
-      grep: /desktop academy|desktop accessibility|desktop password|desktop assessment|desktop diagnostic exam|desktop capstone|desktop checkpoint/,
+      grep: /desktop academy|desktop accessibility|desktop password|desktop assessment|desktop diagnostic exam|desktop capstone|desktop checkpoint|desktop commercial runtime/,
       use: desktop
     },
     {

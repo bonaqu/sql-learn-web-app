@@ -33,7 +33,9 @@
     "FEATURE_EMAIL_VERIFICATION": "off",
     "FEATURE_SMS_VERIFICATION": "off",
     "FEATURE_TURNSTILE": "off",
-    "FEATURE_ADMIN_CONSOLE": "off"
+    "FEATURE_ADMIN_CONSOLE": "off",
+    "TURNSTILE_EXPECTED_HOSTNAMES": "",
+    "ADMIN_ALLOWED_USER_IDS": ""
   },
   "observability": {
     "enabled": true,

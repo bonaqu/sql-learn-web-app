@@ -2,9 +2,12 @@ type CommercialEnvKey =
   | 'FEATURE_EMAIL_VERIFICATION'
   | 'FEATURE_SMS_VERIFICATION'
   | 'FEATURE_TURNSTILE'
-  | 'FEATURE_ADMIN_CONSOLE';
+  | 'FEATURE_ADMIN_CONSOLE'
+  | 'TURNSTILE_SECRET_KEY'
+  | 'TURNSTILE_EXPECTED_HOSTNAMES'
+  | 'ADMIN_ALLOWED_USER_IDS';
 
-type CommercialEnvironment = Cloudflare.Env & Partial<Record<CommercialEnvKey, string>>;
+export type CommercialEnvironment = Cloudflare.Env & Partial<Record<CommercialEnvKey, string>>;
 
 type CommercialCapabilityName =
   | 'emailVerification'
@@ -21,25 +24,51 @@ export type CommercialCapabilities = {
   integrations: Record<CommercialCapabilityName, { enabled: boolean }>;
 };
 
-const IMPLEMENTED_CAPABILITIES: Readonly<Record<CommercialCapabilityName, boolean>> = Object.freeze({
-  emailVerification: false,
-  smsVerification: false,
-  turnstile: false,
-  adminConsole: false
-});
+const USER_ID_PATTERN = /^[a-zA-Z0-9_-]{8,80}$/;
+const HOSTNAME_PATTERN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
-function enabledFlag(value: string | undefined) {
+export function enabledFlag(value: string | undefined) {
   return value?.trim().toLowerCase() === 'on';
 }
 
-export function commercialCapabilities(env: CommercialEnvironment): CommercialCapabilities {
-  const requested = {
-    emailVerification: enabledFlag(env.FEATURE_EMAIL_VERIFICATION),
-    smsVerification: enabledFlag(env.FEATURE_SMS_VERIFICATION),
-    turnstile: enabledFlag(env.FEATURE_TURNSTILE),
-    adminConsole: enabledFlag(env.FEATURE_ADMIN_CONSOLE)
-  } satisfies Record<CommercialCapabilityName, boolean>;
+function commaSeparated(value: string | undefined, max: number) {
+  return (value || '').split(',').map(item => item.trim()).filter(Boolean).slice(0, max);
+}
 
+export function adminAllowedUserIds(env: CommercialEnvironment) {
+  return new Set(commaSeparated(env.ADMIN_ALLOWED_USER_IDS, 100).filter(value => USER_ID_PATTERN.test(value)));
+}
+
+export function expectedTurnstileHostnames(env: CommercialEnvironment) {
+  return new Set(commaSeparated(env.TURNSTILE_EXPECTED_HOSTNAMES, 30)
+    .map(value => value.toLowerCase())
+    .filter(value => HOSTNAME_PATTERN.test(value)));
+}
+
+export function turnstileSecret(env: CommercialEnvironment) {
+  return (env.TURNSTILE_SECRET_KEY || '').trim().slice(0, 2_000);
+}
+
+export function turnstileReady(env: CommercialEnvironment) {
+  return enabledFlag(env.FEATURE_TURNSTILE)
+    && turnstileSecret(env).length >= 8
+    && expectedTurnstileHostnames(env).size > 0;
+}
+
+export function adminConsoleReady(env: CommercialEnvironment) {
+  return enabledFlag(env.FEATURE_ADMIN_CONSOLE) && adminAllowedUserIds(env).size > 0;
+}
+
+export function commercialConfigurationErrors(env: CommercialEnvironment) {
+  const errors: string[] = [];
+  if (enabledFlag(env.FEATURE_EMAIL_VERIFICATION)) errors.push('EMAIL_VERIFICATION_NOT_IMPLEMENTED');
+  if (enabledFlag(env.FEATURE_SMS_VERIFICATION)) errors.push('SMS_VERIFICATION_NOT_IMPLEMENTED');
+  if (enabledFlag(env.FEATURE_TURNSTILE) && !turnstileReady(env)) errors.push('TURNSTILE_INCOMPLETE');
+  if (enabledFlag(env.FEATURE_ADMIN_CONSOLE) && !adminConsoleReady(env)) errors.push('ADMIN_ALLOWLIST_EMPTY');
+  return errors;
+}
+
+export function commercialCapabilities(env: CommercialEnvironment): CommercialCapabilities {
   return {
     contract: 'commercial-capabilities-v1',
     authentication: {
@@ -47,10 +76,11 @@ export function commercialCapabilities(env: CommercialEnvironment): CommercialCa
       recoveryCodes: true
     },
     integrations: {
-      emailVerification: { enabled: requested.emailVerification && IMPLEMENTED_CAPABILITIES.emailVerification },
-      smsVerification: { enabled: requested.smsVerification && IMPLEMENTED_CAPABILITIES.smsVerification },
-      turnstile: { enabled: requested.turnstile && IMPLEMENTED_CAPABILITIES.turnstile },
-      adminConsole: { enabled: requested.adminConsole && IMPLEMENTED_CAPABILITIES.adminConsole }
+      // Provider-backed challenge persistence and contact authentication are CR2B/CR2C work.
+      emailVerification: { enabled: false },
+      smsVerification: { enabled: false },
+      turnstile: { enabled: turnstileReady(env) },
+      adminConsole: { enabled: adminConsoleReady(env) }
     }
   };
 }

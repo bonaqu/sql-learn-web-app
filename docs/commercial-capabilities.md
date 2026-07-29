@@ -2,11 +2,11 @@
 
 ## Purpose
 
-The current Cloudflare Free deployment supports username/password authentication and one-time recovery codes. Commercial integrations remain dormant until a complete production adapter, secrets, operator runbook and tests exist.
+The Cloudflare Free deployment supports username/password authentication and one-time recovery codes. The public `GET /api/capabilities` endpoint exposes only functionality that is genuinely available through the versioned `commercial-capabilities-v1` contract.
 
-The public `GET /api/capabilities` endpoint lets the client expose only functionality that is genuinely available. It returns the versioned contract header and payload `commercial-capabilities-v1`.
+Only enabled/disabled states are public. Provider names, secret presence, destination data, hostnames and operator allowlists are never returned.
 
-## Current response
+## Current default response
 
 ```json
 {
@@ -24,19 +24,28 @@ The public `GET /api/capabilities` endpoint lets the client expose only function
 }
 ```
 
-Only enabled/disabled states are public. Provider names, secret presence, destination data and operator configuration are never returned.
+## Honest implementation boundary
 
-## Fail-closed rule
+Email and SMS remain disabled even when their flags are changed. Provider-backed challenge storage, expiry, one-time signed tickets and verified-contact authentication are CR2B/CR2C work.
 
-`FEATURE_EMAIL_VERIFICATION`, `FEATURE_SMS_VERIFICATION`, `FEATURE_TURNSTILE` and `FEATURE_ADMIN_CONSOLE` default to `off`.
+Turnstile is implemented for public registration, login and password reset, but becomes enabled only when all of these are present:
 
-Changing a flag to `on` is intentionally insufficient. The matching capability remains disabled until its production implementation is present in the codebase and the feature has its own provider validation, abuse controls, operational documentation and automated tests. This prevents a buyer or operator from advertising security or account-recovery functionality that is not actually enforced.
+- `FEATURE_TURNSTILE=on`;
+- `TURNSTILE_SECRET_KEY` stored as a Cloudflare secret;
+- at least one exact hostname in `TURNSTILE_EXPECTED_HOSTNAMES`.
+
+The Worker validates the Siteverify response, exact hostname and exact action (`register`, `login` or `password-reset`). Missing or incomplete configuration returns a temporary verification failure instead of bypassing protection.
+
+The aggregate operator-health route becomes enabled only when:
+
+- `FEATURE_ADMIN_CONSOLE=on`;
+- `ADMIN_ALLOWED_USER_IDS` contains at least one valid internal user ID.
+
+`GET /api/admin/health` returns `404` when disabled, incomplete or requested by a non-allowlisted account. When available, it exposes aggregate counts and binding/configuration health only—no usernames, contact details, SQL, learner answers or event payloads.
 
 ## Allowed origins
 
-API CORS origins are supplied through the Worker variable `ALLOWED_ORIGINS` as a comma-separated list of exact origins.
-
-Accepted examples:
+API CORS origins are supplied through `ALLOWED_ORIGINS` as a comma-separated list of exact origins.
 
 ```text
 https://academy.example.com
@@ -44,18 +53,19 @@ https://staging.academy.example.com
 http://localhost:4173
 ```
 
-Rejected or ignored entries include wildcards, credentials, paths, query strings, fragments and non-HTTP(S) schemes. When the variable is absent or contains no valid entries, cross-origin access fails closed; same-origin API requests continue to work.
+Wildcards, credentials, paths, query strings, fragments and non-HTTP(S) schemes are ignored. Missing valid cross-origin configuration fails closed; same-origin API requests continue to work.
 
-The production and type-generation Wrangler configurations must remain aligned. Buyer-owned production and staging environments must set their own exact origin lists before deployment.
+The deployment workflow copies the origin and feature variables into the generated production Wrangler config. Secrets are never written into that file.
 
-## Activation sequence for a future integration
+## Activation sequence
 
-1. Implement the server adapter and strict provider response validation.
-2. Add rate limits, expiry, one-time use and replay protection where applicable.
-3. Store credentials with Cloudflare secrets, never Wrangler `vars` or source control.
-4. Add deterministic validation plus desktop/mobile production flows.
-5. Add provider failure, timeout and missing-secret tests.
-6. Update the capability implementation marker only after the entire flow is enforced.
-7. Enable the feature flag in the buyer-owned environment.
+1. Create a buyer-owned staging Worker, D1 and KV namespace.
+2. Configure exact origins, hostnames and operator IDs while feature flags remain `off`.
+3. Add secrets with `wrangler secret put`.
+4. Deploy staging and run the full Quality gate.
+5. Enable the staging flag.
+6. Verify `/api/capabilities`, provider failure cases and the scheduled health probe.
+7. Enable production only after staging evidence is retained.
+8. Roll back by returning the server feature flag to `off`.
 
-A missing secret, unsupported provider, invalid flag or incomplete implementation must keep the capability disabled or make the protected operation fail closed.
+Frontend variables cannot enable a protected server capability.

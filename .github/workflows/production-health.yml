@@ -1,0 +1,48 @@
+name: Production Health
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 */6 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-health
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: Public health and capability contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PRODUCTION_HEALTH_URL: ${{ vars.PRODUCTION_HEALTH_URL }}
+      EXPECT_EMAIL_VERIFICATION: ${{ vars.EXPECT_EMAIL_VERIFICATION }}
+      EXPECT_SMS_VERIFICATION: ${{ vars.EXPECT_SMS_VERIFICATION }}
+      EXPECT_TURNSTILE: ${{ vars.EXPECT_TURNSTILE }}
+      EXPECT_ADMIN_CONSOLE: ${{ vars.EXPECT_ADMIN_CONSOLE }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Explain inactive probe
+        if: env.PRODUCTION_HEALTH_URL == ''
+        run: |
+          echo 'PRODUCTION_HEALTH_URL repository variable is not configured.'
+          echo 'The scheduled probe remains intentionally inactive until the buyer supplies a production URL.'
+      - name: Probe production
+        if: env.PRODUCTION_HEALTH_URL != ''
+        run: node scripts/production-health-probe.mjs
+      - name: Upload probe evidence
+        if: always() && env.PRODUCTION_HEALTH_URL != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-health-${{ github.run_id }}-${{ github.run_attempt }}
+          path: production-health-result.json
+          if-no-files-found: warn
+          retention-days: 14
