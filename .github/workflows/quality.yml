@@ -13,9 +13,16 @@ concurrency:
 
 jobs:
   verify:
-    name: Diagnose deployed CR2A commercial runtime
+    name: Diagnose deployed CR2A production lifecycles
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    env:
+      DEPLOY_URL: https://sql-learn-web-app.bonaqu.workers.dev
+      EXPECTED_ALLOWED_ORIGIN: https://bonaqu.github.io
+      EXPECT_EMAIL_VERIFICATION: 'false'
+      EXPECT_SMS_VERIFICATION: 'false'
+      EXPECT_TURNSTILE: 'false'
+      EXPECT_ADMIN_CONSOLE: 'false'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,15 +32,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Run exact deployed commercial smoke
-        env:
-          DEPLOY_URL: https://sql-learn-web-app.bonaqu.workers.dev
-          EXPECTED_ALLOWED_ORIGIN: https://bonaqu.github.io
-          EXPECT_EMAIL_VERIFICATION: 'false'
-          EXPECT_SMS_VERIFICATION: 'false'
-          EXPECT_TURNSTILE: 'false'
-          EXPECT_ADMIN_CONSOLE: 'false'
+      - name: Run commercial runtime smoke
         run: node scripts/commercial-runtime-production-smoke.mjs 2>&1 | tee cloudflare-commercial-diagnostic.log
+
+      - name: Run core frontend, auth and curriculum smoke
+        run: node scripts/cloudflare-production-smoke.mjs 2>&1 | tee cloudflare-core-diagnostic.log
 
       - name: Upload diagnostic evidence
         if: always()
@@ -41,8 +44,9 @@ jobs:
         with:
           name: cr2a-production-diagnostic
           path: |
-            cloudflare-commercial-*.json
-            cloudflare-commercial-*.txt
-            cloudflare-commercial-diagnostic.log
+            cloudflare-*.json
+            cloudflare-*.txt
+            cloudflare-*.html
+            cloudflare-*.log
           if-no-files-found: warn
           retention-days: 3
