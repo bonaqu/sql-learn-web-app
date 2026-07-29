@@ -21,6 +21,18 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS || 'https://bonaqu.github.io' }}
+      FEATURE_EMAIL_VERIFICATION: ${{ vars.FEATURE_EMAIL_VERIFICATION || 'off' }}
+      FEATURE_SMS_VERIFICATION: ${{ vars.FEATURE_SMS_VERIFICATION || 'off' }}
+      FEATURE_TURNSTILE: ${{ vars.FEATURE_TURNSTILE || 'off' }}
+      FEATURE_ADMIN_CONSOLE: ${{ vars.FEATURE_ADMIN_CONSOLE || 'off' }}
+      TURNSTILE_EXPECTED_HOSTNAMES: ${{ vars.TURNSTILE_EXPECTED_HOSTNAMES }}
+      ADMIN_ALLOWED_USER_IDS: ${{ vars.ADMIN_ALLOWED_USER_IDS }}
+      EXPECTED_ALLOWED_ORIGIN: ${{ vars.EXPECTED_ALLOWED_ORIGIN || 'https://bonaqu.github.io' }}
+      EXPECT_EMAIL_VERIFICATION: ${{ vars.EXPECT_EMAIL_VERIFICATION || 'false' }}
+      EXPECT_SMS_VERIFICATION: ${{ vars.EXPECT_SMS_VERIFICATION || 'false' }}
+      EXPECT_TURNSTILE: ${{ vars.EXPECT_TURNSTILE || 'false' }}
+      EXPECT_ADMIN_CONSOLE: ${{ vars.EXPECT_ADMIN_CONSOLE || 'false' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -110,7 +122,14 @@ jobs:
             kv_namespaces: [{ binding: 'SETTINGS', id: process.env.KV_ID }],
             ai: { binding: 'AI' },
             vars: {
-              DIALECT_ENGINE_MODE: 'preview-only'
+              DIALECT_ENGINE_MODE: 'preview-only',
+              ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS,
+              FEATURE_EMAIL_VERIFICATION: process.env.FEATURE_EMAIL_VERIFICATION,
+              FEATURE_SMS_VERIFICATION: process.env.FEATURE_SMS_VERIFICATION,
+              FEATURE_TURNSTILE: process.env.FEATURE_TURNSTILE,
+              FEATURE_ADMIN_CONSOLE: process.env.FEATURE_ADMIN_CONSOLE,
+              TURNSTILE_EXPECTED_HOSTNAMES: process.env.TURNSTILE_EXPECTED_HOSTNAMES || '',
+              ADMIN_ALLOWED_USER_IDS: process.env.ADMIN_ALLOWED_USER_IDS || ''
             },
             observability: { enabled: true, head_sampling_rate: 1 }
           };
@@ -132,6 +151,11 @@ jobs:
           DEPLOY_URL=$(grep -Eo 'https://[A-Za-z0-9.-]+\.workers\.dev' cloudflare-deploy.log | tail -n 1)
           test -n "$DEPLOY_URL"
           echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke-test commercial runtime, CORS and hidden operator boundary
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+        run: node scripts/commercial-runtime-production-smoke.mjs
 
       - name: Smoke-test Cloudflare frontend, auth and curriculum API
         env:
@@ -201,7 +225,7 @@ jobs:
           script: |
             const success = process.env.JOB_STATUS === 'success';
             let description = success
-              ? 'Cloudflare Free deployed; privacy-safe learning lifecycles and dialect previews verified'
+              ? 'Cloudflare Free deployed; commercial, privacy and dialect lifecycles verified'
               : 'Cloudflare Free deployment or production smoke failed';
             try {
               const fs = require('fs');
@@ -214,7 +238,8 @@ jobs:
                 'cloudflare-capstone-stage.txt',
                 'cloudflare-checkpoint-stage.txt',
                 'cloudflare-concepts-stage.txt',
-                'cloudflare-smoke-stage.txt'
+                'cloudflare-smoke-stage.txt',
+                'cloudflare-commercial-stage.txt'
               ];
               const stage = files
                 .filter(file => fs.existsSync(file))
