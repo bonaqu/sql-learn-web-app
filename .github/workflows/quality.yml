@@ -13,9 +13,9 @@ concurrency:
 
 jobs:
   verify:
-    name: Diagnose deployed CR2A production lifecycles
+    name: Diagnose all deployed CR2A production lifecycles
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       DEPLOY_URL: https://sql-learn-web-app.bonaqu.workers.dev
       EXPECTED_ALLOWED_ORIGIN: https://bonaqu.github.io
@@ -32,11 +32,38 @@ jobs:
         with:
           node-version: 22
 
-      - name: Run commercial runtime smoke
+      - name: Install dependencies for dialect smoke
+        run: npm install --no-audit --no-fund
+
+      - name: Commercial runtime
         run: node scripts/commercial-runtime-production-smoke.mjs 2>&1 | tee cloudflare-commercial-diagnostic.log
 
-      - name: Run core frontend, auth and curriculum smoke
+      - name: Core frontend, auth and curriculum
         run: node scripts/cloudflare-production-smoke.mjs 2>&1 | tee cloudflare-core-diagnostic.log
+
+      - name: Concept history
+        run: node scripts/concept-progress-production-smoke.mjs 2>&1 | tee cloudflare-concepts-diagnostic.log
+
+      - name: Checkpoint lifecycle
+        run: node scripts/checkpoint-production-smoke.mjs 2>&1 | tee cloudflare-checkpoint-diagnostic.log
+
+      - name: Capstone lifecycle
+        run: node scripts/capstone-production-smoke.mjs 2>&1 | tee cloudflare-capstone-diagnostic.log
+
+      - name: Assessment calibration
+        run: node scripts/assessment-calibration-production-smoke.mjs 2>&1 | tee cloudflare-assessment-diagnostic.log
+
+      - name: Learning analytics
+        run: node scripts/learning-analytics-production-smoke.mjs 2>&1 | tee cloudflare-analytics-diagnostic.log
+
+      - name: Dialect CI reference previews
+        run: npx tsx scripts/dialect-labs-free-production-smoke.ts 2>&1 | tee cloudflare-dialect-diagnostic.log
+
+      - name: Mastery progress
+        run: node scripts/mastery-progress-production-smoke.mjs 2>&1 | tee cloudflare-mastery-diagnostic.log
+
+      - name: Onboarding lifecycle
+        run: node scripts/onboarding-production-smoke.mjs 2>&1 | tee cloudflare-onboarding-diagnostic.log
 
       - name: Upload diagnostic evidence
         if: always()
