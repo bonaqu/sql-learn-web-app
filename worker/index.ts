@@ -6,6 +6,7 @@ import { authenticateSession, handleAuthRequest } from './auth';
 import { handleCapstoneRequest } from './capstones';
 import { handleCheckpointRequest } from './checkpoints';
 import { handleCommercialCapabilitiesRequest } from './commercial-capabilities';
+import { handleContactVerificationRequest } from './contact-verification';
 import { handleCurriculumRequest } from './curriculum';
 import { handleDialectLabRequest } from './dialect-labs';
 import { handleDialectRealEngineRequest } from './dialect-real-engine-route';
@@ -55,7 +56,7 @@ function corsHeaders(origin: string) {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': CORS_METHODS,
     'access-control-allow-headers': CORS_HEADERS,
-    'access-control-expose-headers': 'retry-after, x-request-id, x-progress-contract, x-onboarding-contract, x-dialect-lab-contract, x-learning-analytics-contract, x-commercial-capabilities-contract',
+    'access-control-expose-headers': 'retry-after, x-request-id, x-progress-contract, x-onboarding-contract, x-dialect-lab-contract, x-learning-analytics-contract, x-commercial-capabilities-contract, x-contact-verification-contract',
     'access-control-max-age': '86400',
     vary: 'Origin'
   };
@@ -150,6 +151,14 @@ export default {
       return finalize(pipelineFailure(error, url.pathname, 'commercial'), request, origin);
     }
     if (commercialResponse) return finalize(commercialResponse, request, origin);
+
+    let contactVerificationResponse: Response | null;
+    try {
+      contactVerificationResponse = await handleContactVerificationRequest(request, env);
+    } catch (error) {
+      return finalize(pipelineFailure(error, url.pathname, 'commercial'), request, origin);
+    }
+    if (contactVerificationResponse) return finalize(contactVerificationResponse, request, origin);
 
     let turnstileResponse: Response | null;
     try {
