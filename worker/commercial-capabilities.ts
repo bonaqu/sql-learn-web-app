@@ -1,8 +1,15 @@
+import { contactVerificationReady } from './contact-verification';
+
 type CommercialEnvKey =
   | 'FEATURE_EMAIL_VERIFICATION'
   | 'FEATURE_SMS_VERIFICATION'
   | 'FEATURE_TURNSTILE'
   | 'FEATURE_ADMIN_CONSOLE'
+  | 'CONTACT_VERIFICATION_SIGNING_SECRET'
+  | 'EMAIL_VERIFICATION_WEBHOOK_URL'
+  | 'EMAIL_VERIFICATION_WEBHOOK_SECRET'
+  | 'SMS_VERIFICATION_WEBHOOK_URL'
+  | 'SMS_VERIFICATION_WEBHOOK_SECRET'
   | 'TURNSTILE_SECRET_KEY'
   | 'TURNSTILE_EXPECTED_HOSTNAMES'
   | 'ADMIN_ALLOWED_USER_IDS';
@@ -61,8 +68,12 @@ export function adminConsoleReady(env: CommercialEnvironment) {
 
 export function commercialConfigurationErrors(env: CommercialEnvironment) {
   const errors: string[] = [];
-  if (enabledFlag(env.FEATURE_EMAIL_VERIFICATION)) errors.push('EMAIL_VERIFICATION_NOT_IMPLEMENTED');
-  if (enabledFlag(env.FEATURE_SMS_VERIFICATION)) errors.push('SMS_VERIFICATION_NOT_IMPLEMENTED');
+  if (enabledFlag(env.FEATURE_EMAIL_VERIFICATION) && !contactVerificationReady('email', env)) {
+    errors.push('EMAIL_VERIFICATION_INCOMPLETE');
+  }
+  if (enabledFlag(env.FEATURE_SMS_VERIFICATION) && !contactVerificationReady('sms', env)) {
+    errors.push('SMS_VERIFICATION_INCOMPLETE');
+  }
   if (enabledFlag(env.FEATURE_TURNSTILE) && !turnstileReady(env)) errors.push('TURNSTILE_INCOMPLETE');
   if (enabledFlag(env.FEATURE_ADMIN_CONSOLE) && !adminConsoleReady(env)) errors.push('ADMIN_ALLOWLIST_EMPTY');
   return errors;
@@ -76,9 +87,8 @@ export function commercialCapabilities(env: CommercialEnvironment): CommercialCa
       recoveryCodes: true
     },
     integrations: {
-      // Provider-backed challenge persistence and contact authentication are CR2B/CR2C work.
-      emailVerification: { enabled: false },
-      smsVerification: { enabled: false },
+      emailVerification: { enabled: contactVerificationReady('email', env) },
+      smsVerification: { enabled: contactVerificationReady('sms', env) },
       turnstile: { enabled: turnstileReady(env) },
       adminConsole: { enabled: adminConsoleReady(env) }
     }
