@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { tasks } from '../src/data/course-catalog';
 import { curriculumCheckpoints, curriculumLessons } from '../src/data/complete-curriculum';
 import { lessonTransitions, moduleBridgePairs, transitionIntoLesson, transitionOutOfLesson } from '../src/data/lesson-bridges';
@@ -52,4 +53,19 @@ assert.equal(phaseTransitions.length, phaseDefinitions.length - 1);
 assert.equal(transitionIntoLesson(curriculumLessons[0].id), null);
 assert.equal(transitionOutOfLesson(curriculumLessons.at(-1)?.id || ''), null);
 
-console.log(`Lesson bridges validated: ${lessonTransitions.length} lesson transitions, ${moduleBridgePairs.length} module bridges and ${phaseTransitions.length} phase boundaries.`);
+const panel = readFileSync(new URL('../src/components/LessonContinuityPanel.tsx', import.meta.url), 'utf8');
+const companion = readFileSync(new URL('../src/components/CurriculumContinuityCompanion.tsx', import.meta.url), 'utf8');
+const deferred = readFileSync(new URL('../src/components/DeferredFeaturePortals.tsx', import.meta.url), 'utf8');
+const styles = readFileSync(new URL('../src/lesson-continuity.css', import.meta.url), 'utf8');
+const browser = readFileSync(new URL('../tests/e2e/lesson-continuity.spec.ts', import.meta.url), 'utf8');
+
+assert.ok(companion.includes('createPortal'), 'Continuity companion must remain inside the Curriculum Studio modal tree');
+assert.ok(companion.includes('[data-testid="curriculum-studio"]'), 'Continuity companion lost its accessible portal target');
+assert.ok(deferred.includes("lazy(() => import('./CurriculumContinuityCompanion'))"), 'Continuity companion is no longer lazy');
+assert.ok(panel.includes("checkpoint ? <button"), 'Phase checkpoint is not the exclusive forward branch');
+assert.ok(panel.includes("<CourseCompletionPanel />"), 'The final lesson no longer returns to the canonical evidence plan');
+assert.ok(styles.includes('bottom: calc(76px + env(safe-area-inset-bottom))'), 'Mobile companion can overlap primary navigation');
+assert.ok(browser.includes("getByRole('button', { name: /Перейти к уроку/i })).toHaveCount(0)"), 'Browser coverage no longer proves phase side doors are absent');
+assert.ok(browser.includes("studio.getByTestId('curriculum-continuity-companion')"), 'Browser coverage no longer proves modal containment');
+
+console.log(`Lesson bridges validated: ${lessonTransitions.length} lesson transitions, ${moduleBridgePairs.length} module bridges and ${phaseTransitions.length} phase boundaries with lazy accessible continuity UI.`);
