@@ -46,6 +46,7 @@ import '../dialect-labs.css';
 const Editor = lazy(() => import('./SqlEditor'));
 const executableDialects: SqlDialect[] = ['sqlite', 'postgresql', 'mysql'];
 const DIALECT_DARK_THEME = 'sql-academy-dialect-dark';
+type HydrationState = 'hydrating' | 'ready' | 'unavailable';
 
 function configureDialectEditor(monaco: Monaco) {
   monaco.editor.defineTheme(DIALECT_DARK_THEME, {
@@ -110,6 +111,7 @@ export default function DialectLabWorkbench() {
   const [running, setRunning] = useState(false);
   const [solutionViewed, setSolutionViewed] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
+  const [hydrationState, setHydrationState] = useState<HydrationState>('hydrating');
   const [progress, setProgress] = useState<DialectLabProgress | null>(() => {
     if (!auth) return null;
     return loadDialectLabProgress(auth.userId) || emptyDialectLabProgress(auth.userId);
@@ -125,9 +127,18 @@ export default function DialectLabWorkbench() {
   useEffect(() => {
     if (!auth) return;
     let cancelled = false;
-    void hydrateDialectLabProgress(auth.userId)
-      .then(value => { if (!cancelled && value) setProgress(value); })
-      .catch(() => { if (!cancelled) setSyncMessage('Cloud evidence недоступен: локальный прогресс сохранён.'); });
+    setHydrationState('hydrating');
+    void hydrateDialectLabProgress(auth.userId, { failOnUnavailable: true })
+      .then(value => {
+        if (cancelled) return;
+        if (value) setProgress(value);
+        setHydrationState('ready');
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setHydrationState('unavailable');
+        setSyncMessage('Cloud evidence недоступен: показан только локальный прогресс. Повтори hydration перед проверкой на другом устройстве.');
+      });
     return () => { cancelled = true; };
   }, [auth?.userId]);
 
@@ -138,6 +149,21 @@ export default function DialectLabWorkbench() {
     setSolutionViewed(false);
     setSyncMessage('');
   }, [dialect, lab.id]);
+
+  const retryHydration = async () => {
+    if (!auth || hydrationState === 'hydrating') return;
+    setHydrationState('hydrating');
+    setSyncMessage('Повторно загружаю cloud evidence…');
+    try {
+      const value = await hydrateDialectLabProgress(auth.userId, { failOnUnavailable: true });
+      if (value) setProgress(value);
+      setHydrationState('ready');
+      setSyncMessage('Cloud evidence загружен и объединён с локальным прогрессом.');
+    } catch {
+      setHydrationState('unavailable');
+      setSyncMessage('Cloud evidence всё ещё недоступен: локальные попытки сохранены и не считаются потерянными.');
+    }
+  };
 
   const run = async () => {
     if (!labCase || !progress || running) return;
@@ -160,10 +186,12 @@ export default function DialectLabWorkbench() {
       try {
         const synced = await syncDialectLabProgress(next);
         setProgress(synced);
+        setHydrationState('ready');
         if (result.passed && !solutionViewed && !result.offlinePreview) {
           setSyncMessage('Independent evidence синхронизирован между устройствами.');
         }
       } catch {
+        setHydrationState('unavailable');
         setSyncMessage(current => `${current} Cloud sync повторится при следующем открытии.`.trim());
       }
     } finally {
@@ -193,7 +221,7 @@ export default function DialectLabWorkbench() {
     <main className="dialect-executable-workspace">
       <header className="dialect-executable-hero">
         <div><small>Production portability evidence</small><h1>{lab.title}</h1><p>{lab.objective}</p></div>
-        <div className={completion.complete ? 'complete' : ''}><Gauge /><strong>{completion.passed}/{completion.required}</strong><span>{completion.complete ? 'lab complete' : 'engine evidence'}</span></div>
+        <div className={completion.complete ? 'complete' : ''}><Gauge /><strong>{completion.passed}/{completion.required}</strong><span>{hydrationState === 'unavailable' ? 'local evidence only' : completion.complete ? 'lab complete' : 'engine evidence'}</span></div>
       </header>
 
       <section className="dialect-failure-mode"><AlertTriangle /><div><strong>Production failure mode</strong><p>{lab.productionFailureMode}</p></div></section>
@@ -205,6 +233,17 @@ export default function DialectLabWorkbench() {
           <p>SQLite выполняется локально. PostgreSQL и MySQL показывают CI-verified reference contract, но не создают mastery без настоящего server engine.</p>
         </div>
       </section>
+
+      {hydrationState !== 'ready' && <section className={`dialect-hydration-state ${hydrationState}`} data-testid="dialect-hydration-state" role="status" aria-live="polite">
+        {hydrationState === 'hydrating' ? <Cloud className="spin" /> : <WifiOff />}
+        <div>
+          <strong>{hydrationState === 'hydrating' ? 'Загружаю cloud evidence' : 'Cloud evidence не подтверждён'}</strong>
+          <p>{hydrationState === 'hydrating'
+            ? 'Локальные данные уже доступны; межустройственный статус появится после ответа сервера.'
+            : 'Счётчик выше отражает только этот браузер. Локальные попытки сохранены и будут объединены после восстановления API.'}</p>
+        </div>
+        {hydrationState === 'unavailable' && <button type="button" onClick={() => void retryHydration()}><RefreshCw />Повторить cloud hydration</button>}
+      </section>}
 
       <section className="dialect-engine-tabs" aria-label="Executable SQL engines">
         {executableDialects.map(engine => {
