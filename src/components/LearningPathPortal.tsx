@@ -62,6 +62,8 @@ import { openCheckpointCenter } from './CheckpointLauncher';
 const TARGET_KEY = 'sql-academy-session-target-v1';
 const PROFILE_KEY = 'sql-academy-profile-id';
 
+type MentorPlanSource = 'local' | 'ai';
+
 function profileId() {
   const existing = localStorage.getItem(PROFILE_KEY);
   if (existing) return existing;
@@ -139,6 +141,7 @@ export default function LearningPathPortal({
   );
   const [expandedPhase, setExpandedPhase] = useState<string>('foundation');
   const [mentorAnswer, setMentorAnswer] = useState(() => localPlan(loadProgress()));
+  const [mentorSource, setMentorSource] = useState<MentorPlanSource>('local');
   const [mentorLoading, setMentorLoading] = useState(false);
   const [activeTask, setActiveTask] = useState<string | null>(null);
   const previousOverflow = useRef('');
@@ -245,8 +248,14 @@ export default function LearningPathPortal({
   }, [targetMinutes]);
 
   useEffect(() => {
-    if (!mentorLoading) setMentorAnswer(localPlan(progress, sessionEvidence));
-  }, [mentorLoading, progress, sessionEvidence]);
+    setMentorSource('local');
+  }, [progress, sessionEvidence]);
+
+  useEffect(() => {
+    if (mentorSource === 'local') {
+      setMentorAnswer(localPlan(progress, sessionEvidence));
+    }
+  }, [mentorSource, progress, sessionEvidence]);
 
   useDialogFocus(open, shellRef, () => setOpen(false));
 
@@ -313,6 +322,7 @@ export default function LearningPathPortal({
 
   const askMentor = async () => {
     setMentorLoading(true);
+    setMentorSource('local');
     const fallback = localPlan(progress, sessionEvidence);
     setMentorAnswer(fallback);
     try {
@@ -348,9 +358,17 @@ export default function LearningPathPortal({
       });
       if (!response.ok) throw new Error('Mentor unavailable');
       const payload = await response.json() as { answer?: string };
-      setMentorAnswer(payload.answer?.trim() || fallback);
+      const answer = payload.answer?.trim();
+      if (answer) {
+        setMentorAnswer(answer);
+        setMentorSource('ai');
+      } else {
+        setMentorAnswer(fallback);
+        setMentorSource('local');
+      }
     } catch {
       setMentorAnswer(fallback);
+      setMentorSource('local');
     } finally {
       setMentorLoading(false);
     }
