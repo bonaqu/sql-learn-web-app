@@ -97,7 +97,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pr-browser-evidence-${{ github.run_attempt }}
-          path: test-results
+          path: |
+            test-results
+            wrangler-playwright.log
           if-no-files-found: ignore
           retention-days: 7
 
@@ -114,6 +116,7 @@ jobs:
             dialect-engine-build.log
             dialect-engine-integration.log
             playwright.log
+            wrangler-playwright.log
             test-results
           if-no-files-found: ignore
           retention-days: 7
