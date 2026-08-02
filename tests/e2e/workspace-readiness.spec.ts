@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { authenticatePage } from './auth-helper';
+import { openAllTools } from './navigation-helper';
 
 const expectNoHorizontalOverflow = async (page: import('@playwright/test').Page) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
@@ -10,7 +11,7 @@ test('desktop academy keeps Interview browseable but gates execution before the 
   await authenticatePage(page, 'workspace-preview');
   await page.goto('./');
 
-  await page.locator('.nav-more > summary').click();
+  await openAllTools(page);
   await page.getByRole('button', { name: 'Interview', exact: true }).click();
 
   const firstTask = page.locator('.task-row').first();
@@ -40,7 +41,7 @@ test('mobile task flow keeps a preview gate readable without horizontal overflow
   await authenticatePage(page, 'mobile-workspace-preview');
   await page.goto('./');
 
-  await page.getByRole('button', { name: 'Ещё', exact: true }).click();
+  await openAllTools(page);
   await page.locator('.sidebar').getByRole('button', { name: 'Interview', exact: true }).click();
   const firstTask = page.locator('.task-row').first();
   await expect(firstTask).toHaveAttribute('data-readiness', 'preview');
