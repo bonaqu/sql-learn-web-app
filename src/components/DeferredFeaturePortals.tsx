@@ -10,6 +10,7 @@ const ReadinessExplainer = lazy(() => import('./ReadinessExplainer'));
 const AssessmentCenterPortal = lazy(() => import('./AssessmentCenterPortal'));
 const AssessmentCalibrationPanel = lazy(() => import('./AssessmentCalibrationPanel'));
 const CurriculumPortal = lazy(() => import('./CurriculumPortal'));
+const CurriculumContinuityCompanion = lazy(() => import('./CurriculumContinuityCompanion'));
 const SyllabusPortal = lazy(() => import('./SyllabusPortal'));
 const CheckpointCenterPortal = lazy(() => import('./CheckpointCenterPortal'));
 const OnboardingPortal = lazy(() => import('./OnboardingPortal'));
@@ -36,6 +37,7 @@ function preload(feature: DeferredFeature) {
   if (feature === 'checkpoints') return void import('./CheckpointCenterPortal');
   if (feature === 'onboarding') return void import('./OnboardingPortal');
   if (feature === 'analytics') return void import('./LearningAnalyticsPortal');
+  void import('./CurriculumContinuityCompanion');
   return void import('./CurriculumPortal');
 }
 
@@ -107,6 +109,7 @@ export default function DeferredFeaturePortals() {
     </Suspense>}
     {curriculumLoaded && <Suspense fallback={<div className="feature-loading" role="status">Загрузка Curriculum Studio…</div>}>
       <CurriculumPortal openRequest={curriculumRequest} />
+      <CurriculumContinuityCompanion />
     </Suspense>}
     {syllabusLoaded && <Suspense fallback={<div className="feature-loading" role="status">Загрузка Syllabus Center…</div>}>
       <SyllabusPortal openRequest={syllabusRequest} />
