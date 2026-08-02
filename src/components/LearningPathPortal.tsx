@@ -23,7 +23,7 @@ import {
   X
 } from 'lucide-react';
 import { tasks, type SqlTask } from '../data/course-catalog';
-import { openAcademyTask } from '../lib/academy-navigation';
+import { openAcademyTask, openJourneyDestination } from '../lib/academy-navigation';
 import {
   ASSESSMENT_REPORTS_CHANGED_EVENT,
   loadLocalAssessmentReports
@@ -42,10 +42,15 @@ import {
   learningPhases,
   mentorPlanContext,
   moduleMastery,
+  type LearningSessionEvidence,
   type ModuleMastery,
   readinessLabel,
   type SessionItem
 } from '../lib/learning-path';
+import {
+  loadOnboardingProfile,
+  ONBOARDING_CHANGED_EVENT
+} from '../lib/learner-onboarding';
 import { loadProgress, type Progress, PROGRESS_CHANGED_EVENT } from '../lib/progress';
 import {
   buildSkillEvidenceGraph,
@@ -89,8 +94,8 @@ function reasonIcon(reason: SessionItem['reason']) {
   return <Play />;
 }
 
-function localPlan(progress: Progress) {
-  const context = mentorPlanContext(progress);
+function localPlan(progress: Progress, evidence?: LearningSessionEvidence) {
+  const context = mentorPlanContext(progress, evidence);
   const weakest = context.weakest[0];
   const items = context.session
     .slice(0, 4)
@@ -128,6 +133,7 @@ export default function LearningPathPortal({
   const [curriculumProgress, setCurriculumProgress] = useState(() => loadCurriculumProgress());
   const [assessmentReports, setAssessmentReports] = useState(() => loadLocalAssessmentReports());
   const [checkpointReports, setCheckpointReports] = useState(() => loadLocalCheckpointReports());
+  const [profile, setProfile] = useState(() => loadOnboardingProfile());
   const [targetMinutes, setTargetMinutes] = useState(() =>
     Math.max(15, Number(localStorage.getItem(TARGET_KEY)) || 25)
   );
@@ -140,13 +146,29 @@ export default function LearningPathPortal({
 
   const mastery = useMemo(() => moduleMastery(progress), [progress]);
   const legacyPhases = useMemo(() => learningPhases(progress, mastery), [mastery, progress]);
-  const session = useMemo(() => buildDailySession(progress, targetMinutes), [progress, targetMinutes]);
   const evidenceGraph = useMemo(() => buildSkillEvidenceGraph(
     progress,
     curriculumProgress,
     assessmentReports,
     checkpointReports
   ), [assessmentReports, checkpointReports, curriculumProgress, progress]);
+  const sessionEvidence = useMemo<LearningSessionEvidence>(() => ({
+    curriculum: curriculumProgress,
+    passedCheckpointIds: evidenceGraph.phases
+      .filter(phase => phase.checkpointPassed)
+      .map(phase => phase.checkpointId),
+    assessmentComplete: assessmentReports.some(report =>
+      report.status === 'completed'
+      && (report.mode === 'exam' || report.mode === 'production' || report.mode === 'final')
+    ),
+    bypassedModuleIds: profile.placement.status === 'completed'
+      ? profile.placement.strongModuleIds
+      : []
+  }), [assessmentReports, curriculumProgress, evidenceGraph.phases, profile.placement]);
+  const session = useMemo(
+    () => buildDailySession(progress, targetMinutes, sessionEvidence),
+    [progress, sessionEvidence, targetMinutes]
+  );
   const readiness = evidenceGraph.overallReadiness;
   const masteredModules = evidenceGraph.modules.filter(module => module.readiness >= 82).length;
   const passedCheckpoints = evidenceGraph.phases.filter(phase => phase.checkpointPassed).length;
@@ -193,23 +215,27 @@ export default function LearningPathPortal({
     const updateCurriculum = () => setCurriculumProgress(loadCurriculumProgress());
     const updateAssessments = () => setAssessmentReports(loadLocalAssessmentReports());
     const updateCheckpoints = () => setCheckpointReports(loadLocalCheckpointReports());
+    const updateProfile = () => setProfile(loadOnboardingProfile());
     const updateAll = () => {
       updateProgress();
       updateCurriculum();
       updateAssessments();
       updateCheckpoints();
+      updateProfile();
     };
 
     window.addEventListener(PROGRESS_CHANGED_EVENT, updateProgress);
     window.addEventListener(CURRICULUM_PROGRESS_CHANGED_EVENT, updateCurriculum);
     window.addEventListener(ASSESSMENT_REPORTS_CHANGED_EVENT, updateAssessments);
     window.addEventListener(CHECKPOINT_REPORTS_CHANGED_EVENT, updateCheckpoints);
+    window.addEventListener(ONBOARDING_CHANGED_EVENT, updateProfile);
     window.addEventListener('storage', updateAll);
     return () => {
       window.removeEventListener(PROGRESS_CHANGED_EVENT, updateProgress);
       window.removeEventListener(CURRICULUM_PROGRESS_CHANGED_EVENT, updateCurriculum);
       window.removeEventListener(ASSESSMENT_REPORTS_CHANGED_EVENT, updateAssessments);
       window.removeEventListener(CHECKPOINT_REPORTS_CHANGED_EVENT, updateCheckpoints);
+      window.removeEventListener(ONBOARDING_CHANGED_EVENT, updateProfile);
       window.removeEventListener('storage', updateAll);
     };
   }, []);
@@ -217,6 +243,10 @@ export default function LearningPathPortal({
   useEffect(() => {
     localStorage.setItem(TARGET_KEY, String(targetMinutes));
   }, [targetMinutes]);
+
+  useEffect(() => {
+    if (!mentorLoading) setMentorAnswer(localPlan(progress, sessionEvidence));
+  }, [mentorLoading, progress, sessionEvidence]);
 
   useDialogFocus(open, shellRef, () => setOpen(false));
 
@@ -226,6 +256,7 @@ export default function LearningPathPortal({
     setCurriculumProgress(loadCurriculumProgress());
     setAssessmentReports(loadLocalAssessmentReports());
     setCheckpointReports(loadLocalCheckpointReports());
+    setProfile(loadOnboardingProfile());
     previousOverflow.current = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
@@ -270,24 +301,22 @@ export default function LearningPathPortal({
   };
 
   const startSessionItem = (item: SessionItem) => {
-    if (item.reason === 'checkpoint') {
-      const checkpoint = evidenceGraph.phases.find(phase =>
-        !phase.checkpointPassed && phase.readiness >= 42
-      );
-      if (checkpoint) {
-        openCheckpoint(checkpoint.checkpointId);
-        return;
-      }
+    if (item.task) {
+      startTask(item.task);
+      return;
     }
-    startTask(item.task);
+    if (item.action) {
+      setOpen(false);
+      window.setTimeout(() => openJourneyDestination(item.action as NonNullable<SessionItem['action']>), 40);
+    }
   };
 
   const askMentor = async () => {
     setMentorLoading(true);
-    const fallback = localPlan(progress);
+    const fallback = localPlan(progress, sessionEvidence);
     setMentorAnswer(fallback);
     try {
-      const context = mentorPlanContext(progress);
+      const context = mentorPlanContext(progress, sessionEvidence);
       const evidenceContext = evidenceGraph.modules
         .filter(module => module.blockers.length)
         .sort((left, right) => left.readiness - right.readiness)
@@ -389,12 +418,12 @@ export default function LearningPathPortal({
 
       <section className="path-content-grid">
         <div className="today-session path-card">
-          <div className="path-section-heading"><div><span className="path-eyebrow">Сегодня</span><h2>Сессия на {session.totalMinutes} минут</h2><p>{session.reviewCount} на закрепление · {session.newCount} новая</p></div><Clock3 /></div>
+          <div className="path-section-heading"><div><span className="path-eyebrow">Сегодня</span><h2>Сессия на {session.totalMinutes} минут</h2><p>{session.reviewCount} на закрепление · {session.newCount} новый этап</p></div><Clock3 /></div>
           <div className="session-list">
-            {session.items.map((item, index) => <button key={item.task.id} onClick={() => startSessionItem(item)}>
+            {session.items.map((item, index) => <button key={item.id} onClick={() => startSessionItem(item)} data-stage={item.action?.stage || 'review'}>
               <span className={`session-reason ${item.reason}`}>{reasonIcon(item.reason)}</span>
               <span className="session-index">{String(index + 1).padStart(2, '0')}</span>
-              <span className="session-copy"><strong>{item.task.title}</strong><small>{item.label} · {item.task.topic}</small></span>
+              <span className="session-copy"><strong>{item.title}</strong><small>{item.label} · {item.topic}</small></span>
               <span className="session-time">{item.minutes} мин</span><ChevronRight />
             </button>)}
           </div>
