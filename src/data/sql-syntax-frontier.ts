@@ -1,5 +1,7 @@
 import { canonicalModuleIds, moduleOrderIndex } from './learning-structure';
 
+export type CanonicalModuleId = typeof canonicalModuleIds[number];
+
 export type SqlSyntaxCapabilityId =
   | 'grouping'
   | 'having'
@@ -28,7 +30,7 @@ export type SqlSyntaxCapabilityId =
 export type SqlSyntaxCapability = {
   id: SqlSyntaxCapabilityId;
   title: string;
-  introducedBy: string;
+  introducedBy: CanonicalModuleId;
   pattern: RegExp;
   rationale: string;
 };
