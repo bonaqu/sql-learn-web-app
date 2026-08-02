@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { authenticatePage } from './auth-helper';
+import { seedFirstLessonEvidence } from './navigation-helper';
 
 const expectNoHorizontalOverflow = async (page: import('@playwright/test').Page) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
@@ -61,6 +62,7 @@ test('desktop academy workflow is usable and shares the authenticated Cloudflare
   expect(cloudProgress.status).toBe(200);
   expect(cloudProgress.body).toHaveProperty('progress');
 
+  await seedFirstLessonEvidence(page);
   await page.locator('.sidebar nav').getByRole('button', { name: 'Practice' }).click();
   await expect(page.getByRole('heading', { name: 'Practice Mode' })).toBeVisible();
   await page.locator('.task-row').first().click();
@@ -92,6 +94,7 @@ test('mobile task flow uses list-to-editor navigation after login', async ({ pag
   await expect(page.locator('.mobile-bottom-nav')).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
+  await seedFirstLessonEvidence(page);
   await page.locator('.mobile-bottom-nav').getByRole('button', { name: 'Практика' }).click();
   await expect(page.getByRole('heading', { name: 'Practice Mode' })).toBeVisible();
   await page.locator('.task-row').first().click();
