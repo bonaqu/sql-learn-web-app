@@ -122,7 +122,9 @@ for (const marker of [
   'ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS',
   'FEATURE_TURNSTILE: process.env.FEATURE_TURNSTILE',
   'node scripts/commercial-runtime-production-smoke.mjs',
-  'cloudflare-commercial-stage.txt'
+  'cloudflare-deployment-stage.txt',
+  'for attempt in 1 2 3',
+  'target_url: success && process.env.DEPLOY_URL ? process.env.DEPLOY_URL : process.env.RUN_URL'
 ]) assert.ok(workflow.includes(marker), `Cloudflare deployment is missing: ${marker}`);
 for (const marker of [
   "expected: [expectedAdmin ? 401 : 404]",
@@ -145,4 +147,4 @@ for (const secret of [
   'SMS_API_KEY:'
 ]) assert.ok(!workflow.includes(secret), `Secret must not be written into deployment config: ${secret}`);
 
-console.log('Commercial capability contract, verified-contact account routing, Turnstile/admin security and production deployment wiring are fail-closed.');
+console.log('Commercial capability contract, verified-contact account routing, Turnstile/admin security and observable production deployment wiring are fail-closed.');
