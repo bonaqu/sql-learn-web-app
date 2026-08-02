@@ -116,9 +116,9 @@ export const sqlSyntaxCapabilities: readonly SqlSyntaxCapability[] = [
   {
     id: 'explain',
     title: 'EXPLAIN',
-    introducedBy: 'explain',
+    introducedBy: 'indexes',
     pattern: /\bexplain(?:\s+query\s+plan)?\b/i,
-    rationale: 'Execution-plan vocabulary must be introduced before plan evidence is required.'
+    rationale: 'Indexes introduces EXPLAIN QUERY PLAN as before/after access-path evidence; the next module deepens full plan vocabulary.'
   },
   {
     id: 'transaction-control',
@@ -186,9 +186,9 @@ export const sqlSyntaxCapabilities: readonly SqlSyntaxCapability[] = [
   {
     id: 'upsert',
     title: 'UPSERT',
-    introducedBy: 'schema-evolution',
+    introducedBy: 'dml',
     pattern: /\bon\s+conflict\b|\bon\s+duplicate\s+key\b/i,
-    rationale: 'Conflict-aware writes require mutation and constraint ownership first.'
+    rationale: 'DML introduces conflict-aware writes after target-set and transaction safety; schema evolution later reuses them during migrations.'
   },
   {
     id: 'returning',
