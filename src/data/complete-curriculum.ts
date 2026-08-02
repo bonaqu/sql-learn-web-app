@@ -45,8 +45,8 @@ function diversifyAdvancedLesson(lesson: CurriculumLesson): CurriculumLesson {
 
 const normalizedAdvancedLessons = advancedCurriculumLessons.map(diversifyAdvancedLesson);
 const sourceLessons = [...normalizedCoreLessons, ...normalizedAdvancedLessons];
-const lessonSourceOrder = new Map(sourceLessons.map((lesson, index) => [lesson.id, index]));
-const checkpointOrder = new Map(phaseDefinitions.map((phase, index) => [phase.id, index]));
+const lessonSourceOrder = new Map<string, number>(sourceLessons.map((lesson, index) => [lesson.id, index]));
+const checkpointOrder = new Map<string, number>(phaseDefinitions.map((phase, index) => [phase.id, index]));
 
 export const curriculumLessons = [...sourceLessons].sort((left, right) =>
   moduleOrderIndex(left.module) - moduleOrderIndex(right.module)
