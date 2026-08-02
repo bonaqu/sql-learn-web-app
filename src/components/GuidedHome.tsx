@@ -12,16 +12,32 @@ import {
   Sparkles,
   Target
 } from 'lucide-react';
-import { tasks, type SqlTask, TOTAL_TASK_COUNT } from '../data/course-catalog';
+import { curriculumCheckpoints } from '../data/complete-curriculum';
+import { type SqlTask, TOTAL_TASK_COUNT } from '../data/course-catalog';
+import { openJourneyDestination } from '../lib/academy-navigation';
+import {
+  ASSESSMENT_REPORTS_CHANGED_EVENT,
+  loadLocalAssessmentReports
+} from '../lib/assessment';
+import {
+  bestCheckpointReport,
+  CHECKPOINT_REPORTS_CHANGED_EVENT,
+  legacyCheckpointPassed,
+  loadLocalCheckpointReports
+} from '../lib/checkpoints';
+import {
+  CURRICULUM_PROGRESS_CHANGED_EVENT,
+  loadCurriculumProgress
+} from '../lib/curriculum-progress';
 import {
   goalOptions,
   loadOnboardingProfile,
   ONBOARDING_CHANGED_EVENT,
   onboardingReady,
   studyDayLabels,
-  type LearnerOnboardingProfile,
   type WeekPlanItem
 } from '../lib/learner-onboarding';
+import { nextJourneyAction } from '../lib/learning-journey';
 import type { Progress } from '../lib/progress';
 
 type GuidedHomeProps = {
@@ -35,22 +51,10 @@ type GuidedHomeProps = {
   onExplore: () => void;
 };
 
-function nextIncompleteTask(profile: LearnerOnboardingProfile, progress: Progress) {
-  const completed = new Set(progress.completed);
-  const focusModules = profile.placement.focusModuleIds;
-  const focused = focusModules.length
-    ? tasks.find(task => focusModules.includes(task.module) && !completed.has(task.id))
-    : null;
-  if (focused) return focused;
-  const last = progress.lastTask ? tasks.find(task => task.id === progress.lastTask) : null;
-  if (last && !completed.has(last.id)) return last;
-  return tasks.find(task => !completed.has(task.id)) || tasks[0];
-}
-
-function nextPlanItem(profile: LearnerOnboardingProfile): WeekPlanItem | null {
-  if (!profile.firstWeekPlan.length) return null;
+function nextPlanItem(items: WeekPlanItem[]): WeekPlanItem | null {
+  if (!items.length) return null;
   const day = new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(new Date()).slice(0, 2).toUpperCase();
-  return profile.firstWeekPlan.find(item => item.day === day) || profile.firstWeekPlan[0];
+  return items.find(item => item.day === day) || items[0];
 }
 
 export default function GuidedHome({
@@ -64,22 +68,65 @@ export default function GuidedHome({
   onExplore
 }: GuidedHomeProps) {
   const [profile, setProfile] = useState(() => loadOnboardingProfile());
+  const [curriculum, setCurriculum] = useState(() => loadCurriculumProgress());
+  const [checkpointReports, setCheckpointReports] = useState(() => loadLocalCheckpointReports());
+  const [assessmentReports, setAssessmentReports] = useState(() => loadLocalAssessmentReports());
 
   useEffect(() => {
-    const update = () => setProfile(loadOnboardingProfile());
-    window.addEventListener(ONBOARDING_CHANGED_EVENT, update);
-    window.addEventListener('storage', update);
+    const updateProfile = () => setProfile(loadOnboardingProfile());
+    const updateCurriculum = () => setCurriculum(loadCurriculumProgress());
+    const updateCheckpoints = () => setCheckpointReports(loadLocalCheckpointReports());
+    const updateAssessments = () => setAssessmentReports(loadLocalAssessmentReports());
+    const updateAll = () => {
+      updateProfile();
+      updateCurriculum();
+      updateCheckpoints();
+      updateAssessments();
+    };
+    window.addEventListener(ONBOARDING_CHANGED_EVENT, updateProfile);
+    window.addEventListener(CURRICULUM_PROGRESS_CHANGED_EVENT, updateCurriculum);
+    window.addEventListener(CHECKPOINT_REPORTS_CHANGED_EVENT, updateCheckpoints);
+    window.addEventListener(ASSESSMENT_REPORTS_CHANGED_EVENT, updateAssessments);
+    window.addEventListener('storage', updateAll);
     return () => {
-      window.removeEventListener(ONBOARDING_CHANGED_EVENT, update);
-      window.removeEventListener('storage', update);
+      window.removeEventListener(ONBOARDING_CHANGED_EVENT, updateProfile);
+      window.removeEventListener(CURRICULUM_PROGRESS_CHANGED_EVENT, updateCurriculum);
+      window.removeEventListener(CHECKPOINT_REPORTS_CHANGED_EVENT, updateCheckpoints);
+      window.removeEventListener(ASSESSMENT_REPORTS_CHANGED_EVENT, updateAssessments);
+      window.removeEventListener('storage', updateAll);
     };
   }, []);
 
   const ready = onboardingReady(profile);
   const goal = goalOptions.find(item => item.id === profile.goal);
-  const nextTask = useMemo(() => nextIncompleteTask(profile, progress), [profile, progress]);
-  const planned = useMemo(() => nextPlanItem(profile), [profile]);
+  const planned = useMemo(() => nextPlanItem(profile.firstWeekPlan), [profile.firstWeekPlan]);
+  const passedCheckpointIds = useMemo(() => curriculumCheckpoints
+    .filter(checkpoint =>
+      Boolean(bestCheckpointReport(checkpoint.id, checkpointReports)?.passed)
+      || legacyCheckpointPassed(checkpoint.id, progress)
+    )
+    .map(checkpoint => checkpoint.id), [checkpointReports, progress]);
+  const assessmentComplete = useMemo(() => assessmentReports.some(report =>
+    report.status === 'completed'
+    && (report.mode === 'exam' || report.mode === 'production' || report.mode === 'final')
+  ), [assessmentReports]);
+  const nextStep = useMemo(() => nextJourneyAction(progress, curriculum, {
+    includeReview: false,
+    passedCheckpointIds,
+    assessmentComplete,
+    bypassedModuleIds: profile.placement.status === 'completed'
+      ? profile.placement.strongModuleIds
+      : []
+  }), [assessmentComplete, curriculum, passedCheckpointIds, profile.placement, progress]);
   const completion = Math.round(progress.completed.length / TOTAL_TASK_COUNT * 100);
+
+  const startNextStep = () => {
+    if (nextStep.kind === 'task' && nextStep.task) {
+      onStartTask(nextStep.task);
+      return;
+    }
+    openJourneyDestination(nextStep);
+  };
 
   if (!ready) {
     return <section className="guided-home guided-welcome" data-testid="guided-first-run">
@@ -105,45 +152,52 @@ export default function GuidedHome({
     <header className="guided-header">
       <div>
         <span className="guided-kicker">Сегодня · {goal?.title || 'SQL Academy'}</span>
-        <h1>{primaryIsReview ? 'Сначала закрепим изученное.' : 'Продолжим твой маршрут.'}</h1>
+        <h1>{primaryIsReview ? 'Сначала закрепим изученное.' : 'Продолжим единый маршрут.'}</h1>
         <p>{primaryIsReview
-          ? `В очереди ${reviewCount} ${reviewCount === 1 ? 'задача' : 'задач'} на повторение. После них вернёмся к новой теме.`
-          : planned?.detail || `Следующая задача подобрана по твоему плану: ${nextTask.title}.`}</p>
+          ? `В очереди ${reviewCount} ${reviewCount === 1 ? 'задача' : 'задач'} на повторение. После них вернёмся к этапу «${nextStep.title}».`
+          : nextStep.description}</p>
       </div>
       <button className="guided-configure" onClick={onConfigure}><Settings2 /> Изменить цель и ритм</button>
     </header>
 
-    <div className="guided-primary-card">
+    <div className="guided-primary-card" data-testid="guided-journey-action" data-stage={primaryIsReview ? 'review' : nextStep.stage}>
       <div className="guided-primary-copy">
         <span>{primaryIsReview ? <RefreshCw /> : <Target />}</span>
         <div>
-          <small>{primaryIsReview ? 'Приоритет на сегодня' : planned ? `${studyDayLabels[planned.day]} · ${planned.minutes} минут` : `${profile.dailyMinutes} минут`}</small>
-          <h2>{primaryIsReview ? 'Адаптивное повторение' : nextTask.title}</h2>
-          <p>{primaryIsReview ? 'Восстанови решение по памяти, не перечитывая урок заранее.' : nextTask.description}</p>
+          <small>{primaryIsReview
+            ? 'Приоритет на сегодня · retrieval review'
+            : `${nextStep.phaseTitle || 'Итоговый этап'}${nextStep.moduleTitle ? ` · ${nextStep.moduleTitle}` : ''} · ${nextStep.stage}`}</small>
+          <h2>{primaryIsReview ? 'Адаптивное повторение' : nextStep.title}</h2>
+          <p>{primaryIsReview
+            ? 'Восстанови решение по памяти, не перечитывая урок заранее.'
+            : nextStep.description}</p>
         </div>
       </div>
-      <button className="primary" onClick={() => primaryIsReview ? onReview() : onStartTask(nextTask)}>
-        {primaryIsReview ? 'Начать повторение' : 'Начать сессию'} <ArrowRight />
+      <button className="primary" onClick={() => primaryIsReview ? onReview() : startNextStep()}>
+        {primaryIsReview ? 'Начать повторение' : nextStep.cta} <ArrowRight />
       </button>
     </div>
 
     <div className="guided-grid">
       <article className="guided-week">
         <div className="guided-card-heading"><div><CalendarDays /><span><strong>Первая неделя</strong><small>Твой устойчивый контракт</small></span></div><button onClick={onOpenPlan}>Весь план <Route /></button></div>
-        <div className="guided-week-list">{profile.firstWeekPlan.slice(0, 5).map((item, index) => <div key={item.id} className={index === 0 ? 'active' : ''}>
-          <span>{studyDayLabels[item.day]}</span>
-          <p><strong>{item.title}</strong><small>{item.minutes} мин · {item.kind}</small></p>
-          {index === 0 ? <ArrowRight /> : <CheckCircle2 />}
-        </div>)}</div>
+        <div className="guided-week-list">{profile.firstWeekPlan.slice(0, 5).map(item => {
+          const active = planned?.id === item.id;
+          return <div key={item.id} className={active ? 'active' : ''}>
+            <span>{studyDayLabels[item.day]}</span>
+            <p><strong>{item.title}</strong><small>{item.minutes} мин · {item.kind}</small></p>
+            {active ? <ArrowRight /> : <Clock3 />}
+          </div>;
+        })}</div>
       </article>
 
       <article className="guided-progress-card">
-        <div className="guided-card-heading"><div><ListChecks /><span><strong>Прогресс маршрута</strong><small>Без гонки за случайными XP</small></span></div></div>
-        <div className="guided-progress-value"><strong>{completion}%</strong><span>{progress.completed.length} из {TOTAL_TASK_COUNT} задач</span></div>
+        <div className="guided-card-heading"><div><ListChecks /><span><strong>Прогресс маршрута</strong><small>Lesson → practice → checkpoint → transfer</small></span></div></div>
+        <div className="guided-progress-value"><strong>{completion}%</strong><span>{progress.completed.length} из {TOTAL_TASK_COUNT} задач · {curriculum.completedLessons.length} уроков</span></div>
         <div className="guided-progress-bar"><i style={{ width: `${completion}%` }} /></div>
         <div className="guided-mini-actions">
-          <button onClick={onOpenLessons}>Открыть следующий урок</button>
-          <button onClick={onExplore}>Все инструменты</button>
+          <button onClick={startNextStep}>Открыть следующий этап</button>
+          <button onClick={onOpenLessons}>Все уроки</button>
         </div>
       </article>
     </div>
