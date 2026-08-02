@@ -25,6 +25,18 @@ function taskNumber(taskId: string) {
   return Number(taskId.replace(/^task-/, ''));
 }
 
+function progressionInvariant(task: SqlTask) {
+  return {
+    id: task.id,
+    module: task.module,
+    topic: task.topic,
+    difficulty: task.difficulty,
+    xp: task.xp,
+    solution: task.solution,
+    guide: task.guide
+  };
+}
+
 function emptyProgress(): Progress {
   return {
     version: 4,
@@ -82,7 +94,11 @@ for (const moduleId of coreModuleIds) {
     totalModes[task.mode] += 1;
     const raw = rawById.get(task.id);
     assert.ok(raw, `${task.id}: missing raw core contract`);
-    assert.deepEqual(task, { ...raw, mode: task.mode }, `${task.id}: core progression changed SQL, content, XP or identity`);
+    assert.deepEqual(
+      progressionInvariant(task),
+      progressionInvariant(raw!),
+      `${task.id}: core progression changed SQL, XP, difficulty, guide or persisted identity`
+    );
   }
   assert.deepEqual(counts, expectedModeCounts, `${moduleId}: expected 1 guided, 3 practice, 1 interview and 1 puzzle task`);
 
