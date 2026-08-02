@@ -183,6 +183,7 @@ jobs:
         run: |
           echo 'commercial-smoke' > cloudflare-deployment-stage.txt
           node scripts/commercial-runtime-production-smoke.mjs
+          test -s cloudflare-commercial-stage.txt
 
       - name: Smoke-test Cloudflare frontend, auth and curriculum API
         env:
@@ -190,6 +191,7 @@ jobs:
         run: |
           echo 'core-smoke' > cloudflare-deployment-stage.txt
           node scripts/cloudflare-production-smoke.mjs
+          test -s cloudflare-smoke-stage.txt
 
       - name: Smoke-test full misconception answer history
         env:
@@ -197,6 +199,7 @@ jobs:
         run: |
           echo 'concept-smoke' > cloudflare-deployment-stage.txt
           node scripts/concept-progress-production-smoke.mjs
+          test -s cloudflare-concepts-stage.txt
 
       - name: Smoke-test executable checkpoint report lifecycle
         env:
@@ -204,6 +207,7 @@ jobs:
         run: |
           echo 'checkpoint-smoke' > cloudflare-deployment-stage.txt
           node scripts/checkpoint-production-smoke.mjs
+          test -s cloudflare-checkpoint-stage.txt
 
       - name: Smoke-test immutable capstone report lifecycle
         env:
@@ -211,6 +215,7 @@ jobs:
         run: |
           echo 'capstone-smoke' > cloudflare-deployment-stage.txt
           node scripts/capstone-production-smoke.mjs
+          test -s cloudflare-capstone-stage.txt
 
       - name: Smoke-test privacy-first assessment calibration lifecycle
         env:
@@ -218,6 +223,7 @@ jobs:
         run: |
           echo 'assessment-smoke' > cloudflare-deployment-stage.txt
           node scripts/assessment-calibration-production-smoke.mjs
+          test -s cloudflare-assessment-calibration-stage.txt
 
       - name: Smoke-test privacy-first learning analytics lifecycle
         env:
@@ -225,6 +231,7 @@ jobs:
         run: |
           echo 'analytics-smoke' > cloudflare-deployment-stage.txt
           node scripts/learning-analytics-production-smoke.mjs
+          test -s cloudflare-learning-analytics-stage.txt
 
       - name: Smoke-test all server-dialect CI reference previews
         env:
@@ -232,6 +239,7 @@ jobs:
         run: |
           echo 'dialect-smoke' > cloudflare-deployment-stage.txt
           npx tsx scripts/dialect-labs-free-production-smoke.ts
+          test -s cloudflare-dialect-stage.txt
 
       - name: Smoke-test Mastery progress evidence lifecycle
         env:
@@ -239,6 +247,7 @@ jobs:
         run: |
           echo 'mastery-smoke' > cloudflare-deployment-stage.txt
           node scripts/mastery-progress-production-smoke.mjs
+          test -s cloudflare-mastery-stage.txt
 
       - name: Smoke-test onboarding profile lifecycle
         env:
@@ -246,6 +255,7 @@ jobs:
         run: |
           echo 'onboarding-smoke' > cloudflare-deployment-stage.txt
           node scripts/onboarding-production-smoke.mjs
+          test -s cloudflare-onboarding-stage.txt
 
       - name: Upload deployment diagnostics
         if: failure()
