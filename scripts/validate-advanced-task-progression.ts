@@ -25,6 +25,18 @@ function taskNumber(taskId: string) {
   return Number(taskId.replace(/^task-/, ''));
 }
 
+function invariantTaskContract(task: SqlTask) {
+  return {
+    id: task.id,
+    module: task.module,
+    topic: task.topic,
+    difficulty: task.difficulty,
+    xp: task.xp,
+    solution: task.solution,
+    guide: task.guide
+  };
+}
+
 function emptyProgress(): Progress {
   return {
     version: 4,
@@ -88,10 +100,17 @@ for (const moduleId of advancedModuleIds) {
     const expected = expectedContent.get(task.id);
     assert.ok(expected, `${task.id}: missing original advanced contract`);
     assert.deepEqual(
-      expected && { ...expected, mode: task.mode },
-      task,
-      `${task.id}: mode progression must not rewrite SQL, content, XP or identity`
+      invariantTaskContract(task),
+      invariantTaskContract(expected!),
+      `${task.id}: progression or transfer framing changed SQL, XP, difficulty, guide or persisted identity`
     );
+    if (task.mode === 'lesson' || task.mode === 'practice') {
+      assert.deepEqual(
+        task,
+        { ...expected, mode: task.mode },
+        `${task.id}: foundation task was rewritten outside the mode progression`
+      );
+    }
   }
   assert.deepEqual(counts, expectedModeCounts, `${moduleId}: expected 2 guided, 4 practice, 2 interview and 2 puzzle tasks`);
 
