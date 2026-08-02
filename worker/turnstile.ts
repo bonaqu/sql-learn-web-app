@@ -18,8 +18,11 @@ const PUBLIC_AUTH_ACTIONS = new Map([
   ['/api/auth/register', 'register'],
   ['/api/auth/login', 'login'],
   ['/api/auth/password/reset', 'password-reset'],
-  ['/api/auth/contact/challenge', 'contact-challenge']
+  ['/api/auth/contact/challenge', 'contact-challenge'],
+  ['/api/auth/contact/register', 'contact-register'],
+  ['/api/auth/contact/password/reset', 'contact-password-reset']
 ]);
+const CONTACT_ACTIONS = new Set(['contact-challenge', 'contact-register', 'contact-password-reset']);
 
 const json = (data: unknown, status: number) => new Response(JSON.stringify(data), {
   status,
@@ -55,7 +58,7 @@ export function publicAuthTurnstileAction(request: Request) {
 export async function enforceTurnstile(request: Request, env: CommercialEnvironment): Promise<Response | null> {
   const expectedAction = publicAuthTurnstileAction(request);
   if (!expectedAction || !enabledFlag(env.FEATURE_TURNSTILE)) return null;
-  if (expectedAction === 'contact-challenge'
+  if (CONTACT_ACTIONS.has(expectedAction)
     && !contactVerificationReady('email', env)
     && !contactVerificationReady('sms', env)) return null;
 
