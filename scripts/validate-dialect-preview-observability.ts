@@ -13,7 +13,8 @@ assert.ok(smoke.includes('body: response.body'), 'Failure response body is not p
 assert.ok(smoke.includes('caseId,'), 'Request diagnostics are not linked to a preview case');
 assert.ok(smoke.includes('attempts: 2'), 'Server preview requests have no bounded retry for transient 5xx responses');
 assert.ok(smoke.includes('body=${response.body.slice(0, 1200)}'), 'Thrown smoke error still hides the response body');
-assert.ok(smoke.includes('cf-ray=${response.headers'), 'Thrown smoke error still hides the Cloudflare Ray ID');
+assert.ok(smoke.includes("response.headers['cf-ray']"), 'Thrown smoke error does not read the Cloudflare Ray ID');
+assert.ok(smoke.includes('${ray} body='), 'Thrown smoke error does not include the captured Cloudflare Ray ID');
 assert.ok(workflow.includes('cloudflare-*.json'), 'Deployment failure artifact does not include per-case JSON diagnostics');
 assert.ok(workflow.includes('cloudflare-*.txt'), 'Deployment failure artifact does not include current-case and stage diagnostics');
 assert.ok(workflow.includes('cloudflare-*.log'), 'Deployment failure artifact does not include deployment logs');
