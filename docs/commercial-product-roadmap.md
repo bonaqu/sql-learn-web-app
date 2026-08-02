@@ -50,14 +50,18 @@ All integrations are default-off and fail closed on the current Cloudflare Free 
 - [x] Turnstile Siteverify enforcement for public register/login/password-reset routes.
 - [x] Provider-neutral private HTTPS delivery adapter for email and SMS challenges.
 - [x] Privacy-safe contact challenge core: expiry, resend/rate limits, bounded attempts, HMAC verifiers and one-time signed tickets.
-- [ ] Bind a verified email ticket to account creation, login and password reset.
-- [ ] Bind a verified phone ticket to account creation, login and password reset.
+- [x] Atomically bind a verified email or phone ticket to account creation.
+- [x] Atomically attach one verified contact per channel to an authenticated account using the current password.
+- [x] Reset a password through an already bound verified contact and revoke every active session.
+- [ ] Add passwordless contact login. This is not implied by verification or password reset and requires a separate threat model.
 - [ ] Add buyer-specific provider deliverability, bounce/failure monitoring and acceptance tests.
-- [ ] Add learner UI for enabled verified-contact flows while keeping it absent when disabled.
+- [ ] Add learner UI for enabled verified-contact registration, attachment and recovery while keeping it absent when disabled.
 
 ## Current verified-contact boundary
 
-CR2B provides only the challenge and confirmation primitive. It deliberately does not change the current username/password/recovery-code authentication contract. Account binding and verified-contact authentication remain CR2C work and must consume a valid one-time ticket atomically.
+CR2B supplies challenge delivery and confirmation. CR2C adds backend account binding with durable one-time consumption receipts and transactional registration, attachment and password reset.
+
+The existing username/password/recovery-code contract remains available and unchanged. Verified-contact routes stay hidden while their server capability is disabled or incomplete. No passwordless login or learner-facing verified-contact UI is claimed yet.
 
 ## Completion rule
 
