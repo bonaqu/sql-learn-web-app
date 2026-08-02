@@ -27,28 +27,37 @@ Completed in the guided learner journey delivered by PR #83.
 
 - [x] Replace hard-coded owner/domain branding and API origins with environment-driven product configuration.
 - [x] Add a clean-install deployment runbook for a buyer-owned GitHub and Cloudflare account.
-- [ ] Add staging/production environment guidance and rollback/restore procedures.
+- [x] Add staging/production environment guidance and guarded rollback/restore procedures.
 - [ ] Add deterministic package locking and a dependency/license inventory.
-- [ ] Add explicit source-code licensing and third-party notices.
+- [x] Add explicit proprietary source-code licensing.
+- [ ] Generate and verify complete third-party notices.
 
 ## Phase 3 — commercial operations
 
-- [ ] Add privacy-safe admin health endpoints and a minimal operator dashboard.
-- [ ] Add backup/export and restore verification for D1 data.
-- [ ] Add incident, support and account-recovery runbooks.
-- [ ] Add configurable retention, support contacts and legal-page links.
-- [ ] Add load/abuse gates and production alert guidance.
+- [x] Add privacy-safe admin health endpoints hidden behind a feature flag and user-ID allowlist.
+- [x] Add checksummed D1 export, independent verification and non-production restore rehearsal.
+- [ ] Add complete incident, support and account-recovery runbooks.
+- [ ] Add configurable retention beyond the current bounded feature policies.
+- [x] Make support, privacy and terms links product-configurable.
+- [x] Add scheduled public health probing and default-off Turnstile abuse protection.
+- [ ] Complete buyer alert routing and independent operational acceptance.
 
 ## Phase 4 — dormant paid integrations
 
 All integrations are default-off and fail closed on the current Cloudflare Free deployment.
 
 - [x] Capability endpoint exposing only enabled/disabled states.
-- [ ] Turnstile verification adapter.
-- [ ] Email delivery adapter and verified-email auth flow.
-- [ ] SMS delivery adapter and verified-phone auth flow.
-- [ ] Buyer activation guide, secret matrix and provider-specific tests.
-- [ ] Hidden UI until the buyer explicitly enables a complete provider configuration.
+- [x] Turnstile Siteverify enforcement for public register/login/password-reset routes.
+- [x] Provider-neutral private HTTPS delivery adapter for email and SMS challenges.
+- [x] Privacy-safe contact challenge core: expiry, resend/rate limits, bounded attempts, HMAC verifiers and one-time signed tickets.
+- [ ] Bind a verified email ticket to account creation, login and password reset.
+- [ ] Bind a verified phone ticket to account creation, login and password reset.
+- [ ] Add buyer-specific provider deliverability, bounce/failure monitoring and acceptance tests.
+- [ ] Add learner UI for enabled verified-contact flows while keeping it absent when disabled.
+
+## Current verified-contact boundary
+
+CR2B provides only the challenge and confirmation primitive. It deliberately does not change the current username/password/recovery-code authentication contract. Account binding and verified-contact authentication remain CR2C work and must consume a valid one-time ticket atomically.
 
 ## Completion rule
 
@@ -59,3 +68,5 @@ A phase is complete only after:
 - desktop/mobile/axe journeys pass;
 - Cloudflare Free dry-run remains valid;
 - GitHub Pages and Cloudflare production both succeed after merge.
+
+External legal review, independent penetration testing, real-provider deliverability and validation with paying learners are acceptance activities outside repository-only engineering evidence.
