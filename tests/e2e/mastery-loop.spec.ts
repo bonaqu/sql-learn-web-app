@@ -1,6 +1,6 @@
 import { expect, test, type Locator } from '@playwright/test';
 import { authenticatePage } from './auth-helper';
-import { openAdvancedTool } from './navigation-helper';
+import { openAdvancedTool, seedFirstLessonEvidence } from './navigation-helper';
 
 const FIRST_SOLUTION = "SELECT ticket_id, service, status FROM tickets WHERE service = 'VPN' ORDER BY ticket_id;";
 
@@ -86,9 +86,14 @@ test('mobile mastery diagnostics remain readable without horizontal overflow', a
   await page.goto('./');
   await page.getByRole('button', { name: 'Практика', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Practice Mode' })).toBeVisible();
-  await page.getByRole('button', { name: /001 Контракт результата: VPN/ }).click();
+  await seedFirstLessonEvidence(page);
+  const firstTask = page.getByRole('button', { name: /001 Контракт результата: VPN/ });
+  await expect(firstTask).toContainText('Текущий шаг маршрута');
+  await firstTask.click();
   await replaceEditorSql(page, 'SELECT missing_column FROM tickets;');
-  await page.getByRole('button', { name: /Проверить SQL/i }).click();
+  const runButton = page.getByRole('button', { name: /Проверить SQL/i });
+  await expect(runButton).toBeEnabled();
+  await runButton.click();
   const diagnostic = page.getByTestId('attempt-diagnostic');
   await expect(diagnostic).toBeVisible();
   await expect(diagnostic).toContainText('Запрос не совпадает со схемой');
