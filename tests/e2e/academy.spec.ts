@@ -62,10 +62,12 @@ test('desktop academy workflow is usable and shares the authenticated Cloudflare
   expect(cloudProgress.status).toBe(200);
   expect(cloudProgress.body).toHaveProperty('progress');
 
-  await seedFirstLessonEvidence(page);
   await page.locator('.sidebar nav').getByRole('button', { name: 'Practice' }).click();
   await expect(page.getByRole('heading', { name: 'Practice Mode' })).toBeVisible();
-  await page.locator('.task-row').first().click();
+  await seedFirstLessonEvidence(page);
+  const firstTask = page.locator('.task-row').first();
+  await expect(firstTask).toContainText('Текущий шаг маршрута');
+  await firstTask.click();
 
   await expect(page.locator('.editor-panel')).toBeVisible();
   await expect(page.locator('.mentor-panel')).toBeVisible();
@@ -94,10 +96,12 @@ test('mobile task flow uses list-to-editor navigation after login', async ({ pag
   await expect(page.locator('.mobile-bottom-nav')).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
-  await seedFirstLessonEvidence(page);
   await page.locator('.mobile-bottom-nav').getByRole('button', { name: 'Практика' }).click();
   await expect(page.getByRole('heading', { name: 'Practice Mode' })).toBeVisible();
-  await page.locator('.task-row').first().click();
+  await seedFirstLessonEvidence(page);
+  const firstTask = page.locator('.task-row').first();
+  await expect(firstTask).toContainText('Текущий шаг маршрута');
+  await firstTask.click();
 
   await expect(page.locator('.catalog-panel')).toBeHidden();
   await expect(page.locator('.editor-panel')).toBeVisible();
