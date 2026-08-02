@@ -269,13 +269,42 @@ function consumptionStatement(
 ) {
   return env.DB.prepare(`INSERT INTO contact_ticket_consumptions(
     challenge_id, user_id, channel, purpose, destination_digest, consumed_at
-  ) VALUES(?, ?, ?, ?, ?, ?)`).bind(
+  ) VALUES(
+    (SELECT challenge_id FROM contact_verification_challenges
+      WHERE challenge_id = ? AND channel = ? AND purpose = ? AND destination_digest = ?
+        AND provider_message_id IS NOT NULL AND confirmed_at IS NOT NULL AND consumed_at IS NULL
+        AND datetime(confirmed_at, '+10 minutes') > datetime(?)),
+    ?, ?, ?, ?, ?
+  )`).bind(
       ticket.challengeId,
+      ticket.channel,
+      ticket.purpose,
+      ticket.destinationDigest,
+      now,
       userId,
       ticket.channel,
       ticket.purpose,
       ticket.destinationDigest,
       now
+    );
+}
+
+function challengeConsumptionStatement(
+  env: ContactVerificationEnvironment,
+  ticket: PreparedTicket,
+  now: string
+) {
+  return env.DB.prepare(`UPDATE contact_verification_challenges
+    SET consumed_at = ?, updated_at = ?
+    WHERE challenge_id = ? AND channel = ? AND purpose = ? AND destination_digest = ?
+      AND provider_message_id IS NOT NULL AND confirmed_at IS NOT NULL AND consumed_at IS NULL`)
+    .bind(
+      now,
+      now,
+      ticket.challengeId,
+      ticket.channel,
+      ticket.purpose,
+      ticket.destinationDigest
     );
 }
 
@@ -386,6 +415,7 @@ async function registerWithContact(request: Request, env: ContactVerificationEnv
         session.expiresAt
       ),
       consumptionStatement(env, userId, ticket, now),
+      challengeConsumptionStatement(env, ticket, now),
       contactStatement(env, userId, ticket, now)
     ]);
   } catch (error) {
@@ -443,6 +473,7 @@ async function resetPasswordWithContact(request: Request, env: ContactVerificati
   try {
     await env.DB.batch([
       consumptionStatement(env, user.user_id, ticket, now),
+      challengeConsumptionStatement(env, ticket, now),
       env.DB.prepare(`UPDATE users SET password_salt = ?, password_hash = ?, password_iterations = ?,
         password_changed_at = ?, updated_at = ?, failed_login_count = 0, locked_until = NULL
         WHERE user_id = ?`).bind(salt, hash, PASSWORD_ITERATIONS, now, now, user.user_id),
@@ -483,6 +514,7 @@ async function attachContact(
   try {
     await env.DB.batch([
       consumptionStatement(env, auth.userId, ticket, now),
+      challengeConsumptionStatement(env, ticket, now),
       contactStatement(env, auth.userId, ticket, now)
     ]);
   } catch (error) {
