@@ -49,7 +49,7 @@ export default {
     }
 
     const observedRequest = request.clone();
-    const response = await app.fetch(request, env, context);
+    const response = await app.fetch(request, env);
     context.waitUntil(observeContactSecurityResponse(observedRequest, response.clone(), env));
     return response;
   },
