@@ -1,3 +1,5 @@
+import { recordContactSecurityEvent, recordInitialContactDelivery } from '../contact-observability';
+
 /**
  * Commercial verification provider boundary.
  *
@@ -19,9 +21,14 @@ export type VerificationChallenge = {
   expiresAt: string;
 };
 
+export type VerificationDelivery = {
+  providerMessageId: string;
+  initialStatus: 'accepted' | 'queued';
+};
+
 export interface VerificationProvider {
   readonly name: VerificationProviderName;
-  send(challenge: VerificationChallenge): Promise<{ providerMessageId: string; initialStatus: 'accepted' | 'queued' }>;
+  send(challenge: VerificationChallenge): Promise<VerificationDelivery>;
 }
 
 export interface EmailVerificationProvider extends VerificationProvider {}
@@ -288,7 +295,42 @@ export class TwilioVerificationProvider implements SmsVerificationProvider {
   }
 }
 
-export function verificationProvider(
+class ObservedVerificationProvider implements VerificationProvider {
+  readonly name: VerificationProviderName;
+  constructor(
+    private readonly inner: VerificationProvider,
+    private readonly env: VerificationProviderEnvironment
+  ) {
+    this.name = inner.name;
+  }
+
+  async send(challenge: VerificationChallenge) {
+    try {
+      const delivery = await this.inner.send(challenge);
+      if (this.name !== 'disabled') {
+        await recordInitialContactDelivery(this.env, {
+          provider: this.name,
+          providerMessageId: delivery.providerMessageId,
+          challengeId: challenge.challengeId,
+          channel: challenge.channel,
+          status: delivery.initialStatus,
+          occurredAt: new Date().toISOString()
+        });
+      }
+      return delivery;
+    } catch (error) {
+      await recordContactSecurityEvent(this.env, {
+        eventType: 'challenge-provider-failed',
+        challengeId: challenge.challengeId,
+        channel: challenge.channel,
+        purpose: challenge.purpose
+      });
+      throw error;
+    }
+  }
+}
+
+function rawVerificationProvider(
   channel: VerificationChannel,
   env: VerificationProviderEnvironment
 ): VerificationProvider {
@@ -309,4 +351,11 @@ export function verificationProvider(
     );
   }
   return new DisabledVerificationProvider();
+}
+
+export function verificationProvider(
+  channel: VerificationChannel,
+  env: VerificationProviderEnvironment
+): VerificationProvider {
+  return new ObservedVerificationProvider(rawVerificationProvider(channel, env), env);
 }
