@@ -42,22 +42,28 @@ function openCurriculumTarget(target: 'lesson' | 'project', id: string) {
   openDeferredFeature('curriculum');
 }
 
+export function openAcademyLesson(lessonId: string) {
+  if (!lessonId) return false;
+  openCurriculumTarget('lesson', lessonId);
+  return true;
+}
+
+export function openAcademyCheckpoint(checkpointId: string) {
+  if (!checkpointId) return false;
+  sessionStorage.setItem(CHECKPOINT_REQUEST_KEY, checkpointId);
+  window.dispatchEvent(new CustomEvent(OPEN_CHECKPOINT_EVENT, {
+    detail: { checkpointId }
+  }));
+  return true;
+}
+
 export function openJourneyDestination(action: JourneyAction) {
-  if (action.kind === 'lesson' && action.lessonId) {
-    openCurriculumTarget('lesson', action.lessonId);
-    return true;
-  }
+  if (action.kind === 'lesson' && action.lessonId) return openAcademyLesson(action.lessonId);
   if (action.kind === 'project' && action.projectId) {
     openCurriculumTarget('project', action.projectId);
     return true;
   }
-  if (action.kind === 'checkpoint' && action.checkpointId) {
-    sessionStorage.setItem(CHECKPOINT_REQUEST_KEY, action.checkpointId);
-    window.dispatchEvent(new CustomEvent(OPEN_CHECKPOINT_EVENT, {
-      detail: { checkpointId: action.checkpointId }
-    }));
-    return true;
-  }
+  if (action.kind === 'checkpoint' && action.checkpointId) return openAcademyCheckpoint(action.checkpointId);
   if (action.kind === 'assessment') {
     openDeferredFeature('assessment');
     return true;
