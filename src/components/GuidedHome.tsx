@@ -40,6 +40,21 @@ type JourneySnapshot = {
   completedLessons: number;
 };
 
+type JourneyModules = [
+  typeof import('../lib/journey-evidence'),
+  typeof import('../lib/learning-journey')
+];
+
+let journeyModulesPromise: Promise<JourneyModules> | null = null;
+
+function loadJourneyModules() {
+  journeyModulesPromise ||= Promise.all([
+    import('../lib/journey-evidence'),
+    import('../lib/learning-journey')
+  ]);
+  return journeyModulesPromise;
+}
+
 function nextPlanItem(items: WeekPlanItem[]): WeekPlanItem | null {
   if (!items.length) return null;
   const day = new Intl.DateTimeFormat('en-US', { weekday: 'short' }).format(new Date()).slice(0, 2).toUpperCase();
@@ -75,25 +90,13 @@ export default function GuidedHome({
     cleanups.push(() => window.removeEventListener(ONBOARDING_CHANGED_EVENT, refreshProfile));
     cleanups.push(() => window.removeEventListener('storage', refreshAll));
 
-    Promise.all([
-      import('../lib/curriculum-progress'),
-      import('../lib/checkpoints'),
-      import('../lib/assessment')
-    ]).then(([curriculumModule, checkpointModule, assessmentModule]) => {
+    loadJourneyModules().then(([evidenceModule]) => {
       if (disposed) return;
-      const evidenceEvents = [
-        curriculumModule.CURRICULUM_PROGRESS_CHANGED_EVENT,
-        checkpointModule.CHECKPOINT_REPORTS_CHANGED_EVENT,
-        assessmentModule.ASSESSMENT_REPORTS_CHANGED_EVENT
-      ];
-      for (const eventName of evidenceEvents) {
+      for (const eventName of evidenceModule.JOURNEY_EVIDENCE_EVENTS) {
         window.addEventListener(eventName, refreshEvidence);
         cleanups.push(() => window.removeEventListener(eventName, refreshEvidence));
       }
-      refreshEvidence();
-    }).catch(() => {
-      if (!disposed) refreshEvidence();
-    });
+    }).catch(() => undefined);
 
     return () => {
       disposed = true;
@@ -104,42 +107,21 @@ export default function GuidedHome({
   useEffect(() => {
     let disposed = false;
     setJourney(null);
-    Promise.all([
-      import('../data/complete-curriculum'),
-      import('../lib/curriculum-progress'),
-      import('../lib/checkpoints'),
-      import('../lib/assessment'),
-      import('../lib/learning-journey')
-    ]).then(([
-      curriculumData,
-      curriculumModule,
-      checkpointModule,
-      assessmentModule,
-      journeyModule
-    ]) => {
+    loadJourneyModules().then(([evidenceModule, journeyModule]) => {
       if (disposed) return;
-      const curriculum = curriculumModule.loadCurriculumProgress();
-      const checkpointReports = checkpointModule.loadLocalCheckpointReports();
-      const assessmentReports = assessmentModule.loadLocalAssessmentReports();
-      const passedCheckpointIds = curriculumData.curriculumCheckpoints
-        .filter(checkpoint =>
-          Boolean(checkpointModule.bestCheckpointReport(checkpoint.id, checkpointReports)?.passed)
-          || checkpointModule.legacyCheckpointPassed(checkpoint.id, progress)
-        )
-        .map(checkpoint => checkpoint.id);
-      const assessmentComplete = assessmentReports.some(report =>
-        report.status === 'completed'
-        && (report.mode === 'exam' || report.mode === 'production' || report.mode === 'final')
-      );
-      const action = journeyModule.nextJourneyAction(progress, curriculum, {
+      const evidence = evidenceModule.loadJourneyEvidenceSnapshot();
+      const action = journeyModule.nextJourneyAction(progress, evidence.curriculum, {
         includeReview: false,
-        passedCheckpointIds,
-        assessmentComplete,
+        passedCheckpointIds: evidence.passedCheckpointIds,
+        assessmentComplete: evidence.assessmentComplete,
         bypassedModuleIds: profile.placement.status === 'completed'
           ? profile.placement.strongModuleIds
           : []
       });
-      setJourney({ action, completedLessons: curriculum.completedLessons.length });
+      setJourney({
+        action,
+        completedLessons: evidence.curriculum.completedLessons.length
+      });
     }).catch(() => {
       if (!disposed) setJourney(null);
     });
@@ -206,7 +188,7 @@ export default function GuidedHome({
           <h2>{primaryIsReview ? 'Адаптивное повторение' : nextStep?.title || 'Строю следующий шаг…'}</h2>
           <p>{primaryIsReview
             ? 'Восстанови решение по памяти, не перечитывая урок заранее.'
-            : nextStep?.description || 'Тяжёлые curriculum и assessment данные загружаются лениво, не замедляя первый экран.'}</p>
+            : nextStep?.description || 'Загружаю только компактную сводку прогресса, не поднимая assessment и SQLite runtime.'}</p>
         </div>
       </div>
       <button className="primary" disabled={!primaryIsReview && !nextStep} onClick={() => primaryIsReview ? onReview() : startNextStep()}>
