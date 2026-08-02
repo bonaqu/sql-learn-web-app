@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { DatabaseSync } from 'node:sqlite';
+import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import {
   handleResendDeliveryEvent,
   handleTwilioDeliveryEvent
@@ -17,28 +17,46 @@ const migration20 = readFileSync(new URL('../migrations/0020_contact_delivery_ob
 const database = new DatabaseSync(':memory:');
 database.exec(`PRAGMA foreign_keys = ON; ${migration18} ${migration20}`);
 
+function values(parameters: unknown[]) {
+  return parameters as SQLInputValue[];
+}
+
 function d1(database: DatabaseSync) {
   return {
     prepare(sql: string) {
       let parameters: unknown[] = [];
       return {
-        bind(...values: unknown[]) {
-          parameters = values;
+        bind(...next: unknown[]) {
+          parameters = next;
           return this;
         },
         async run() {
-          const result = database.prepare(sql).run(...parameters as never[]);
+          const result = database.prepare(sql).run(...values(parameters));
           return { success: true, meta: { changes: Number(result.changes) || 0 } };
         },
         async first<T>() {
-          return (database.prepare(sql).get(...parameters as never[]) || null) as T | null;
+          return (database.prepare(sql).get(...values(parameters)) || null) as T | null;
         },
         async all<T>() {
-          return { success: true, results: database.prepare(sql).all(...parameters as never[]) as T[] };
+          return { success: true, results: database.prepare(sql).all(...values(parameters)) as T[] };
         }
       };
     }
   } as unknown as D1Database;
+}
+
+for (const marker of [
+  'CREATE TABLE IF NOT EXISTS contact_delivery_events',
+  'CREATE TABLE IF NOT EXISTS contact_security_events',
+  'idx_contact_delivery_message',
+  'idx_contact_delivery_challenge',
+  'idx_contact_delivery_health',
+  'idx_contact_security_health',
+  'idx_contact_security_challenge'
+]) assert.ok(migration20.includes(marker), `Contact observability migration lost ${marker}`);
+assert.doesNotMatch(migration20, /CREATE\s+TRIGGER/i, 'Remote D1 contact observability must remain triggerless.');
+for (const forbidden of [/\bdestination\s+TEXT\b/i, /\bcode\s+TEXT\b/i, /\bmessage_body\b/i, /\bip_address\b/i]) {
+  assert.doesNotMatch(migration20, forbidden, `Operational migration persists forbidden PII: ${forbidden}`);
 }
 
 const challengeId = '00000000-0000-4000-8000-000000000020';
@@ -56,46 +74,13 @@ database.prepare(`INSERT INTO contact_verification_challenges(
     '2026-08-02 22:00:00',
     '2026-08-02 22:00:00'
   );
-assert.equal(database.prepare(`SELECT COUNT(*) AS count FROM contact_security_events
-  WHERE challenge_id = ? AND event_type = 'challenge-created'`).get(challengeId)?.count, 1);
 
-database.prepare(`UPDATE contact_verification_challenges
-  SET attempts_remaining = 4, updated_at = '2026-08-02 22:01:00' WHERE challenge_id = ?`).run(challengeId);
-assert.equal(database.prepare(`SELECT COUNT(*) AS count FROM contact_security_events
-  WHERE challenge_id = ? AND event_type = 'code-invalid'`).get(challengeId)?.count, 1);
-
-database.prepare(`UPDATE contact_verification_challenges
-  SET attempts_remaining = 0, updated_at = '2026-08-02 22:02:00' WHERE challenge_id = ?`).run(challengeId);
-assert.equal(database.prepare(`SELECT COUNT(*) AS count FROM contact_security_events
-  WHERE challenge_id = ? AND event_type = 'code-exhausted'`).get(challengeId)?.count, 1);
-
-database.prepare(`UPDATE contact_verification_challenges
-  SET confirmed_at = '2026-08-02 22:03:00', updated_at = '2026-08-02 22:03:00' WHERE challenge_id = ?`).run(challengeId);
-database.prepare(`UPDATE contact_verification_challenges
-  SET consumed_at = '2026-08-02 22:04:00', updated_at = '2026-08-02 22:04:00' WHERE challenge_id = ?`).run(challengeId);
-assert.equal(database.prepare(`SELECT COUNT(*) AS count FROM contact_security_events
-  WHERE challenge_id = ? AND event_type = 'contact-confirmed'`).get(challengeId)?.count, 1);
-assert.equal(database.prepare(`SELECT COUNT(*) AS count FROM contact_security_events
-  WHERE challenge_id = ? AND event_type = 'ticket-consumed'`).get(challengeId)?.count, 1);
-
-for (const forbidden of [/\bdestination\s+TEXT\b/i, /\bcode\s+TEXT\b/i, /\bmessage_body\b/i, /\bip_address\b/i]) {
-  assert.doesNotMatch(migration20, forbidden, `Operational migration persists forbidden PII: ${forbidden}`);
-}
-for (const marker of [
-  'CREATE TABLE IF NOT EXISTS contact_delivery_events',
-  'CREATE TABLE IF NOT EXISTS contact_security_events',
-  'CREATE TRIGGER IF NOT EXISTS trg_contact_challenge_created',
-  'CREATE TRIGGER IF NOT EXISTS trg_contact_code_invalid',
-  'CREATE TRIGGER IF NOT EXISTS trg_contact_code_exhausted',
-  'CREATE TRIGGER IF NOT EXISTS trg_contact_confirmed',
-  'CREATE TRIGGER IF NOT EXISTS trg_contact_ticket_consumed'
-]) assert.ok(migration20.includes(marker), `Contact observability migration lost ${marker}`);
-
+const resendSecretBytes = new TextEncoder().encode('resend-webhook-secret-32-bytes!!');
 const resendEnvironment = {
   EMAIL_VERIFICATION_PROVIDER: 'resend',
   RESEND_API_KEY: 're_test_provider_key_1234567890',
   RESEND_FROM: 'SQL Academy <verify@example.test>',
-  RESEND_WEBHOOK_SECRET: `whsec_${Buffer.from('resend-webhook-secret-32-bytes!!').toString('base64')}`
+  RESEND_WEBHOOK_SECRET: `whsec_${Buffer.from(resendSecretBytes).toString('base64')}`
 } as unknown as Cloudflare.Env;
 assert.equal(verificationProviderName('email', resendEnvironment), 'resend');
 assert.equal(verificationProviderReady('email', resendEnvironment), true);
@@ -127,10 +112,11 @@ globalThis.fetch = async (input, init) => {
     headers: { 'content-type': 'application/json' }
   });
 };
-const resendDelivery = await new ResendVerificationProvider(
+const resendProvider = new ResendVerificationProvider(
   're_test_provider_key_1234567890',
   'SQL Academy <verify@example.test>'
-).send({
+);
+const resendDelivery = await resendProvider.send({
   challengeId,
   channel: 'email',
   destination: 'learner@example.test',
@@ -141,10 +127,14 @@ const resendDelivery = await new ResendVerificationProvider(
 assert.equal(resendDelivery.providerMessageId, 'resend:email-message-1');
 assert.equal(resendRequest?.url, 'https://api.resend.com/emails');
 assert.equal(resendRequest?.headers.get('idempotency-key'), `contact-verification/${challengeId}`);
-const resendBody = await resendRequest?.json() as { to: string[]; subject: string; text: string };
+const resendBody = await resendRequest?.json() as { to: string[]; text: string };
 assert.deepEqual(resendBody.to, ['learner@example.test']);
 assert.match(resendBody.text, /123456/);
 
+globalThis.fetch = async () => new Response(JSON.stringify({ sid: `SM${'c'.repeat(32)}`, status: 'queued' }), {
+  status: 201,
+  headers: { 'content-type': 'application/json' }
+});
 let twilioRequest: Request | null = null;
 globalThis.fetch = async (input, init) => {
   twilioRequest = new Request(input, init);
@@ -153,13 +143,14 @@ globalThis.fetch = async (input, init) => {
     headers: { 'content-type': 'application/json' }
   });
 };
-const twilioDelivery = await new TwilioVerificationProvider(
+const twilioProvider = new TwilioVerificationProvider(
   `AC${'a'.repeat(32)}`,
   'twilio-auth-token-at-least-twenty',
   `MG${'b'.repeat(32)}`,
   '',
   new URL('https://staging.example.test/api/integrations/twilio/status')
-).send({
+);
+const twilioDelivery = await twilioProvider.send({
   challengeId,
   channel: 'sms',
   destination: '+13035550100',
@@ -174,6 +165,16 @@ assert.equal(twilioBody.get('To'), '+13035550100');
 assert.equal(twilioBody.get('MessagingServiceSid'), `MG${'b'.repeat(32)}`);
 assert.equal(twilioBody.get('StatusCallback'), 'https://staging.example.test/api/integrations/twilio/status');
 assert.match(twilioBody.get('Body') || '', /654321/);
+
+globalThis.fetch = async () => new Response('x'.repeat(64 * 1024 + 1), { status: 200 });
+await assert.rejects(() => resendProvider.send({
+  challengeId,
+  channel: 'email',
+  destination: 'learner@example.test',
+  purpose: 'register',
+  code: '123456',
+  expiresAt: '2026-08-02 22:10:00'
+}), /VERIFICATION_PROVIDER_RESPONSE_TOO_LARGE/);
 globalThis.fetch = originalFetch;
 
 function base64(bytes: ArrayBuffer) {
@@ -198,28 +199,35 @@ const resendEventBody = JSON.stringify({
   created_at: new Date().toISOString(),
   data: { email_id: 'email-message-1' }
 });
-const resendSecret = Uint8Array.from(Buffer.from(String(resendEnvironment.RESEND_WEBHOOK_SECRET).replace(/^whsec_/, ''), 'base64'));
-const resendEventSignature = await signature('SHA-256', resendSecret, `${resendEventId}.${resendTimestamp}.${resendEventBody}`);
-const resendRequestEvent = new Request('https://academy.example.test/api/integrations/resend/events', {
-  method: 'POST',
-  headers: {
-    'content-type': 'application/json',
-    'svix-id': resendEventId,
-    'svix-timestamp': resendTimestamp,
-    'svix-signature': `v1,${resendEventSignature}`
-  },
-  body: resendEventBody
-});
-assert.equal((await handleResendDeliveryEvent(resendRequestEvent.clone(), callbackEnv)).status, 204);
-assert.equal((await handleResendDeliveryEvent(resendRequestEvent.clone(), callbackEnv)).status, 204);
+const resendEventSignature = await signature('SHA-256', resendSecretBytes, `${resendEventId}.${resendTimestamp}.${resendEventBody}`);
+const resendCallbackHeaders = {
+  'content-type': 'application/json',
+  'svix-id': resendEventId,
+  'svix-timestamp': resendTimestamp,
+  'svix-signature': `v1,${resendEventSignature}`
+};
+const resendCallbackUrl = 'https://academy.example.test/api/integrations/resend/events';
+for (let attempt = 0; attempt < 2; attempt += 1) {
+  const response = await handleResendDeliveryEvent(new Request(resendCallbackUrl, {
+    method: 'POST',
+    headers: resendCallbackHeaders,
+    body: resendEventBody
+  }), callbackEnv);
+  assert.equal(response.status, 204);
+}
 assert.equal(database.prepare(`SELECT COUNT(*) AS count FROM contact_delivery_events
   WHERE event_id = ? AND status = 'delivered'`).get(`resend:${resendEventId}`)?.count, 1,
 'Duplicate Resend callbacks must be idempotent.');
-assert.equal((await handleResendDeliveryEvent(new Request(resendRequestEvent.url, {
+assert.equal((await handleResendDeliveryEvent(new Request(resendCallbackUrl, {
   method: 'POST',
-  headers: { ...Object.fromEntries(resendRequestEvent.headers), 'svix-signature': 'v1,invalid' },
+  headers: { ...resendCallbackHeaders, 'svix-signature': 'v1,invalid' },
   body: resendEventBody
 }), callbackEnv)).status, 401);
+assert.equal((await handleResendDeliveryEvent(new Request(resendCallbackUrl, {
+  method: 'POST',
+  headers: { ...resendCallbackHeaders, 'content-length': String(128 * 1024 + 1) },
+  body: '{}'
+}), callbackEnv)).status, 413);
 
 const smsChallengeId = '00000000-0000-4000-8000-000000000021';
 const twilioSid = `SM${'d'.repeat(32)}`;
@@ -251,36 +259,70 @@ const twilioCallbackSignature = await signature(
   new TextEncoder().encode(String(twilioEnvironment.TWILIO_AUTH_TOKEN)),
   canonicalTwilio
 );
-const twilioCallback = new Request(twilioCallbackUrl, {
-  method: 'POST',
-  headers: {
-    'content-type': 'application/x-www-form-urlencoded',
-    'x-twilio-signature': twilioCallbackSignature
-  },
-  body: twilioParams.toString()
-});
-assert.equal((await handleTwilioDeliveryEvent(twilioCallback.clone(), callbackEnv)).status, 204);
-assert.equal((await handleTwilioDeliveryEvent(twilioCallback.clone(), callbackEnv)).status, 204);
+const twilioHeaders = {
+  'content-type': 'application/x-www-form-urlencoded',
+  'x-twilio-signature': twilioCallbackSignature
+};
+for (let attempt = 0; attempt < 2; attempt += 1) {
+  const response = await handleTwilioDeliveryEvent(new Request(twilioCallbackUrl, {
+    method: 'POST',
+    headers: twilioHeaders,
+    body: twilioParams.toString()
+  }), callbackEnv);
+  assert.equal(response.status, 204);
+}
 assert.equal(database.prepare(`SELECT COUNT(*) AS count FROM contact_delivery_events
   WHERE provider_message_id = ? AND status = 'delivered'`).get(`twilio:${twilioSid}`)?.count, 1,
 'Duplicate Twilio terminal callbacks must be idempotent.');
 assert.equal((await handleTwilioDeliveryEvent(new Request(twilioCallbackUrl, {
   method: 'POST',
-  headers: {
-    'content-type': 'application/x-www-form-urlencoded',
-    'x-twilio-signature': 'invalid'
-  },
+  headers: { ...twilioHeaders, 'x-twilio-signature': 'invalid' },
   body: twilioParams.toString()
 }), callbackEnv)).status, 401);
 
 database.close();
 
-const indexSource = readFileSync(new URL('../worker/index.ts', import.meta.url), 'utf8');
-assert.ok(indexSource.indexOf("url.pathname === '/api/integrations/resend/events'") < indexSource.indexOf('const origin = allowedOrigin'),
-  'Provider callbacks must be verified before browser-origin enforcement.');
-assert.ok(indexSource.indexOf("url.pathname === '/api/integrations/twilio/status'") < indexSource.indexOf('const origin = allowedOrigin'),
-  'Twilio callbacks must be verified before browser-origin enforcement.');
-assert.ok(indexSource.includes("url.pathname === '/api/ops/contact-staging/timeline'"), 'Protected staging timeline route is missing.');
+const providerSource = readFileSync(new URL('../worker/integrations/verification.ts', import.meta.url), 'utf8');
+for (const marker of [
+  'MAX_PROVIDER_RESPONSE_BYTES = 64 * 1024',
+  'boundedProviderJson',
+  'idempotency-key',
+  'StatusCallback',
+  'recordInitialContactDelivery',
+  "eventType: 'challenge-provider-failed'"
+]) assert.ok(providerSource.includes(marker), `Provider adapter lost ${marker}`);
+assert.doesNotMatch(providerSource, /response\.(?:json|text|arrayBuffer)\(/, 'Provider responses must stay streaming-bounded.');
+
+const callbackSource = readFileSync(new URL('../worker/contact-delivery-events.ts', import.meta.url), 'utf8');
+for (const marker of [
+  'CALLBACK_TOLERANCE_SECONDS = 5 * 60',
+  'MAX_CALLBACK_BYTES = 128 * 1024',
+  'boundedRequestText',
+  'svix-signature',
+  'x-twilio-signature',
+  'INSERT OR IGNORE'
+]) assert.ok(callbackSource.includes(marker) || readFileSync(new URL('../worker/contact-observability.ts', import.meta.url), 'utf8').includes(marker), `Callback contract lost ${marker}`);
+
+const securitySource = readFileSync(new URL('../worker/contact-security-routes.ts', import.meta.url), 'utf8');
+for (const marker of [
+  "eventType: 'challenge-created'",
+  "eventType: 'challenge-rate-limited'",
+  "eventType: 'code-invalid'",
+  "eventType: 'code-exhausted'",
+  "eventType: 'contact-confirmed'",
+  "eventType: 'ticket-consumed'"
+]) assert.ok(securitySource.includes(marker), `Explicit contact security observation lost ${marker}`);
+
+const entrySource = readFileSync(new URL('../worker/entry.ts', import.meta.url), 'utf8');
+for (const marker of [
+  "pathname === '/api/integrations/resend/events'",
+  "pathname === '/api/integrations/twilio/status'",
+  "pathname === '/api/ops/contact-staging/timeline'",
+  'observeContactSecurityResponse',
+  'context.waitUntil',
+  'async scheduled',
+  'cleanupContactObservability'
+]) assert.ok(entrySource.includes(marker), `Contact operations entry lost ${marker}`);
 
 const observabilitySource = readFileSync(new URL('../worker/contact-observability.ts', import.meta.url), 'utf8');
 for (const marker of [
@@ -289,10 +331,19 @@ for (const marker of [
   'challenge-rate-limited',
   'challenge-provider-failed',
   'masked_destination',
-  'INSERT OR IGNORE INTO contact_delivery_events'
+  'DELIVERY_RETENTION_DAYS = 90',
+  'CHALLENGE_RETENTION_DAYS = 30',
+  'CLEANUP_BATCH_SIZE = 1_000'
 ]) assert.ok(observabilitySource.includes(marker), `Contact observability lost ${marker}`);
 assert.doesNotMatch(observabilitySource, /SELECT[^;]*(?:destination_digest|code_verifier)/is,
   'Operational timelines must not fetch contact digests or code verifiers.');
+
+const wrangler = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
+assert.ok(wrangler.includes('"main": "worker/entry.ts"'), 'Wrangler does not use the contact operations entrypoint.');
+assert.ok(wrangler.includes('"17 3 * * *"'), 'Daily retention cleanup cron is missing.');
+assert.ok(wrangler.includes('"EMAIL_VERIFICATION_PROVIDER": "disabled"'), 'Production email provider is not default-off.');
+assert.ok(wrangler.includes('"SMS_VERIFICATION_PROVIDER": "disabled"'), 'Production SMS provider is not default-off.');
+assert.ok(wrangler.includes('"CONTACT_STAGING_MODE": "disabled"'), 'Production staging probe is not default-off.');
 
 const stagingScript = readFileSync(new URL('./contact-provider-staging.mjs', import.meta.url), 'utf8');
 for (const marker of [
@@ -327,4 +378,4 @@ for (const marker of [
   'raw PII absent from evidence'
 ]) assert.ok(runbook.includes(marker), `Support runbook lost ${marker}`);
 
-console.log('Contact provider operations validated: explicit Resend/Twilio readiness, idempotent sends, signed callbacks, privacy-safe D1 events, real delivered staging acceptance and support rollback contracts.');
+console.log('Contact provider operations validated: triggerless D1, explicit Resend/Twilio readiness, bounded sends and callbacks, signed idempotent delivery events, real delivered staging acceptance, retention and support rollback contracts.');
