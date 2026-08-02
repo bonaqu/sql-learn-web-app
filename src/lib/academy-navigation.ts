@@ -1,4 +1,9 @@
-import { SqlTask, tasks } from '../data/course-catalog';
+import { type SqlTask, tasks } from '../data/course-catalog';
+import type { JourneyAction } from './learning-journey';
+import { openDeferredFeature } from './deferred-features';
+
+const CHECKPOINT_REQUEST_KEY = 'sql-academy-checkpoint-open-request';
+const OPEN_CHECKPOINT_EVENT = 'sql-academy-open-checkpoint';
 
 function navLabel(task: SqlTask) {
   if (task.mode === 'interview') return 'Interview';
@@ -28,4 +33,38 @@ export function openAcademyTask(taskId: string) {
   };
   window.setTimeout(select, 40);
   return true;
+}
+
+function openCurriculumTarget(target: 'lesson' | 'project', id: string) {
+  const params = new URLSearchParams();
+  params.set(target, id);
+  history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${params.toString()}`);
+  openDeferredFeature('curriculum');
+}
+
+export function openJourneyDestination(action: JourneyAction) {
+  if (action.kind === 'lesson' && action.lessonId) {
+    openCurriculumTarget('lesson', action.lessonId);
+    return true;
+  }
+  if (action.kind === 'project' && action.projectId) {
+    openCurriculumTarget('project', action.projectId);
+    return true;
+  }
+  if (action.kind === 'checkpoint' && action.checkpointId) {
+    sessionStorage.setItem(CHECKPOINT_REQUEST_KEY, action.checkpointId);
+    window.dispatchEvent(new CustomEvent(OPEN_CHECKPOINT_EVENT, {
+      detail: { checkpointId: action.checkpointId }
+    }));
+    return true;
+  }
+  if (action.kind === 'assessment') {
+    openDeferredFeature('assessment');
+    return true;
+  }
+  if (action.kind === 'complete') {
+    openDeferredFeature('learning-path');
+    return true;
+  }
+  return false;
 }
