@@ -43,3 +43,69 @@ CREATE INDEX IF NOT EXISTS idx_contact_security_health
 
 CREATE INDEX IF NOT EXISTS idx_contact_security_challenge
   ON contact_security_events(challenge_id, occurred_at DESC);
+
+CREATE TRIGGER IF NOT EXISTS trg_contact_challenge_created
+AFTER INSERT ON contact_verification_challenges
+BEGIN
+  INSERT OR IGNORE INTO contact_security_events(
+    event_id, event_type, challenge_id, channel, purpose, occurred_at
+  ) VALUES(
+    lower(hex(randomblob(16))), 'challenge-created', NEW.challenge_id,
+    NEW.channel, NEW.purpose, NEW.created_at
+  );
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_contact_code_invalid
+AFTER UPDATE OF attempts_remaining ON contact_verification_challenges
+WHEN NEW.attempts_remaining < OLD.attempts_remaining
+  AND NEW.expires_at = OLD.expires_at
+  AND NEW.confirmed_at IS NULL
+  AND NEW.consumed_at IS NULL
+BEGIN
+  INSERT OR IGNORE INTO contact_security_events(
+    event_id, event_type, challenge_id, channel, purpose, occurred_at
+  ) VALUES(
+    lower(hex(randomblob(16))), 'code-invalid', NEW.challenge_id,
+    NEW.channel, NEW.purpose, NEW.updated_at
+  );
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_contact_code_exhausted
+AFTER UPDATE OF attempts_remaining ON contact_verification_challenges
+WHEN NEW.attempts_remaining = 0
+  AND OLD.attempts_remaining > 0
+  AND NEW.expires_at = OLD.expires_at
+  AND NEW.confirmed_at IS NULL
+  AND NEW.consumed_at IS NULL
+BEGIN
+  INSERT OR IGNORE INTO contact_security_events(
+    event_id, event_type, challenge_id, channel, purpose, occurred_at
+  ) VALUES(
+    lower(hex(randomblob(16))), 'code-exhausted', NEW.challenge_id,
+    NEW.channel, NEW.purpose, NEW.updated_at
+  );
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_contact_confirmed
+AFTER UPDATE OF confirmed_at ON contact_verification_challenges
+WHEN OLD.confirmed_at IS NULL AND NEW.confirmed_at IS NOT NULL
+BEGIN
+  INSERT OR IGNORE INTO contact_security_events(
+    event_id, event_type, challenge_id, channel, purpose, occurred_at
+  ) VALUES(
+    lower(hex(randomblob(16))), 'contact-confirmed', NEW.challenge_id,
+    NEW.channel, NEW.purpose, NEW.confirmed_at
+  );
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_contact_ticket_consumed
+AFTER UPDATE OF consumed_at ON contact_verification_challenges
+WHEN OLD.consumed_at IS NULL AND NEW.consumed_at IS NOT NULL
+BEGIN
+  INSERT OR IGNORE INTO contact_security_events(
+    event_id, event_type, challenge_id, channel, purpose, occurred_at
+  ) VALUES(
+    lower(hex(randomblob(16))), 'ticket-consumed', NEW.challenge_id,
+    NEW.channel, NEW.purpose, NEW.consumed_at
+  );
+END;
