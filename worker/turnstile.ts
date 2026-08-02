@@ -5,6 +5,7 @@ import {
   turnstileReady,
   turnstileSecret
 } from './commercial-capabilities';
+import { contactVerificationReady } from './contact-verification';
 
 type TurnstileResponse = {
   success?: boolean;
@@ -16,7 +17,8 @@ type TurnstileResponse = {
 const PUBLIC_AUTH_ACTIONS = new Map([
   ['/api/auth/register', 'register'],
   ['/api/auth/login', 'login'],
-  ['/api/auth/password/reset', 'password-reset']
+  ['/api/auth/password/reset', 'password-reset'],
+  ['/api/auth/contact/challenge', 'contact-challenge']
 ]);
 
 const json = (data: unknown, status: number) => new Response(JSON.stringify(data), {
@@ -53,6 +55,9 @@ export function publicAuthTurnstileAction(request: Request) {
 export async function enforceTurnstile(request: Request, env: CommercialEnvironment): Promise<Response | null> {
   const expectedAction = publicAuthTurnstileAction(request);
   if (!expectedAction || !enabledFlag(env.FEATURE_TURNSTILE)) return null;
+  if (expectedAction === 'contact-challenge'
+    && !contactVerificationReady('email', env)
+    && !contactVerificationReady('sms', env)) return null;
 
   if (!turnstileReady(env)) {
     console.error('turnstile_configuration_incomplete', { expectedAction });

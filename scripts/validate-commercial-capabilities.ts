@@ -31,8 +31,8 @@ assert.deepEqual(commercialCapabilities(incomplete).integrations, disabled.integ
   'Incomplete configuration must keep every optional capability disabled.');
 assert.deepEqual(commercialConfigurationErrors(incomplete).sort(), [
   'ADMIN_ALLOWLIST_EMPTY',
-  'EMAIL_VERIFICATION_NOT_IMPLEMENTED',
-  'SMS_VERIFICATION_NOT_IMPLEMENTED',
+  'EMAIL_VERIFICATION_INCOMPLETE',
+  'SMS_VERIFICATION_INCOMPLETE',
   'TURNSTILE_INCOMPLETE'
 ]);
 assert.equal(handleHiddenAdminBoundary(new Request('https://academy.example.test/api/admin/health'), incomplete)?.status, 404);
@@ -40,6 +40,11 @@ assert.equal(handleHiddenAdminBoundary(new Request('https://academy.example.test
 const configured = {
   FEATURE_EMAIL_VERIFICATION: 'on',
   FEATURE_SMS_VERIFICATION: 'on',
+  CONTACT_VERIFICATION_SIGNING_SECRET: 'test-signing-secret-with-at-least-thirty-two-characters',
+  EMAIL_VERIFICATION_WEBHOOK_URL: 'https://verification.example.test/email',
+  EMAIL_VERIFICATION_WEBHOOK_SECRET: 'email-provider-secret-at-least-sixteen',
+  SMS_VERIFICATION_WEBHOOK_URL: 'https://verification.example.test/sms',
+  SMS_VERIFICATION_WEBHOOK_SECRET: 'sms-provider-secret-at-least-sixteen',
   FEATURE_TURNSTILE: 'on',
   TURNSTILE_SECRET_KEY: 'turnstile-secret',
   TURNSTILE_EXPECTED_HOSTNAMES: 'academy.example.com',
@@ -47,15 +52,12 @@ const configured = {
   ADMIN_ALLOWED_USER_IDS: 'user_12345678'
 } as Cloudflare.Env;
 assert.deepEqual(commercialCapabilities(configured).integrations, {
-  emailVerification: { enabled: false },
-  smsVerification: { enabled: false },
+  emailVerification: { enabled: true },
+  smsVerification: { enabled: true },
   turnstile: { enabled: true },
   adminConsole: { enabled: true }
 });
-assert.deepEqual(commercialConfigurationErrors(configured).sort(), [
-  'EMAIL_VERIFICATION_NOT_IMPLEMENTED',
-  'SMS_VERIFICATION_NOT_IMPLEMENTED'
-]);
+assert.deepEqual(commercialConfigurationErrors(configured), []);
 assert.equal(handleHiddenAdminBoundary(new Request('https://academy.example.test/api/admin/health'), configured), null);
 
 const response = handleCommercialCapabilitiesRequest(new Request('https://academy.example.test/api/capabilities'), {} as Cloudflare.Env);
@@ -88,6 +90,7 @@ const workerSource = readFileSync(new URL('../worker/index.ts', import.meta.url)
 assert.match(workerSource, /env\.ALLOWED_ORIGINS/);
 assert.doesNotMatch(workerSource, /const\s+ALLOWED_ORIGINS\s*=\s*new Set/,
   'Owner-facing origins must come from deployment configuration, not source code.');
+assert.match(workerSource, /handleContactVerificationRequest/);
 assert.match(workerSource, /enforceTurnstile/);
 assert.match(workerSource, /handleAdminHealthRequest/);
 assert.match(workerSource, /withSecurityHeaders/);
@@ -119,8 +122,15 @@ for (const marker of [
   "capabilities.contract !== 'commercial-capabilities-v1'",
   "'strict-transport-security'"
 ]) assert.ok(smoke.includes(marker), `Commercial production smoke is missing: ${marker}`);
-for (const secret of ['TURNSTILE_SECRET_KEY:', 'EMAIL_API_KEY:', 'SMS_API_KEY:']) {
-  assert.ok(!workflow.includes(secret), `Secret must not be written into deployment config: ${secret}`);
-}
+for (const secret of [
+  'TURNSTILE_SECRET_KEY:',
+  'CONTACT_VERIFICATION_SIGNING_SECRET:',
+  'EMAIL_VERIFICATION_WEBHOOK_URL:',
+  'EMAIL_VERIFICATION_WEBHOOK_SECRET:',
+  'SMS_VERIFICATION_WEBHOOK_URL:',
+  'SMS_VERIFICATION_WEBHOOK_SECRET:',
+  'EMAIL_API_KEY:',
+  'SMS_API_KEY:'
+]) assert.ok(!workflow.includes(secret), `Secret must not be written into deployment config: ${secret}`);
 
-console.log('Commercial capability contract, Turnstile/admin readiness, security headers and production deployment wiring are fail-closed.');
+console.log('Commercial capability contract, verified-contact readiness, Turnstile/admin security and production deployment wiring are fail-closed.');

@@ -11,11 +11,11 @@ const expectedBoolean = (name, fallback = false) => {
 function stage(name) { writeFileSync(stageFile, `${name}\n`); console.log(`::group::Cloudflare commercial runtime · ${name}`); }
 function endStage() { console.log('::endgroup::'); }
 
-async function request(path, { headers = {}, expected = [200], attempts = 5 } = {}) {
+async function request(path, { method = 'GET', headers = {}, body, expected = [200], attempts = 5 } = {}) {
   let last = null;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const response = await fetch(`${deployUrl}${path}`, { headers, redirect: 'follow' });
+      const response = await fetch(`${deployUrl}${path}`, { method, headers, body, redirect: 'follow' });
       const text = await response.text();
       last = { response, text };
       if (expected.includes(response.status)) return last;
@@ -59,6 +59,32 @@ const rejected = await request('/api/capabilities', { headers: { origin: 'https:
 if (rejected.response.headers.has('access-control-allow-origin')) throw new Error('Rejected origin received an allow-origin header');
 endStage();
 
+stage('commercial-contact-boundary');
+const expectedEmail = expectedBoolean('EXPECT_EMAIL_VERIFICATION');
+const expectedSms = expectedBoolean('EXPECT_SMS_VERIFICATION');
+let disabledContactHidden = false;
+if (!expectedEmail && !expectedSms) {
+  const challenge = await request('/api/auth/contact/challenge', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ channel: 'email', purpose: 'register', destination: 'smoke@example.invalid' }),
+    expected: [404]
+  });
+  const confirmation = await request('/api/auth/contact/confirm', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ challengeId: '00000000-0000-4000-8000-000000000001', code: '000000' }),
+    expected: [404]
+  });
+  const challengePayload = parseJson(challenge.text, 'Contact challenge boundary');
+  const confirmationPayload = parseJson(confirmation.text, 'Contact confirmation boundary');
+  if (challengePayload.error !== 'Not found' || confirmationPayload.error !== 'Not found') {
+    throw new Error('Disabled verified-contact surface was not hidden');
+  }
+  disabledContactHidden = true;
+}
+endStage();
+
 stage('commercial-admin-boundary');
 const expectedAdmin = expectedBoolean('EXPECT_ADMIN_CONSOLE');
 const admin = await request('/api/admin/health', { expected: [expectedAdmin ? 401 : 404] });
@@ -67,5 +93,11 @@ if (!expectedAdmin && adminPayload.error !== 'Not found') throw new Error('Disab
 endStage();
 
 stage('commercial-complete');
-writeFileSync('cloudflare-commercial-summary.json', `${JSON.stringify({ ok: true, capabilities, allowedOrigin, disabledAdminHidden: !expectedAdmin }, null, 2)}\n`);
+writeFileSync('cloudflare-commercial-summary.json', `${JSON.stringify({
+  ok: true,
+  capabilities,
+  allowedOrigin,
+  disabledContactHidden,
+  disabledAdminHidden: !expectedAdmin
+}, null, 2)}\n`);
 endStage();
