@@ -9,6 +9,7 @@ import {
 } from './curriculum';
 import { advancedCurriculumCheckpoints, advancedCurriculumLessons } from './advanced-curriculum';
 import { moduleOrderIndex, phaseDefinitions } from './learning-structure';
+import { applySyntaxFrontierLessonOverrides } from './syntax-frontier-content';
 
 export type {
   CapstoneProject,
@@ -43,7 +44,9 @@ function diversifyAdvancedLesson(lesson: CurriculumLesson): CurriculumLesson {
   };
 }
 
-const normalizedAdvancedLessons = advancedCurriculumLessons.map(diversifyAdvancedLesson);
+const normalizedAdvancedLessons = applySyntaxFrontierLessonOverrides(
+  advancedCurriculumLessons.map(diversifyAdvancedLesson)
+);
 const sourceLessons = [...normalizedCoreLessons, ...normalizedAdvancedLessons];
 const lessonSourceOrder = new Map<string, number>(sourceLessons.map((lesson, index) => [lesson.id, index]));
 const checkpointOrder = new Map<string, number>(phaseDefinitions.map((phase, index) => [phase.id, index]));
