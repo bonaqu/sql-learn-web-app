@@ -38,8 +38,14 @@ assert.deepEqual(await verifyContactVerificationTicket(ticket, signingEnv, {
   purpose: 'register',
   destinationDigest: payload.destinationDigest
 }, now), payload);
-assert.equal(await verifyContactVerificationTicket(`${ticket.slice(0, -1)}x`, signingEnv, {}, now), null,
-  'A modified ticket must fail signature verification.');
+const [encodedTicketPayload, ticketSignature] = ticket.split('.');
+const tamperedSignature = `${ticketSignature[0] === 'A' ? 'B' : 'A'}${ticketSignature.slice(1)}`;
+assert.equal(await verifyContactVerificationTicket(
+  `${encodedTicketPayload}.${tamperedSignature}`,
+  signingEnv,
+  {},
+  now
+), null, 'A modified ticket must fail signature verification.');
 assert.equal(await verifyContactVerificationTicket(ticket, signingEnv, { channel: 'sms' }, now), null,
   'A ticket must be bound to its expected channel.');
 assert.equal(await verifyContactVerificationTicket(ticket, signingEnv, {}, now + 10 * 60_000), null,
