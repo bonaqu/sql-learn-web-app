@@ -111,18 +111,18 @@ export function moduleMastery(progress: Progress): ModuleMastery[] {
       + accuracy * 0.2
       + independence * 0.1
     ));
+    const recommendedTask = recommendedTaskForModule(id, progress);
     const previousModule = index > 0 ? modules[index - 1][0] : null;
     const previousReady = !previousModule || foundationReady(previousModule, progress);
     const level: MasteryLevel = !previousReady
       ? 'locked'
-      : mastery >= 82 && independent >= Math.ceil(moduleTasks.length * 0.7)
+      : !recommendedTask && mastery >= 82 && independent >= Math.ceil(moduleTasks.length * 0.7)
         ? 'mastered'
         : mastery >= 55
           ? 'practice'
           : attempts > 0 || solved > 0
             ? 'learning'
             : 'new';
-    const recommendedTask = recommendedTaskForModule(id, progress);
 
     return {
       id,
