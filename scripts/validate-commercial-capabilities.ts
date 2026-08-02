@@ -79,6 +79,10 @@ assert.equal(handleCommercialCapabilitiesRequest(new Request('https://academy.ex
 assert.equal(publicAuthTurnstileAction(new Request('https://academy.example.test/api/auth/register', { method: 'POST' })), 'register');
 assert.equal(publicAuthTurnstileAction(new Request('https://academy.example.test/api/auth/login', { method: 'POST' })), 'login');
 assert.equal(publicAuthTurnstileAction(new Request('https://academy.example.test/api/auth/password/reset', { method: 'POST' })), 'password-reset');
+assert.equal(publicAuthTurnstileAction(new Request('https://academy.example.test/api/auth/contact/challenge', { method: 'POST' })), 'contact-challenge');
+assert.equal(publicAuthTurnstileAction(new Request('https://academy.example.test/api/auth/contact/register', { method: 'POST' })), 'contact-register');
+assert.equal(publicAuthTurnstileAction(new Request('https://academy.example.test/api/auth/contact/password/reset', { method: 'POST' })), 'contact-password-reset');
+assert.equal(publicAuthTurnstileAction(new Request('https://academy.example.test/api/auth/contact/attach', { method: 'POST' })), null);
 assert.equal(publicAuthTurnstileAction(new Request('https://academy.example.test/api/auth/session')), null);
 
 const secured = withSecurityHeaders(new Response('ok'), new Request('https://academy.example.test/'));
@@ -91,6 +95,10 @@ assert.match(workerSource, /env\.ALLOWED_ORIGINS/);
 assert.doesNotMatch(workerSource, /const\s+ALLOWED_ORIGINS\s*=\s*new Set/,
   'Owner-facing origins must come from deployment configuration, not source code.');
 assert.match(workerSource, /handleContactVerificationRequest/);
+assert.match(workerSource, /handleContactAccountRequest/);
+assert.ok(workerSource.indexOf('handleContactAccountRequest(request, env)') < workerSource.indexOf('handleAuthRequest(request, env)'),
+  'Verified-contact account routes must be evaluated before the generic auth fallback.');
+assert.match(workerSource, /x-contact-account-contract/);
 assert.match(workerSource, /enforceTurnstile/);
 assert.match(workerSource, /handleAdminHealthRequest/);
 assert.match(workerSource, /withSecurityHeaders/);
@@ -120,6 +128,10 @@ for (const marker of [
   "expected: [expectedAdmin ? 401 : 404]",
   "origin: 'https://commercial-smoke-rejected.invalid'",
   "capabilities.contract !== 'commercial-capabilities-v1'",
+  "'/api/auth/contact/register'",
+  "'/api/auth/contact/password/reset'",
+  "'/api/auth/contacts'",
+  "'/api/auth/contact/attach'",
   "'strict-transport-security'"
 ]) assert.ok(smoke.includes(marker), `Commercial production smoke is missing: ${marker}`);
 for (const secret of [
@@ -133,4 +145,4 @@ for (const secret of [
   'SMS_API_KEY:'
 ]) assert.ok(!workflow.includes(secret), `Secret must not be written into deployment config: ${secret}`);
 
-console.log('Commercial capability contract, verified-contact readiness, Turnstile/admin security and production deployment wiring are fail-closed.');
+console.log('Commercial capability contract, verified-contact account routing, Turnstile/admin security and production deployment wiring are fail-closed.');
