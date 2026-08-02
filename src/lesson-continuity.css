@@ -155,8 +155,8 @@
   .lesson-continuity-actions button { width: 100%; }
   .curriculum-continuity-companion {
     right: 10px;
-    bottom: calc(10px + env(safe-area-inset-bottom));
+    bottom: calc(76px + env(safe-area-inset-bottom));
     width: calc(100vw - 20px);
   }
-  .curriculum-continuity-body { max-height: 58vh; }
+  .curriculum-continuity-body { max-height: 52vh; }
 }
