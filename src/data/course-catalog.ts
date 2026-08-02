@@ -4,6 +4,11 @@ import {
   tasks as coreTasks
 } from './course';
 import { advancedModules, advancedTasks } from './advanced-syllabus';
+import {
+  moduleOrderIndex,
+  taskDifficultyOrder,
+  taskModeOrder
+} from './learning-structure';
 
 export type {
   Difficulty,
@@ -12,11 +17,23 @@ export type {
   TaskMode
 } from './course';
 
-export const modules: readonly (readonly [string, string, string])[] = [
+const sourceModules: readonly (readonly [string, string, string])[] = [
   ...coreModules,
   ...advancedModules
 ];
-export const tasks = [...coreTasks, ...advancedTasks];
+const sourceTasks = [...coreTasks, ...advancedTasks];
+const sourceTaskOrder = new Map(sourceTasks.map((task, index) => [task.id, index]));
+
+export const modules: readonly (readonly [string, string, string])[] = [...sourceModules]
+  .sort((left, right) => moduleOrderIndex(left[0]) - moduleOrderIndex(right[0]));
+
+export const tasks = [...sourceTasks].sort((left, right) =>
+  moduleOrderIndex(left.module) - moduleOrderIndex(right.module)
+  || taskModeOrder(left.mode) - taskModeOrder(right.mode)
+  || taskDifficultyOrder(left.difficulty) - taskDifficultyOrder(right.difficulty)
+  || (sourceTaskOrder.get(left.id) ?? 0) - (sourceTaskOrder.get(right.id) ?? 0)
+  || left.id.localeCompare(right.id)
+);
 
 export const achievements = [
   ...coreAchievements.filter(item => item.threshold < 120),
