@@ -181,6 +181,27 @@ if (afterLessonPrimary?.moduleId !== firstLesson.module) {
   failures.push('Adaptive Path must keep the first post-lesson task in the same module');
 }
 
+if (afterLessonPrimary?.task) {
+  const overlappingProgress: Progress = {
+    ...emptyProgress,
+    taskStats: {
+      [afterLessonPrimary.task.id]: {
+        attempts: 1,
+        incorrect: 1,
+        hintsUsed: 0,
+        lastAttemptAt: '2026-07-01T10:00:00.000Z'
+      }
+    }
+  };
+  const overlapSession = validateSession('review overlaps canonical task', overlappingProgress, {
+    curriculum: afterFirstLessonCurriculum
+  });
+  const matchingItems = overlapSession.items.filter(item => item.task?.id === afterLessonPrimary.task?.id);
+  if (matchingItems.length !== 1 || !matchingItems[0].action) {
+    failures.push('A due review matching the canonical task must be replaced by one actionable journey item');
+  }
+}
+
 validateSession('practiced learner', practicedProgress, {
   curriculum: emptyCurriculumProgress()
 });
