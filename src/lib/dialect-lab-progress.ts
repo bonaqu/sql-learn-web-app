@@ -28,6 +28,10 @@ export type DialectLabProgress = {
   updatedAt: string;
 };
 
+export type DialectHydrationOptions = {
+  failOnUnavailable?: boolean;
+};
+
 function storageKey(userId: string) {
   return `sql-academy-dialect-lab-progress-v1:${userId}`;
 }
@@ -208,11 +212,17 @@ export async function syncDialectLabProgress(progress: DialectLabProgress, confl
   return saveDialectLabProgress(sanitizeDialectLabProgress(payload.progress, progress.userId));
 }
 
-export async function hydrateDialectLabProgress(userId = loadAuthSession()?.userId) {
+export async function hydrateDialectLabProgress(
+  userId = loadAuthSession()?.userId,
+  options: DialectHydrationOptions = {}
+) {
   if (!userId) return null;
   const initialLocal = loadDialectLabProgress(userId) || emptyDialectLabProgress(userId);
   const response = await fetch('/api/dialect-labs/progress');
-  if (!response.ok) return initialLocal;
+  if (!response.ok) {
+    if (options.failOnUnavailable) throw new Error(`Dialect progress hydration failed with HTTP ${response.status}`);
+    return initialLocal;
+  }
   const payload = await response.json() as { progress?: DialectLabProgress | null; revision?: number };
   const remote = payload.progress
     ? sanitizeDialectLabProgress(payload.progress, userId)
