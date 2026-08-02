@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight,
   CalendarDays,
-  CheckCircle2,
   Clock3,
   Compass,
   ListChecks,
@@ -12,23 +11,8 @@ import {
   Sparkles,
   Target
 } from 'lucide-react';
-import { curriculumCheckpoints } from '../data/complete-curriculum';
 import { type SqlTask, TOTAL_TASK_COUNT } from '../data/course-catalog';
 import { openJourneyDestination } from '../lib/academy-navigation';
-import {
-  ASSESSMENT_REPORTS_CHANGED_EVENT,
-  loadLocalAssessmentReports
-} from '../lib/assessment';
-import {
-  bestCheckpointReport,
-  CHECKPOINT_REPORTS_CHANGED_EVENT,
-  legacyCheckpointPassed,
-  loadLocalCheckpointReports
-} from '../lib/checkpoints';
-import {
-  CURRICULUM_PROGRESS_CHANGED_EVENT,
-  loadCurriculumProgress
-} from '../lib/curriculum-progress';
 import {
   goalOptions,
   loadOnboardingProfile,
@@ -37,7 +21,7 @@ import {
   studyDayLabels,
   type WeekPlanItem
 } from '../lib/learner-onboarding';
-import { nextJourneyAction } from '../lib/learning-journey';
+import type { JourneyAction } from '../lib/learning-journey';
 import type { Progress } from '../lib/progress';
 
 type GuidedHomeProps = {
@@ -49,6 +33,11 @@ type GuidedHomeProps = {
   onOpenLessons: () => void;
   onConfigure: () => void;
   onExplore: () => void;
+};
+
+type JourneySnapshot = {
+  action: JourneyAction;
+  completedLessons: number;
 };
 
 function nextPlanItem(items: WeekPlanItem[]): WeekPlanItem | null {
@@ -68,59 +57,103 @@ export default function GuidedHome({
   onExplore
 }: GuidedHomeProps) {
   const [profile, setProfile] = useState(() => loadOnboardingProfile());
-  const [curriculum, setCurriculum] = useState(() => loadCurriculumProgress());
-  const [checkpointReports, setCheckpointReports] = useState(() => loadLocalCheckpointReports());
-  const [assessmentReports, setAssessmentReports] = useState(() => loadLocalAssessmentReports());
+  const [evidenceRevision, setEvidenceRevision] = useState(0);
+  const [journey, setJourney] = useState<JourneySnapshot | null>(null);
 
   useEffect(() => {
-    const updateProfile = () => setProfile(loadOnboardingProfile());
-    const updateCurriculum = () => setCurriculum(loadCurriculumProgress());
-    const updateCheckpoints = () => setCheckpointReports(loadLocalCheckpointReports());
-    const updateAssessments = () => setAssessmentReports(loadLocalAssessmentReports());
-    const updateAll = () => {
-      updateProfile();
-      updateCurriculum();
-      updateCheckpoints();
-      updateAssessments();
+    let disposed = false;
+    const cleanups: Array<() => void> = [];
+    const refreshEvidence = () => setEvidenceRevision(value => value + 1);
+    const refreshProfile = () => setProfile(loadOnboardingProfile());
+    const refreshAll = () => {
+      refreshProfile();
+      refreshEvidence();
     };
-    window.addEventListener(ONBOARDING_CHANGED_EVENT, updateProfile);
-    window.addEventListener(CURRICULUM_PROGRESS_CHANGED_EVENT, updateCurriculum);
-    window.addEventListener(CHECKPOINT_REPORTS_CHANGED_EVENT, updateCheckpoints);
-    window.addEventListener(ASSESSMENT_REPORTS_CHANGED_EVENT, updateAssessments);
-    window.addEventListener('storage', updateAll);
+
+    window.addEventListener(ONBOARDING_CHANGED_EVENT, refreshProfile);
+    window.addEventListener('storage', refreshAll);
+    cleanups.push(() => window.removeEventListener(ONBOARDING_CHANGED_EVENT, refreshProfile));
+    cleanups.push(() => window.removeEventListener('storage', refreshAll));
+
+    Promise.all([
+      import('../lib/curriculum-progress'),
+      import('../lib/checkpoints'),
+      import('../lib/assessment')
+    ]).then(([curriculumModule, checkpointModule, assessmentModule]) => {
+      if (disposed) return;
+      const evidenceEvents = [
+        curriculumModule.CURRICULUM_PROGRESS_CHANGED_EVENT,
+        checkpointModule.CHECKPOINT_REPORTS_CHANGED_EVENT,
+        assessmentModule.ASSESSMENT_REPORTS_CHANGED_EVENT
+      ];
+      for (const eventName of evidenceEvents) {
+        window.addEventListener(eventName, refreshEvidence);
+        cleanups.push(() => window.removeEventListener(eventName, refreshEvidence));
+      }
+      refreshEvidence();
+    }).catch(() => {
+      if (!disposed) refreshEvidence();
+    });
+
     return () => {
-      window.removeEventListener(ONBOARDING_CHANGED_EVENT, updateProfile);
-      window.removeEventListener(CURRICULUM_PROGRESS_CHANGED_EVENT, updateCurriculum);
-      window.removeEventListener(CHECKPOINT_REPORTS_CHANGED_EVENT, updateCheckpoints);
-      window.removeEventListener(ASSESSMENT_REPORTS_CHANGED_EVENT, updateAssessments);
-      window.removeEventListener('storage', updateAll);
+      disposed = true;
+      for (const cleanup of cleanups) cleanup();
     };
   }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    setJourney(null);
+    Promise.all([
+      import('../data/complete-curriculum'),
+      import('../lib/curriculum-progress'),
+      import('../lib/checkpoints'),
+      import('../lib/assessment'),
+      import('../lib/learning-journey')
+    ]).then(([
+      curriculumData,
+      curriculumModule,
+      checkpointModule,
+      assessmentModule,
+      journeyModule
+    ]) => {
+      if (disposed) return;
+      const curriculum = curriculumModule.loadCurriculumProgress();
+      const checkpointReports = checkpointModule.loadLocalCheckpointReports();
+      const assessmentReports = assessmentModule.loadLocalAssessmentReports();
+      const passedCheckpointIds = curriculumData.curriculumCheckpoints
+        .filter(checkpoint =>
+          Boolean(checkpointModule.bestCheckpointReport(checkpoint.id, checkpointReports)?.passed)
+          || checkpointModule.legacyCheckpointPassed(checkpoint.id, progress)
+        )
+        .map(checkpoint => checkpoint.id);
+      const assessmentComplete = assessmentReports.some(report =>
+        report.status === 'completed'
+        && (report.mode === 'exam' || report.mode === 'production' || report.mode === 'final')
+      );
+      const action = journeyModule.nextJourneyAction(progress, curriculum, {
+        includeReview: false,
+        passedCheckpointIds,
+        assessmentComplete,
+        bypassedModuleIds: profile.placement.status === 'completed'
+          ? profile.placement.strongModuleIds
+          : []
+      });
+      setJourney({ action, completedLessons: curriculum.completedLessons.length });
+    }).catch(() => {
+      if (!disposed) setJourney(null);
+    });
+    return () => { disposed = true; };
+  }, [evidenceRevision, profile.placement, progress]);
 
   const ready = onboardingReady(profile);
   const goal = goalOptions.find(item => item.id === profile.goal);
   const planned = useMemo(() => nextPlanItem(profile.firstWeekPlan), [profile.firstWeekPlan]);
-  const passedCheckpointIds = useMemo(() => curriculumCheckpoints
-    .filter(checkpoint =>
-      Boolean(bestCheckpointReport(checkpoint.id, checkpointReports)?.passed)
-      || legacyCheckpointPassed(checkpoint.id, progress)
-    )
-    .map(checkpoint => checkpoint.id), [checkpointReports, progress]);
-  const assessmentComplete = useMemo(() => assessmentReports.some(report =>
-    report.status === 'completed'
-    && (report.mode === 'exam' || report.mode === 'production' || report.mode === 'final')
-  ), [assessmentReports]);
-  const nextStep = useMemo(() => nextJourneyAction(progress, curriculum, {
-    includeReview: false,
-    passedCheckpointIds,
-    assessmentComplete,
-    bypassedModuleIds: profile.placement.status === 'completed'
-      ? profile.placement.strongModuleIds
-      : []
-  }), [assessmentComplete, curriculum, passedCheckpointIds, profile.placement, progress]);
+  const nextStep = journey?.action || null;
   const completion = Math.round(progress.completed.length / TOTAL_TASK_COUNT * 100);
 
   const startNextStep = () => {
+    if (!nextStep) return;
     if (nextStep.kind === 'task' && nextStep.task) {
       onStartTask(nextStep.task);
       return;
@@ -148,33 +181,36 @@ export default function GuidedHome({
   }
 
   const primaryIsReview = reviewCount > 0;
+  const loadingJourney = !nextStep;
   return <section className="guided-home" data-testid="guided-today">
     <header className="guided-header">
       <div>
         <span className="guided-kicker">Сегодня · {goal?.title || 'SQL Academy'}</span>
         <h1>{primaryIsReview ? 'Сначала закрепим изученное.' : 'Продолжим единый маршрут.'}</h1>
         <p>{primaryIsReview
-          ? `В очереди ${reviewCount} ${reviewCount === 1 ? 'задача' : 'задач'} на повторение. После них вернёмся к этапу «${nextStep.title}».`
-          : nextStep.description}</p>
+          ? `В очереди ${reviewCount} ${reviewCount === 1 ? 'задача' : 'задач'} на повторение.${nextStep ? ` После них вернёмся к этапу «${nextStep.title}».` : ''}`
+          : nextStep?.description || 'Сверяю уроки, independent evidence, checkpoints и assessment, чтобы выбрать правильный следующий этап.'}</p>
       </div>
       <button className="guided-configure" onClick={onConfigure}><Settings2 /> Изменить цель и ритм</button>
     </header>
 
-    <div className="guided-primary-card" data-testid="guided-journey-action" data-stage={primaryIsReview ? 'review' : nextStep.stage}>
+    <div className="guided-primary-card" data-testid="guided-journey-action" data-stage={primaryIsReview ? 'review' : nextStep?.stage || 'loading'} aria-busy={loadingJourney && !primaryIsReview}>
       <div className="guided-primary-copy">
         <span>{primaryIsReview ? <RefreshCw /> : <Target />}</span>
         <div>
           <small>{primaryIsReview
             ? 'Приоритет на сегодня · retrieval review'
-            : `${nextStep.phaseTitle || 'Итоговый этап'}${nextStep.moduleTitle ? ` · ${nextStep.moduleTitle}` : ''} · ${nextStep.stage}`}</small>
-          <h2>{primaryIsReview ? 'Адаптивное повторение' : nextStep.title}</h2>
+            : nextStep
+              ? `${nextStep.phaseTitle || 'Итоговый этап'}${nextStep.moduleTitle ? ` · ${nextStep.moduleTitle}` : ''} · ${nextStep.stage}`
+              : 'Синхронизация evidence-графа'}</small>
+          <h2>{primaryIsReview ? 'Адаптивное повторение' : nextStep?.title || 'Строю следующий шаг…'}</h2>
           <p>{primaryIsReview
             ? 'Восстанови решение по памяти, не перечитывая урок заранее.'
-            : nextStep.description}</p>
+            : nextStep?.description || 'Тяжёлые curriculum и assessment данные загружаются лениво, не замедляя первый экран.'}</p>
         </div>
       </div>
-      <button className="primary" onClick={() => primaryIsReview ? onReview() : startNextStep()}>
-        {primaryIsReview ? 'Начать повторение' : nextStep.cta} <ArrowRight />
+      <button className="primary" disabled={!primaryIsReview && !nextStep} onClick={() => primaryIsReview ? onReview() : startNextStep()}>
+        {primaryIsReview ? 'Начать повторение' : nextStep?.cta || 'Анализирую маршрут'} <ArrowRight />
       </button>
     </div>
 
@@ -193,10 +229,10 @@ export default function GuidedHome({
 
       <article className="guided-progress-card">
         <div className="guided-card-heading"><div><ListChecks /><span><strong>Прогресс маршрута</strong><small>Lesson → practice → checkpoint → transfer</small></span></div></div>
-        <div className="guided-progress-value"><strong>{completion}%</strong><span>{progress.completed.length} из {TOTAL_TASK_COUNT} задач · {curriculum.completedLessons.length} уроков</span></div>
+        <div className="guided-progress-value"><strong>{completion}%</strong><span>{progress.completed.length} из {TOTAL_TASK_COUNT} задач · {journey?.completedLessons || 0} уроков</span></div>
         <div className="guided-progress-bar"><i style={{ width: `${completion}%` }} /></div>
         <div className="guided-mini-actions">
-          <button onClick={startNextStep}>Открыть следующий этап</button>
+          <button disabled={!nextStep} onClick={startNextStep}>Открыть следующий этап</button>
           <button onClick={onOpenLessons}>Все уроки</button>
         </div>
       </article>
