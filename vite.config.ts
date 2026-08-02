@@ -22,7 +22,8 @@ export default defineConfig(({ command }) => ({
       manifest: {
         name: 'SQL Academy — Support Engineering Track',
         short_name: 'SQL Academy',
-        description: 'Практическая SQL Academy для 2nd Support Engineer',
+        description: '240 проверяемых SQL-задач и 44 связанных урока для 2nd Support Engineer',
+        lang: 'ru',
         theme_color: '#09090b',
         background_color: '#09090b',
         display: 'standalone',
