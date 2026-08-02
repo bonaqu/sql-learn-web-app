@@ -73,7 +73,7 @@ export const sqlSyntaxCapabilities: readonly SqlSyntaxCapability[] = [
     id: 'cte',
     title: 'CTE',
     introducedBy: 'cte',
-    pattern: /^\s*with\b/im,
+    pattern: /(?:^|;)\s*with\b/im,
     rationale: 'Named query stages follow standalone subquery reasoning.'
   },
   {
@@ -164,7 +164,7 @@ export const sqlSyntaxCapabilities: readonly SqlSyntaxCapability[] = [
     id: 'recursive-cte',
     title: 'recursive CTE',
     introducedBy: 'recursive-cte',
-    pattern: /^\s*with\s+recursive\b/im,
+    pattern: /(?:^|;)\s*with\s+recursive\b/im,
     rationale: 'Anchor, recursive term and termination must be taught before recursion is required.'
   },
   {
@@ -178,7 +178,7 @@ export const sqlSyntaxCapabilities: readonly SqlSyntaxCapability[] = [
     id: 'json-sql',
     title: 'JSON SQL',
     introducedBy: 'json-sql',
-    pattern: /\bjson_(?:extract|each|tree|array|object|valid|type|set|insert|replace|remove)\s*\(|(?:->>|->)\s*['$]/i,
+    pattern: /\bjson_(?:extract|each|tree|array|object|valid|type|set|insert|replace|remove)\s*\(|(?:->>|->)/i,
     rationale: 'JSON path, missing-key and type semantics must precede JSON extraction.'
   },
   {
