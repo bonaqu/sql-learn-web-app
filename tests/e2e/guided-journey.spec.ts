@@ -31,13 +31,16 @@ test('desktop guided journey turns a first goal into one canonical primary actio
   await expect(journeyAction).not.toHaveAttribute('aria-busy', 'true');
   await expect(journeyAction.getByRole('button', { name: /Открыть урок/ })).toHaveCount(1);
   await expect(journeyAction).toContainText(/Надёжная база/i);
-  await expect(journeyAction).toContainText(/SQL/i);
+  await expect(journeyAction).toContainText(/SQL-мышление/i);
   await expect(page.locator('.sidebar nav > button, .sidebar nav > .onboarding-nav-slot')).toHaveCount(5);
   await expect(page.locator('.nav-more')).not.toHaveAttribute('open', '');
 
   await journeyAction.getByRole('button', { name: /Открыть урок/ }).click();
-  await expect(page.getByTestId('curriculum-studio')).toBeVisible();
-  await expect(page.getByTestId('curriculum-studio')).toContainText(/SQL как модель данных/i);
+  const curriculum = page.getByTestId('curriculum-studio');
+  await expect(curriculum).toBeVisible();
+  await expect(curriculum.getByText('Урок 01 / 44')).toBeVisible();
+  await expect(curriculum.getByRole('heading', { name: 'SQL-мышление', exact: true })).toBeVisible();
+  await expect(curriculum).toContainText(/Как читать схему и превращать вопрос в запрос/i);
   await page.getByRole('button', { name: 'Закрыть Curriculum Studio' }).click();
 
   await page.locator('.nav-more > summary').click();
