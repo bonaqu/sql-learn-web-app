@@ -8,6 +8,11 @@ import {
   type CurriculumLesson
 } from './curriculum';
 import { advancedCurriculumCheckpoints, advancedCurriculumLessons } from './advanced-curriculum';
+import { tasks } from './course-catalog';
+import {
+  applyCoreCheckpointTaskLinks,
+  applyCoreLessonTaskLinks
+} from './core-curriculum-progression';
 import { moduleOrderIndex, phaseDefinitions } from './learning-structure';
 import { applySyntaxFrontierLessonOverrides } from './syntax-frontier-content';
 
@@ -26,9 +31,13 @@ export type {
 
 export { capstoneProjects };
 
-const normalizedCoreLessons = coreLessons.map(lesson => lesson.id === 'lesson-cte'
-  ? { ...lesson, title: 'CTE и этапы запроса' }
-  : lesson);
+const normalizedCoreLessons = applyCoreLessonTaskLinks(
+  coreLessons.map(lesson => lesson.id === 'lesson-cte'
+    ? { ...lesson, title: 'CTE и этапы запроса' }
+    : lesson),
+  tasks
+);
+const normalizedCoreCheckpoints = applyCoreCheckpointTaskLinks(coreCheckpoints, tasks);
 
 function diversifyAdvancedLesson(lesson: CurriculumLesson): CurriculumLesson {
   return {
@@ -57,7 +66,7 @@ export const curriculumLessons = [...sourceLessons].sort((left, right) =>
   || left.id.localeCompare(right.id)
 );
 
-export const curriculumCheckpoints = [...coreCheckpoints, ...advancedCurriculumCheckpoints]
+export const curriculumCheckpoints = [...normalizedCoreCheckpoints, ...advancedCurriculumCheckpoints]
   .sort((left, right) => {
     const leftPhase = phaseDefinitions.find(phase =>
       left.moduleIds.some(moduleId => phase.moduleIds.some(id => id === moduleId))
