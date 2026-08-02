@@ -60,7 +60,11 @@ for (let index = 0; index < lessonTransitions.length; index += 1) {
   const practice = tasks.find(task => task.id === transition.practiceTaskId);
   assert.ok(practice, `${transition.id} references an unknown destination practice`);
   assert.equal(practice?.module, to.module, `${transition.id} practice belongs to the wrong module`);
-  assert.ok(practice?.mode === 'lesson' || practice?.mode === 'practice', `${transition.id} introduces a module through Interview or Puzzle`);
+  if (transition.kind === 'within-module') {
+    assert.ok(to.practiceTaskIds.includes(practice!.id), `${transition.id} transfer task is not explicitly linked to the applied lesson`);
+  } else {
+    assert.ok(practice?.mode === 'lesson' || practice?.mode === 'practice', `${transition.id} introduces a module through Interview or Puzzle`);
+  }
 }
 
 const phaseTransitions = lessonTransitions.filter(item => item.kind === 'phase');
