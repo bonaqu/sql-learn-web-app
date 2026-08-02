@@ -32,6 +32,9 @@ export type DialectHydrationOptions = {
   failOnUnavailable?: boolean;
 };
 
+const DIALECT_TRANSPORT_RETRY_DELAYS_MS = [250, 500, 1_000, 1_500, 2_000, 2_500] as const;
+const MAX_RETRY_AFTER_MS = 3_000;
+
 function storageKey(userId: string) {
   return `sql-academy-dialect-lab-progress-v1:${userId}`;
 }
@@ -42,6 +45,52 @@ function evidenceKey(labId: string, dialect: SqlDialect) {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function sleep(ms: number) {
+  return new Promise<void>(resolve => window.setTimeout(resolve, ms));
+}
+
+function isTransientDialectStatus(status: number) {
+  return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+function retryDelay(response: Response | null, retryIndex: number) {
+  const fallback = DIALECT_TRANSPORT_RETRY_DELAYS_MS[Math.min(
+    retryIndex,
+    DIALECT_TRANSPORT_RETRY_DELAYS_MS.length - 1
+  )];
+  if (!response || response.status !== 429) return fallback;
+  const raw = response.headers.get('retry-after');
+  if (!raw) return fallback;
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds)) return Math.min(MAX_RETRY_AFTER_MS, Math.max(fallback, seconds * 1_000));
+  const date = Date.parse(raw);
+  if (!Number.isFinite(date)) return fallback;
+  return Math.min(MAX_RETRY_AFTER_MS, Math.max(fallback, date - Date.now()));
+}
+
+async function fetchDialectProgressWithRecovery(init?: RequestInit) {
+  let lastResponse: Response | null = null;
+  let lastError: unknown = null;
+  for (let transportAttempt = 0; transportAttempt <= DIALECT_TRANSPORT_RETRY_DELAYS_MS.length; transportAttempt += 1) {
+    try {
+      const response = await fetch('/api/dialect-labs/progress', init);
+      lastResponse = response;
+      if (!isTransientDialectStatus(response.status)
+        || transportAttempt === DIALECT_TRANSPORT_RETRY_DELAYS_MS.length) {
+        return response;
+      }
+    } catch (error) {
+      lastError = error;
+      if (transportAttempt === DIALECT_TRANSPORT_RETRY_DELAYS_MS.length) {
+        throw new Error('Dialect progress transport recovery exhausted', { cause: error });
+      }
+    }
+    await sleep(retryDelay(lastResponse, transportAttempt));
+  }
+  if (lastResponse) return lastResponse;
+  throw new Error('Dialect progress transport recovery exhausted', { cause: lastError });
 }
 
 export function emptyDialectLabProgress(userId: string): DialectLabProgress {
@@ -197,18 +246,22 @@ export function dialectLabCompletion(progress: DialectLabProgress, labId: string
 }
 
 export async function syncDialectLabProgress(progress: DialectLabProgress, conflictAttempts = 0): Promise<DialectLabProgress> {
-  const response = await fetch('/api/dialect-labs/progress', {
+  const response = await fetchDialectProgressWithRecovery({
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ progress, baseRevision: progress.revision })
   });
-  const payload = await response.json() as { progress?: DialectLabProgress; revision?: number; error?: string };
+  const payload = await response.json().catch(() => ({})) as {
+    progress?: DialectLabProgress;
+    revision?: number;
+    error?: string;
+  };
   if (response.status === 409 && payload.progress) {
     if (conflictAttempts >= 3) throw new Error('Dialect progress changed repeatedly on another device');
     const merged = mergeDialectLabProgress(progress, sanitizeDialectLabProgress(payload.progress, progress.userId));
     return syncDialectLabProgress({ ...merged, revision: Number(payload.revision) || merged.revision }, conflictAttempts + 1);
   }
-  if (!response.ok || !payload.progress) throw new Error(payload.error || 'Dialect progress sync failed');
+  if (!response.ok || !payload.progress) throw new Error(payload.error || `Dialect progress sync failed with HTTP ${response.status}`);
   return saveDialectLabProgress(sanitizeDialectLabProgress(payload.progress, progress.userId));
 }
 
@@ -218,16 +271,27 @@ export async function hydrateDialectLabProgress(
 ) {
   if (!userId) return null;
   const initialLocal = loadDialectLabProgress(userId) || emptyDialectLabProgress(userId);
-  const response = await fetch('/api/dialect-labs/progress');
-  if (!response.ok) {
-    if (options.failOnUnavailable) throw new Error(`Dialect progress hydration failed with HTTP ${response.status}`);
+  try {
+    const response = await fetchDialectProgressWithRecovery();
+    if (!response.ok) {
+      if (options.failOnUnavailable) throw new Error(`Dialect progress hydration failed with HTTP ${response.status}`);
+      return initialLocal;
+    }
+    const payload = await response.json().catch(() => ({})) as {
+      progress?: DialectLabProgress | null;
+      revision?: number;
+    };
+    const remote = payload.progress
+      ? sanitizeDialectLabProgress(payload.progress, userId)
+      : emptyDialectLabProgress(userId);
+    const latestLocal = loadDialectLabProgress(userId) || initialLocal;
+    const merged = mergeDialectLabProgress(latestLocal, {
+      ...remote,
+      revision: Number(payload.revision) || remote.revision
+    });
+    return saveDialectLabProgress(merged);
+  } catch (error) {
+    if (options.failOnUnavailable) throw error;
     return initialLocal;
   }
-  const payload = await response.json() as { progress?: DialectLabProgress | null; revision?: number };
-  const remote = payload.progress
-    ? sanitizeDialectLabProgress(payload.progress, userId)
-    : emptyDialectLabProgress(userId);
-  const latestLocal = loadDialectLabProgress(userId) || initialLocal;
-  const merged = mergeDialectLabProgress(latestLocal, { ...remote, revision: Number(payload.revision) || remote.revision });
-  return saveDialectLabProgress(merged);
 }
