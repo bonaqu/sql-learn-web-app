@@ -33,10 +33,12 @@ async function openDialectLab(page: Page, mobile = false) {
 }
 
 async function replaceSql(page: Page, sql: string) {
-  const textarea = page.locator('.monaco-editor textarea').first();
-  await textarea.click();
+  const editor = page.locator('.monaco-editor').first();
+  await expect(editor).toBeVisible();
+  await editor.locator('.view-lines').click({ position: { x: 16, y: 16 } });
+  await expect(editor).toHaveClass(/focused/);
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
-  await page.keyboard.type(sql);
+  await page.keyboard.insertText(sql);
 }
 
 async function expectNoHorizontalOverflow(page: Page) {
