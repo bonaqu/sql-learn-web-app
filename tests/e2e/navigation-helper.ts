@@ -63,7 +63,11 @@ export async function seedFirstLessonEvidence(page: Page) {
       completedProjects: [],
       answers: payload.answers,
       projectDrafts: {},
-      bookmark: { lessonId: payload.lessonId, sectionId: payload.sectionIds[0] || null },
+      bookmark: {
+        lessonId: payload.lessonId,
+        sectionId: payload.sectionIds[0] || '',
+        updatedAt: payload.updatedAt
+      },
       updatedAt: payload.updatedAt
     }));
     window.dispatchEvent(new CustomEvent('sql-academy-curriculum-progress-changed'));
