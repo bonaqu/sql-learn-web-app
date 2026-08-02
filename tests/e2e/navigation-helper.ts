@@ -1,4 +1,6 @@
 import type { Page } from '@playwright/test';
+import { curriculumLessons } from '../../src/data/complete-curriculum';
+import { lessonChecks } from '../../src/data/lesson-checks';
 
 export async function openAllTools(page: Page) {
   const sidebar = page.locator('.sidebar');
@@ -32,4 +34,38 @@ export async function openAdvancedTool(page: Page, testId: string) {
 
 export function guidedHome(page: Page) {
   return page.locator('[data-testid="guided-first-run"], [data-testid="guided-today"]');
+}
+
+export async function seedFirstLessonEvidence(page: Page) {
+  const lesson = curriculumLessons[0];
+  const answeredAt = new Date().toISOString();
+  const evidence = {
+    lessonId: lesson.id,
+    sectionIds: lesson.sections.map(section => section.id),
+    answers: Object.fromEntries(lessonChecks(lesson).map(check => [check.id, {
+      optionIndex: check.correctIndex,
+      correct: true,
+      answeredAt
+    }])),
+    updatedAt: answeredAt
+  };
+
+  await page.evaluate(payload => {
+    const session = JSON.parse(localStorage.getItem('sql-academy-auth-session-v2') || 'null') as {
+      userId?: string;
+      username?: string;
+    } | null;
+    const ownerId = session?.userId || session?.username || 'local';
+    localStorage.setItem(`sql-academy-curriculum-progress-v1:${ownerId}`, JSON.stringify({
+      version: 1,
+      completedSections: payload.sectionIds,
+      completedLessons: [payload.lessonId],
+      completedProjects: [],
+      answers: payload.answers,
+      projectDrafts: {},
+      bookmark: { lessonId: payload.lessonId, sectionId: payload.sectionIds[0] || null },
+      updatedAt: payload.updatedAt
+    }));
+    window.dispatchEvent(new CustomEvent('sql-academy-curriculum-progress-changed'));
+  }, evidence);
 }
