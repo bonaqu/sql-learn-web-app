@@ -37,6 +37,20 @@ type RegistrationPayload = {
   user?: { id?: string };
 };
 
+type RequestDiagnostic = {
+  at: string;
+  stage: string;
+  caseId: string | null;
+  method: string;
+  path: string;
+  status: number | null;
+  cfRay: string | null;
+  requestId: string | null;
+  retryAfter: string | null;
+  body: string | null;
+  networkError: string | null;
+};
+
 let stageName = 'bootstrap';
 let authToken = '';
 let recoveryCode = '';
@@ -68,6 +82,10 @@ function writeJson(path: string, value: unknown) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function writeRequestDiagnostic(path: string, value: RequestDiagnostic) {
+  writeJson(path, value);
+}
+
 async function request(path: string, options: {
   method?: string;
   headers?: Record<string, string>;
@@ -76,6 +94,7 @@ async function request(path: string, options: {
   attempts?: number;
   delayMs?: number;
   diagnosticFile?: string;
+  caseId?: string;
 } = {}) {
   const {
     method = 'GET',
@@ -84,7 +103,8 @@ async function request(path: string, options: {
     expected = [200],
     attempts = 1,
     delayMs = 3_000,
-    diagnosticFile
+    diagnosticFile,
+    caseId
   } = options;
   let last: { response?: Response; text?: string; error?: unknown } | null = null;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -92,19 +112,48 @@ async function request(path: string, options: {
       const response = await fetch(`${deployUrl}${path}`, { method, headers, body, redirect: 'follow' });
       const text = await response.text();
       last = { response, text };
-      if (expected.includes(response.status)) {
-        if (diagnosticFile) writeFileSync(diagnosticFile, text);
-        return { response, text };
+      if (diagnosticFile) {
+        writeRequestDiagnostic(diagnosticFile, {
+          at: new Date().toISOString(),
+          stage: stageName,
+          caseId: caseId || null,
+          method,
+          path,
+          status: response.status,
+          cfRay: response.headers.get('cf-ray'),
+          requestId: response.headers.get('x-request-id'),
+          retryAfter: response.headers.get('retry-after'),
+          body: text,
+          networkError: null
+        });
       }
-      console.warn(`${method} ${path}: attempt ${attempt}/${attempts}, HTTP ${response.status}`);
+      if (expected.includes(response.status)) return { response, text };
+      console.warn(`${method} ${path}${caseId ? ` for ${caseId}` : ''}: attempt ${attempt}/${attempts}, HTTP ${response.status}`);
     } catch (error) {
       last = { error };
-      console.warn(`${method} ${path}: attempt ${attempt}/${attempts} failed`, error);
+      if (diagnosticFile) {
+        writeRequestDiagnostic(diagnosticFile, {
+          at: new Date().toISOString(),
+          stage: stageName,
+          caseId: caseId || null,
+          method,
+          path,
+          status: null,
+          cfRay: null,
+          requestId: null,
+          retryAfter: null,
+          body: null,
+          networkError: error instanceof Error ? error.message : String(error)
+        });
+      }
+      console.warn(`${method} ${path}${caseId ? ` for ${caseId}` : ''}: attempt ${attempt}/${attempts} failed`, error);
     }
     if (attempt < attempts) await sleep(delayMs);
   }
-  if (last?.text && diagnosticFile) writeFileSync(diagnosticFile, last.text);
-  throw new Error(`${method} ${path} did not return ${expected.join('/')} (last: ${last?.response?.status ?? 'network error'})`);
+  const status = last?.response?.status ?? null;
+  const ray = last?.response?.headers.get('cf-ray');
+  const responseBody = last?.text || '';
+  throw new Error(`${method} ${path}${caseId ? ` for ${caseId}` : ''} did not return ${expected.join('/')} (last: ${status ?? 'network error'})${ray ? ` cf-ray=${ray}` : ''} body=${responseBody.slice(0, 1200)}`);
 }
 
 function normalizeTimestamp(value: string) {
@@ -194,7 +243,8 @@ async function deleteSmokeAccount() {
       headers: { authorization: `Bearer ${authToken}`, 'content-type': 'application/json' },
       body: JSON.stringify({ currentPassword: smokePassword, recoveryCode, confirm: 'DELETE' }),
       expected: [200],
-      attempts: 2
+      attempts: 2,
+      diagnosticFile: 'cloudflare-dialect-account-delete.json'
     });
     if (parseJson<{ ok?: boolean }>(result.text, 'Dialect account delete').ok !== true) throw new Error('Account delete was not ok');
     accountDeleted = true;
@@ -231,9 +281,10 @@ async function verifyCascade() {
 
 try {
   stage('dialect-free-unauthenticated');
-  await request('/api/dialect-labs/progress', { expected: [401], attempts: 8, delayMs: 4_000 });
+  await request('/api/dialect-labs/progress', { expected: [401], attempts: 8, delayMs: 4_000, diagnosticFile: 'cloudflare-dialect-unauth-progress.json' });
   await request('/api/dialect-labs/execute', {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', expected: [401], attempts: 8, delayMs: 4_000
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', expected: [401], attempts: 8, delayMs: 4_000,
+    diagnosticFile: 'cloudflare-dialect-unauth-execute.json'
   });
   endStage();
 
@@ -245,7 +296,8 @@ try {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ username, password: smokePassword, displayName: 'Dialect Free Smoke', deviceName: 'GitHub Actions free-tier dialect lifecycle' }),
     expected: [201],
-    attempts: 3
+    attempts: 3,
+    diagnosticFile: 'cloudflare-dialect-registration.json'
   });
   const registrationPayload = parseJson<RegistrationPayload>(registration.text, 'Dialect registration');
   authToken = String(registrationPayload.session?.token || '');
@@ -262,7 +314,8 @@ try {
     headers,
     body: JSON.stringify({ version: 1, labId: 'dialect-null-ordering', dialect: 'postgresql', sql: 'SELECT PG_SLEEP(10);' }),
     expected: [400],
-    diagnosticFile: 'cloudflare-dialect-policy-rejection.json'
+    diagnosticFile: 'cloudflare-dialect-policy-rejection.json',
+    caseId: 'dialect-null-ordering:postgresql:policy-rejection'
   });
   endStage();
 
@@ -272,15 +325,24 @@ try {
     for (const dialect of SERVER_DIALECTS) {
       const labCase = dialectLabCase(lab.id, dialect);
       if (!labCase) throw new Error(`${lab.id}:${dialect} source case is missing`);
+      const caseId = `${lab.id}:${dialect}`;
+      stage(`preview ${caseId}`);
+      writeFileSync('cloudflare-dialect-current-case.txt', `${caseId}\n`);
+      const safeId = caseId.replace(/[^a-z0-9_-]+/gi, '-');
       const response = await request('/api/dialect-labs/execute', {
         method: 'POST',
         headers,
         body: JSON.stringify({ version: 1, labId: lab.id, dialect, sql: labCase.referenceSql }),
-        expected: [200]
+        expected: [200],
+        attempts: 2,
+        delayMs: 1_000,
+        diagnosticFile: `cloudflare-dialect-preview-${safeId}.json`,
+        caseId
       });
-      const preview = parseJson<PreviewPayload>(response.text, `${lab.id}:${dialect} preview`);
+      const preview = parseJson<PreviewPayload>(response.text, `${caseId} preview`);
       assertPreview(preview, lab.id, dialect);
-      previews[`${lab.id}:${dialect}`] = preview;
+      previews[caseId] = preview;
+      endStage();
     }
   }
   writeJson('cloudflare-dialect-preview-matrix.json', {
@@ -290,7 +352,6 @@ try {
     evidenceEligible: false,
     productionMode: 'cloudflare-free-reference-preview'
   });
-  endStage();
 
   stage('dialect-free-progress-roundtrip');
   const evidence = Object.fromEntries(Object.entries(previews).map(([key, preview]) => [
@@ -308,7 +369,8 @@ try {
     method: 'PUT',
     headers,
     body: JSON.stringify({ progress, baseRevision: 0 }),
-    expected: [200]
+    expected: [200],
+    diagnosticFile: 'cloudflare-dialect-progress-write.json'
   })).text, 'Preview progress write');
   if (stored.revision !== 1 || Object.values(stored.progress?.evidence || {}).some(item => item.passed === true)) {
     throw new Error('Preview progress round-trip created passing evidence');
@@ -329,7 +391,7 @@ try {
   await verifyCascade();
 
   stage('dialect-free-revoked');
-  await request('/api/dialect-labs/progress', { headers, expected: [401] });
+  await request('/api/dialect-labs/progress', { headers, expected: [401], diagnosticFile: 'cloudflare-dialect-revoked.json' });
   endStage();
 
   writeJson('cloudflare-dialect-free-result.json', {
