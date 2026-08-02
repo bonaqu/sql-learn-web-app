@@ -11,7 +11,8 @@ import {
   type SqlSyntaxCapabilityId
 } from '../src/data/sql-syntax-frontier';
 
-const failures: string[] = [];
+const prematureUses: string[] = [];
+const coverageGaps: string[] = [];
 const coverage = new Map<SqlSyntaxCapabilityId, Set<string>>();
 const record = (capabilityId: SqlSyntaxCapabilityId, location: string) => {
   coverage.set(capabilityId, new Set([...(coverage.get(capabilityId) || []), location]));
@@ -45,7 +46,7 @@ for (const task of tasks) {
     for (const capability of detectSqlSyntaxCapabilities(sql)) {
       record(capability.id, `task:${task.id}:${sourceName}:${task.module}`);
       if (!syntaxCapabilityIsAvailable(capability, task.module)) {
-        failures.push(`${task.id} (${task.module}) requires ${capability.title} in ${sourceName} before ${capability.introducedBy}`);
+        prematureUses.push(`${task.id} (${task.module}) requires ${capability.title} in ${sourceName} before ${capability.introducedBy}`);
       }
     }
   }
@@ -55,7 +56,7 @@ for (const lesson of curriculumLessons) {
   for (const capability of detectSqlSyntaxCapabilities(lesson.example.sql)) {
     record(capability.id, `lesson:${lesson.id}:${lesson.module}`);
     if (!syntaxCapabilityIsAvailable(capability, lesson.module)) {
-      failures.push(`${lesson.id} (${lesson.module}) teaches ${capability.title} before ${capability.introducedBy}`);
+      prematureUses.push(`${lesson.id} (${lesson.module}) teaches ${capability.title} before ${capability.introducedBy}`);
     }
   }
 }
@@ -83,12 +84,22 @@ const requiredCoverage: SqlSyntaxCapabilityId[] = [
   'json-sql'
 ];
 for (const capabilityId of requiredCoverage) {
-  assert.ok((coverage.get(capabilityId)?.size || 0) >= 1, `${capabilityId}: no task or lesson demonstrates the owned syntax`);
+  if ((coverage.get(capabilityId)?.size || 0) < 1) {
+    const capability = sqlSyntaxCapabilities.find(item => item.id === capabilityId);
+    coverageGaps.push(`${capabilityId}: ${capability?.title || capabilityId} has no task or lesson example at/after owner ${capability?.introducedBy || 'unknown'}`);
+  }
 }
 
-if (failures.length) {
-  console.error(`SQL syntax frontier failed with ${failures.length} premature capability use(s):`);
-  for (const failure of failures) console.error(`- ${failure}`);
+if (coverageGaps.length || prematureUses.length) {
+  console.error(`SQL syntax frontier failed with ${coverageGaps.length} coverage gap(s) and ${prematureUses.length} premature capability use(s).`);
+  if (coverageGaps.length) {
+    console.error('Coverage gaps:');
+    for (const gap of coverageGaps) console.error(`- ${gap}`);
+  }
+  if (prematureUses.length) {
+    console.error('Premature uses:');
+    for (const failure of prematureUses) console.error(`- ${failure}`);
+  }
   process.exit(1);
 }
 
