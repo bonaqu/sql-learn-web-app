@@ -13,7 +13,7 @@ function activeLessonId() {
 
 export default function CurriculumContinuityCompanion() {
   const [lessonId, setLessonId] = useState<string | null>(() => activeLessonId());
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const lesson = useMemo(() => curriculumLessons.find(item => item.id === lessonId) || null, [lessonId]);
 
   useEffect(() => {
@@ -33,10 +33,6 @@ export default function CurriculumContinuityCompanion() {
       observer.disconnect();
     };
   }, []);
-
-  useEffect(() => {
-    if (lessonId) setExpanded(true);
-  }, [lessonId]);
 
   if (!lesson) return null;
 
