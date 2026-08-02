@@ -2,8 +2,14 @@ import { modules, type SqlTask, tasks } from '../data/course-catalog';
 import { phaseDefinitions, phaseForModule } from '../data/learning-structure';
 import {
   foundationTasksForModule,
-  transferTasksForModule
+  nextJourneyAction,
+  transferTasksForModule,
+  type JourneyAction
 } from './learning-journey';
+import {
+  emptyCurriculumProgress,
+  type CurriculumProgressV1
+} from './curriculum-progress';
 import {
   hasIndependentTaskEvidence,
   type Progress,
@@ -45,10 +51,21 @@ export type LearningPhase = {
   unlocked: boolean;
 };
 
+export type LearningSessionEvidence = {
+  curriculum: CurriculumProgressV1;
+  passedCheckpointIds?: readonly string[];
+  assessmentComplete?: boolean;
+  bypassedModuleIds?: readonly string[];
+};
+
 export type SessionItem = {
-  task: SqlTask;
+  id: string;
+  task: SqlTask | null;
+  action: JourneyAction | null;
   reason: 'review' | 'weakness' | 'new' | 'checkpoint';
   label: string;
+  title: string;
+  topic: string;
   minutes: number;
 };
 
@@ -65,6 +82,19 @@ const difficultyMinutes: Record<SqlTask['difficulty'], number> = {
   'Рабочий': 6,
   'Продвинутый': 8,
   'Экспертный': 10
+};
+
+const stageMinutes: Record<JourneyAction['stage'], number> = {
+  lesson: 12,
+  guided: 6,
+  practice: 8,
+  review: 6,
+  checkpoint: 20,
+  interview: 10,
+  puzzle: 10,
+  assessment: 25,
+  project: 30,
+  complete: 5
 };
 
 function clamp(value: number, min = 0, max = 100) {
@@ -177,81 +207,94 @@ export function learningPhases(progress: Progress, mastery = moduleMastery(progr
   });
 }
 
-function uniquePush(items: SessionItem[], task: SqlTask | undefined | null, reason: SessionItem['reason'], label: string) {
-  if (!task || items.some(item => item.task.id === task.id)) return;
-  items.push({ task, reason, label, minutes: difficultyMinutes[task.difficulty] });
+function pushReview(items: SessionItem[], task: SqlTask | undefined) {
+  if (!task || items.some(item => item.task?.id === task.id)) return;
+  items.push({
+    id: `review:${task.id}`,
+    task,
+    action: null,
+    reason: 'review',
+    label: 'Retrieval review до нового материала',
+    title: task.title,
+    topic: task.topic,
+    minutes: difficultyMinutes[task.difficulty]
+  });
 }
 
-export function buildDailySession(progress: Progress, targetMinutes = 25): DailySession {
+function actionReason(action: JourneyAction, progress: Progress): SessionItem['reason'] {
+  if (action.stage === 'checkpoint') return 'checkpoint';
+  if (action.task && (progress.taskStats[action.task.id]?.attempts || 0) > 0) return 'weakness';
+  return 'new';
+}
+
+function actionLabel(action: JourneyAction) {
+  if (action.stage === 'lesson') return 'Mental model и knowledge checks';
+  if (action.stage === 'guided') return 'Guided application после урока';
+  if (action.stage === 'practice') return 'Independent practice без подсказок';
+  if (action.stage === 'checkpoint') return 'Обязательный checkpoint фазы';
+  if (action.stage === 'interview') return 'Transfer: объяснение и решение';
+  if (action.stage === 'puzzle') return 'Transfer: непривычная формулировка';
+  if (action.stage === 'assessment') return 'Смешанная итоговая проверка';
+  if (action.stage === 'project') return 'Capstone на рабочем сценарии';
+  if (action.stage === 'complete') return 'Поддержание expert-уровня';
+  return 'Следующий этап маршрута';
+}
+
+function pushAction(items: SessionItem[], action: JourneyAction, progress: Progress) {
+  if (action.task && items.some(item => item.task?.id === action.task?.id)) return;
+  items.push({
+    id: `${action.kind}:${action.lessonId || action.checkpointId || action.projectId || action.task?.id || action.stage}`,
+    task: action.task,
+    action,
+    reason: actionReason(action, progress),
+    label: actionLabel(action),
+    title: action.title,
+    topic: action.moduleTitle || action.phaseTitle || 'SQL Academy',
+    minutes: action.task ? difficultyMinutes[action.task.difficulty] : stageMinutes[action.stage]
+  });
+}
+
+export function buildDailySession(
+  progress: Progress,
+  targetMinutes = 25,
+  evidence: LearningSessionEvidence = { curriculum: emptyCurriculumProgress() }
+): DailySession {
   const mastery = moduleMastery(progress);
-  const phases = learningPhases(progress, mastery);
   const items: SessionItem[] = [];
-  const review = reviewQueue(progress, 8);
+  const reviews = reviewQueue(progress, 2);
+  const primary = nextJourneyAction(progress, evidence.curriculum, {
+    includeReview: false,
+    passedCheckpointIds: evidence.passedCheckpointIds,
+    assessmentComplete: evidence.assessmentComplete,
+    bypassedModuleIds: evidence.bypassedModuleIds
+  });
 
-  uniquePush(items, review[0], 'review', 'Вернуть в память');
-  uniquePush(items, review[1], 'review', 'Исправить слабое место');
-
-  const focusModule = mastery
-    .filter(item => item.level !== 'locked' && item.level !== 'mastered' && item.recommendedTask)
-    .sort((left, right) => left.index - right.index || left.mastery - right.mastery)[0] || null;
-
-  uniquePush(
-    items,
-    focusModule?.recommendedTask,
-    focusModule?.attempts ? 'weakness' : 'new',
-    focusModule ? `Канонический шаг: ${focusModule.title}` : 'Следующий шаг маршрута'
-  );
-
-  if (focusModule) {
-    const moduleTasks = [
-      ...foundationTasksForModule(focusModule.id),
-      ...transferTasksForModule(focusModule.id)
-    ];
-    for (const task of moduleTasks) {
-      if (items.length >= 8) break;
-      if (!taskSatisfied(task, progress)) {
-        uniquePush(items, task, 'new', `Продолжить: ${focusModule.title}`);
-      }
-    }
-  }
-
-  const checkpoint = phases.find(phase =>
-    phase.unlocked
-    && !phase.checkpointPassed
-    && phase.moduleIds.every(moduleId => foundationReady(moduleId, progress))
-  )?.checkpointTask;
-  uniquePush(items, checkpoint, 'checkpoint', 'Контрольная точка фазы');
-
-  for (const module of mastery.filter(item =>
-    item.level !== 'locked' && item.level !== 'mastered' && item.id !== focusModule?.id
-  )) {
-    if (items.length >= 10) break;
-    uniquePush(items, module.recommendedTask, 'new', `После текущего модуля: ${module.title}`);
-  }
+  for (const review of reviews) pushReview(items, review);
+  pushAction(items, primary, progress);
 
   const compact: SessionItem[] = [];
   let totalMinutes = 0;
   for (const item of items) {
-    if (compact.length >= 6) break;
-    if (compact.length >= 2 && totalMinutes >= targetMinutes - 4) break;
-    if (compact.length >= 3 && totalMinutes + item.minutes > targetMinutes + 6) continue;
+    const primaryItem = item.action === primary;
+    if (!primaryItem && compact.length && totalMinutes + item.minutes > Math.max(targetMinutes, 15)) continue;
     compact.push(item);
     totalMinutes += item.minutes;
   }
 
-  if (!compact.length) {
-    const fallback = mastery.find(item => item.level !== 'locked' && item.recommendedTask)?.recommendedTask
-      || tasks.find(task => !taskSatisfied(task, progress))
-      || tasks[0];
-    uniquePush(compact, fallback, 'new', 'Следующий шаг маршрута');
+  if (!compact.some(item => item.action === primary)) {
+    pushAction(compact, primary, progress);
     totalMinutes = compact.reduce((sum, item) => sum + item.minutes, 0);
   }
+
+  const focusModule = primary.moduleId
+    ? mastery.find(module => module.id === primary.moduleId) || null
+    : mastery.find(module => module.level !== 'locked' && module.level !== 'mastered') || null;
 
   return {
     items: compact,
     totalMinutes,
     reviewCount: compact.filter(item => item.reason === 'review' || item.reason === 'weakness').length,
-    newCount: compact.filter(item => item.reason === 'new').length,
+    newCount: compact.filter(item => item.reason === 'new' || item.reason === 'checkpoint').length,
     focusModule
   };
 }
@@ -275,9 +318,12 @@ export function readinessLabel(score: number) {
   return 'Маршрут только начинается';
 }
 
-export function mentorPlanContext(progress: Progress) {
+export function mentorPlanContext(
+  progress: Progress,
+  evidence: LearningSessionEvidence = { curriculum: emptyCurriculumProgress() }
+) {
   const mastery = moduleMastery(progress);
-  const session = buildDailySession(progress);
+  const session = buildDailySession(progress, 25, evidence);
   const weakest = [...mastery]
     .filter(item => item.level !== 'locked')
     .sort((left, right) => left.index - right.index || left.mastery - right.mastery)
@@ -285,7 +331,7 @@ export function mentorPlanContext(progress: Progress) {
   return {
     readiness: overallReadiness(progress),
     weakest: weakest.map(item => ({ title: item.title, mastery: item.mastery, errors: item.incorrect, hints: item.hints })),
-    session: session.items.map(item => ({ title: item.task.title, reason: item.reason, topic: item.task.topic })),
+    session: session.items.map(item => ({ title: item.title, reason: item.reason, topic: item.topic })),
     completed: progress.completed.length,
     total: tasks.length
   };
