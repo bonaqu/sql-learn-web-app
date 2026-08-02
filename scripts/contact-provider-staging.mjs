@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 const baseUrl = requiredUrl('CONTACT_STAGING_BASE_URL');
 const probeSecret = required('CONTACT_STAGING_PROBE_SECRET', 32, 512);
@@ -154,7 +154,7 @@ while (Date.now() < deadline) {
 }
 
 if (!evidence) throw new Error('No staging delivery timeline was returned');
-mkdirSync(resolve(evidencePath, '..'), { recursive: true });
+mkdirSync(dirname(evidencePath), { recursive: true });
 writeFileSync(evidencePath, `${JSON.stringify({ ...evidence, acceptance: terminal || 'timeout' }, null, 2)}\n`, { mode: 0o600 });
 
 if (terminal !== 'delivered') {
