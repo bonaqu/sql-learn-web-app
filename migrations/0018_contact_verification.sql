@@ -14,8 +14,9 @@ CREATE TABLE IF NOT EXISTS contact_verification_challenges (
   consumed_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  CHECK(expires_at >= created_at),
   CHECK(confirmed_at IS NULL OR confirmed_at >= created_at),
-  CHECK(consumed_at IS NULL OR confirmed_at IS NOT NULL)
+  CHECK(consumed_at IS NULL OR (confirmed_at IS NOT NULL AND consumed_at >= confirmed_at))
 );
 
 CREATE INDEX IF NOT EXISTS idx_contact_verification_destination
