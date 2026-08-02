@@ -214,10 +214,51 @@ assert.match(guidedHomeSource, /nextJourneyAction/,
   'The Today page must use the unified journey selector.');
 assert.doesNotMatch(guidedHomeSource, /tasks\.find\(/,
   'The Today page must not fall back to physical task-array order.');
-assert.match(guidedHomeSource, /CHECKPOINT_REPORTS_CHANGED_EVENT/,
-  'The Today page must react to checkpoint evidence.');
-assert.match(guidedHomeSource, /ASSESSMENT_REPORTS_CHANGED_EVENT/,
-  'The Today page must react to assessment evidence.');
+assert.match(guidedHomeSource, /JOURNEY_EVIDENCE_EVENTS/,
+  'The Today page must react to the shared curriculum/checkpoint/assessment evidence events.');
+for (const forbiddenImport of [
+  "import('../lib/assessment')",
+  "import('../lib/checkpoints')",
+  "import('../lib/curriculum-progress')"
+]) {
+  assert.ok(!guidedHomeSource.includes(forbiddenImport),
+    `The Today page must not load the heavy runtime through ${forbiddenImport}.`);
+}
+
+const evidenceSource = readFileSync(new URL('../src/lib/journey-evidence.ts', import.meta.url), 'utf8');
+for (const forbiddenDependency of [
+  "from './assessment'",
+  "from './checkpoints'",
+  "from './learning-path'",
+  "from './sqlite'"
+]) {
+  assert.ok(!evidenceSource.includes(forbiddenDependency),
+    `Lightweight journey evidence must not import ${forbiddenDependency}.`);
+}
+for (const marker of [
+  'MAX_EVIDENCE_BYTES',
+  'MAX_CHECKPOINT_REPORTS',
+  'MAX_ASSESSMENT_REPORTS',
+  'lessonChecksComplete',
+  'report.userId !== userId',
+  'report.passed !== true'
+]) {
+  assert.ok(evidenceSource.includes(marker), `Journey evidence safety boundary is missing ${marker}.`);
+}
+
+const checkpointSource = readFileSync(new URL('../src/lib/checkpoints.ts', import.meta.url), 'utf8');
+const assessmentSource = readFileSync(new URL('../src/lib/assessment.ts', import.meta.url), 'utf8');
+const curriculumProgressSource = readFileSync(new URL('../src/lib/curriculum-progress.ts', import.meta.url), 'utf8');
+for (const eventName of [
+  'sql-academy-checkpoint-reports-changed',
+  'sql-academy-assessment-reports-changed',
+  'sql-academy-curriculum-progress-changed'
+]) {
+  assert.ok(evidenceSource.includes(eventName), `Lightweight evidence is missing event ${eventName}.`);
+}
+assert.ok(checkpointSource.includes('sql-academy-checkpoint-reports-changed'));
+assert.ok(assessmentSource.includes('sql-academy-assessment-reports-changed'));
+assert.ok(curriculumProgressSource.includes('sql-academy-curriculum-progress-changed'));
 
 const journeyContract = readFileSync(new URL('../docs/learning-journey-contract.md', import.meta.url), 'utf8');
 for (const marker of ['Lesson', 'Independent practice', 'Checkpoint', 'Interview', 'Puzzle']) {
