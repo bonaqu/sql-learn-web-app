@@ -10,15 +10,15 @@ on:
         options:
           - email
           - sms
-      timeout_seconds:
+      timeout_ms:
         description: Maximum time to wait for a signed delivered callback
         required: true
-        default: '300'
+        default: '300000'
         type: choice
         options:
-          - '180'
-          - '300'
-          - '600'
+          - '180000'
+          - '300000'
+          - '600000'
 
 permissions:
   contents: read
@@ -35,7 +35,7 @@ jobs:
     environment: contact-staging
     env:
       CONTACT_STAGING_CHANNEL: ${{ inputs.channel }}
-      CONTACT_STAGING_TIMEOUT_MS: ${{ fromJSON(inputs.timeout_seconds) * 1000 }}
+      CONTACT_STAGING_TIMEOUT_MS: ${{ inputs.timeout_ms }}
       CONTACT_STAGING_BASE_URL: ${{ secrets.CONTACT_STAGING_BASE_URL }}
       CONTACT_STAGING_PROBE_SECRET: ${{ secrets.CONTACT_STAGING_PROBE_SECRET }}
       CONTACT_STAGING_DESTINATION: ${{ inputs.channel == 'email' && secrets.CONTACT_STAGING_EMAIL || secrets.CONTACT_STAGING_SMS }}
