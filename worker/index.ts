@@ -7,6 +7,8 @@ import { handleCapstoneRequest } from './capstones';
 import { handleCheckpointRequest } from './checkpoints';
 import { handleCommercialCapabilitiesRequest } from './commercial-capabilities';
 import { handleContactAccountRequest } from './contact-account';
+import { handleResendDeliveryEvent, handleTwilioDeliveryEvent } from './contact-delivery-events';
+import { handleContactStagingProbe } from './contact-staging-probe';
 import { handleContactVerificationRequest } from './contact-verification';
 import { handleCurriculumRequest } from './curriculum';
 import { handleDialectLabRequest } from './dialect-labs';
@@ -118,6 +120,29 @@ export default {
   async fetch(request: Request, env: Cloudflare.Env): Promise<Response> {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) return withSecurityHeaders(await core.fetch(request, env), request);
+
+    if (url.pathname === '/api/integrations/resend/events') {
+      try {
+        return withSecurityHeaders(await handleResendDeliveryEvent(request, env), request);
+      } catch (error) {
+        return withSecurityHeaders(pipelineFailure(error, url.pathname, 'commercial'), request);
+      }
+    }
+    if (url.pathname === '/api/integrations/twilio/status') {
+      try {
+        return withSecurityHeaders(await handleTwilioDeliveryEvent(request, env), request);
+      } catch (error) {
+        return withSecurityHeaders(pipelineFailure(error, url.pathname, 'commercial'), request);
+      }
+    }
+    if (url.pathname === '/api/ops/contact-staging/timeline') {
+      try {
+        const response = await handleContactStagingProbe(request, env);
+        if (response) return withSecurityHeaders(response, request);
+      } catch (error) {
+        return withSecurityHeaders(pipelineFailure(error, url.pathname, 'commercial'), request);
+      }
+    }
 
     const origin = allowedOrigin(request, env);
     if (origin === false) {
