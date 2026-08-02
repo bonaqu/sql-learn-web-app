@@ -36,6 +36,29 @@ export function guidedHome(page: Page) {
   return page.locator('[data-testid="guided-first-run"], [data-testid="guided-today"]');
 }
 
+async function waitForCurriculumSyncCycle(page: Page) {
+  await page.evaluate(() => new Promise<void>((resolve, reject) => {
+    const eventName = 'sql-academy-curriculum-sync-status';
+    const timeout = window.setTimeout(() => {
+      window.removeEventListener(eventName, onStatus as EventListener);
+      reject(new Error('Curriculum sync did not settle before fixture seeding'));
+    }, 15_000);
+    const finish = (error?: Error) => {
+      window.clearTimeout(timeout);
+      window.removeEventListener(eventName, onStatus as EventListener);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onStatus = (event: Event) => {
+      const detail = (event as CustomEvent<{ status?: string; message?: string }>).detail;
+      if (detail?.status === 'synced' || detail?.status === 'offline') finish();
+      if (detail?.status === 'error') finish(new Error(detail.message || 'Curriculum sync failed'));
+    };
+    window.addEventListener(eventName, onStatus as EventListener);
+    window.dispatchEvent(new Event('online'));
+  }));
+}
+
 export async function seedFirstLessonEvidence(page: Page) {
   const lesson = curriculumLessons[0];
   const answeredAt = new Date().toISOString();
@@ -50,6 +73,7 @@ export async function seedFirstLessonEvidence(page: Page) {
     updatedAt: answeredAt
   };
 
+  await waitForCurriculumSyncCycle(page);
   await page.evaluate(payload => {
     const session = JSON.parse(localStorage.getItem('sql-academy-auth-session-v2') || 'null') as {
       userId?: string;
