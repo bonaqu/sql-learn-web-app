@@ -53,6 +53,7 @@ type VerificationSecretKey =
 export type VerificationProviderEnvironment = Cloudflare.Env & Partial<Record<VerificationSecretKey, string>>;
 
 const PROVIDER_TIMEOUT_MS = 8_000;
+const MAX_PROVIDER_RESPONSE_BYTES = 64 * 1024;
 const MESSAGE_ID_PATTERN = /^[A-Za-z0-9._:/-]{1,200}$/;
 const EMAIL_PATTERN = /^[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+$/;
 const E164_PATTERN = /^\+[1-9]\d{7,14}$/;
@@ -161,6 +162,43 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, tim
   }
 }
 
+async function boundedProviderJson<T>(response: Response): Promise<T | null> {
+  const contentLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > MAX_PROVIDER_RESPONSE_BYTES) {
+    await response.body?.cancel('provider-response-too-large').catch(() => undefined);
+    throw new Error('VERIFICATION_PROVIDER_RESPONSE_TOO_LARGE');
+  }
+  if (!response.body) return null;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_PROVIDER_RESPONSE_BYTES) {
+        await reader.cancel('provider-response-too-large').catch(() => undefined);
+        throw new Error('VERIFICATION_PROVIDER_RESPONSE_TOO_LARGE');
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const combined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder().decode(combined)) as T;
+  } catch {
+    return null;
+  }
+}
+
 export class DisabledVerificationProvider implements VerificationProvider {
   readonly name = 'disabled' as const;
   async send(): Promise<never> {
@@ -237,7 +275,7 @@ export class ResendVerificationProvider implements EmailVerificationProvider {
           ]
         })
       });
-      const payload = await response.json().catch(() => null) as { id?: string } | null;
+      const payload = await boundedProviderJson<{ id?: string }>(response);
       if (!response.ok || !payload?.id || !MESSAGE_ID_PATTERN.test(payload.id)) {
         throw new Error('VERIFICATION_PROVIDER_REJECTED');
       }
@@ -280,7 +318,7 @@ export class TwilioVerificationProvider implements SmsVerificationProvider {
           body: body.toString()
         }
       );
-      const payload = await response.json().catch(() => null) as { sid?: string; status?: string } | null;
+      const payload = await boundedProviderJson<{ sid?: string; status?: string }>(response);
       if (!response.ok || !payload?.sid || !TWILIO_MESSAGE_PATTERN.test(payload.sid)) {
         throw new Error('VERIFICATION_PROVIDER_REJECTED');
       }
