@@ -27,16 +27,17 @@ for (let index = 0; index < lessonTransitions.length; index += 1) {
   };
   const fieldMinimums = transition.kind === 'within-module'
     ? { carryForward: 35, limitation: 40, newMentalModel: 30, evidencePrompt: 55 }
-    : { carryForward: 70, limitation: 70, newMentalModel: 70, evidencePrompt: 70 };
+    : { carryForward: 55, limitation: 75, newMentalModel: 70, evidencePrompt: 65 };
 
   for (const [field, value] of Object.entries(narrative)) {
     const minimum = fieldMinimums[field as keyof typeof fieldMinimums];
     assert.ok(value.length >= minimum, `${transition.id} ${field} has ${value.length} chars; minimum is ${minimum}`);
+    assert.ok(!/следующая тема|просто продолж|становится сложнее/i.test(value), `${transition.id} ${field} contains placeholder prose`);
   }
-  if (transition.kind === 'within-module') {
-    const totalLength = Object.values(narrative).reduce((sum, value) => sum + value.length, 0);
-    assert.ok(totalLength >= 220, `${transition.id} intra-module narrative totals ${totalLength} chars; minimum is 220`);
-  }
+
+  const totalLength = Object.values(narrative).reduce((sum, value) => sum + value.length, 0);
+  const totalMinimum = transition.kind === 'within-module' ? 220 : 310;
+  assert.ok(totalLength >= totalMinimum, `${transition.id} narrative totals ${totalLength} chars; minimum is ${totalMinimum}`);
 
   if (from.module === to.module) {
     assert.equal(transition.kind, 'within-module', `${transition.id} must be an intra-module transition`);
