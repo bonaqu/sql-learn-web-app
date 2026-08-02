@@ -17,6 +17,8 @@ const coverage = new Map<SqlSyntaxCapabilityId, Set<string>>();
 const record = (capabilityId: SqlSyntaxCapabilityId, location: string) => {
   coverage.set(capabilityId, new Set([...(coverage.get(capabilityId) || []), location]));
 };
+const detects = (source: string, capabilityId: SqlSyntaxCapabilityId) =>
+  detectSqlSyntaxCapabilities(source).some(item => item.id === capabilityId);
 
 assert.equal(validateSyntaxCapabilityOwners().length, 0, 'Every syntax capability owner must be a canonical module');
 assert.equal(new Set(sqlSyntaxCapabilities.map(item => item.id)).size, sqlSyntaxCapabilities.length, 'Syntax capability ids must be unique');
@@ -25,6 +27,8 @@ for (const capability of sqlSyntaxCapabilities) {
   assert.ok(capability.rationale.length >= 45, `${capability.id}: rationale must explain the learning dependency`);
   assert.notEqual(moduleOrderIndex(capability.introducedBy), Number.MAX_SAFE_INTEGER, `${capability.id}: unknown owner ${capability.introducedBy}`);
 }
+assert.equal(sqlSyntaxCapabilities.find(item => item.id === 'explain')?.introducedBy, 'indexes', 'EXPLAIN must begin as index access-path evidence');
+assert.equal(sqlSyntaxCapabilities.find(item => item.id === 'upsert')?.introducedBy, 'dml', 'UPSERT must begin in the DML module');
 
 const ignored = stripSqlCommentsAndLiterals(`
   SELECT 'GROUP BY JOIN OVER ( RETURNING' AS note;
@@ -32,9 +36,20 @@ const ignored = stripSqlCommentsAndLiterals(`
   /* ALTER TABLE hidden ADD COLUMN value TEXT; */
 `);
 assert.deepEqual(detectSqlSyntaxCapabilities(ignored).map(item => item.id), [], 'Strings or comments create false syntax capabilities');
-assert.ok(detectSqlSyntaxCapabilities('WITH x AS (SELECT 1) SELECT * FROM x;').some(item => item.id === 'cte'), 'CTE detection is broken');
-assert.ok(detectSqlSyntaxCapabilities("SELECT payload ->> '$.service' FROM events;").some(item => item.id === 'json-sql'), 'JSON operator detection is broken');
-assert.ok(detectSqlSyntaxCapabilities('SELECT SUM(value) OVER (ORDER BY id ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) FROM metrics;').some(item => item.id === 'window-frame'), 'Window frame detection is broken');
+assert.ok(detects('WITH x AS (SELECT 1) SELECT * FROM x;', 'cte'), 'CTE detection is broken');
+assert.ok(detects("SELECT payload ->> '$.service' FROM events;", 'json-sql'), 'JSON operator detection is broken');
+assert.ok(detects('SELECT SUM(value) OVER (ORDER BY id ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) FROM metrics;', 'window-frame'), 'Window frame detection is broken');
+
+const schemaTask = tasks.find(task => task.id === 'task-131');
+const filterTask = tasks.find(task => task.id === 'task-151');
+const schemaLesson = curriculumLessons.find(lesson => lesson.id === 'lesson-schema-evolution-foundation');
+const filterLesson = curriculumLessons.find(lesson => lesson.id === 'lesson-conditional-aggregation-foundation');
+assert.ok(schemaTask && detects(schemaTask.solution, 'schema-evolution'), 'task-131 must introduce an executable additive ALTER TABLE migration');
+assert.ok(filterTask && detects(filterTask.solution, 'conditional-aggregate-filter'), 'task-151 must introduce aggregate FILTER evidence');
+assert.ok(schemaLesson && detects(schemaLesson.example.sql, 'schema-evolution'), 'Schema evolution foundation lesson must show ALTER TABLE');
+assert.ok(filterLesson && detects(filterLesson.example.sql, 'conditional-aggregate-filter'), 'Conditional aggregation foundation lesson must show FILTER');
+assert.equal(schemaLesson?.example.sql, schemaTask?.solution, 'Schema evolution lesson and first practice diverged');
+assert.equal(filterLesson?.example.sql, filterTask?.solution, 'Conditional aggregation lesson and first practice diverged');
 
 for (const task of tasks) {
   const sources = [
