@@ -28,7 +28,6 @@ export type JourneyStage =
 export type JourneyActionKind =
   | 'lesson'
   | 'task'
-  | 'review'
   | 'checkpoint'
   | 'assessment'
   | 'project'
@@ -54,7 +53,6 @@ export type JourneyOptions = {
   includeReview?: boolean;
   passedCheckpointIds?: readonly string[];
   assessmentComplete?: boolean;
-  preferredModuleIds?: readonly string[];
   bypassedModuleIds?: readonly string[];
 };
 
@@ -234,17 +232,6 @@ function reviewAction(progress: Progress): JourneyAction | null {
   );
 }
 
-function orderedModuleIds(preferred: readonly string[] = []) {
-  const preference = new Set(preferred);
-  return phaseDefinitions.flatMap(phase => {
-    const moduleIds = [...phase.moduleIds];
-    return [
-      ...moduleIds.filter(moduleId => preference.has(moduleId)),
-      ...moduleIds.filter(moduleId => !preference.has(moduleId))
-    ];
-  });
-}
-
 export function nextJourneyAction(
   progress: Progress,
   curriculum: CurriculumProgressV1,
@@ -257,13 +244,9 @@ export function nextJourneyAction(
 
   const passedCheckpoints = new Set(options.passedCheckpointIds || []);
   const bypassedModules = new Set(options.bypassedModuleIds || []);
-  const preferredModules = options.preferredModuleIds || [];
-  const orderedModules = orderedModuleIds(preferredModules);
 
   for (const phase of phaseDefinitions) {
-    const phaseModules = orderedModules.filter(moduleId =>
-      phase.moduleIds.some(id => id === moduleId)
-    );
+    const phaseModules = [...phase.moduleIds];
     for (const moduleId of phaseModules) {
       const foundation = nextFoundationAction(moduleId, progress, curriculum, bypassedModules);
       if (foundation) return foundation;
