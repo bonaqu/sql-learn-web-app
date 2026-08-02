@@ -5,7 +5,8 @@ import {
   ClipboardCheck,
   Link2,
   Play,
-  Route
+  Route,
+  Trophy
 } from 'lucide-react';
 import { curriculumCheckpoints } from '../data/complete-curriculum';
 import {
@@ -15,6 +16,7 @@ import {
 } from '../data/lesson-bridges';
 import { tasks } from '../data/course-catalog';
 import { openAcademyCheckpoint, openAcademyTask } from '../lib/academy-navigation';
+import { openDeferredFeature } from '../lib/deferred-features';
 import '../lesson-continuity.css';
 
 type LessonContinuityPanelProps = {
@@ -54,6 +56,16 @@ function EntryPanel() {
   </section>;
 }
 
+function CourseCompletionPanel() {
+  return <section className="lesson-continuity outgoing complete" data-testid="lesson-continuity-complete">
+    <header><span><Trophy /></span><div><small>Теоретическая цепочка завершена</small><h2>Экспертность подтверждается evidence, а не последней прочитанной карточкой</h2></div></header>
+    <p className="lesson-continuity-evidence"><strong>Что дальше:</strong> «Мой план» проверит оставшиеся independent-задачи, checkpoints и assessment, а затем направит в capstone. Ничего уже пройденного повторять искусственно не придётся.</p>
+    <div className="lesson-continuity-actions">
+      <button type="button" className="primary" onClick={() => openDeferredFeature('learning-path')}><Route />Открыть фактический следующий этап</button>
+    </div>
+  </section>;
+}
+
 function OutgoingPanel({ transition, onOpenLesson }: {
   transition: LessonTransition;
   onOpenLesson: (lessonId: string) => void;
@@ -88,5 +100,5 @@ export default function LessonContinuityPanel({ lessonId, direction, onOpenLesso
     return transition ? <IncomingPanel transition={transition} /> : <EntryPanel />;
   }
   const transition = transitionOutOfLesson(lessonId);
-  return transition ? <OutgoingPanel transition={transition} onOpenLesson={onOpenLesson} /> : null;
+  return transition ? <OutgoingPanel transition={transition} onOpenLesson={onOpenLesson} /> : <CourseCompletionPanel />;
 }
