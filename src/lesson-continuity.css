@@ -95,9 +95,68 @@
 .lesson-continuity-actions button.primary:hover { background: var(--accent-hover); }
 .lesson-continuity-actions svg { width: 17px; height: 17px; }
 
+.curriculum-continuity-companion {
+  position: fixed;
+  z-index: 10050;
+  right: 22px;
+  bottom: 22px;
+  width: min(430px, calc(100vw - 44px));
+  border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--border));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--panel) 97%, transparent);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.curriculum-continuity-toggle {
+  width: 100%;
+  min-height: 62px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  border: 0;
+  background: linear-gradient(135deg, var(--accent-soft), transparent);
+  padding: 11px 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.curriculum-continuity-toggle > svg { width: 19px; height: 19px; color: var(--accent-2); }
+.curriculum-continuity-toggle span { min-width: 0; }
+.curriculum-continuity-toggle strong,
+.curriculum-continuity-toggle small { display: block; }
+.curriculum-continuity-toggle strong { font-size: 14px; }
+.curriculum-continuity-toggle small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.curriculum-continuity-body {
+  max-height: min(70vh, 760px);
+  overflow: auto;
+  padding: 14px;
+  border-top: 1px solid var(--border);
+}
+.curriculum-continuity-body .lesson-continuity { margin: 0 0 12px; padding: 16px; }
+.curriculum-continuity-body .lesson-continuity:last-child { margin-bottom: 0; }
+.curriculum-continuity-body .lesson-continuity-grid { grid-template-columns: 1fr; }
+.curriculum-continuity-body .lesson-continuity > header h2 { font-size: 16px; }
+.curriculum-continuity-body .lesson-continuity-actions { display: grid; }
+.curriculum-continuity-body .lesson-continuity-actions button { width: 100%; }
+
 @media (max-width: 880px) {
   .lesson-continuity { padding: 17px; }
   .lesson-continuity-grid { grid-template-columns: 1fr; }
   .lesson-continuity-actions { display: grid; }
   .lesson-continuity-actions button { width: 100%; }
+  .curriculum-continuity-companion {
+    right: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    width: calc(100vw - 20px);
+  }
+  .curriculum-continuity-body { max-height: 58vh; }
 }
