@@ -31,11 +31,11 @@ The table enforces:
 
 No raw email address or phone number is persisted.
 
-`contact_ticket_consumptions` records the challenge, user, channel, purpose, digest and consumption time. Its primary key makes replay durable even if an old challenge row is later pruned.
+`contact_ticket_consumptions` records the challenge, user, channel, purpose, digest and consumption time. Its non-null primary key makes replay durable even if an old challenge row is later pruned.
 
 ## Transaction guard
 
-Before a consumption receipt can be inserted, a D1 trigger verifies that the matching challenge:
+The receipt statement selects its challenge ID only when the matching challenge:
 
 - was delivered by the provider;
 - was confirmed;
@@ -43,7 +43,11 @@ Before a consumption receipt can be inserted, a D1 trigger verifies that the mat
 - matches the signed channel, purpose and digest;
 - is still inside the ten-minute ticket lifetime.
 
-The receipt insertion marks the challenge consumed through an `AFTER INSERT` trigger. The receipt, account/contact mutation and challenge update are executed in one D1 batch. A uniqueness error or invalid ticket aborts the transaction, so the ticket is not burned when the requested account mutation fails.
+When any condition fails, the scalar subquery produces `NULL`; the non-null receipt primary key rejects the statement. A repeated ticket instead fails the same primary key's uniqueness constraint.
+
+Receipt creation, the explicit challenge `consumed_at` update and the account/contact mutation execute in one D1 batch. D1 treats the batch as a transaction and rolls back the full sequence when any statement fails. Therefore duplicate ownership or another account mutation error does not burn the ticket, while successful use leaves both a durable receipt and consumed challenge state.
+
+This triggerless design is compatible with remote Wrangler migrations and preserves the same database-enforced expiry/replay boundary.
 
 ## API
 
