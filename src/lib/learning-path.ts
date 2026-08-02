@@ -241,7 +241,10 @@ function actionLabel(action: JourneyAction) {
 }
 
 function pushAction(items: SessionItem[], action: JourneyAction, progress: Progress) {
-  if (action.task && items.some(item => item.task?.id === action.task?.id)) return;
+  if (action.task) {
+    const duplicateIndex = items.findIndex(item => item.task?.id === action.task?.id);
+    if (duplicateIndex >= 0) items.splice(duplicateIndex, 1);
+  }
   items.push({
     id: `${action.kind}:${action.lessonId || action.checkpointId || action.projectId || action.task?.id || action.stage}`,
     task: action.task,
