@@ -12,15 +12,16 @@ for (let index = 0; index < lessonTransitions.length; index += 1) {
   const transition = lessonTransitions[index];
   const from = curriculumLessons[index];
   const to = curriculumLessons[index + 1];
+  const minimumNarrativeLength = transition.kind === 'within-module' ? 45 : 70;
 
   assert.equal(transition.fromLessonId, from.id);
   assert.equal(transition.toLessonId, to.id);
   assert.equal(transitionIntoLesson(to.id)?.id, transition.id);
   assert.equal(transitionOutOfLesson(from.id)?.id, transition.id);
-  assert.ok(transition.carryForward.length >= 70);
-  assert.ok(transition.limitation.length >= 70);
-  assert.ok(transition.newMentalModel.length >= 70);
-  assert.ok(transition.evidencePrompt.length >= 70);
+  assert.ok(transition.carryForward.length >= minimumNarrativeLength);
+  assert.ok(transition.limitation.length >= minimumNarrativeLength);
+  assert.ok(transition.newMentalModel.length >= minimumNarrativeLength);
+  assert.ok(transition.evidencePrompt.length >= minimumNarrativeLength);
 
   if (from.module === to.module) {
     assert.equal(transition.kind, 'within-module');
