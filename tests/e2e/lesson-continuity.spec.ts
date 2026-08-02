@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { curriculumLessons } from '../../src/data/complete-curriculum';
+import { lessonChecks } from '../../src/data/lesson-checks';
 import { lessonTransitions } from '../../src/data/lesson-bridges';
 import { OPEN_DEFERRED_FEATURE_EVENT } from '../../src/lib/deferred-features';
 import { authenticatePage } from './auth-helper';
@@ -7,6 +8,46 @@ import { authenticatePage } from './auth-helper';
 async function expectNoHorizontalOverflow(page: import('@playwright/test').Page) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(overflow).toBe(false);
+}
+
+async function seedLessonsThrough(page: import('@playwright/test').Page, lessonId: string) {
+  const finalIndex = curriculumLessons.findIndex(lesson => lesson.id === lessonId);
+  const lessons = curriculumLessons.slice(0, finalIndex + 1);
+  const answeredAt = new Date().toISOString();
+  const payload = {
+    lessonIds: lessons.map(lesson => lesson.id),
+    sectionIds: lessons.flatMap(lesson => lesson.sections.map(section => section.id)),
+    answers: Object.fromEntries(lessons.flatMap(lesson => lessonChecks(lesson).map(check => [check.id, {
+      optionIndex: check.correctIndex,
+      correct: true,
+      answeredAt
+    }]))),
+    bookmark: {
+      lessonId,
+      sectionId: lessons.at(-1)?.sections[0]?.id || '',
+      updatedAt: answeredAt
+    },
+    updatedAt: answeredAt
+  };
+
+  await page.evaluate(progress => {
+    const session = JSON.parse(localStorage.getItem('sql-academy-auth-session-v2') || 'null') as {
+      userId?: string;
+      username?: string;
+    } | null;
+    const ownerId = session?.userId || session?.username || 'local';
+    localStorage.setItem(`sql-academy-curriculum-progress-v1:${ownerId}`, JSON.stringify({
+      version: 1,
+      completedSections: progress.sectionIds,
+      completedLessons: progress.lessonIds,
+      completedProjects: [],
+      answers: progress.answers,
+      projectDrafts: {},
+      bookmark: progress.bookmark,
+      updatedAt: progress.updatedAt
+    }));
+    window.dispatchEvent(new CustomEvent('sql-academy-curriculum-progress-changed'));
+  }, payload);
 }
 
 async function openCurriculumLesson(page: import('@playwright/test').Page, lessonId: string) {
@@ -45,6 +86,7 @@ test('desktop curriculum explains why each lesson follows and routes phase bound
 
   const phaseTransition = lessonTransitions.find(transition => transition.kind === 'phase');
   expect(phaseTransition).toBeTruthy();
+  await seedLessonsThrough(page, phaseTransition!.fromLessonId);
   await openCurriculumLesson(page, phaseTransition!.fromLessonId);
   const phaseLesson = curriculumLessons.find(lesson => lesson.id === phaseTransition!.fromLessonId)!;
   await expect(studio.getByRole('heading', { name: phaseLesson.title, exact: true })).toBeVisible();
