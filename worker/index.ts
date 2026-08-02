@@ -152,14 +152,6 @@ export default {
     }
     if (commercialResponse) return finalize(commercialResponse, request, origin);
 
-    let contactVerificationResponse: Response | null;
-    try {
-      contactVerificationResponse = await handleContactVerificationRequest(request, env);
-    } catch (error) {
-      return finalize(pipelineFailure(error, url.pathname, 'commercial'), request, origin);
-    }
-    if (contactVerificationResponse) return finalize(contactVerificationResponse, request, origin);
-
     let turnstileResponse: Response | null;
     try {
       turnstileResponse = await enforceTurnstile(request, env);
@@ -167,6 +159,14 @@ export default {
       return finalize(pipelineFailure(error, url.pathname, 'commercial'), request, origin);
     }
     if (turnstileResponse) return finalize(turnstileResponse, request, origin);
+
+    let contactVerificationResponse: Response | null;
+    try {
+      contactVerificationResponse = await handleContactVerificationRequest(request, env);
+    } catch (error) {
+      return finalize(pipelineFailure(error, url.pathname, 'commercial'), request, origin);
+    }
+    if (contactVerificationResponse) return finalize(contactVerificationResponse, request, origin);
 
     let masteryProgressResponse: Response | null;
     try {
