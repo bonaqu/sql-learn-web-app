@@ -12,7 +12,7 @@
     "validate:core-progression": "tsx scripts/validate-core-task-progression.ts",
     "validate:advanced-progression": "tsx scripts/validate-advanced-task-progression.ts",
     "validate:advanced-transfer": "tsx scripts/validate-advanced-transfer-contracts.ts",
-    "validate:playwright-worker": "tsx scripts/validate-playwright-worker-watchdog.ts",
+    "validate:playwright-worker": "node --check scripts/playwright-worker-watchdog.mjs && tsx scripts/validate-playwright-worker-watchdog.ts",
     "validate:workspace": "tsx scripts/validate-workspace-readiness.ts",
     "validate:lesson-bridges": "tsx scripts/validate-lesson-bridges.ts",
     "validate:syntax-frontier": "tsx scripts/validate-sql-syntax-frontier.ts",
