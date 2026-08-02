@@ -5,7 +5,8 @@ import { join } from 'node:path';
 
 const outputLog = 'wrangler-playwright.log';
 const internalLog = 'wrangler-internal-playwright.log';
-const maxRestarts = Math.max(0, Number(process.env.PLAYWRIGHT_WORKER_RESTARTS || 2));
+const configuredRestarts = Number(process.env.PLAYWRIGHT_WORKER_RESTARTS || 2);
+const maxRestarts = Math.min(5, Math.max(0, Number.isFinite(configuredRestarts) ? Math.floor(configuredRestarts) : 2));
 const wranglerLogsDirectory = join(homedir(), '.config', '.wrangler', 'logs');
 const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 const args = [
@@ -16,7 +17,7 @@ let child = null;
 let restartCount = 0;
 let stopping = false;
 let sessionStartedAt = Date.now();
-let copiedInternalLogs = new Set();
+const copiedInternalLogs = new Set();
 
 function write(message) {
   const line = message.endsWith('\n') ? message : `${message}\n`;
