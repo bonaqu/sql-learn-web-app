@@ -55,7 +55,7 @@ export type LearningPhaseId = typeof phaseDefinitions[number]['id'];
 
 export const canonicalModuleIds = phaseDefinitions.flatMap(phase => [...phase.moduleIds]);
 
-const moduleOrder = new Map(canonicalModuleIds.map((id, index) => [id, index]));
+const moduleOrder = new Map<string, number>(canonicalModuleIds.map((id, index) => [id, index]));
 const modeOrder: Record<TaskMode, number> = {
   lesson: 0,
   practice: 1,
