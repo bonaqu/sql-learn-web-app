@@ -148,12 +148,14 @@ async function hmacKey(secret: string, usages: KeyUsage[]) {
 
 async function hmacBytes(secret: string, value: string) {
   const key = await hmacKey(secret, ['sign']);
-  return new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value)));
+  const data = ownedBuffer(new TextEncoder().encode(value));
+  return new Uint8Array(await crypto.subtle.sign('HMAC', key, data));
 }
 
 async function verifyHmac(secret: string, value: string, signature: Uint8Array) {
   const key = await hmacKey(secret, ['verify']);
-  return crypto.subtle.verify('HMAC', key, ownedBuffer(signature), new TextEncoder().encode(value));
+  const data = ownedBuffer(new TextEncoder().encode(value));
+  return crypto.subtle.verify('HMAC', key, ownedBuffer(signature), data);
 }
 
 function bytesToHex(bytes: Uint8Array) {
@@ -193,6 +195,16 @@ async function destinationDigest(
   secret: string
 ) {
   return bytesToHex(await hmacBytes(secret, `sql-academy/contact-destination/v1:${channel}:${destination}`));
+}
+
+export async function contactDestinationDigest(
+  channel: VerificationChannel,
+  destination: unknown,
+  env: ContactVerificationEnvironment
+) {
+  const normalized = normalizeVerificationDestination(channel, destination);
+  const secret = contactVerificationSigningSecret(env);
+  return normalized && secret ? destinationDigest(channel, normalized, secret) : null;
 }
 
 function codeMessage(row: Pick<ContactChallengeRow, 'challenge_id' | 'destination_digest' | 'purpose'>, code: string) {
@@ -259,17 +271,6 @@ function ticketPayload(row: ContactChallengeRow): ContactVerificationTicketPaylo
   };
 }
 
-export async function createContactVerificationTicket(
-  payload: ContactVerificationTicketPayload,
-  env: ContactVerificationEnvironment
-) {
-  const secret = contactVerificationSigningSecret(env);
-  if (!secret) throw new Error('CONTACT_VERIFICATION_SIGNING_DISABLED');
-  const encoded = utf8Base64Url(JSON.stringify(payload));
-  const signature = bytesToBase64Url(await hmacBytes(secret, `sql-academy/contact-ticket/v1:${encoded}`));
-  return `${encoded}.${signature}`;
-}
-
 function validTicketPayload(value: unknown): value is ContactVerificationTicketPayload {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const payload = value as Partial<ContactVerificationTicketPayload>;
@@ -284,6 +285,21 @@ function validTicketPayload(value: unknown): value is ContactVerificationTicketP
     && Number.isFinite(Date.parse(payload.issuedAt))
     && typeof payload.expiresAt === 'string'
     && Number.isFinite(Date.parse(payload.expiresAt));
+}
+
+export async function createContactVerificationTicket(
+  payload: ContactVerificationTicketPayload,
+  env: ContactVerificationEnvironment
+) {
+  const secret = contactVerificationSigningSecret(env);
+  const issuedAt = Date.parse(payload.issuedAt);
+  const expiresAt = Date.parse(payload.expiresAt);
+  if (!secret
+    || !validTicketPayload(payload)
+    || expiresAt - issuedAt !== TICKET_TTL_MS) throw new Error('INVALID_CONTACT_VERIFICATION_TICKET');
+  const encoded = utf8Base64Url(JSON.stringify(payload));
+  const signature = bytesToBase64Url(await hmacBytes(secret, `sql-academy/contact-ticket/v1:${encoded}`));
+  return `${encoded}.${signature}`;
 }
 
 export async function verifyContactVerificationTicket(
@@ -325,23 +341,25 @@ export async function consumeContactVerificationTicket(
 ): Promise<ContactVerificationTicketPayload | null> {
   const payload = await verifyContactVerificationTicket(ticket, env, expected);
   if (!payload || !env.DB) return null;
+  const now = sqliteTime();
   const consumed = await env.DB.prepare(`UPDATE contact_verification_challenges
     SET consumed_at = ?, updated_at = ?
     WHERE challenge_id = ? AND channel = ? AND purpose = ? AND destination_digest = ?
       AND confirmed_at IS NOT NULL AND consumed_at IS NULL`).bind(
-      sqliteTime(), sqliteTime(), payload.challengeId, payload.channel, payload.purpose, payload.destinationDigest
+      now, now, payload.challengeId, payload.channel, payload.purpose, payload.destinationDigest
     ).run();
   return (consumed.meta.changes || 0) === 1 ? payload : null;
 }
 
 async function pruneChallenges(env: ContactVerificationEnvironment) {
+  const now = sqliteTime();
   const cutoff = sqliteTime(new Date(Date.now() - 86_400_000));
   await env.DB.prepare(`DELETE FROM contact_verification_challenges WHERE challenge_id IN (
     SELECT challenge_id FROM contact_verification_challenges
     WHERE (expires_at < ? AND confirmed_at IS NULL)
        OR (consumed_at IS NOT NULL AND consumed_at < ?)
     ORDER BY updated_at ASC LIMIT 100
-  )`).bind(sqliteTime(), cutoff).run();
+  )`).bind(now, cutoff).run();
 }
 
 async function createChallenge(request: Request, env: ContactVerificationEnvironment) {
@@ -384,6 +402,7 @@ async function createChallenge(request: Request, env: ContactVerificationEnviron
 
   const challengeId = crypto.randomUUID();
   const code = secureSixDigitCode();
+  const createdAt = sqliteTime(new Date(now));
   const expiresAt = sqliteTime(new Date(now + CHALLENGE_TTL_MS));
   const maskedDestination = maskVerificationDestination(body.channel, destination);
   const verifier = await codeVerifier(challengeId, digest, body.purpose, code, secret);
@@ -399,8 +418,8 @@ async function createChallenge(request: Request, env: ContactVerificationEnviron
     verifier,
     MAX_CODE_ATTEMPTS,
     expiresAt,
-    sqliteTime(new Date(now)),
-    sqliteTime(new Date(now))
+    createdAt,
+    createdAt
   ).run();
 
   try {
@@ -412,21 +431,38 @@ async function createChallenge(request: Request, env: ContactVerificationEnviron
       code,
       expiresAt
     });
-    const updated = await env.DB.prepare(`UPDATE contact_verification_challenges
-      SET provider_message_id = ?, updated_at = ?
-      WHERE challenge_id = ? AND provider_message_id IS NULL`).bind(
-        delivery.providerMessageId, sqliteTime(), challengeId
-      ).run();
+    const persistedAt = sqliteTime();
+    const [updated] = await env.DB.batch([
+      env.DB.prepare(`UPDATE contact_verification_challenges
+        SET provider_message_id = ?, updated_at = ?
+        WHERE challenge_id = ? AND provider_message_id IS NULL`).bind(
+          delivery.providerMessageId, persistedAt, challengeId
+        ),
+      env.DB.prepare(`UPDATE contact_verification_challenges
+        SET attempts_remaining = 0, expires_at = ?, updated_at = ?
+        WHERE channel = ? AND purpose = ? AND destination_digest = ? AND challenge_id <> ?
+          AND confirmed_at IS NULL AND consumed_at IS NULL AND expires_at > ?`).bind(
+          persistedAt,
+          persistedAt,
+          body.channel,
+          body.purpose,
+          digest,
+          challengeId,
+          persistedAt
+        )
+    ]);
     if ((updated.meta.changes || 0) !== 1) throw new Error('VERIFICATION_CHALLENGE_PERSISTENCE_FAILED');
   } catch (error) {
     await env.DB.prepare('DELETE FROM contact_verification_challenges WHERE challenge_id = ?')
       .bind(challengeId).run();
-    const message = error instanceof Error ? error.message.slice(0, 120) : 'UnknownError';
+    const code = error instanceof Error && /^VERIFICATION_[A-Z_]+$/.test(error.message)
+      ? error.message
+      : 'VERIFICATION_PROVIDER_UNAVAILABLE';
     console.error('contact_verification_delivery_failed', {
       challengeId,
       channel: body.channel,
       purpose: body.purpose,
-      message
+      code
     });
     return json({ error: 'Verification delivery is temporarily unavailable' }, 503, {
       'retry-after': '60'
@@ -458,6 +494,7 @@ async function confirmChallenge(request: Request, env: ContactVerificationEnviro
   let row = await env.DB.prepare('SELECT * FROM contact_verification_challenges WHERE challenge_id = ?')
     .bind(body.challengeId).first<ContactChallengeRow>();
   if (!row || !contactVerificationReady(row.channel, env)) return json({ error: 'Verification challenge is invalid' }, 400);
+  if (!row.provider_message_id) return json({ error: 'Verification challenge is not ready' }, 409);
   if (row.consumed_at) return json({ error: 'Verification ticket was already used' }, 409);
   if (parseSqliteTime(row.expires_at) <= Date.now() && !row.confirmed_at) {
     return json({ error: 'Verification challenge expired' }, 410);
@@ -466,14 +503,15 @@ async function confirmChallenge(request: Request, env: ContactVerificationEnviro
 
   const secret = contactVerificationSigningSecret(env);
   if (!await codeMatches(row, body.code, secret)) {
-    const updated = await env.DB.prepare(`UPDATE contact_verification_challenges
+    await env.DB.prepare(`UPDATE contact_verification_challenges
       SET attempts_remaining = MAX(0, attempts_remaining - 1), updated_at = ?
       WHERE challenge_id = ? AND attempts_remaining > 0 AND confirmed_at IS NULL AND consumed_at IS NULL`)
       .bind(sqliteTime(), row.challenge_id).run();
-    if ((updated.meta.changes || 0) === 1) row.attempts_remaining -= 1;
+    const current = await env.DB.prepare('SELECT attempts_remaining FROM contact_verification_challenges WHERE challenge_id = ?')
+      .bind(row.challenge_id).first<{ attempts_remaining: number }>();
     return json({
       error: 'Verification code is invalid',
-      attemptsRemaining: Math.max(0, row.attempts_remaining)
+      attemptsRemaining: Math.max(0, Number(current?.attempts_remaining) || 0)
     }, 400);
   }
 
