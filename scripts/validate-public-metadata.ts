@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tasks } from '../src/data/course-catalog';
 import { curriculumLessons } from '../src/data/complete-curriculum';
 
-const root = new URL('../', import.meta.url);
 const indexHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const viteConfig = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8');
 const taskCount = tasks.length;
@@ -31,14 +31,14 @@ assert.ok(viteConfig.includes("start_url: '.'"), 'PWA start URL must remain depl
 assert.ok(viteConfig.includes("scope: '.'"), 'PWA scope must remain deployment-relative');
 
 if (process.argv.includes('--dist')) {
-  const dist = new URL('../dist/', import.meta.url);
-  assert.ok(existsSync(dist), 'Production dist directory is missing');
+  const distUrl = new URL('../dist/', import.meta.url);
+  const distPath = fileURLToPath(distUrl);
+  assert.ok(existsSync(distPath), 'Production dist directory is missing');
   const builtHtml = readFileSync(new URL('../dist/index.html', import.meta.url), 'utf8');
   assert.ok(builtHtml.includes(taskClaim), 'Built HTML lost the current task count');
   assert.ok(builtHtml.includes(lessonClaim), 'Built HTML lost the current lesson count');
   assert.ok(builtHtml.includes('property="og:locale" content="ru_RU"'), 'Built HTML lost OpenGraph locale');
 
-  const distPath = join(root.pathname, 'dist');
   const manifestName = readdirSync(distPath).find(name => name === 'manifest.webmanifest' || /^manifest-.*\.webmanifest$/.test(name));
   assert.ok(manifestName, 'Built PWA manifest is missing');
   const manifest = JSON.parse(readFileSync(join(distPath, manifestName!), 'utf8')) as {
