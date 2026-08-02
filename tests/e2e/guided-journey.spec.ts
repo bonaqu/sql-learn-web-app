@@ -16,7 +16,7 @@ async function completeDeferredOnboarding(page: import('@playwright/test').Page)
   await dialog.getByRole('button', { name: 'Закрыть стартовый план' }).click();
 }
 
-test('desktop guided journey turns a first goal into one primary action', async ({ page }) => {
+test('desktop guided journey turns a first goal into one canonical primary action', async ({ page }) => {
   await authenticatePage(page, 'guided');
   await page.goto('./');
 
@@ -26,9 +26,22 @@ test('desktop guided journey turns a first goal into one primary action', async 
   await completeDeferredOnboarding(page);
 
   await expect(page.getByTestId('guided-today')).toBeVisible();
-  await expect(page.getByTestId('guided-today').getByRole('button', { name: /Начать сессию|Начать повторение/ })).toHaveCount(1);
+  const journeyAction = page.getByTestId('guided-journey-action');
+  await expect(journeyAction).toHaveAttribute('data-stage', 'lesson');
+  await expect(journeyAction).not.toHaveAttribute('aria-busy', 'true');
+  await expect(journeyAction.getByRole('button', { name: /Открыть урок/ })).toHaveCount(1);
+  await expect(journeyAction).toContainText(/Надёжная база/i);
+  await expect(journeyAction).toContainText(/SQL-мышление/i);
   await expect(page.locator('.sidebar nav > button, .sidebar nav > .onboarding-nav-slot')).toHaveCount(5);
   await expect(page.locator('.nav-more')).not.toHaveAttribute('open', '');
+
+  await journeyAction.getByRole('button', { name: /Открыть урок/ }).click();
+  const curriculum = page.getByTestId('curriculum-studio');
+  await expect(curriculum).toBeVisible();
+  await expect(curriculum.getByText('Урок 01 / 44')).toBeVisible();
+  await expect(curriculum.getByRole('heading', { name: 'SQL-мышление', exact: true })).toBeVisible();
+  await expect(curriculum).toContainText(/Как читать схему и превращать вопрос в запрос/i);
+  await page.getByRole('button', { name: 'Закрыть Curriculum Studio' }).click();
 
   await page.locator('.nav-more > summary').click();
   await expect(page.getByRole('button', { name: 'Каталог задач' })).toBeVisible();

@@ -1,5 +1,22 @@
-import { modules, SqlTask, tasks } from '../data/course-catalog';
-import { Progress, reviewQueue } from './progress';
+import { modules, type SqlTask, tasks } from '../data/course-catalog';
+import { phaseDefinitions, phaseForModule } from '../data/learning-structure';
+import {
+  foundationTasksForModule,
+  nextJourneyAction,
+  transferTasksForModule,
+  type JourneyAction
+} from './learning-journey';
+import {
+  emptyCurriculumProgress,
+  type CurriculumProgressV1
+} from './curriculum-progress';
+import {
+  hasIndependentTaskEvidence,
+  type Progress,
+  reviewQueue
+} from './progress';
+
+export { phaseDefinitions } from '../data/learning-structure';
 
 export type MasteryLevel = 'locked' | 'new' | 'learning' | 'practice' | 'mastered';
 
@@ -34,10 +51,21 @@ export type LearningPhase = {
   unlocked: boolean;
 };
 
+export type LearningSessionEvidence = {
+  curriculum: CurriculumProgressV1;
+  passedCheckpointIds?: readonly string[];
+  assessmentComplete?: boolean;
+  bypassedModuleIds?: readonly string[];
+};
+
 export type SessionItem = {
-  task: SqlTask;
+  id: string;
+  task: SqlTask | null;
+  action: JourneyAction | null;
   reason: 'review' | 'weakness' | 'new' | 'checkpoint';
   label: string;
+  title: string;
+  topic: string;
   minutes: number;
 };
 
@@ -49,57 +77,6 @@ export type DailySession = {
   focusModule: ModuleMastery | null;
 };
 
-export const phaseDefinitions = [
-  {
-    id: 'foundation',
-    title: 'I. Надёжная база',
-    subtitle: 'Контракт результата, фильтры, сортировка и агрегаты',
-    moduleIds: ['sql-thinking', 'select', 'filtering', 'sorting', 'aggregates', 'grouping']
-  },
-  {
-    id: 'composition',
-    title: 'II. Конструирование запросов',
-    subtitle: 'JOIN, подзапросы, CTE, окна, даты, текст и множества',
-    moduleIds: ['joins', 'subqueries', 'cte', 'windows', 'dates', 'text', 'set-ops']
-  },
-  {
-    id: 'production-core',
-    title: 'III. Production core',
-    subtitle: 'Качество, индексы, планы, транзакции и схема',
-    moduleIds: ['data-quality', 'indexes', 'explain', 'transactions', 'schema']
-  },
-  {
-    id: 'support-track',
-    title: 'IV. Support Analytics',
-    subtitle: 'SLA, операционные метрики и базовая витрина T-Bonk',
-    moduleIds: ['support', 'final']
-  },
-  {
-    id: 'data-change',
-    title: 'V. Изменения и целостность',
-    subtitle: 'DML, schema evolution и продвинутая NULL-логика',
-    moduleIds: ['dml', 'schema-evolution', 'null-logic-advanced']
-  },
-  {
-    id: 'advanced-querying',
-    title: 'VI. Advanced querying',
-    subtitle: 'Условные метрики, existence patterns и рекурсивные CTE',
-    moduleIds: ['conditional-aggregation', 'advanced-joins', 'recursive-cte']
-  },
-  {
-    id: 'modern-sql',
-    title: 'VII. Modern SQL',
-    subtitle: 'Window frames, JSON и безопасная параметризация',
-    moduleIds: ['window-frames', 'json-sql', 'sql-security']
-  },
-  {
-    id: 'production-operations',
-    title: 'VIII. Production operations',
-    subtitle: 'Concurrency, keyset pagination и SQL-расследования',
-    moduleIds: ['concurrency', 'pagination-patterns', 'incident-investigation']
-  }
-] as const;
-
 const difficultyMinutes: Record<SqlTask['difficulty'], number> = {
   'База': 4,
   'Рабочий': 6,
@@ -107,19 +84,41 @@ const difficultyMinutes: Record<SqlTask['difficulty'], number> = {
   'Экспертный': 10
 };
 
+const stageMinutes: Record<JourneyAction['stage'], number> = {
+  lesson: 12,
+  guided: 6,
+  practice: 8,
+  review: 6,
+  checkpoint: 20,
+  interview: 10,
+  puzzle: 10,
+  assessment: 25,
+  project: 30,
+  complete: 5
+};
+
 function clamp(value: number, min = 0, max = 100) {
   return Math.min(max, Math.max(min, value));
 }
 
-function modulePhase(moduleId: string) {
-  return phaseDefinitions.find(phase => phase.moduleIds.includes(moduleId as never))?.id || phaseDefinitions[0].id;
+function taskSatisfied(task: SqlTask, progress: Progress) {
+  if (task.mode === 'lesson') return progress.completed.includes(task.id);
+  return hasIndependentTaskEvidence(progress, task.id);
 }
 
-function taskPriority(task: SqlTask, progress: Progress) {
-  const stats = progress.taskStats[task.id] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
-  const completed = progress.completed.includes(task.id);
-  const modeWeight = task.mode === 'lesson' ? 4 : task.mode === 'practice' ? 3 : task.mode === 'interview' ? 2 : 1;
-  return (completed ? -100 : 0) + stats.incorrect * 8 + stats.hintsUsed * 3 + stats.attempts * 2 + modeWeight;
+function foundationReady(moduleId: string, progress: Progress) {
+  const foundationTasks = foundationTasksForModule(moduleId);
+  if (!foundationTasks.length) return false;
+  const satisfied = foundationTasks.filter(task => taskSatisfied(task, progress)).length;
+  const lessonTasks = foundationTasks.filter(task => task.mode === 'lesson');
+  const guidedReady = !lessonTasks.length || lessonTasks.some(task => progress.completed.includes(task.id));
+  return guidedReady && satisfied >= Math.ceil(foundationTasks.length * 0.6);
+}
+
+function recommendedTaskForModule(moduleId: string, progress: Progress) {
+  return foundationTasksForModule(moduleId).find(task => !taskSatisfied(task, progress))
+    || transferTasksForModule(moduleId).find(task => !taskSatisfied(task, progress))
+    || null;
 }
 
 export function moduleMastery(progress: Progress): ModuleMastery[] {
@@ -127,37 +126,40 @@ export function moduleMastery(progress: Progress): ModuleMastery[] {
   return modules.map(([id, title, description], index) => {
     const moduleTasks = tasks.filter(task => task.module === id);
     const solved = moduleTasks.filter(task => completed.has(task.id)).length;
+    const independent = moduleTasks.filter(task => hasIndependentTaskEvidence(progress, task.id)).length;
     const stats = moduleTasks.map(task => progress.taskStats[task.id] || { attempts: 0, incorrect: 0, hintsUsed: 0 });
     const attempts = stats.reduce((sum, item) => sum + item.attempts, 0);
     const incorrect = stats.reduce((sum, item) => sum + item.incorrect, 0);
     const hints = stats.reduce((sum, item) => sum + item.hintsUsed, 0);
     const coverage = moduleTasks.length ? solved / moduleTasks.length : 0;
+    const independentCoverage = moduleTasks.length ? independent / moduleTasks.length : 0;
     const accuracy = attempts ? clamp((attempts - incorrect) / attempts * 100) : 0;
     const independence = attempts ? clamp(100 - hints / Math.max(attempts, 1) * 28) : 0;
-    const mastery = Math.round(clamp(coverage * 65 + accuracy * 0.23 + independence * 0.12));
+    const mastery = Math.round(clamp(
+      coverage * 45
+      + independentCoverage * 25
+      + accuracy * 0.2
+      + independence * 0.1
+    ));
+    const recommendedTask = recommendedTaskForModule(id, progress);
     const previousModule = index > 0 ? modules[index - 1][0] : null;
-    const previousSolved = !previousModule || tasks
-      .filter(task => task.module === previousModule)
-      .some(task => completed.has(task.id));
-    const level: MasteryLevel = !previousSolved && index > 1
+    const previousReady = !previousModule || foundationReady(previousModule, progress);
+    const level: MasteryLevel = !previousReady
       ? 'locked'
-      : mastery >= 82 && solved >= Math.ceil(moduleTasks.length * 0.8)
+      : !recommendedTask && mastery >= 82 && independent >= Math.ceil(moduleTasks.length * 0.7)
         ? 'mastered'
         : mastery >= 55
           ? 'practice'
           : attempts > 0 || solved > 0
             ? 'learning'
             : 'new';
-    const recommendedTask = [...moduleTasks]
-      .sort((left, right) => taskPriority(right, progress) - taskPriority(left, progress) || left.id.localeCompare(right.id))
-      .find(task => !completed.has(task.id)) || null;
 
     return {
       id,
       title,
       description,
       index,
-      phaseId: modulePhase(id),
+      phaseId: phaseForModule(id)?.id || phaseDefinitions[0].id,
       solved,
       total: moduleTasks.length,
       attempts,
@@ -173,7 +175,7 @@ export function moduleMastery(progress: Progress): ModuleMastery[] {
 }
 
 function checkpointFor(moduleIds: readonly string[]) {
-  const candidates = tasks.filter(task => moduleIds.includes(task.module));
+  const candidates = tasks.filter(task => moduleIds.some(moduleId => moduleId === task.module));
   return [...candidates]
     .sort((left, right) => {
       const modeWeight = (task: SqlTask) => task.mode === 'interview' ? 3 : task.mode === 'puzzle' ? 2 : task.mode === 'practice' ? 1 : 0;
@@ -184,14 +186,14 @@ function checkpointFor(moduleIds: readonly string[]) {
 export function learningPhases(progress: Progress, mastery = moduleMastery(progress)): LearningPhase[] {
   const completed = new Set(progress.completed);
   return phaseDefinitions.map((definition, index) => {
-    const phaseModules = mastery.filter(item => definition.moduleIds.includes(item.id as never));
+    const phaseModules = mastery.filter(item => definition.moduleIds.some(id => id === item.id));
     const total = phaseModules.reduce((sum, item) => sum + item.total, 0);
     const solved = phaseModules.reduce((sum, item) => sum + item.solved, 0);
     const phaseMastery = Math.round(phaseModules.reduce((sum, item) => sum + item.mastery, 0) / Math.max(phaseModules.length, 1));
     const checkpointTask = checkpointFor(definition.moduleIds);
     const prior = index === 0 ? null : phaseDefinitions[index - 1];
-    const priorModules = prior ? mastery.filter(item => prior.moduleIds.includes(item.id as never)) : [];
-    const priorReady = !prior || priorModules.every(item => item.mastery >= 48) || priorModules.reduce((sum, item) => sum + item.solved, 0) >= Math.ceil(priorModules.reduce((sum, item) => sum + item.total, 0) * 0.55);
+    const priorModules = prior ? mastery.filter(item => prior.moduleIds.some(id => id === item.id)) : [];
+    const priorReady = !prior || priorModules.every(item => foundationReady(item.id, progress));
     return {
       ...definition,
       moduleIds: [...definition.moduleIds],
@@ -205,62 +207,97 @@ export function learningPhases(progress: Progress, mastery = moduleMastery(progr
   });
 }
 
-function uniquePush(items: SessionItem[], task: SqlTask | undefined, reason: SessionItem['reason'], label: string) {
-  if (!task || items.some(item => item.task.id === task.id)) return;
-  items.push({ task, reason, label, minutes: difficultyMinutes[task.difficulty] });
+function pushReview(items: SessionItem[], task: SqlTask | undefined) {
+  if (!task || items.some(item => item.task?.id === task.id)) return;
+  items.push({
+    id: `review:${task.id}`,
+    task,
+    action: null,
+    reason: 'review',
+    label: 'Retrieval review до нового материала',
+    title: task.title,
+    topic: task.topic,
+    minutes: difficultyMinutes[task.difficulty]
+  });
 }
 
-export function buildDailySession(progress: Progress, targetMinutes = 25): DailySession {
+function actionReason(action: JourneyAction, progress: Progress): SessionItem['reason'] {
+  if (action.stage === 'checkpoint') return 'checkpoint';
+  if (action.task && (progress.taskStats[action.task.id]?.attempts || 0) > 0) return 'weakness';
+  return 'new';
+}
+
+function actionLabel(action: JourneyAction) {
+  if (action.stage === 'lesson') return 'Mental model и knowledge checks';
+  if (action.stage === 'guided') return 'Guided application после урока';
+  if (action.stage === 'practice') return 'Independent practice без подсказок';
+  if (action.stage === 'checkpoint') return 'Обязательный checkpoint фазы';
+  if (action.stage === 'interview') return 'Transfer: объяснение и решение';
+  if (action.stage === 'puzzle') return 'Transfer: непривычная формулировка';
+  if (action.stage === 'assessment') return 'Смешанная итоговая проверка';
+  if (action.stage === 'project') return 'Capstone на рабочем сценарии';
+  if (action.stage === 'complete') return 'Поддержание expert-уровня';
+  return 'Следующий этап маршрута';
+}
+
+function pushAction(items: SessionItem[], action: JourneyAction, progress: Progress) {
+  if (action.task) {
+    const duplicateIndex = items.findIndex(item => item.task?.id === action.task?.id);
+    if (duplicateIndex >= 0) items.splice(duplicateIndex, 1);
+  }
+  items.push({
+    id: `${action.kind}:${action.lessonId || action.checkpointId || action.projectId || action.task?.id || action.stage}`,
+    task: action.task,
+    action,
+    reason: actionReason(action, progress),
+    label: actionLabel(action),
+    title: action.title,
+    topic: action.moduleTitle || action.phaseTitle || 'SQL Academy',
+    minutes: action.task ? difficultyMinutes[action.task.difficulty] : stageMinutes[action.stage]
+  });
+}
+
+export function buildDailySession(
+  progress: Progress,
+  targetMinutes = 25,
+  evidence: LearningSessionEvidence = { curriculum: emptyCurriculumProgress() }
+): DailySession {
   const mastery = moduleMastery(progress);
-  const phases = learningPhases(progress, mastery);
-  const completed = new Set(progress.completed);
   const items: SessionItem[] = [];
-  const review = reviewQueue(progress, 8);
+  const reviews = reviewQueue(progress, 2);
+  const primary = nextJourneyAction(progress, evidence.curriculum, {
+    includeReview: false,
+    passedCheckpointIds: evidence.passedCheckpointIds,
+    assessmentComplete: evidence.assessmentComplete,
+    bypassedModuleIds: evidence.bypassedModuleIds
+  });
 
-  uniquePush(items, review[0], 'review', 'Вернуть в память');
-  uniquePush(items, review[1], 'review', 'Исправить слабое место');
-
-  const focusModule = [...mastery]
-    .filter(item => item.level !== 'locked' && item.level !== 'mastered')
-    .sort((left, right) => left.mastery - right.mastery || right.incorrect - left.incorrect || left.index - right.index)[0] || null;
-  uniquePush(items, focusModule?.recommendedTask || undefined, 'weakness', focusModule ? `Фокус: ${focusModule.title}` : 'Рабочая практика');
-
-  const firstNew = tasks.find(task => !completed.has(task.id) && mastery.find(item => item.id === task.module)?.level !== 'locked');
-  uniquePush(items, firstNew, 'new', 'Следующий шаг маршрута');
-
-  const checkpoint = phases.find(phase => phase.unlocked && !phase.checkpointPassed && phase.mastery >= 42)?.checkpointTask;
-  uniquePush(items, checkpoint, 'checkpoint', 'Контрольная точка');
-
-  for (const module of mastery.filter(item => item.level !== 'locked' && item.level !== 'mastered')) {
-    uniquePush(items, module.recommendedTask || undefined, 'new', `Продолжить: ${module.title}`);
-  }
-
-  for (const task of tasks) {
-    if (items.length >= 10) break;
-    const module = mastery.find(item => item.id === task.module);
-    if (!completed.has(task.id) && module?.level !== 'locked') uniquePush(items, task, 'new', 'Добрать практику');
-  }
+  for (const review of reviews) pushReview(items, review);
+  pushAction(items, primary, progress);
 
   const compact: SessionItem[] = [];
   let totalMinutes = 0;
   for (const item of items) {
-    if (compact.length >= 6) break;
-    if (compact.length >= 2 && totalMinutes >= targetMinutes - 4) break;
-    if (compact.length >= 3 && totalMinutes + item.minutes > targetMinutes + 6) continue;
+    const primaryItem = item.action === primary;
+    if (!primaryItem && compact.length && totalMinutes + item.minutes > Math.max(targetMinutes, 15)) continue;
     compact.push(item);
     totalMinutes += item.minutes;
   }
 
-  if (!compact.length) {
-    uniquePush(compact, tasks.find(task => !completed.has(task.id)) || tasks[0], 'new', 'Следующий шаг маршрута');
+  if (!compact.some(item => item.action === primary)) {
+    pushAction(compact, primary, progress);
     totalMinutes = compact.reduce((sum, item) => sum + item.minutes, 0);
   }
+
+  const focusModule = primary.moduleId
+    ? mastery.find(module => module.id === primary.moduleId) || null
+    : mastery.find(module => module.level !== 'locked' && module.level !== 'mastered') || null;
 
   return {
     items: compact,
     totalMinutes,
     reviewCount: compact.filter(item => item.reason === 'review' || item.reason === 'weakness').length,
-    newCount: compact.filter(item => item.reason === 'new').length,
+    newCount: compact.filter(item => item.reason === 'new' || item.reason === 'checkpoint').length,
     focusModule
   };
 }
@@ -270,9 +307,10 @@ export function overallReadiness(progress: Progress) {
   const phases = learningPhases(progress, mastery);
   const weighted = mastery.reduce((sum, item) => sum + item.mastery, 0) / Math.max(mastery.length, 1);
   const checkpoints = phases.filter(phase => phase.checkpointPassed).length / phases.length * 100;
-  const interviewTasks = tasks.filter(task => task.mode === 'interview');
-  const interviewSolved = interviewTasks.filter(task => progress.completed.includes(task.id)).length / Math.max(interviewTasks.length, 1) * 100;
-  return Math.round(clamp(weighted * 0.66 + checkpoints * 0.18 + interviewSolved * 0.16));
+  const transferTasks = tasks.filter(task => task.mode === 'interview' || task.mode === 'puzzle');
+  const transferSolved = transferTasks.filter(task => hasIndependentTaskEvidence(progress, task.id)).length
+    / Math.max(transferTasks.length, 1) * 100;
+  return Math.round(clamp(weighted * 0.66 + checkpoints * 0.18 + transferSolved * 0.16));
 }
 
 export function readinessLabel(score: number) {
@@ -283,17 +321,20 @@ export function readinessLabel(score: number) {
   return 'Маршрут только начинается';
 }
 
-export function mentorPlanContext(progress: Progress) {
+export function mentorPlanContext(
+  progress: Progress,
+  evidence: LearningSessionEvidence = { curriculum: emptyCurriculumProgress() }
+) {
   const mastery = moduleMastery(progress);
-  const session = buildDailySession(progress);
+  const session = buildDailySession(progress, 25, evidence);
   const weakest = [...mastery]
     .filter(item => item.level !== 'locked')
-    .sort((left, right) => left.mastery - right.mastery)
+    .sort((left, right) => left.index - right.index || left.mastery - right.mastery)
     .slice(0, 4);
   return {
     readiness: overallReadiness(progress),
     weakest: weakest.map(item => ({ title: item.title, mastery: item.mastery, errors: item.incorrect, hints: item.hints })),
-    session: session.items.map(item => ({ title: item.task.title, reason: item.reason, topic: item.task.topic })),
+    session: session.items.map(item => ({ title: item.title, reason: item.reason, topic: item.topic })),
     completed: progress.completed.length,
     total: tasks.length
   };

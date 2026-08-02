@@ -6,13 +6,13 @@ const expectNoHorizontalOverflow = async (page: import('@playwright/test').Page)
   expect(overflow).toBe(false);
 };
 
-test('desktop adaptive learning path builds a session and explains readiness evidence', async ({ page }, testInfo) => {
+test('desktop adaptive learning path shares the canonical beginner frontier and readiness evidence', async ({ page }, testInfo) => {
   await authenticatePage(page, 'desktop-path');
   await page.route('**/api/mentor', async route => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ answer: 'Персональный план\n• Закрепи фильтрацию\n• Реши одну новую задачу\n• Заверши контрольной точкой' })
+      body: JSON.stringify({ answer: 'Персональный план\n• Изучи mental model\n• Выполни связанную практику\n• Заверши контрольной точкой' })
     });
   });
 
@@ -22,9 +22,13 @@ test('desktop adaptive learning path builds a session and explains readiness evi
   await expect(learningPath).toBeVisible();
   await expect(learningPath.getByRole('heading', { name: /Доказуемый путь к рабочему SQL/ })).toBeVisible();
   await expect(learningPath.locator('.phase-card')).toHaveCount(8);
-  const sessionTasks = await learningPath.locator('.session-list > button').count();
-  expect(sessionTasks).toBeGreaterThanOrEqual(2);
-  expect(sessionTasks).toBeLessThanOrEqual(6);
+  const sessionItems = learningPath.locator('.session-list > button');
+  const sessionCount = await sessionItems.count();
+  expect(sessionCount).toBeGreaterThanOrEqual(1);
+  expect(sessionCount).toBeLessThanOrEqual(3);
+  await expect(sessionItems.first()).toHaveAttribute('data-stage', 'lesson');
+  await expect(sessionItems.first()).toContainText(/Mental model/i);
+  await expect(sessionItems.first()).toContainText(/SQL-мышление/i);
   await expect(learningPath.locator('.readiness-ring strong')).toHaveText('0%');
 
   await learningPath.getByRole('button', { name: 'AI-план', exact: true }).click();
@@ -45,13 +49,16 @@ test('desktop adaptive learning path builds a session and explains readiness evi
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('desktop-readiness-explainer.png') });
 
-  await learningPath.locator('.session-list > button').first().click();
+  await sessionItems.first().click();
   await expect(learningPath).toBeHidden();
-  await expect(page.getByRole('heading', { name: 'Practice Mode' })).toBeVisible();
-  await expect(page.locator('.editor-panel')).toBeVisible();
+  const curriculum = page.getByTestId('curriculum-studio');
+  await expect(curriculum).toBeVisible();
+  await expect(curriculum.getByText('Урок 01 / 44')).toBeVisible();
+  await expect(curriculum.getByRole('heading', { name: 'SQL-мышление', exact: true })).toBeVisible();
+  await expect(curriculum).toContainText(/Как читать схему и превращать вопрос в запрос/i);
 });
 
-test('mobile adaptive learning path keeps readiness explanation responsive', async ({ page }, testInfo) => {
+test('mobile adaptive learning path keeps the same lesson frontier and readiness explanation responsive', async ({ page }, testInfo) => {
   await authenticatePage(page, 'mobile-path');
   await page.goto('./');
   await page.getByTestId('learning-path-mobile-trigger').click();
@@ -59,7 +66,10 @@ test('mobile adaptive learning path keeps readiness explanation responsive', asy
   await expect(learningPath).toBeVisible();
   await expect(learningPath.locator('.readiness-ring')).toBeVisible();
   await expect(learningPath.locator('.phase-card')).toHaveCount(8);
-  await expect(learningPath.locator('.session-list > button').first()).toBeVisible();
+  const firstSessionItem = learningPath.locator('.session-list > button').first();
+  await expect(firstSessionItem).toBeVisible();
+  await expect(firstSessionItem).toHaveAttribute('data-stage', 'lesson');
+  await expect(firstSessionItem).toContainText(/SQL-мышление/i);
 
   await learningPath.locator('.path-top-actions select').selectOption('15');
   await expect(learningPath.getByRole('heading', { name: /Сессия на/ })).toBeVisible();
