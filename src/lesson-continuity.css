@@ -1,0 +1,162 @@
+.lesson-continuity {
+  margin: 0 0 24px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--accent-soft) 64%, var(--panel)), var(--panel));
+  box-shadow: var(--shadow-sm);
+}
+
+.lesson-continuity > header {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  margin-bottom: 16px;
+}
+
+.lesson-continuity > header > span {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent-2);
+}
+
+.lesson-continuity > header svg { width: 20px; height: 20px; }
+.lesson-continuity > header small {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--accent-2);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.lesson-continuity > header h2 { margin: 0; font-size: 20px; line-height: 1.25; }
+
+.lesson-continuity-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.lesson-continuity-grid article {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, var(--accent));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--panel-2) 88%, transparent);
+}
+.lesson-continuity-grid article > svg { width: 18px; height: 18px; flex: 0 0 auto; color: var(--accent-2); }
+.lesson-continuity-grid strong { display: block; margin-bottom: 5px; font-size: 13px; }
+.lesson-continuity-grid p,
+.lesson-continuity-evidence { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.58; }
+
+.lesson-continuity.outgoing {
+  margin-top: 24px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--success-soft) 45%, var(--panel)), var(--panel));
+}
+.lesson-continuity.outgoing.phase {
+  border-color: color-mix(in srgb, var(--warning) 48%, var(--border));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--warning-soft) 62%, var(--panel)), var(--panel));
+}
+.lesson-continuity.outgoing.phase > header > span { background: var(--warning-soft); color: var(--warning); }
+.lesson-continuity-evidence { padding: 14px; border-radius: var(--radius-md); background: var(--panel-2); }
+.lesson-continuity-evidence strong { color: var(--text); }
+
+.lesson-continuity-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 14px;
+}
+.lesson-continuity-actions button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--panel-2);
+  padding: 9px 13px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 750;
+}
+.lesson-continuity-actions button:hover { border-color: var(--accent); background: var(--accent-soft); }
+.lesson-continuity-actions button.primary { border-color: var(--accent); background: var(--accent); color: white; }
+.lesson-continuity-actions button.primary:hover { background: var(--accent-hover); }
+.lesson-continuity-actions svg { width: 17px; height: 17px; }
+
+.curriculum-continuity-companion {
+  position: fixed;
+  z-index: 10050;
+  right: 22px;
+  bottom: 22px;
+  width: min(430px, calc(100vw - 44px));
+  border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--border));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--panel) 97%, transparent);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.curriculum-continuity-toggle {
+  width: 100%;
+  min-height: 62px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  border: 0;
+  background: linear-gradient(135deg, var(--accent-soft), transparent);
+  padding: 11px 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.curriculum-continuity-toggle > svg { width: 19px; height: 19px; color: var(--accent-2); }
+.curriculum-continuity-toggle span { min-width: 0; }
+.curriculum-continuity-toggle strong,
+.curriculum-continuity-toggle small { display: block; }
+.curriculum-continuity-toggle strong { font-size: 14px; }
+.curriculum-continuity-toggle small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.curriculum-continuity-body {
+  max-height: min(70vh, 760px);
+  overflow: auto;
+  padding: 14px;
+  border-top: 1px solid var(--border);
+}
+.curriculum-continuity-body .lesson-continuity { margin: 0 0 12px; padding: 16px; }
+.curriculum-continuity-body .lesson-continuity:last-child { margin-bottom: 0; }
+.curriculum-continuity-body .lesson-continuity-grid { grid-template-columns: 1fr; }
+.curriculum-continuity-body .lesson-continuity > header h2 { font-size: 16px; }
+.curriculum-continuity-body .lesson-continuity-actions { display: grid; }
+.curriculum-continuity-body .lesson-continuity-actions button { width: 100%; }
+
+@media (max-width: 880px) {
+  .lesson-continuity { padding: 17px; }
+  .lesson-continuity-grid { grid-template-columns: 1fr; }
+  .lesson-continuity-actions { display: grid; }
+  .lesson-continuity-actions button { width: 100%; }
+  .curriculum-continuity-companion {
+    right: 10px;
+    bottom: calc(76px + env(safe-area-inset-bottom));
+    width: calc(100vw - 20px);
+  }
+  .curriculum-continuity-body { max-height: 52vh; }
+}
