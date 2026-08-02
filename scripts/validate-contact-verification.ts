@@ -17,7 +17,7 @@ assert.equal(normalizeVerificationDestination('email', 'double..dot@example.com'
 assert.equal(normalizeVerificationDestination('sms', ' +1 (303) 555-0100 '), '+13035550100');
 assert.equal(normalizeVerificationDestination('sms', '303-555-0100'), null);
 assert.equal(maskVerificationDestination('email', 'learner@example.com'), 'l***@example.com');
-assert.equal(maskVerificationDestination('sms', '+13035550100'), '+1*****0100');
+assert.equal(maskVerificationDestination('sms', '+13035550100'), '+1******0100');
 
 const signingEnv = {
   CONTACT_VERIFICATION_SIGNING_SECRET: 'test-signing-secret-with-at-least-thirty-two-characters'
