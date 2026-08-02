@@ -98,6 +98,7 @@ jobs:
           path: |
             test-results
             wrangler-playwright.log
+            wrangler-internal-playwright.log
           if-no-files-found: ignore
           retention-days: 7
 
@@ -115,6 +116,7 @@ jobs:
             dialect-engine-integration.log
             playwright.log
             wrangler-playwright.log
+            wrangler-internal-playwright.log
             test-results
           if-no-files-found: ignore
           retention-days: 7
