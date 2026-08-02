@@ -64,22 +64,23 @@ const expectedEmail = expectedBoolean('EXPECT_EMAIL_VERIFICATION');
 const expectedSms = expectedBoolean('EXPECT_SMS_VERIFICATION');
 let disabledContactHidden = false;
 if (!expectedEmail && !expectedSms) {
-  const challenge = await request('/api/auth/contact/challenge', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ channel: 'email', purpose: 'register', destination: 'smoke@example.invalid' }),
-    expected: [404]
-  });
-  const confirmation = await request('/api/auth/contact/confirm', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ challengeId: '00000000-0000-4000-8000-000000000001', code: '000000' }),
-    expected: [404]
-  });
-  const challengePayload = parseJson(challenge.text, 'Contact challenge boundary');
-  const confirmationPayload = parseJson(confirmation.text, 'Contact confirmation boundary');
-  if (challengePayload.error !== 'Not found' || confirmationPayload.error !== 'Not found') {
-    throw new Error('Disabled verified-contact surface was not hidden');
+  const hiddenRequests = [
+    ['/api/auth/contact/challenge', 'POST', { channel: 'email', purpose: 'register', destination: 'smoke@example.invalid' }],
+    ['/api/auth/contact/confirm', 'POST', { challengeId: '00000000-0000-4000-8000-000000000001', code: '000000' }],
+    ['/api/auth/contact/register', 'POST', { username: 'contact_smoke', password: 'Not sent while capability is disabled 2026!', contactTicket: 'disabled' }],
+    ['/api/auth/contact/password/reset', 'POST', { newPassword: 'Not sent while capability is disabled 2026!', contactTicket: 'disabled' }],
+    ['/api/auth/contacts', 'GET'],
+    ['/api/auth/contact/attach', 'POST', { currentPassword: 'disabled', contactTicket: 'disabled' }]
+  ];
+  for (const [path, method, payload] of hiddenRequests) {
+    const response = await request(path, {
+      method,
+      headers: payload ? { 'content-type': 'application/json' } : {},
+      body: payload ? JSON.stringify(payload) : undefined,
+      expected: [404]
+    });
+    const body = parseJson(response.text, `Disabled contact boundary ${path}`);
+    if (body.error !== 'Not found') throw new Error(`Disabled verified-contact route leaked at ${path}`);
   }
   disabledContactHidden = true;
 }
