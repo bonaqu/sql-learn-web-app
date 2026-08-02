@@ -6,6 +6,7 @@ import {
 import { advancedModules, advancedTasks } from './advanced-syllabus';
 import { applyAdvancedTaskProgression } from './advanced-task-progression';
 import { applyAdvancedTransferContracts } from './advanced-transfer-contracts';
+import { applyCoreTaskProgression } from './core-task-progression';
 import {
   moduleOrderIndex,
   taskDifficultyOrder,
@@ -26,7 +27,9 @@ const sourceModules: readonly (readonly [string, string, string])[] = [
 ];
 const sourceTasks = applyAdvancedTransferContracts(
   applyAdvancedTaskProgression(
-    applySyntaxFrontierTaskOverrides([...coreTasks, ...advancedTasks])
+    applyCoreTaskProgression(
+      applySyntaxFrontierTaskOverrides([...coreTasks, ...advancedTasks])
+    )
   )
 );
 const sourceTaskOrder = new Map(sourceTasks.map((task, index) => [task.id, index]));

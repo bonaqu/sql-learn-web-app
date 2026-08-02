@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { tasks as coreTasks } from '../src/data/course';
 import { advancedModules, advancedTasks } from '../src/data/advanced-syllabus';
 import { applyAdvancedTaskProgression } from '../src/data/advanced-task-progression';
 import { tasks } from '../src/data/course-catalog';
@@ -11,7 +10,7 @@ import type { SqlTask } from '../src/data/course-catalog';
 const advancedModuleIds = new Set(advancedModules.map(([id]) => id));
 const baseline = new Map(
   applyAdvancedTaskProgression(
-    applySyntaxFrontierTaskOverrides([...coreTasks, ...advancedTasks])
+    applySyntaxFrontierTaskOverrides(advancedTasks)
   ).map(task => [task.id, task])
 );
 
@@ -31,15 +30,14 @@ function invariantContract(task: SqlTask) {
 let interviewCount = 0;
 let puzzleCount = 0;
 
-for (const task of tasks) {
+for (const task of tasks.filter(item => advancedModuleIds.has(item.module))) {
   const expected = baseline.get(task.id);
-  assert.ok(expected, `${task.id}: missing baseline task contract`);
+  assert.ok(expected, `${task.id}: missing advanced baseline task contract`);
   assert.deepEqual(invariantContract(task), invariantContract(expected!), `${task.id}: transfer framing changed identity, SQL, XP, difficulty or guide`);
 
-  const advanced = advancedModuleIds.has(task.module);
   const transfer = task.mode === 'interview' || task.mode === 'puzzle';
-  if (!advanced || !transfer) {
-    assert.deepEqual(task, expected, `${task.id}: non-transfer task was rewritten by transfer framing`);
+  if (!transfer) {
+    assert.deepEqual(task, expected, `${task.id}: advanced non-transfer task was rewritten by transfer framing`);
     continue;
   }
 

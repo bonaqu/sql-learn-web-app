@@ -1,10 +1,15 @@
 import { expect, test } from '@playwright/test';
+import { curriculumCheckpoints } from '../../src/data/complete-curriculum';
+import { tasks } from '../../src/data/course-catalog';
 import { authenticatePage, loginPage } from './auth-helper';
 import { guidedHome, openAdvancedTool } from './navigation-helper';
 
 const PROGRESS_KEY = 'sql-academy-progress-v4';
 const AUTH_KEY = 'sql-academy-auth-session-v2';
-const FIRST_CHECKPOINT_SOLUTION = "SELECT ticket_id, service, status FROM tickets WHERE service = 'VPN' ORDER BY ticket_id;";
+const FIRST_CHECKPOINT = curriculumCheckpoints[0];
+const FIRST_CHECKPOINT_TASK = tasks.find(task => task.id === FIRST_CHECKPOINT.taskIds[0]);
+if (!FIRST_CHECKPOINT_TASK) throw new Error(`Missing first checkpoint task ${FIRST_CHECKPOINT.taskIds[0]}`);
+const FIRST_CHECKPOINT_SOLUTION = FIRST_CHECKPOINT_TASK.solution;
 
 function checkpointReadyProgress() {
   const completed = Array.from({ length: 30 }, (_, index) => `task-${String(index + 1).padStart(3, '0')}`);
@@ -15,6 +20,7 @@ function checkpointReadyProgress() {
       attempts: 1,
       incorrect: 0,
       hintsUsed: 0,
+      independentPasses: 1,
       completedAt: new Date().toISOString(),
       lastAttemptAt: new Date().toISOString()
     }])),
@@ -66,7 +72,7 @@ test('desktop checkpoint retries offline evidence sync and hydrates Learning Pat
 
   const checkpointSession = page.getByTestId('checkpoint-session');
   await expect(checkpointSession).toBeVisible();
-  await expect(checkpointSession.locator('.assessment-progress-strip button')).toHaveCount(5);
+  await expect(checkpointSession.locator('.assessment-progress-strip button')).toHaveCount(FIRST_CHECKPOINT.taskIds.length);
   await expect(checkpointSession.getByTestId('checkpoint-locked-tools')).toBeVisible();
   await expect(checkpointSession.getByText('AI Mentor', { exact: true })).toHaveCount(0);
   await expect(checkpointSession.getByRole('button', { name: /Показать решение/i })).toHaveCount(0);
@@ -151,7 +157,7 @@ test('mobile checkpoint center keeps integrity controls usable on Pixel 7', asyn
   const checkpointSession = page.getByTestId('checkpoint-session');
   await expect(checkpointSession).toBeVisible();
   await expect(checkpointSession.getByTestId('checkpoint-locked-tools')).toBeVisible();
-  await expect(checkpointSession.locator('.assessment-progress-strip button')).toHaveCount(5);
+  await expect(checkpointSession.locator('.assessment-progress-strip button')).toHaveCount(FIRST_CHECKPOINT.taskIds.length);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('mobile-checkpoint-session.png'), fullPage: true });
 });
