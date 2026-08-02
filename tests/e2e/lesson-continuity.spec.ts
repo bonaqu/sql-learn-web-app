@@ -70,7 +70,8 @@ test('desktop curriculum explains why each lesson follows and routes phase bound
   await expect(studio).toBeVisible();
   await expect(studio.getByRole('heading', { name: firstLesson.title, exact: true })).toBeVisible();
 
-  const companion = page.getByTestId('curriculum-continuity-companion');
+  const companion = studio.getByTestId('curriculum-continuity-companion');
+  await expect(companion).toBeVisible();
   const toggle = companion.getByRole('button', { name: /Связь урока/i });
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await toggle.click();
@@ -90,10 +91,13 @@ test('desktop curriculum explains why each lesson follows and routes phase bound
   await openCurriculumLesson(page, phaseTransition!.fromLessonId);
   const phaseLesson = curriculumLessons.find(lesson => lesson.id === phaseTransition!.fromLessonId)!;
   await expect(studio.getByRole('heading', { name: phaseLesson.title, exact: true })).toBeVisible();
-  await expect(companion.getByTestId('lesson-continuity-outgoing')).toContainText(/Сначала checkpoint фазы/i);
-  await expect(companion.getByTestId('lesson-continuity-outgoing')).toContainText(phaseTransition!.evidencePrompt);
+  const phaseOutgoing = companion.getByTestId('lesson-continuity-outgoing');
+  await expect(phaseOutgoing).toContainText(/Сначала checkpoint фазы/i);
+  await expect(phaseOutgoing).toContainText(phaseTransition!.evidencePrompt);
+  await expect(phaseOutgoing.getByRole('button', { name: /Перейти к уроку/i })).toHaveCount(0);
+  await expect(phaseOutgoing.getByRole('button', { name: /Практика:/i })).toHaveCount(0);
 
-  await companion.getByRole('button', { name: /Открыть checkpoint/i }).click();
+  await phaseOutgoing.getByRole('button', { name: /Открыть checkpoint/i }).click();
   await expect(page.getByTestId('checkpoint-landing')).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('desktop-lesson-continuity.png'), fullPage: true });
@@ -104,7 +108,8 @@ test('mobile curriculum keeps the continuity companion compact and readable', as
   await page.goto('./');
   await page.getByTestId('curriculum-mobile-trigger').click();
 
-  const companion = page.getByTestId('curriculum-continuity-companion');
+  const studio = page.getByTestId('curriculum-studio');
+  const companion = studio.getByTestId('curriculum-continuity-companion');
   await expect(companion).toBeVisible();
   const toggle = companion.getByRole('button', { name: /Связь урока/i });
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
