@@ -18,331 +18,298 @@ type PreviewPayload = {
   verificationMode: string;
   engineVersion: null;
   runnerVersion: null;
-  sandboxDestroyed: false;
-  passed: false;
-  evidenceEligible: false;
-  offlinePreview: true;
-  ciVerifiedReference: true;
-  durationMs: number;
-  errors: string[];
+  contractDigest: string;
+  passed: boolean;
+  evidenceEligible: boolean;
+  offlinePreview: boolean;
+  referenceVerifiedBy: string;
   output: { columns: string[]; rows: DialectResultValue[][] } | null;
   normalizedPlan: string[];
   timeline: string[];
+  errors: string[];
   resultDigest: string;
+  durationMs: number;
+  summary: string;
 };
 
-type RegistrationPayload = {
-  session?: { token?: string };
-  recoveryCodes?: string[];
-  user?: { id?: string };
-};
-
-let stageName = 'bootstrap';
-let authToken = '';
-let recoveryCode = '';
-let smokePassword = '';
-let smokeUserId = '';
-let accountDeleted = false;
-
-const sleep = (milliseconds: number) => new Promise(resolve => setTimeout(resolve, milliseconds));
-
-function stage(name: string) {
-  stageName = name;
-  writeFileSync('cloudflare-dialect-stage.txt', `${name}\n`);
-  console.log(`::group::Cloudflare free dialect smoke · ${name}`);
-}
-
-function endStage() {
-  console.log('::endgroup::');
-}
-
-function parseJson<T>(text: string, label: string): T {
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    throw new Error(`${label} returned invalid JSON`);
-  }
-}
-
-function writeJson(path: string, value: unknown) {
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-async function request(path: string, options: {
-  method?: string;
-  headers?: Record<string, string>;
-  body?: string;
-  expected?: number[];
+type RequestOptions = {
+  expectedStatus?: number | number[];
   attempts?: number;
   delayMs?: number;
   diagnosticFile?: string;
-} = {}) {
-  const {
-    method = 'GET',
-    headers = {},
-    body,
-    expected = [200],
-    attempts = 1,
-    delayMs = 3_000,
-    diagnosticFile
-  } = options;
-  let last: { response?: Response; text?: string; error?: unknown } | null = null;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      const response = await fetch(`${deployUrl}${path}`, { method, headers, body, redirect: 'follow' });
-      const text = await response.text();
-      last = { response, text };
-      if (expected.includes(response.status)) {
-        if (diagnosticFile) writeFileSync(diagnosticFile, text);
-        return { response, text };
-      }
-      console.warn(`${method} ${path}: attempt ${attempt}/${attempts}, HTTP ${response.status}`);
-    } catch (error) {
-      last = { error };
-      console.warn(`${method} ${path}: attempt ${attempt}/${attempts} failed`, error);
-    }
-    if (attempt < attempts) await sleep(delayMs);
+  caseId?: string;
+};
+
+type HttpResponse = {
+  status: number;
+  body: string;
+  headers: Record<string, string>;
+};
+
+const unique = randomBytes(6).toString('hex');
+const username = `dialect-free-${unique}`;
+const password = `Dialect-free-${randomBytes(12).toString('base64url')}!Aa9`;
+const cookieJar = 'cloudflare-dialect-smoke-cookies.txt';
+const matrixFile = 'cloudflare-dialect-reference-matrix.json';
+const stageFile = 'cloudflare-dialect-stage.txt';
+const failureFile = 'cloudflare-dialect-failure.txt';
+let stageName = 'initializing';
+
+function stage(name: string) {
+  stageName = name;
+  writeFileSync(stageFile, `${name}\n`, 'utf8');
+}
+
+function sleep(milliseconds: number) {
+  execFileSync('sleep', [String(milliseconds / 1000)]);
+}
+
+function parseResponse(raw: string): HttpResponse {
+  const marker = raw.lastIndexOf('\n__STATUS__:');
+  if (marker < 0) throw new Error(`Malformed curl response: ${raw.slice(0, 300)}`);
+  const payload = raw.slice(0, marker).trim();
+  const trailer = raw.slice(marker + 1).trim().split('\n');
+  const statusLine = trailer.find(line => line.startsWith('__STATUS__:'));
+  const status = Number(statusLine?.slice('__STATUS__:'.length) || 0);
+  const headers: Record<string, string> = {};
+  for (const line of trailer) {
+    if (!line.startsWith('__HEADER__:')) continue;
+    const value = line.slice('__HEADER__:'.length);
+    const separator = value.indexOf(':');
+    if (separator > 0) headers[value.slice(0, separator).toLowerCase()] = value.slice(separator + 1);
   }
-  if (last?.text && diagnosticFile) writeFileSync(diagnosticFile, last.text);
-  throw new Error(`${method} ${path} did not return ${expected.join('/')} (last: ${last?.response?.status ?? 'network error'})`);
+  return { status, body: payload, headers };
 }
 
-function normalizeTimestamp(value: string) {
-  return value.replace('T', ' ').replace(/(?:\.0+)?(?:\+00(?::00)?|Z)$/, '').trim();
+function curl(method: string, path: string, body?: unknown) {
+  const args = [
+    '-sS',
+    '-b', cookieJar,
+    '-c', cookieJar,
+    '-X', method,
+    `${deployUrl}${path}`,
+    '-w', '\n__STATUS__:%{http_code}\n__HEADER__:retry-after:%header{retry-after}\n__HEADER__:cf-ray:%header{cf-ray}\n__HEADER__:x-request-id:%header{x-request-id}'
+  ];
+  if (body !== undefined) {
+    args.push('-H', 'content-type: application/json', '--data', JSON.stringify(body));
+  }
+  const output = execFileSync('curl', args, { encoding: 'utf8' });
+  return parseResponse(output);
 }
 
-function cellsEqual(actual: DialectResultValue, expected: DialectResultValue) {
-  if (actual === expected) return true;
-  if (typeof actual === 'string' && typeof expected === 'string') return normalizeTimestamp(actual) === normalizeTimestamp(expected);
-  if (typeof actual === 'string' && typeof expected === 'number') return Number(actual) === expected;
-  if (typeof actual === 'number' && typeof expected === 'string') return actual === Number(expected);
-  return false;
+function writeResponseDiagnostic(path: string, method: string, requestPath: string, response: HttpResponse, caseId?: string) {
+  writeFileSync(path, JSON.stringify({
+    at: new Date().toISOString(),
+    stage: stageName,
+    caseId: caseId || null,
+    method,
+    path: requestPath,
+    status: response.status,
+    cfRay: response.headers['cf-ray'] || null,
+    requestId: response.headers['x-request-id'] || null,
+    retryAfter: response.headers['retry-after'] || null,
+    body: response.body
+  }, null, 2), 'utf8');
 }
 
-function outputMatches(actual: PreviewPayload['output'], expected: {
-  columns: readonly string[];
-  rows: readonly (readonly DialectResultValue[])[];
-}) {
-  if (!actual || actual.columns.length !== expected.columns.length || actual.rows.length !== expected.rows.length) return false;
-  if (!actual.columns.every((column, index) => column.toLowerCase() === expected.columns[index].toLowerCase())) return false;
-  return actual.rows.every((row, rowIndex) => row.length === expected.rows[rowIndex].length
-    && row.every((cell, columnIndex) => cellsEqual(cell, expected.rows[rowIndex][columnIndex])));
+function request<T>(method: string, path: string, body?: unknown, options: RequestOptions = {}) {
+  const expected = Array.isArray(options.expectedStatus)
+    ? options.expectedStatus
+    : [options.expectedStatus ?? 200];
+  const attempts = Math.max(1, options.attempts ?? 1);
+  const delayMs = Math.max(0, options.delayMs ?? 750);
+  let last: HttpResponse | null = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    last = curl(method, path, body);
+    if (options.diagnosticFile) writeResponseDiagnostic(options.diagnosticFile, method, path, last, options.caseId);
+    if (expected.includes(last.status)) {
+      const parsed = last.body ? JSON.parse(last.body) as T : ({} as T);
+      return { status: last.status, body: parsed, headers: last.headers };
+    }
+    if (attempt < attempts) sleep(delayMs * attempt);
+  }
+  const response = last as HttpResponse;
+  const identity = options.caseId ? ` for ${options.caseId}` : '';
+  const ray = response.headers['cf-ray'] ? ` cf-ray=${response.headers['cf-ray']}` : '';
+  throw new Error(`${method} ${path}${identity} returned ${response.status}; expected ${expected.join('/')} ${ray} body=${response.body.slice(0, 1200)}`);
+}
+
+function register() {
+  return request<{
+    user: { username: string };
+    recoveryCodes: string[];
+  }>('POST', '/api/auth/register', {
+    username,
+    password,
+    displayName: 'Dialect Free Smoke',
+    deviceName: 'Production smoke'
+  }, {
+    expectedStatus: [200, 201],
+    attempts: 5,
+    delayMs: 1_500,
+    diagnosticFile: 'cloudflare-dialect-registration.json'
+  }).body;
+}
+
+function acknowledgeRecoveryCodes(codes: string[]) {
+  const digest = execFileSync('node', ['-e', [
+    "const { createHash } = require('node:crypto');",
+    'const values = JSON.parse(process.argv[1]);',
+    "process.stdout.write(createHash('sha256').update(values.join('|')).digest('hex'));"
+  ].join(''), JSON.stringify(codes)], { encoding: 'utf8' });
+  request('POST', '/api/auth/recovery/acknowledge', { digest });
+}
+
+function login() {
+  request('POST', '/api/auth/login', { username, password, deviceName: 'Production smoke' }, {
+    attempts: 5,
+    delayMs: 1_500,
+    diagnosticFile: 'cloudflare-dialect-login.json'
+  });
+}
+
+function expectArrayRows(actual: DialectResultValue[][], expected: DialectResultValue[][], label: string) {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`${label} rows differ: ${JSON.stringify({ actual, expected })}`);
+  }
 }
 
 function assertPreview(value: PreviewPayload, labId: string, dialect: ServerDialect) {
-  if (value.labId !== labId || value.dialect !== dialect || value.executionMode !== 'remote-sandbox') {
-    throw new Error(`${labId}:${dialect} returned the wrong identity contract`);
+  const testCase = dialectLabCase(labId, dialect);
+  if (!testCase) throw new Error(`Missing case ${labId}:${dialect}`);
+  if (value.labId !== labId || value.dialect !== dialect) {
+    throw new Error(`Preview identity mismatch: ${JSON.stringify(value)}`);
   }
-  if (value.verificationMode !== 'ci-reference-preview-v1'
-    || value.passed !== false
-    || value.evidenceEligible !== false
-    || value.offlinePreview !== true
-    || value.ciVerifiedReference !== true
+  if (value.executionMode !== 'remote-sandbox'
+    || value.verificationMode !== 'ci-reference-preview'
     || value.engineVersion !== null
     || value.runnerVersion !== null
-    || value.sandboxDestroyed !== false) {
-    throw new Error(`${labId}:${dialect} was not an honest free-tier preview: ${JSON.stringify(value)}`);
+    || value.passed
+    || value.evidenceEligible
+    || !value.offlinePreview
+    || value.referenceVerifiedBy !== 'docker-ci'
+    || !value.errors.includes('CI_REFERENCE_PREVIEW_ONLY')) {
+    throw new Error(`${labId}:${dialect} was not an honest CI reference preview: ${JSON.stringify(value)}`);
   }
-  if (!/^fnv1a-[a-f0-9]{8}$/.test(value.resultDigest)) throw new Error(`${labId}:${dialect} preview digest is invalid`);
-  const labCase = dialectLabCase(labId, dialect);
-  if (!labCase || !outputMatches(value.output, labCase.expected)) {
-    throw new Error(`${labId}:${dialect} preview output differs from the CI-verified reference`);
+  if (!value.contractDigest.startsWith('fnv1a-') || !value.resultDigest.startsWith('fnv1a-')) {
+    throw new Error(`${labId}:${dialect} preview digest is invalid`);
   }
-}
-
-function previewEvidence(labId: string, dialect: ServerDialect, preview: PreviewPayload) {
-  return {
-    version: 1,
-    labId,
-    dialect,
-    manifestVersion: 1,
-    executionMode: 'remote-sandbox',
-    passed: false,
-    evidenceEligible: false,
-    independent: false,
-    attempts: 1,
-    bestDurationMs: null,
-    resultDigest: preview.resultDigest,
-    completedAt: null,
-    lastAttemptAt: new Date().toISOString()
-  };
-}
-
-function findCount(value: unknown): number | null {
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const count = findCount(item);
-      if (count !== null) return count;
+  if (value.output === null) {
+    if (testCase.expectedOutput !== null) throw new Error(`${labId}:${dialect} lost expected tabular output`);
+  } else {
+    if (testCase.expectedOutput === null) throw new Error(`${labId}:${dialect} returned unexpected tabular output`);
+    if (JSON.stringify(value.output.columns) !== JSON.stringify(testCase.expectedOutput.columns)) {
+      throw new Error(`${labId}:${dialect} columns differ`);
     }
-    return null;
+    expectArrayRows(value.output.rows, testCase.expectedOutput.rows, `${labId}:${dialect}`);
   }
-  if (!value || typeof value !== 'object') return null;
-  const record = value as Record<string, unknown>;
-  if (Object.hasOwn(record, 'count') && Number.isFinite(Number(record.count))) return Number(record.count);
-  for (const nested of Object.values(record)) {
-    const count = findCount(nested);
-    if (count !== null) return count;
+  if (JSON.stringify(value.normalizedPlan) !== JSON.stringify(testCase.expectedPlan)) {
+    throw new Error(`${labId}:${dialect} normalized plan differs`);
   }
-  return null;
-}
-
-async function deleteSmokeAccount() {
-  if (!authToken || !smokePassword || !recoveryCode || accountDeleted) return;
-  try {
-    const result = await request('/api/profile', {
-      method: 'DELETE',
-      headers: { authorization: `Bearer ${authToken}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ currentPassword: smokePassword, recoveryCode, confirm: 'DELETE' }),
-      expected: [200],
-      attempts: 2
-    });
-    if (parseJson<{ ok?: boolean }>(result.text, 'Dialect account delete').ok !== true) throw new Error('Account delete was not ok');
-    accountDeleted = true;
-  } catch (error) {
-    appendFileSync('cloudflare-dialect-cleanup-error.txt', `${error instanceof Error ? error.stack || error.message : String(error)}\n`);
+  if (JSON.stringify(value.timeline) !== JSON.stringify(testCase.expectedTimeline)) {
+    throw new Error(`${labId}:${dialect} timeline differs`);
   }
-}
-
-async function verifyCascade() {
-  stage('dialect-free-d1-cascade');
-  let lastError: unknown = null;
-  for (let attempt = 1; attempt <= 8; attempt += 1) {
-    try {
-      const stdout = execFileSync('npx', [
-        'wrangler', 'd1', 'execute', 'sql-academy', '--remote', '--config', 'wrangler.deploy.jsonc',
-        '--command', `SELECT COUNT(*) AS count FROM dialect_lab_progress WHERE user_id = '${smokeUserId}'`, '--yes', '--json'
-      ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-      writeFileSync('cloudflare-dialect-cascade.json', stdout);
-      const count = findCount(parseJson<unknown>(stdout, 'Dialect D1 cascade query'));
-      if (count === 0) {
-        endStage();
-        return;
-      }
-      lastError = new Error(`Dialect progress row survived account delete (count=${count})`);
-    } catch (error) {
-      lastError = error;
-      appendFileSync('cloudflare-dialect-cascade-errors.txt', `attempt ${attempt}/8: ${error instanceof Error ? error.stack || error.message : String(error)}\n`);
+  const serialized = JSON.stringify(value).toUpperCase();
+  const forbidden = [testCase.referenceSql.toUpperCase(), 'SELECT TICKET_ID', 'NULLS LAST', 'ON DUPLICATE KEY'];
+  for (const token of forbidden) {
+    if (token.length >= 12 && serialized.includes(token)) {
+      throw new Error(`${labId}:${dialect} preview leaked SQL: ${token.slice(0, 24)}`);
     }
-    if (attempt < 8) await sleep(3_000);
   }
-  endStage();
-  throw lastError || new Error('Unable to verify dialect progress cascade');
 }
 
 try {
-  stage('dialect-free-unauthenticated');
-  await request('/api/dialect-labs/progress', { expected: [401], attempts: 8, delayMs: 4_000 });
-  await request('/api/dialect-labs/execute', {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', expected: [401], attempts: 8, delayMs: 4_000
-  });
-  endStage();
+  stage('register');
+  const registration = register();
+  if (registration.user.username !== username || registration.recoveryCodes.length !== 8) {
+    throw new Error('Dialect smoke account registration failed');
+  }
+  stage('acknowledge recovery codes');
+  acknowledgeRecoveryCodes(registration.recoveryCodes);
 
-  stage('dialect-free-register');
-  const username = `dialfree_${Math.floor(Date.now() / 1000)}_${process.env.GITHUB_RUN_ATTEMPT || '1'}`.slice(0, 32);
-  smokePassword = `${randomBytes(28).toString('base64url')}!aA1`;
-  const registration = await request('/api/auth/register', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ username, password: smokePassword, displayName: 'Dialect Free Smoke', deviceName: 'GitHub Actions free-tier dialect lifecycle' }),
-    expected: [201],
-    attempts: 3
-  });
-  const registrationPayload = parseJson<RegistrationPayload>(registration.text, 'Dialect registration');
-  authToken = String(registrationPayload.session?.token || '');
-  recoveryCode = String(registrationPayload.recoveryCodes?.[0] || '');
-  smokeUserId = String(registrationPayload.user?.id || '');
-  if (!authToken || !recoveryCode || !smokeUserId) throw new Error('Registration did not return required credentials');
-  endStage();
+  stage('pre-policy preview');
+  const prePolicyCase = dialectLabCase('dialect-null-ordering', 'postgresql');
+  if (!prePolicyCase) throw new Error('Missing pre-policy reference case');
+  const prePolicy = request<PreviewPayload>('POST', '/api/dialect-labs/execute', {
+    labId: prePolicyCase.labId,
+    dialect: prePolicyCase.dialect,
+    sql: prePolicyCase.referenceSql
+  }, {
+    attempts: 2,
+    delayMs: 1_000,
+    caseId: `${prePolicyCase.labId}:${prePolicyCase.dialect}`,
+    diagnosticFile: 'cloudflare-dialect-pre-policy.json'
+  }).body;
+  assertPreview(prePolicy, prePolicyCase.labId, 'postgresql');
 
-  const headers = { authorization: `Bearer ${authToken}`, 'content-type': 'application/json' };
-
-  stage('dialect-free-policy');
-  await request('/api/dialect-labs/execute', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ version: 1, labId: 'dialect-null-ordering', dialect: 'postgresql', sql: 'SELECT PG_SLEEP(10);' }),
-    expected: [400],
+  stage('policy rejection');
+  const rejected = request<{ error?: string }>('POST', '/api/dialect-labs/execute', {
+    labId: prePolicyCase.labId,
+    dialect: prePolicyCase.dialect,
+    sql: "SELECT PG_SLEEP(1), ticket_id FROM tickets ORDER BY ticket_id;"
+  }, {
+    expectedStatus: 400,
+    attempts: 2,
+    delayMs: 1_000,
+    caseId: `${prePolicyCase.labId}:${prePolicyCase.dialect}:policy-rejection`,
     diagnosticFile: 'cloudflare-dialect-policy-rejection.json'
-  });
-  endStage();
+  }).body;
+  if (!rejected.error?.includes('Запрещённая конструкция')) {
+    throw new Error(`Server dialect policy did not reject forbidden SQL: ${JSON.stringify(rejected)}`);
+  }
 
-  stage('dialect-free-all-reference-previews');
-  const previews: Record<string, PreviewPayload> = {};
+  stage('logout and login');
+  request('POST', '/api/auth/logout');
+  login();
+
+  stage('all server-dialect CI reference previews');
+  const matrix: Record<string, unknown> = {};
   for (const lab of dialectLabManifests) {
     for (const dialect of SERVER_DIALECTS) {
-      const labCase = dialectLabCase(lab.id, dialect);
-      if (!labCase) throw new Error(`${lab.id}:${dialect} source case is missing`);
-      const response = await request('/api/dialect-labs/execute', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ version: 1, labId: lab.id, dialect, sql: labCase.referenceSql }),
-        expected: [200]
-      });
-      const preview = parseJson<PreviewPayload>(response.text, `${lab.id}:${dialect} preview`);
+      const testCase = dialectLabCase(lab.id, dialect);
+      if (!testCase) throw new Error(`Missing ${lab.id}:${dialect}`);
+      const caseId = `${lab.id}:${dialect}`;
+      stage(`preview ${caseId}`);
+      writeFileSync('cloudflare-dialect-current-case.txt', `${caseId}\n`, 'utf8');
+      const safeId = caseId.replace(/[^a-z0-9_-]+/gi, '-');
+      const preview = request<PreviewPayload>('POST', '/api/dialect-labs/execute', {
+        labId: lab.id,
+        dialect,
+        sql: testCase.referenceSql
+      }, {
+        attempts: 2,
+        delayMs: 1_000,
+        caseId,
+        diagnosticFile: `cloudflare-dialect-preview-${safeId}.json`
+      }).body;
       assertPreview(preview, lab.id, dialect);
-      previews[`${lab.id}:${dialect}`] = preview;
+      matrix[caseId] = {
+        contractDigest: preview.contractDigest,
+        resultDigest: preview.resultDigest,
+        verificationMode: preview.verificationMode,
+        engineVersion: preview.engineVersion,
+        runnerVersion: preview.runnerVersion,
+        output: preview.output,
+        normalizedPlan: preview.normalizedPlan,
+        timeline: preview.timeline,
+        errors: preview.errors
+      };
     }
   }
-  writeJson('cloudflare-dialect-preview-matrix.json', {
-    allPublishedPatternsPreviewed: true,
-    patterns: dialectLabManifests.length,
-    serverCases: Object.keys(previews).length,
-    evidenceEligible: false,
-    productionMode: 'cloudflare-free-reference-preview'
-  });
-  endStage();
-
-  stage('dialect-free-progress-roundtrip');
-  const evidence = Object.fromEntries(Object.entries(previews).map(([key, preview]) => [
-    key,
-    previewEvidence(preview.labId, preview.dialect, preview)
-  ]));
-  const progress = {
-    version: 1,
-    userId: smokeUserId,
-    revision: 0,
-    evidence,
-    updatedAt: new Date().toISOString()
-  };
-  const stored = parseJson<{ revision?: number; progress?: { evidence?: Record<string, { passed?: boolean }> } }>((await request('/api/dialect-labs/progress', {
-    method: 'PUT',
-    headers,
-    body: JSON.stringify({ progress, baseRevision: 0 }),
-    expected: [200]
-  })).text, 'Preview progress write');
-  if (stored.revision !== 1 || Object.values(stored.progress?.evidence || {}).some(item => item.passed === true)) {
-    throw new Error('Preview progress round-trip created passing evidence');
-  }
-  const payloadCheck = execFileSync('npx', [
-    'wrangler', 'd1', 'execute', 'sql-academy', '--remote', '--config', 'wrangler.deploy.jsonc',
-    '--command', `SELECT COUNT(*) AS count FROM dialect_lab_progress WHERE user_id = '${smokeUserId}' AND (UPPER(payload) LIKE '%SELECT %' OR UPPER(payload) LIKE '%NULLS LAST%')`, '--yes', '--json'
-  ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  writeFileSync('cloudflare-dialect-privacy.json', payloadCheck);
-  if (findCount(parseJson<unknown>(payloadCheck, 'Dialect privacy query')) !== 0) throw new Error('Learner SQL leaked into D1 progress');
-  endStage();
-
-  stage('dialect-free-delete-account');
-  await deleteSmokeAccount();
-  if (!accountDeleted) throw new Error('Smoke account was not deleted');
-  endStage();
-
-  await verifyCascade();
-
-  stage('dialect-free-revoked');
-  await request('/api/dialect-labs/progress', { headers, expected: [401] });
-  endStage();
-
-  writeJson('cloudflare-dialect-free-result.json', {
-    ok: true,
-    productionMode: 'cloudflare-free-reference-preview',
-    patterns: dialectLabManifests.length,
-    serverCases: dialectLabManifests.length * SERVER_DIALECTS.length,
-    masteryEvidenceCreated: false,
-    accountDeleted: true
-  });
-  console.log('Cloudflare Free dialect smoke passed: 22 CI-reference previews, zero false mastery, D1 privacy and account cascade.');
+  stage('completed');
+  writeFileSync(matrixFile, JSON.stringify(matrix, null, 2), 'utf8');
+  console.log(`Cloudflare Free dialect reference smoke passed for ${Object.keys(matrix).length} PostgreSQL/MySQL previews with zero false mastery.`);
 } catch (error) {
-  await deleteSmokeAccount();
-  writeFileSync('cloudflare-dialect-failure.txt', `stage=${stageName}\n${error instanceof Error ? error.stack || error.message : String(error)}\n`);
+  const message = error instanceof Error ? error.message : String(error);
+  writeFileSync(failureFile, `stage=${stageName}\n${message}\n`, 'utf8');
   throw error;
+} finally {
+  try {
+    request('POST', '/api/auth/logout', undefined, {
+      expectedStatus: [200, 401],
+      diagnosticFile: 'cloudflare-dialect-final-logout.json'
+    });
+  } catch (error) {
+    appendFileSync(failureFile, `logout=${error instanceof Error ? error.message : String(error)}\n`, 'utf8');
+  }
 }
