@@ -42,6 +42,15 @@ function openCurriculumTarget(target: 'lesson' | 'project', id: string) {
   openDeferredFeature('curriculum');
 }
 
+export function openAcademyCheckpoint(checkpointId: string) {
+  if (!checkpointId) return false;
+  sessionStorage.setItem(CHECKPOINT_REQUEST_KEY, checkpointId);
+  window.dispatchEvent(new CustomEvent(OPEN_CHECKPOINT_EVENT, {
+    detail: { checkpointId }
+  }));
+  return true;
+}
+
 export function openJourneyDestination(action: JourneyAction) {
   if (action.kind === 'lesson' && action.lessonId) {
     openCurriculumTarget('lesson', action.lessonId);
@@ -52,11 +61,7 @@ export function openJourneyDestination(action: JourneyAction) {
     return true;
   }
   if (action.kind === 'checkpoint' && action.checkpointId) {
-    sessionStorage.setItem(CHECKPOINT_REQUEST_KEY, action.checkpointId);
-    window.dispatchEvent(new CustomEvent(OPEN_CHECKPOINT_EVENT, {
-      detail: { checkpointId: action.checkpointId }
-    }));
-    return true;
+    return openAcademyCheckpoint(action.checkpointId);
   }
   if (action.kind === 'assessment') {
     openDeferredFeature('assessment');
