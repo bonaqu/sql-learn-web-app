@@ -20,6 +20,7 @@ import {
   Home,
   Lightbulb,
   ListChecks,
+  LockKeyhole,
   Maximize2,
   Menu,
   MessageSquareText,
@@ -42,6 +43,7 @@ import {
 } from 'lucide-react';
 import { achievements, modules, SqlTask, tasks } from './data/course-catalog';
 import { trainingSeedSql } from './data/training-dataset';
+import { openJourneyDestination } from './lib/academy-navigation';
 import { classifySqlAttempt, type AttemptDiagnostic } from './lib/attempt-diagnostics';
 import { localMentor, MentorMode } from './lib/mentor';
 import {
@@ -55,6 +57,12 @@ import {
   weakTopics as calculateWeakTopics
 } from './lib/progress';
 import { openDeferredFeature, preloadDeferredFeature } from './lib/deferred-features';
+import {
+  workspaceStageLabel,
+  workspaceTaskReadiness,
+  type WorkspaceJourneyState,
+  type WorkspaceMode
+} from './lib/workspace-readiness';
 import GuidedHome from './components/GuidedHome';
 
 const Editor = lazy(() => import('./components/SqlEditor'));
@@ -99,6 +107,13 @@ function execute(engine: SqlEngine, source: string) {
   }
 }
 
+function workspaceModeForTask(task: SqlTask, view: View): WorkspaceMode {
+  if (view === 'review') return 'review';
+  if (task.mode === 'interview') return 'interview';
+  if (task.mode === 'puzzle') return 'puzzle';
+  return 'practice';
+}
+
 const mentorQuestions: Record<MentorMode, string> = {
   'next-step': 'Дай только один следующий шаг. Не показывай готовый запрос.',
   debug: 'Найди наиболее вероятную причину ошибки или несовпадения результата.',
@@ -130,6 +145,7 @@ function App() {
   const [mentorMode, setMentorMode] = useState<MentorMode>('next-step');
   const [mentorAnswer, setMentorAnswer] = useState('Mentor готов дать следующий шаг, разобрать ошибку или объяснить концепт.');
   const [mentorLoading, setMentorLoading] = useState(false);
+  const [workspaceJourney, setWorkspaceJourney] = useState<WorkspaceJourneyState | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const workspaceActive = view === 'catalog' || view === 'practice' || view === 'review' || view === 'interview' || view === 'puzzle';
 
@@ -162,6 +178,57 @@ function App() {
   }, [engine, workspaceActive]);
 
   useEffect(() => {
+    if (!workspaceActive) {
+      setWorkspaceJourney(null);
+      return;
+    }
+    let disposed = false;
+    const cleanups: Array<() => void> = [];
+
+    Promise.all([
+      import('./lib/journey-evidence'),
+      import('./lib/learning-journey'),
+      import('./data/complete-curriculum'),
+      import('./data/learning-structure'),
+      import('./lib/learner-onboarding')
+    ]).then(([evidenceModule, journeyModule, curriculumData, structure, onboardingModule]) => {
+      if (disposed) return;
+      const refresh = () => {
+        const evidence = evidenceModule.loadJourneyEvidenceSnapshot();
+        const profile = onboardingModule.loadOnboardingProfile();
+        const action = journeyModule.nextJourneyAction(progress, evidence.curriculum, {
+          includeReview: false,
+          passedCheckpointIds: evidence.passedCheckpointIds,
+          assessmentComplete: evidence.assessmentComplete,
+          bypassedModuleIds: profile.placement.status === 'completed'
+            ? profile.placement.strongModuleIds
+            : []
+        });
+        const passedCheckpoints = new Set(evidence.passedCheckpointIds);
+        const passedPhaseIds = structure.phaseDefinitions
+          .filter(phase => curriculumData.curriculumCheckpoints.some(checkpoint =>
+            passedCheckpoints.has(checkpoint.id)
+            && checkpoint.moduleIds.some(moduleId => phase.moduleIds.some(id => id === moduleId))
+          ))
+          .map(phase => phase.id);
+        if (!disposed) setWorkspaceJourney({ action, passedPhaseIds });
+      };
+      refresh();
+      for (const eventName of evidenceModule.JOURNEY_EVIDENCE_EVENTS) {
+        window.addEventListener(eventName, refresh);
+        cleanups.push(() => window.removeEventListener(eventName, refresh));
+      }
+    }).catch(() => {
+      if (!disposed) setWorkspaceJourney(null);
+    });
+
+    return () => {
+      disposed = true;
+      for (const cleanup of cleanups) cleanup();
+    };
+  }, [progress, workspaceActive]);
+
+  useEffect(() => {
     document.body.style.overflow = editorFullscreen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [editorFullscreen]);
@@ -190,12 +257,28 @@ function App() {
     });
   }, [moduleFilter, query, queue, view]);
 
+  const selectedReadiness = useMemo(() => workspaceTaskReadiness(
+    selected,
+    progress,
+    workspaceJourney,
+    workspaceModeForTask(selected, view)
+  ), [progress, selected, view, workspaceJourney]);
+
+  const readinessByTask = useMemo(() => new Map(filteredTasks.map(task => [
+    task.id,
+    workspaceTaskReadiness(task, progress, workspaceJourney, workspaceModeForTask(task, view))
+  ])), [filteredTasks, progress, view, workspaceJourney]);
+
   const selectTask = (task: SqlTask) => {
+    const targetMode = workspaceModeForTask(task, view);
+    const readiness = workspaceTaskReadiness(task, progress, workspaceJourney, targetMode);
     setSelected(task);
     setSql(task.starter);
     setResult([]);
     setStatus('idle');
-    setMessage('Задача открыта. Сначала опиши ожидаемый результат, затем пиши SQL.');
+    setMessage(readiness.canRun
+      ? 'Задача открыта. Сначала опиши ожидаемый результат, затем пиши SQL.'
+      : `Preview без mastery: ${readiness.reason}`);
     setVisibleHints(0);
     setShowSolution(false);
     setSolutionViewedThisSession(false);
@@ -209,6 +292,11 @@ function App() {
   };
 
   const runSql = useCallback(() => {
+    if (!selectedReadiness.canRun) {
+      setStatus('idle');
+      setMessage(`Preview без mastery: ${selectedReadiness.reason}`);
+      return;
+    }
     if (!engine) return;
     try {
       const output = execute(engine, sql);
@@ -262,7 +350,7 @@ function App() {
         hintsUsed: visibleHints
       }));
     }
-  }, [currentStats.attempts, engine, selected, solutionViewedThisSession, sql, visibleHints]);
+  }, [currentStats.attempts, engine, selected, selectedReadiness, solutionViewedThisSession, sql, visibleHints]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -281,12 +369,21 @@ function App() {
   }, [editorFullscreen, runSql]);
 
   const revealHint = () => {
+    if (!selectedReadiness.canRun) {
+      setMessage(`Подсказки недоступны в preview: ${selectedReadiness.reason}`);
+      return;
+    }
     if (visibleHints >= selected.hints.length) return;
     setVisibleHints(value => value + 1);
     setProgress(current => recordHint(current, selected.id));
   };
 
   const toggleSolution = () => {
+    if (!selectedReadiness.canRun) {
+      setMessage(`Эталон недоступен в preview: ${selectedReadiness.reason}`);
+      setStatus('idle');
+      return;
+    }
     if (!solutionUnlocked) {
       setMessage('Эталон откроется после трёх попыток или просмотра всех подсказок. Сначала попробуй ещё один шаг.');
       setStatus('idle');
@@ -327,7 +424,7 @@ function App() {
           lastFeedback: message,
           attempts: currentStats.attempts,
           hintsUsed: visibleHints,
-          allowSolution: solutionUnlocked
+          allowSolution: solutionUnlocked && selectedReadiness.canRun
         })
       });
       if (!response.ok) throw new Error('mentor');
@@ -389,6 +486,22 @@ function App() {
     setMobileTaskOpen(false);
     if (next !== 'catalog') setModuleFilter('all');
     window.requestAnimationFrame(() => document.getElementById('main-content')?.focus({ preventScroll: true }));
+  };
+
+  const openCanonicalAction = () => {
+    const action = workspaceJourney?.action;
+    if (!action) return;
+    if (action.task) {
+      const nextView: View = action.task.mode === 'interview'
+        ? 'interview'
+        : action.task.mode === 'puzzle'
+          ? 'puzzle'
+          : 'practice';
+      navigate(nextView);
+      selectTask(action.task);
+      return;
+    }
+    openJourneyDestination(action);
   };
 
   const workspaceTitle = view === 'catalog'
@@ -466,7 +579,7 @@ function App() {
             <div className="section-heading">
               <div>
                 <h1>{workspaceTitle}</h1>
-                <p>{view === 'review' ? `${queue.length} задач в адаптивной очереди` : `${filteredTasks.length} задач · проверка по результату`}</p>
+                <p>{view === 'review' ? `${queue.length} задач в адаптивной очереди` : `${filteredTasks.length} задач · ready запускаются, preview показывает будущий этап`}</p>
               </div>
               <select value={moduleFilter} onChange={event => setModuleFilter(event.target.value)} aria-label="Фильтр по модулю">
                 <option value="all">Все модули</option>
@@ -477,13 +590,20 @@ function App() {
               {!filteredTasks.length && <div className="empty-state"><ShieldCheck /><h3>Очередь пуста</h3><p>Решай новые задачи — сложные темы появятся здесь автоматически.</p></div>}
               {filteredTasks.map(task => {
                 const stats = progress.taskStats[task.id];
-                return <button className={`task-row ${selected.id === task.id ? 'active' : ''}`} onClick={() => selectTask(task)} key={task.id}>
+                const readiness = readinessByTask.get(task.id);
+                const preview = readiness && !readiness.canRun;
+                return <button
+                  className={`task-row ${selected.id === task.id ? 'active' : ''} ${preview ? 'preview' : ''}`}
+                  onClick={() => selectTask(task)}
+                  key={task.id}
+                  data-readiness={readiness?.status || 'loading'}
+                >
                   <span className="task-number">{task.id.replace('task-', '')}</span>
                   <span>
                     <strong>{task.title}</strong>
-                    <small>{task.difficulty} · {task.xp} XP{stats?.incorrect ? ` · ошибок ${stats.incorrect}` : ''}{stats?.independentPasses ? ' · independent ✓' : ''}</small>
+                    <small>{task.difficulty} · {workspaceStageLabel(task)} · {readiness?.label || 'Сверяю маршрут'} · {task.xp} XP{stats?.incorrect ? ` · ошибок ${stats.incorrect}` : ''}{stats?.independentPasses ? ' · independent ✓' : ''}</small>
                   </span>
-                  {completed.has(task.id) ? <CheckCircle2 className="done" /> : <ChevronRight />}
+                  {preview ? <LockKeyhole className="preview-lock" /> : completed.has(task.id) ? <CheckCircle2 className="done" /> : <ChevronRight />}
                 </button>;
               })}
             </div>
@@ -498,8 +618,15 @@ function App() {
             <div className="task-copy">
               <div className="task-meta">
                 <span>{selected.topic}</span><span>{selected.difficulty}</span><span>{selected.xp} XP</span>
+                <span>{workspaceStageLabel(selected)}</span>
+                <span className={selectedReadiness.canRun ? 'stage-ready' : 'stage-preview'}>{selectedReadiness.label}</span>
                 <span className={guidedSession ? 'guided-attempt' : 'independent-attempt'}>{guidedSession ? 'Guided attempt' : 'Independent attempt'}</span>
               </div>
+              {!selectedReadiness.canRun && <section className="workspace-readiness-gate" data-testid="workspace-preview-gate" aria-live="polite">
+                <LockKeyhole />
+                <div><small>{selectedReadiness.status === 'loading' ? 'Проверяю evidence' : 'Preview без mastery'}</small><h3>{selectedReadiness.label}</h3><p>{selectedReadiness.reason}</p></div>
+                <button onClick={openCanonicalAction} disabled={!workspaceJourney}>Открыть правильный следующий этап <ChevronRight /></button>
+              </section>}
               <div className="task-title-row">
                 <div><h2>{selected.title}</h2><p>{selected.description}</p></div>
                 <button className="icon expand-editor" onClick={() => setEditorFullscreen(value => !value)} aria-label={editorFullscreen ? 'Свернуть редактор' : 'Развернуть редактор'}>
@@ -522,7 +649,7 @@ function App() {
 
               <div className="hint-card">
                 <div><Lightbulb /><span><strong>Прогрессивные подсказки</strong><small>{visibleHints}/{selected.hints.length} открыто</small></span></div>
-                <button onClick={revealHint} disabled={visibleHints >= selected.hints.length}>Следующая подсказка</button>
+                <button onClick={revealHint} disabled={!selectedReadiness.canRun || visibleHints >= selected.hints.length}>Следующая подсказка</button>
                 {visibleHints > 0 && <ol>{selected.hints.slice(0, visibleHints).map(hint => <li key={hint}>{hint}</li>)}</ol>}
               </div>
             </div>
@@ -552,13 +679,18 @@ function App() {
             </div>
 
             <div className="runner-actions">
-              <button className="primary" onClick={runSql} disabled={!engine}><Code2 /> Проверить SQL <kbd>Ctrl ↵</kbd></button>
+              <button className="primary" onClick={runSql} disabled={!engine || !selectedReadiness.canRun}><Code2 /> {selectedReadiness.canRun ? 'Проверить SQL' : 'Preview: запуск закрыт'} <kbd>Ctrl ↵</kbd></button>
               <button onClick={() => { setSql(selected.starter); setResult([]); setStatus('idle'); setAttemptDiagnostic(null); setMessage('Редактор сброшен.'); }}><RotateCcw /> Сбросить</button>
-              <button onClick={toggleSolution}><Target /> {showSolution ? 'Скрыть решение' : solutionUnlocked ? 'Показать решение' : 'Решение заблокировано'}</button>
+              <button onClick={toggleSolution} disabled={!selectedReadiness.canRun}><Target /> {showSolution ? 'Скрыть решение' : solutionUnlocked ? 'Показать решение' : 'Решение заблокировано'}</button>
             </div>
 
             {showSolution && <div className="solution-card"><strong>Эталонный вариант</strong><pre>{selected.solution}</pre></div>}
             <div className={`feedback ${status}`} role="status" aria-live="polite"><p>{message}</p><span>Попыток: {currentStats.attempts} · Ошибок: {currentStats.incorrect} · Подсказок: {currentStats.hintsUsed} · Independent: {currentStats.independentPasses || 0}</span></div>
+            {status === 'success' && workspaceJourney?.action && <section className="workspace-next-step" data-testid="workspace-next-step">
+              <CheckCircle2 />
+              <div><small>Следующий канонический этап</small><h3>{workspaceJourney.action.title}</h3><p>{workspaceJourney.action.description}</p></div>
+              <button onClick={openCanonicalAction}>{workspaceJourney.action.cta} <ChevronRight /></button>
+            </section>}
             {attemptDiagnostic && <section className="attempt-diagnostic" data-testid="attempt-diagnostic" aria-label="Диагностика попытки">
               <Bug />
               <div><small>Диагностика попытки · {attemptDiagnostic.kind}</small><h3>{attemptDiagnostic.title}</h3><p>{attemptDiagnostic.explanation}</p><strong>Следующий шаг: {attemptDiagnostic.nextStep}</strong></div>

@@ -53,6 +53,7 @@ test('desktop keeps SQLite evidence executable while PostgreSQL stays an honest 
   const auth = await authenticatePage(page, 'dialectfree');
   await openDialectLab(page);
   await expect(page.locator('.dialect-free-boundary')).toContainText('Cloudflare Free boundary');
+  await expect(page.getByTestId('dialect-hydration-state')).toHaveCount(0);
 
   await page.getByTestId('run-dialect-lab').click();
   const evidence = page.getByTestId('dialect-evidence-card');
@@ -63,8 +64,17 @@ test('desktop keeps SQLite evidence executable while PostgreSQL stays an honest 
   await page.getByTestId('run-dialect-lab').click();
   await expect(evidence).toContainText('Contract подтверждён');
   await expect(evidence).toContainText('local-sqlite');
-  await expect(page.locator('.dialect-sync-message')).toContainText(/Independent evidence синхронизирован|Cloud sync повторится/);
+  await expect(page.locator('.dialect-sync-message')).toContainText('Independent evidence синхронизирован между устройствами.');
   await expect(page.locator('.dialect-executable-hero')).toContainText('1/3');
+
+  const remoteEvidence = await page.evaluate(async () => {
+    const response = await fetch('/api/dialect-labs/progress');
+    const body = await response.json();
+    return { status: response.status, body };
+  });
+  expect(remoteEvidence.status).toBe(200);
+  expect(JSON.stringify(remoteEvidence.body)).toContain('dialect-null-ordering:sqlite');
+  expect(JSON.stringify(remoteEvidence.body)).toContain('"passed":true');
 
   await page.getByRole('button', { name: /PostgreSQL Server contract/i }).click();
   await replaceSql(page, POSTGRES_NULL_ORDERING);
@@ -99,11 +109,13 @@ test('desktop keeps SQLite evidence executable while PostgreSQL stays an honest 
 
   await expectAccessible(page);
   await page.screenshot({ path: testInfo.outputPath('desktop-dialect-free-preview.png'), fullPage: true });
+  await page.close();
 
   const secondContext = await browser.newContext();
   const secondPage = await secondContext.newPage();
   await loginPage(secondPage, auth.username);
   await openDialectLab(secondPage);
+  await expect(secondPage.getByTestId('dialect-hydration-state')).toHaveCount(0);
   await expect(secondPage.locator('.dialect-executable-hero')).toContainText('1/3');
   await expect(secondPage.getByRole('button', { name: /SQLite Local WASM/i }).locator('svg.passed')).toBeVisible();
   await expect(secondPage.getByRole('button', { name: /PostgreSQL Server contract/i }).locator('svg.passed')).toHaveCount(0);
@@ -115,7 +127,22 @@ test('desktop keeps SQLite evidence executable while PostgreSQL stays an honest 
 
 test('mobile blocks unsafe SQL and shows concurrency reference timeline without false MySQL mastery or overflow', async ({ page }, testInfo) => {
   await authenticatePage(page, 'dialectmobilefree');
+  let failInitialHydration = true;
+  await page.route('**/api/dialect-labs/progress', async route => {
+    if (route.request().method() === 'GET' && failInitialHydration) {
+      failInitialHydration = false;
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'temporary test outage' }) });
+      return;
+    }
+    await route.continue();
+  });
   await openDialectLab(page, true);
+
+  const hydration = page.getByTestId('dialect-hydration-state');
+  await expect(hydration).toContainText('Cloud evidence не подтверждён');
+  await expect(page.locator('.dialect-executable-hero')).toContainText('local evidence only');
+  await hydration.getByRole('button', { name: /Повторить cloud hydration/i }).click();
+  await expect(hydration).toHaveCount(0);
 
   await replaceSql(page, 'SELECT 1; DROP TABLE tickets;');
   await page.getByTestId('run-dialect-lab').click();

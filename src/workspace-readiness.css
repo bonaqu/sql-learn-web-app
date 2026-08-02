@@ -1,0 +1,132 @@
+.task-row.preview {
+  border-color: color-mix(in srgb, var(--warning) 32%, var(--border));
+  background: color-mix(in srgb, var(--warning-soft) 45%, var(--panel));
+}
+
+.task-row.preview:hover,
+.task-row.preview.active {
+  border-color: color-mix(in srgb, var(--warning) 58%, var(--border-strong));
+  background: color-mix(in srgb, var(--warning-soft) 68%, var(--panel-2));
+}
+
+.task-row .preview-lock {
+  width: 18px;
+  height: 18px;
+  color: var(--warning);
+  flex: 0 0 auto;
+}
+
+.task-meta .stage-ready,
+.task-meta .stage-preview {
+  font-weight: 700;
+}
+
+.task-meta .stage-ready {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 34%, var(--border));
+  background: var(--success-soft);
+}
+
+.task-meta .stage-preview {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 34%, var(--border));
+  background: var(--warning-soft);
+}
+
+.workspace-readiness-gate,
+.workspace-next-step {
+  margin: 16px 0;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid color-mix(in srgb, var(--warning) 42%, var(--border));
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--warning-soft), color-mix(in srgb, var(--panel) 92%, transparent));
+}
+
+.workspace-readiness-gate > svg,
+.workspace-next-step > svg {
+  width: 24px;
+  height: 24px;
+  color: var(--warning);
+}
+
+.workspace-readiness-gate small,
+.workspace-next-step small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.workspace-readiness-gate h3,
+.workspace-next-step h3 {
+  margin: 3px 0 5px;
+  font-size: 15px;
+}
+
+.workspace-readiness-gate p,
+.workspace-next-step p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.workspace-readiness-gate button,
+.workspace-next-step button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.workspace-readiness-gate button:hover:not(:disabled),
+.workspace-next-step button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.workspace-readiness-gate button svg,
+.workspace-next-step button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.workspace-next-step {
+  border-color: color-mix(in srgb, var(--success) 42%, var(--border));
+  background: linear-gradient(135deg, var(--success-soft), color-mix(in srgb, var(--panel) 92%, transparent));
+}
+
+.workspace-next-step > svg {
+  color: var(--success);
+}
+
+.workspace-next-step button {
+  border-color: color-mix(in srgb, var(--success) 42%, var(--border-strong));
+}
+
+@media (max-width: 760px) {
+  .workspace-readiness-gate,
+  .workspace-next-step {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .workspace-readiness-gate button,
+  .workspace-next-step button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}

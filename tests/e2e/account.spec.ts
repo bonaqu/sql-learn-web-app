@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { TEST_PASSWORD } from './auth-helper';
-import { guidedHome } from './navigation-helper';
+import { guidedHome, seedFirstLessonEvidence } from './navigation-helper';
 
 const WORKER_URL = 'http://127.0.0.1:8787';
 
@@ -50,9 +50,15 @@ test('desktop password account requires login and syncs progress across two devi
   await expect(guidedHome(page)).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Войти в академию' })).toBeHidden();
   await page.locator('.sidebar nav').getByRole('button', { name: 'Practice' }).click();
-  await page.locator('.task-row').first().click();
+  await expect(page.getByRole('heading', { name: 'Practice Mode' })).toBeVisible();
+  await seedFirstLessonEvidence(page);
+  const firstTask = page.locator('.task-row').first();
+  await expect(firstTask).toContainText('Текущий шаг маршрута');
+  await firstTask.click();
   await replaceEditorSql(page, "SELECT ticket_id, service, status FROM tickets WHERE service = 'VPN' ORDER BY ticket_id;");
-  await page.getByRole('button', { name: /Проверить SQL/ }).click();
+  const runButton = page.getByRole('button', { name: /Проверить SQL/ });
+  await expect(runButton).toBeEnabled();
+  await runButton.click();
   await expect(page.locator('.feedback.success')).toContainText('Верно');
   await page.waitForTimeout(2100);
 
