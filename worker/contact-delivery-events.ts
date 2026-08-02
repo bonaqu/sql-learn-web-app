@@ -26,6 +26,36 @@ function utf8(value: string) {
   return new TextEncoder().encode(value);
 }
 
+async function boundedRequestText(request: Request) {
+  const contentLength = Number(request.headers.get('content-length'));
+  if (Number.isFinite(contentLength) && contentLength > MAX_CALLBACK_BYTES) return null;
+  if (!request.body) return '';
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_CALLBACK_BYTES) {
+        await reader.cancel('callback-payload-too-large').catch(() => undefined);
+        return null;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const combined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(combined);
+}
+
 function bytesEqual(left: Uint8Array, right: Uint8Array) {
   if (left.length !== right.length) return false;
   let mismatch = 0;
@@ -105,17 +135,20 @@ export async function handleResendDeliveryEvent(request: Request, env: ContactDe
   if (request.method !== 'POST') return textResponse(405, 'Method not allowed');
   const secret = (env.RESEND_WEBHOOK_SECRET || '').trim();
   if (!secret.startsWith('whsec_')) return textResponse(404, 'Not found');
-  const contentLength = Number(request.headers.get('content-length'));
-  if (Number.isFinite(contentLength) && contentLength > MAX_CALLBACK_BYTES) return textResponse(413, 'Payload too large');
-  const body = await request.text();
-  if (utf8(body).byteLength > MAX_CALLBACK_BYTES) return textResponse(413, 'Payload too large');
+  const body = await boundedRequestText(request);
+  if (body === null) return textResponse(413, 'Payload too large');
   const eventId = await verifyResendSignature(body, request.headers, secret);
   if (!eventId) return textResponse(401, 'Invalid signature');
-  const payload = JSON.parse(body) as {
+  let payload: {
     type?: string;
     created_at?: string;
     data?: { email_id?: string };
   };
+  try {
+    payload = JSON.parse(body) as typeof payload;
+  } catch {
+    return textResponse(400, 'Invalid payload');
+  }
   const status = resendStatus(String(payload.type || ''));
   const emailId = String(payload.data?.email_id || '').trim();
   if (!status || !emailId || emailId.length > 180) return textResponse(204);
@@ -166,10 +199,8 @@ export async function handleTwilioDeliveryEvent(request: Request, env: ContactDe
   if (!contentType.toLowerCase().startsWith('application/x-www-form-urlencoded')) {
     return textResponse(415, 'Unsupported media type');
   }
-  const contentLength = Number(request.headers.get('content-length'));
-  if (Number.isFinite(contentLength) && contentLength > MAX_CALLBACK_BYTES) return textResponse(413, 'Payload too large');
-  const body = await request.text();
-  if (utf8(body).byteLength > MAX_CALLBACK_BYTES) return textResponse(413, 'Payload too large');
+  const body = await boundedRequestText(request);
+  if (body === null) return textResponse(413, 'Payload too large');
   const params = new URLSearchParams(body);
   if (!(await verifyTwilioSignature(request, params, authToken))) return textResponse(401, 'Invalid signature');
   const sid = String(params.get('MessageSid') || params.get('SmsSid') || '').trim();
