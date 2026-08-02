@@ -47,12 +47,14 @@ jobs:
               sha: context.sha,
               state: 'pending',
               context: 'deployment/cloudflare',
-              description: 'Building and smoke-testing the Cloudflare Free Worker stack'
+              description: 'Building and smoke-testing the Cloudflare Free Worker stack',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
             });
 
       - name: Validate deployment credentials
         shell: bash
         run: |
+          echo 'credentials' > cloudflare-deployment-stage.txt
           test -n "$CLOUDFLARE_API_TOKEN"
           test -n "$CLOUDFLARE_ACCOUNT_ID"
 
@@ -62,17 +64,31 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        shell: bash
+        run: |
+          echo 'dependencies' > cloudflare-deployment-stage.txt
+          for attempt in 1 2 3; do
+            npm install --no-audit --no-fund && break
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
 
       - name: TypeScript check
-        run: npm run check
+        shell: bash
+        run: |
+          echo 'typescript-check' > cloudflare-deployment-stage.txt
+          npm run check
 
       - name: Production build
-        run: npm run build
+        shell: bash
+        run: |
+          echo 'production-build' > cloudflare-deployment-stage.txt
+          npm run build
 
       - name: Ensure D1 database exists
         shell: bash
         run: |
+          echo 'resolve-d1' > cloudflare-deployment-stage.txt
           npx wrangler d1 list --json > d1.json
           D1_ID=$(node -e "const x=require('./d1.json'); const d=x.find(v=>v.name==='sql-academy'); if(d) process.stdout.write(d.uuid||d.id)")
           if [ -z "$D1_ID" ]; then
@@ -86,6 +102,7 @@ jobs:
       - name: Ensure KV namespace exists
         shell: bash
         run: |
+          echo 'resolve-kv' > cloudflare-deployment-stage.txt
           npx wrangler kv namespace list > kv.json
           KV_ID=$(node -e "const x=require('./kv.json'); const d=x.find(v=>String(v.title).toLowerCase().includes('sql-academy-settings')); if(d) process.stdout.write(d.id)")
           if [ -z "$KV_ID" ]; then
@@ -99,6 +116,7 @@ jobs:
       - name: Generate free-tier production Wrangler config
         shell: bash
         run: |
+          echo 'generate-wrangler-config' > cloudflare-deployment-stage.txt
           node - <<'NODE'
           const fs = require('fs');
           const config = {
@@ -137,15 +155,22 @@ jobs:
           NODE
 
       - name: Validate production free-tier bundle
-        run: npx wrangler deploy --dry-run --config wrangler.deploy.jsonc
+        shell: bash
+        run: |
+          echo 'wrangler-dry-run' > cloudflare-deployment-stage.txt
+          npx wrangler deploy --dry-run --config wrangler.deploy.jsonc
 
       - name: Apply D1 migrations
-        run: npx wrangler d1 migrations apply sql-academy --remote --config wrangler.deploy.jsonc
+        shell: bash
+        run: |
+          echo 'd1-migrations' > cloudflare-deployment-stage.txt
+          npx wrangler d1 migrations apply sql-academy --remote --config wrangler.deploy.jsonc
 
       - name: Deploy Worker, D1/KV and static assets
         id: deploy
         shell: bash
         run: |
+          echo 'worker-deploy' > cloudflare-deployment-stage.txt
           set -o pipefail
           npx wrangler deploy --config wrangler.deploy.jsonc 2>&1 | tee cloudflare-deploy.log
           DEPLOY_URL=$(grep -Eo 'https://[A-Za-z0-9.-]+\.workers\.dev' cloudflare-deploy.log | tail -n 1)
@@ -155,63 +180,85 @@ jobs:
       - name: Smoke-test commercial runtime, CORS and hidden operator boundary
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-        run: node scripts/commercial-runtime-production-smoke.mjs
+        run: |
+          echo 'commercial-smoke' > cloudflare-deployment-stage.txt
+          node scripts/commercial-runtime-production-smoke.mjs
 
       - name: Smoke-test Cloudflare frontend, auth and curriculum API
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-        run: node scripts/cloudflare-production-smoke.mjs
+        run: |
+          echo 'core-smoke' > cloudflare-deployment-stage.txt
+          node scripts/cloudflare-production-smoke.mjs
 
       - name: Smoke-test full misconception answer history
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-        run: node scripts/concept-progress-production-smoke.mjs
+        run: |
+          echo 'concept-smoke' > cloudflare-deployment-stage.txt
+          node scripts/concept-progress-production-smoke.mjs
 
       - name: Smoke-test executable checkpoint report lifecycle
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-        run: node scripts/checkpoint-production-smoke.mjs
+        run: |
+          echo 'checkpoint-smoke' > cloudflare-deployment-stage.txt
+          node scripts/checkpoint-production-smoke.mjs
 
       - name: Smoke-test immutable capstone report lifecycle
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-        run: node scripts/capstone-production-smoke.mjs
+        run: |
+          echo 'capstone-smoke' > cloudflare-deployment-stage.txt
+          node scripts/capstone-production-smoke.mjs
 
       - name: Smoke-test privacy-first assessment calibration lifecycle
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-        run: node scripts/assessment-calibration-production-smoke.mjs
+        run: |
+          echo 'assessment-smoke' > cloudflare-deployment-stage.txt
+          node scripts/assessment-calibration-production-smoke.mjs
 
       - name: Smoke-test privacy-first learning analytics lifecycle
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-        run: node scripts/learning-analytics-production-smoke.mjs
+        run: |
+          echo 'analytics-smoke' > cloudflare-deployment-stage.txt
+          node scripts/learning-analytics-production-smoke.mjs
 
       - name: Smoke-test all server-dialect CI reference previews
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-        run: npx tsx scripts/dialect-labs-free-production-smoke.ts
+        run: |
+          echo 'dialect-smoke' > cloudflare-deployment-stage.txt
+          npx tsx scripts/dialect-labs-free-production-smoke.ts
 
       - name: Smoke-test Mastery progress evidence lifecycle
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-        run: node scripts/mastery-progress-production-smoke.mjs
+        run: |
+          echo 'mastery-smoke' > cloudflare-deployment-stage.txt
+          node scripts/mastery-progress-production-smoke.mjs
 
       - name: Smoke-test onboarding profile lifecycle
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-        run: node scripts/onboarding-production-smoke.mjs
+        run: |
+          echo 'onboarding-smoke' > cloudflare-deployment-stage.txt
+          node scripts/onboarding-production-smoke.mjs
 
       - name: Upload deployment diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: cloudflare-deployment-diagnostics
+          name: cloudflare-deployment-diagnostics-${{ github.run_attempt }}
           path: |
+            cloudflare-deployment-stage.txt
             cloudflare-*.json
             cloudflare-*.txt
             cloudflare-*.html
             cloudflare-*.log
+            ~/.npm/_logs
           if-no-files-found: ignore
           retention-days: 7
 
@@ -221,39 +268,24 @@ jobs:
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
           JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
+            const fs = require('fs');
             const success = process.env.JOB_STATUS === 'success';
-            let description = success
-              ? 'Cloudflare Free deployed; commercial, privacy and dialect lifecycles verified'
-              : 'Cloudflare Free deployment or production smoke failed';
+            let stage = '';
             try {
-              const fs = require('fs');
-              const files = [
-                'cloudflare-onboarding-stage.txt',
-                'cloudflare-mastery-stage.txt',
-                'cloudflare-dialect-stage.txt',
-                'cloudflare-learning-analytics-stage.txt',
-                'cloudflare-assessment-calibration-stage.txt',
-                'cloudflare-capstone-stage.txt',
-                'cloudflare-checkpoint-stage.txt',
-                'cloudflare-concepts-stage.txt',
-                'cloudflare-smoke-stage.txt',
-                'cloudflare-commercial-stage.txt'
-              ];
-              const stage = files
-                .filter(file => fs.existsSync(file))
-                .map(file => fs.readFileSync(file, 'utf8').trim())
-                .find(Boolean) || '';
-              if (!success && stage) description = `Cloudflare smoke failed at ${stage}`.slice(0, 140);
+              stage = fs.readFileSync('cloudflare-deployment-stage.txt', 'utf8').trim();
             } catch {}
-            const params = {
+            const description = success
+              ? 'Cloudflare Free deployed; commercial, privacy and dialect lifecycles verified'
+              : `Cloudflare deployment failed${stage ? ` at ${stage}` : ''}`.slice(0, 140);
+            await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
               sha: context.sha,
               state: success ? 'success' : 'failure',
               context: 'deployment/cloudflare',
-              description
-            };
-            if (process.env.DEPLOY_URL) params.target_url = process.env.DEPLOY_URL;
-            await github.rest.repos.createCommitStatus(params);
+              description,
+              target_url: success && process.env.DEPLOY_URL ? process.env.DEPLOY_URL : process.env.RUN_URL
+            });
