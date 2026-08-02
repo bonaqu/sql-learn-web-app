@@ -1,0 +1,72 @@
+name: Contact Provider Staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Provider channel to verify against the protected staging Worker
+        required: true
+        type: choice
+        options:
+          - email
+          - sms
+      timeout_seconds:
+        description: Maximum time to wait for a signed delivered callback
+        required: true
+        default: '300'
+        type: choice
+        options:
+          - '180'
+          - '300'
+          - '600'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contact-provider-staging-${{ inputs.channel }}
+  cancel-in-progress: false
+
+jobs:
+  deliverability:
+    name: Real ${{ inputs.channel }} deliverability acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: contact-staging
+    env:
+      CONTACT_STAGING_CHANNEL: ${{ inputs.channel }}
+      CONTACT_STAGING_TIMEOUT_MS: ${{ fromJSON(inputs.timeout_seconds) * 1000 }}
+      CONTACT_STAGING_BASE_URL: ${{ secrets.CONTACT_STAGING_BASE_URL }}
+      CONTACT_STAGING_PROBE_SECRET: ${{ secrets.CONTACT_STAGING_PROBE_SECRET }}
+      CONTACT_STAGING_DESTINATION: ${{ inputs.channel == 'email' && secrets.CONTACT_STAGING_EMAIL || secrets.CONTACT_STAGING_SMS }}
+      CONTACT_STAGING_EVIDENCE_PATH: artifacts/contact-staging-evidence.json
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Validate protected staging inputs
+        shell: bash
+        run: |
+          test -n "$CONTACT_STAGING_BASE_URL"
+          test -n "$CONTACT_STAGING_PROBE_SECRET"
+          test -n "$CONTACT_STAGING_DESTINATION"
+          test "${#CONTACT_STAGING_PROBE_SECRET}" -ge 32
+
+      - name: Send real challenge and require delivered callback
+        shell: bash
+        run: node scripts/contact-provider-staging.mjs
+
+      - name: Upload masked deliverability evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contact-provider-${{ inputs.channel }}-${{ github.run_id }}
+          path: artifacts/contact-staging-evidence.json
+          if-no-files-found: warn
+          retention-days: 14
+          compression-level: 6
