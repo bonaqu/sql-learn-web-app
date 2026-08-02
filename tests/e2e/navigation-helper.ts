@@ -2,6 +2,10 @@ import type { Page } from '@playwright/test';
 import { curriculumLessons } from '../../src/data/complete-curriculum';
 import { lessonChecks } from '../../src/data/lesson-checks';
 
+const advancedToolNames: Record<string, RegExp> = {
+  'syllabus-open': /Диалекты и карта курса/i
+};
+
 export async function openAllTools(page: Page) {
   const sidebar = page.locator('.sidebar');
   const sidebarOpen = await sidebar.evaluate(element => element.classList.contains('open'));
@@ -29,7 +33,14 @@ export async function openAllTools(page: Page) {
 
 export async function openAdvancedTool(page: Page, testId: string) {
   await openAllTools(page);
-  await page.getByTestId(testId).click();
+  const testIdTarget = page.getByTestId(testId);
+  if (await testIdTarget.count()) {
+    await testIdTarget.click();
+    return;
+  }
+  const accessibleName = advancedToolNames[testId];
+  if (!accessibleName) throw new Error(`No accessible navigation fallback is registered for ${testId}`);
+  await page.getByRole('button', { name: accessibleName }).click();
 }
 
 export function guidedHome(page: Page) {
