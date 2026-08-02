@@ -37,7 +37,8 @@ jobs:
               sha: context.sha,
               state: 'pending',
               context: 'deployment/github-pages',
-              description: 'Building and smoke-testing GitHub Pages'
+              description: 'Building and smoke-testing GitHub Pages',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
             });
 
       - name: Setup Node.js
@@ -46,21 +47,43 @@ jobs:
           node-version: 22
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        shell: bash
+        run: |
+          echo 'dependencies' > pages-deployment-stage.txt
+          for attempt in 1 2 3; do
+            npm install --no-audit --no-fund && break
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
 
       - name: TypeScript check
-        run: npm run check
+        shell: bash
+        run: |
+          echo 'typescript-check' > pages-deployment-stage.txt
+          npm run check
 
       - name: Production build
-        run: npm run build
+        shell: bash
+        run: |
+          echo 'production-build' > pages-deployment-stage.txt
+          npm run build
+
+      - name: Record Pages configuration stage
+        run: echo 'configure-pages' > pages-deployment-stage.txt
 
       - name: Configure Pages
         uses: actions/configure-pages@v6
+
+      - name: Record artifact upload stage
+        run: echo 'upload-pages-artifact' > pages-deployment-stage.txt
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
+
+      - name: Record Pages deployment stage
+        run: echo 'deploy-pages' > pages-deployment-stage.txt
 
       - name: Deploy to GitHub Pages
         id: deployment
@@ -71,6 +94,7 @@ jobs:
         env:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
         run: |
+          echo 'pages-production-smoke' > pages-deployment-stage.txt
           test -n "$PAGE_URL"
           curl --fail --silent --show-error --location \
             --retry 6 --retry-delay 5 --retry-all-errors \
@@ -78,22 +102,42 @@ jobs:
           grep -q '<div id="root"></div>' deployed-pages.html
           grep -q 'SQL Academy' deployed-pages.html
 
+      - name: Upload Pages failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pages-deployment-diagnostics-${{ github.run_attempt }}
+          path: |
+            pages-deployment-stage.txt
+            deployed-pages.html
+            ~/.npm/_logs
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Report Pages deployment result
         if: always()
         uses: actions/github-script@v7
         env:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
           JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
+            const fs = require('fs');
             const success = process.env.JOB_STATUS === 'success';
-            const params = {
+            let stage = '';
+            try {
+              stage = fs.readFileSync('pages-deployment-stage.txt', 'utf8').trim();
+            } catch {}
+            const description = success
+              ? 'GitHub Pages deployed and smoke-tested'
+              : `GitHub Pages failed${stage ? ` at ${stage}` : ''}`.slice(0, 140);
+            await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
               sha: context.sha,
               state: success ? 'success' : 'failure',
               context: 'deployment/github-pages',
-              description: success ? 'GitHub Pages deployed and smoke-tested' : 'GitHub Pages deployment failed'
-            };
-            if (process.env.PAGE_URL) params.target_url = process.env.PAGE_URL;
-            await github.rest.repos.createCommitStatus(params);
+              description,
+              target_url: success && process.env.PAGE_URL ? process.env.PAGE_URL : process.env.RUN_URL
+            });
