@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document describes CR2B: a provider-neutral challenge and confirmation primitive for email and SMS. It does not enable contact-based registration, login or password reset. Those account mutations remain CR2C work.
+This document describes CR2B: a provider-neutral challenge and confirmation primitive for email and SMS. CR2C consumes its signed tickets during account registration, contact attachment and password reset. Passwordless login is not part of either slice.
 
 ## API
 
@@ -35,7 +35,7 @@ A successful request returns `202` with a random challenge ID, masked destinatio
 
 A successful confirmation returns a short-lived signed ticket. Repeating the same correct confirmation before consumption returns the same deterministic ticket lifetime. The ticket contains no raw destination and is bound to challenge ID, channel, purpose and destination digest.
 
-CR2C must call `consumeContactVerificationTicket` atomically before creating an account, attaching a contact or resetting credentials. A consumed ticket cannot be reused.
+CR2C persists a durable consumption receipt and consumes the ticket in the same D1 transaction as account creation, contact attachment or credential reset. A consumed ticket cannot be reused. See [`contact-account-binding.md`](contact-account-binding.md).
 
 ## Persistence and privacy
 
@@ -70,7 +70,7 @@ The Worker does not log destinations or codes. The raw destination exists only i
 - HTTPS-only provider URL;
 - provider idempotency key equal to challenge ID;
 - HMAC-signed ten-minute ticket;
-- atomic `consumed_at IS NULL` transition for one-time use;
+- durable one-time consumption receipt coupled to the account mutation;
 - disabled or incomplete endpoints fail closed and remain hidden.
 
 These controls are an engineering baseline, not proof of resistance to every abuse pattern. A buyer must add provider-level delivery limits, bounce/fraud monitoring, alerting and independent security testing before activation.
@@ -116,12 +116,12 @@ Any non-2xx response, timeout or redirect fails delivery. The webhook may return
 Before enabling a channel in production, verify in staging:
 
 1. capability remains disabled with any missing secret;
-2. challenge endpoint stays hidden while disabled;
+2. challenge and account endpoints stay hidden while disabled;
 3. provider timeout, rejection and duplicate delivery behavior;
 4. resend and fifteen-minute rate limits;
 5. expiry and five-attempt lockout;
 6. ticket tamper, wrong-purpose and replay rejection;
-7. D1 contains no raw destination or code;
-8. provider logs and retention meet buyer policy;
-9. account-binding CR2C consumes tickets atomically;
+7. failed account binding rolls back ticket consumption;
+8. D1 contains no raw destination or code;
+9. provider logs and retention meet buyer policy;
 10. rollback to `FEATURE_*_VERIFICATION=off` hides the flow immediately.
