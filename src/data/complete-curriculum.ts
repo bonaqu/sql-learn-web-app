@@ -8,6 +8,7 @@ import {
   type CurriculumLesson
 } from './curriculum';
 import { advancedCurriculumCheckpoints, advancedCurriculumLessons } from './advanced-curriculum';
+import { moduleOrderIndex, phaseDefinitions } from './learning-structure';
 
 export type {
   CapstoneProject,
@@ -43,9 +44,28 @@ function diversifyAdvancedLesson(lesson: CurriculumLesson): CurriculumLesson {
 }
 
 const normalizedAdvancedLessons = advancedCurriculumLessons.map(diversifyAdvancedLesson);
+const sourceLessons = [...normalizedCoreLessons, ...normalizedAdvancedLessons];
+const lessonSourceOrder = new Map(sourceLessons.map((lesson, index) => [lesson.id, index]));
+const checkpointOrder = new Map(phaseDefinitions.map((phase, index) => [phase.id, index]));
 
-export const curriculumLessons = [...normalizedCoreLessons, ...normalizedAdvancedLessons];
-export const curriculumCheckpoints = [...coreCheckpoints, ...advancedCurriculumCheckpoints];
+export const curriculumLessons = [...sourceLessons].sort((left, right) =>
+  moduleOrderIndex(left.module) - moduleOrderIndex(right.module)
+  || (lessonSourceOrder.get(left.id) ?? 0) - (lessonSourceOrder.get(right.id) ?? 0)
+  || left.id.localeCompare(right.id)
+);
+
+export const curriculumCheckpoints = [...coreCheckpoints, ...advancedCurriculumCheckpoints]
+  .sort((left, right) => {
+    const leftPhase = phaseDefinitions.find(phase =>
+      left.moduleIds.some(moduleId => phase.moduleIds.some(id => id === moduleId))
+    )?.id;
+    const rightPhase = phaseDefinitions.find(phase =>
+      right.moduleIds.some(moduleId => phase.moduleIds.some(id => id === moduleId))
+    )?.id;
+    return (checkpointOrder.get(leftPhase || '') ?? Number.MAX_SAFE_INTEGER)
+      - (checkpointOrder.get(rightPhase || '') ?? Number.MAX_SAFE_INTEGER)
+      || left.id.localeCompare(right.id);
+  });
 
 export function lessonById(id: string) {
   return curriculumLessons.find(lesson => lesson.id === id) || coreLessonById(id);
