@@ -115,11 +115,12 @@ test('desktop verified contact registration enters the mandatory recovery-code g
   await expect(page.getByTestId('commercial-contact-entry')).toBeVisible();
   await page.getByRole('button', { name: 'Регистрация с контактом' }).click();
   await enterVerifiedEmail(page);
-  await page.getByTestId('contact-register-username').fill('verified_user');
-  await page.getByLabel('Отображаемое имя необязательно').fill('Verified User');
-  await page.getByTestId('contact-new-password').fill(TEST_PASSWORD);
-  await page.getByTestId('contact-new-password-confirm').fill(TEST_PASSWORD);
-  await page.getByTestId('contact-finish').click();
+  const modal = page.getByTestId('contact-register-modal');
+  await modal.getByTestId('contact-register-username').fill('verified_user');
+  await modal.getByLabel('Отображаемое имя необязательно').fill('Verified User');
+  await modal.getByTestId('contact-new-password').fill(TEST_PASSWORD);
+  await modal.getByTestId('contact-new-password-confirm').fill(TEST_PASSWORD);
+  await modal.getByTestId('contact-finish').click();
 
   await expect(page.getByTestId('recovery-codes-screen')).toBeVisible();
   await expect(page.getByTestId('recovery-codes').locator('code')).toHaveCount(8);
