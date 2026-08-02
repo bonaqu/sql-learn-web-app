@@ -9,6 +9,7 @@ import {
   taskDifficultyOrder,
   taskModeOrder
 } from './learning-structure';
+import { applySyntaxFrontierTaskOverrides } from './syntax-frontier-content';
 
 export type {
   Difficulty,
@@ -21,7 +22,7 @@ const sourceModules: readonly (readonly [string, string, string])[] = [
   ...coreModules,
   ...advancedModules
 ];
-const sourceTasks = [...coreTasks, ...advancedTasks];
+const sourceTasks = applySyntaxFrontierTaskOverrides([...coreTasks, ...advancedTasks]);
 const sourceTaskOrder = new Map(sourceTasks.map((task, index) => [task.id, index]));
 
 export const modules: readonly (readonly [string, string, string])[] = [...sourceModules]
