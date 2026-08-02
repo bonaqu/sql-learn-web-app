@@ -1,42 +1,46 @@
-import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { AxeBuilder } from '@axe-core/playwright';
+import { expect, Page, test } from '@playwright/test';
 import { authenticatePage, loginPage } from './auth-helper';
 import { openAdvancedTool } from './navigation-helper';
 
-const SQLITE_NULL_ORDERING = `SELECT ticket_id, closed_at
+const SQLITE_NULL_ORDERING = `SELECT ticket_id, resolved_at
 FROM tickets
-ORDER BY (closed_at IS NULL), closed_at, ticket_id;`;
-const POSTGRES_NULL_ORDERING = `SELECT ticket_id, closed_at
+ORDER BY (resolved_at IS NULL) ASC, resolved_at ASC, ticket_id ASC;`;
+
+const POSTGRES_NULL_ORDERING = `SELECT ticket_id, resolved_at
 FROM tickets
-ORDER BY closed_at NULLS LAST, ticket_id;`;
-const SQLITE_DATE_BOUNDARY = `SELECT ticket_id
+ORDER BY resolved_at ASC NULLS LAST, ticket_id ASC;`;
+
+const SQLITE_DATE_BOUNDARY = `SELECT ticket_id, opened_at,
+  CASE
+    WHEN date(opened_at) = date('now') THEN 'today'
+    WHEN date(opened_at) = date('now', '-1 day') THEN 'yesterday'
+    ELSE 'older'
+  END AS bucket
 FROM tickets
-WHERE closed_at >= datetime('2026-07-08 00:00:00', '-1 day')
-  AND closed_at < datetime('2026-07-08 00:00:00')
 ORDER BY ticket_id;`;
-const MYSQL_OPTIMISTIC_UPDATE = `UPDATE ticket_versions
-SET priority = 'Critical', version = version + 1
-WHERE ticket_id = 1002 AND version = 7;
-SELECT ROW_COUNT() AS affected_rows;`;
+
+const MYSQL_OPTIMISTIC_UPDATE = `UPDATE tickets
+SET status = 'closed', version = version + 1
+WHERE ticket_id = 101 AND version = 3;`;
 
 async function openDialectLab(page: Page, mobile = false) {
   await page.goto('./');
-  if (mobile) await page.getByRole('button', { name: 'Открыть меню' }).click();
-  await openAdvancedTool(page, 'syllabus-trigger');
-  await page.getByRole('tab', { name: /Диалекты/i }).click();
+  await openAdvancedTool(page, 'syllabus-open');
+  await page.getByRole('tab', { name: 'Диалекты' }).click();
+  if (mobile) await page.getByRole('button', { name: /NULL ordering across engines/i }).click();
   await expect(page.getByTestId('dialect-executable-lab')).toBeVisible();
 }
 
 async function replaceSql(page: Page, sql: string) {
-  const editor = page.locator('.dialect-editor-card .monaco-editor');
-  await expect(editor).toBeVisible();
-  await editor.click();
-  await page.keyboard.press('Control+A');
-  await page.keyboard.insertText(sql);
+  const textarea = page.locator('.monaco-editor textarea').first();
+  await textarea.click();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+  await page.keyboard.type(sql);
 }
 
 async function expectNoHorizontalOverflow(page: Page) {
-  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
   expect(overflow).toBe(false);
 }
 
@@ -127,10 +131,11 @@ test('desktop keeps SQLite evidence executable while PostgreSQL stays an honest 
 
 test('mobile blocks unsafe SQL and shows concurrency reference timeline without false MySQL mastery or overflow', async ({ page }, testInfo) => {
   await authenticatePage(page, 'dialectmobilefree');
-  let failInitialHydration = true;
+  let hydrationOutage = true;
+  let failedHydrationRequests = 0;
   await page.route('**/api/dialect-labs/progress', async route => {
-    if (route.request().method() === 'GET' && failInitialHydration) {
-      failInitialHydration = false;
+    if (route.request().method() === 'GET' && hydrationOutage) {
+      failedHydrationRequests += 1;
       await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'temporary test outage' }) });
       return;
     }
@@ -139,8 +144,10 @@ test('mobile blocks unsafe SQL and shows concurrency reference timeline without 
   await openDialectLab(page, true);
 
   const hydration = page.getByTestId('dialect-hydration-state');
-  await expect(hydration).toContainText('Cloud evidence не подтверждён');
+  await expect(hydration).toContainText('Cloud evidence не подтверждён', { timeout: 30_000 });
+  expect(failedHydrationRequests).toBeGreaterThan(1);
   await expect(page.locator('.dialect-executable-hero')).toContainText('local evidence only');
+  hydrationOutage = false;
   await hydration.getByRole('button', { name: /Повторить cloud hydration/i }).click();
   await expect(hydration).toHaveCount(0);
 
