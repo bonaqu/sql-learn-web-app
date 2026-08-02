@@ -72,11 +72,12 @@ function OutgoingPanel({ transition, onOpenLesson }: {
     </header>
     <p className="lesson-continuity-evidence"><strong>Как закрепить переход:</strong> {transition.evidencePrompt}</p>
     <div className="lesson-continuity-actions">
-      {checkpoint && <button type="button" className="primary" onClick={() => openAcademyCheckpoint(checkpoint.id)}>
+      {checkpoint ? <button type="button" className="primary" onClick={() => openAcademyCheckpoint(checkpoint.id)}>
         <ClipboardCheck />Открыть checkpoint «{checkpoint.title}»
-      </button>}
-      {task && <button type="button" onClick={() => openAcademyTask(task.id)}><Play />Практика: {task.title}</button>}
-      <button type="button" onClick={() => onOpenLesson(transition.toLessonId)}><BookOpen />Перейти к уроку<ArrowRight /></button>
+      </button> : <>
+        {task && <button type="button" onClick={() => openAcademyTask(task.id)}><Play />Практика: {task.title}</button>}
+        <button type="button" onClick={() => onOpenLesson(transition.toLessonId)}><BookOpen />Перейти к уроку<ArrowRight /></button>
+      </>}
     </div>
   </section>;
 }
