@@ -24,6 +24,11 @@ export type ContactSecurityEvent =
 
 export type ContactObservabilityEnvironment = Cloudflare.Env;
 
+const DELIVERY_RETENTION_DAYS = 90;
+const SECURITY_RETENTION_DAYS = 90;
+const CHALLENGE_RETENTION_DAYS = 30;
+const CLEANUP_BATCH_SIZE = 1_000;
+
 function bounded(value: string | null | undefined, max: number) {
   const normalized = (value || '').trim();
   return normalized ? normalized.slice(0, max) : null;
@@ -233,4 +238,33 @@ export async function contactDeliveryTimeline(env: ContactObservabilityEnvironme
     delivery: delivery.results || [],
     security: security.results || []
   };
+}
+
+async function deleteBatch(env: ContactObservabilityEnvironment, sql: string) {
+  const result = await env.DB.prepare(sql).bind(CLEANUP_BATCH_SIZE).run();
+  return Math.max(0, Number(result.meta.changes) || 0);
+}
+
+export async function cleanupContactObservability(env: ContactObservabilityEnvironment) {
+  const deliveryDays = Math.max(30, Math.min(365, DELIVERY_RETENTION_DAYS));
+  const securityDays = Math.max(30, Math.min(365, SECURITY_RETENTION_DAYS));
+  const challengeDays = Math.max(7, Math.min(90, CHALLENGE_RETENTION_DAYS));
+  const delivery = await deleteBatch(env, `DELETE FROM contact_delivery_events WHERE rowid IN (
+    SELECT rowid FROM contact_delivery_events
+    WHERE received_at < datetime('now', '-${deliveryDays} days')
+    ORDER BY received_at LIMIT ?
+  )`);
+  const security = await deleteBatch(env, `DELETE FROM contact_security_events WHERE rowid IN (
+    SELECT rowid FROM contact_security_events
+    WHERE occurred_at < datetime('now', '-${securityDays} days')
+    ORDER BY occurred_at LIMIT ?
+  )`);
+  const challenges = await deleteBatch(env, `DELETE FROM contact_verification_challenges WHERE rowid IN (
+    SELECT rowid FROM contact_verification_challenges
+    WHERE updated_at < datetime('now', '-${challengeDays} days')
+      AND (consumed_at IS NOT NULL OR expires_at < datetime('now'))
+    ORDER BY updated_at LIMIT ?
+  )`);
+  console.info('contact_observability_cleanup', { delivery, security, challenges });
+  return { delivery, security, challenges };
 }
