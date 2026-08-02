@@ -3,7 +3,7 @@ import {
   curriculumCheckpoints,
   curriculumLessons
 } from '../data/complete-curriculum';
-import { lessonChecksComplete } from '../data/lesson-checks';
+import { lessonChecks, lessonChecksComplete } from '../data/lesson-checks';
 import type { CurriculumCheckAnswer, CurriculumProgressV1 } from './curriculum-progress';
 
 export const JOURNEY_CURRICULUM_CHANGED_EVENT = 'sql-academy-curriculum-progress-changed';
@@ -93,7 +93,7 @@ function safeAnswers(value: unknown): Record<string, CurriculumCheckAnswer> {
   const source = value as Record<string, unknown>;
   const answers: Record<string, CurriculumCheckAnswer> = {};
   for (const lesson of curriculumLessons) {
-    for (const check of lesson.checks || [lesson.check]) {
+    for (const check of lessonChecks(lesson)) {
       const candidate = source[check.id];
       if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue;
       const answer = candidate as Record<string, unknown>;
