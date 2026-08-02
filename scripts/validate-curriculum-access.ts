@@ -63,11 +63,31 @@ if (dmlLesson && coreLesson) {
   assert(lessonAccess(coreLesson, emptyProgress, emptyCurriculum, []).unlocked, 'Core lesson without prerequisites must stay unlocked');
   assert(!lessonAccess(dmlLesson, emptyProgress, emptyCurriculum, []).unlocked, 'Advanced DML must be locked without evidence');
 
-  const transactionTaskIds = tasks.filter(task => task.module === 'transactions').map(task => task.id);
-  const taskReady: Progress = { ...emptyProgress, completed: transactionTaskIds };
+  const transactionTasks = tasks.filter(task => task.module === 'transactions');
+  const taskReady: Progress = {
+    ...emptyProgress,
+    completed: transactionTasks.map(task => task.id),
+    taskStats: Object.fromEntries(transactionTasks.map(task => [task.id, {
+      attempts: 1,
+      incorrect: 0,
+      hintsUsed: 0,
+      solutionViews: 0,
+      independentPasses: 1,
+      lastIndependentAt: answeredAt,
+      lastAttemptAt: answeredAt,
+      completedAt: answeredAt
+    }]))
+  };
   const taskAccess = lessonAccess(dmlLesson, taskReady, emptyCurriculum, []);
-  assert(taskAccess.unlocked, 'Task mastery must unlock a prerequisite');
+  assert(taskAccess.unlocked, 'Independent task mastery must unlock a prerequisite');
   assert(taskAccess.bypassed.length === 0, 'Task mastery is not a diagnostic bypass');
+
+  const completionOnly: Progress = {
+    ...emptyProgress,
+    completed: transactionTasks.map(task => task.id)
+  };
+  assert(!lessonAccess(dmlLesson, completionOnly, emptyCurriculum, []).unlocked,
+    'Completion flags without attempt or independence evidence must not masquerade as mastery');
 
   const transactionLessons = curriculumLessons.filter(lesson => lesson.module === 'transactions');
   const lessonReady = {
