@@ -159,16 +159,23 @@ const transferModule = canonicalModuleIds.find(moduleId =>
 assert.ok(transferModule, 'The course needs at least one module with practice and interview transfer.');
 
 if (transferModule) {
-  const moduleIndex = canonicalModuleIds.indexOf(transferModule);
-  const priorModules = canonicalModuleIds.slice(0, moduleIndex);
   const lessons = curriculumLessons.filter(lesson => lesson.module === transferModule);
   const foundation = foundationTasksForModule(transferModule);
   const targetPractice = foundation.find(task => task.mode === 'practice');
   assert.ok(targetPractice, `${transferModule}: expected a practice task for journey validation.`);
 
   if (targetPractice) {
-    const independent = foundation.filter(task => task.id !== targetPractice.id);
-    const guidedProgress = progressWithEvidence(independent, [targetPractice]);
+    const targetPhaseIndex = phaseDefinitions.findIndex(phase =>
+      phase.moduleIds.some(moduleId => moduleId === transferModule)
+    );
+    const targetPhase = phaseDefinitions[targetPhaseIndex];
+    const targetPhaseLastModuleIndex = Math.max(...targetPhase.moduleIds.map(moduleOrderIndex));
+    const bypassedToPhaseFrontier = canonicalModuleIds.filter(moduleId =>
+      moduleId !== transferModule && moduleOrderIndex(moduleId) <= targetPhaseLastModuleIndex
+    );
+    const passedCheckpointIds = curriculumCheckpoints
+      .slice(0, targetPhaseIndex + 1)
+      .map(checkpoint => checkpoint.id);
     const curriculum = {
       ...emptyCurriculumProgress(),
       completedLessons: lessons.map(lesson => lesson.id),
@@ -179,15 +186,12 @@ if (transferModule) {
         answeredAt: '2026-08-01T00:00:00.000Z'
       }]))
     };
-    const phaseIndex = phaseDefinitions.findIndex(phase =>
-      phase.moduleIds.some(moduleId => moduleId === transferModule)
-    );
-    const passedCheckpointIds = curriculumCheckpoints
-      .slice(0, phaseIndex + 1)
-      .map(checkpoint => checkpoint.id);
+
+    const independent = foundation.filter(task => task.id !== targetPractice.id);
+    const guidedProgress = progressWithEvidence(independent, [targetPractice]);
     const guidedAction = nextJourneyAction(guidedProgress, curriculum, {
       includeReview: false,
-      bypassedModuleIds: priorModules,
+      bypassedModuleIds: bypassedToPhaseFrontier,
       passedCheckpointIds
     });
     assert.equal(guidedAction.task?.id, targetPractice.id,
@@ -197,11 +201,11 @@ if (transferModule) {
     const independentProgress = progressWithEvidence(foundation);
     const transferAction = nextJourneyAction(independentProgress, curriculum, {
       includeReview: false,
-      bypassedModuleIds: priorModules,
+      bypassedModuleIds: bypassedToPhaseFrontier,
       passedCheckpointIds
     });
     assert.equal(transferAction.stage, 'interview',
-      'Interview transfer must follow completed lesson and independent practice evidence.');
+      'Interview transfer must follow phase foundation, checkpoint and independent practice evidence.');
   }
 }
 
