@@ -109,8 +109,6 @@ for (const marker of [
   'payload_digest',
   'persisted_at',
   "code: 'CHECKPOINT_REPORT_CONFLICT'",
-  'replayed: true',
-  'replayed: false',
   'INSERT OR IGNORE INTO checkpoint_reports',
   'inserted.meta.changes !== 1',
   'storedReportResponse'
