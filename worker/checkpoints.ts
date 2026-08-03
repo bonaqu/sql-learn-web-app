@@ -180,7 +180,9 @@ function validReport(value: unknown): value is CheckpointReportPayload {
 
 async function listReports(env: Cloudflare.Env, userId: string) {
   const rows = await env.DB.prepare(`SELECT payload FROM checkpoint_reports
-    WHERE user_id = ? ORDER BY completed_at DESC LIMIT 50`)
+    WHERE user_id = ?
+    ORDER BY completed_at DESC, attempt_number DESC, id DESC
+    LIMIT 50`)
     .bind(userId)
     .all<{ payload: string }>();
   const reports = rows.results.flatMap(row => {
