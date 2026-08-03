@@ -33,6 +33,7 @@ The goal may not:
 
 - open a module with missing prerequisites;
 - skip a ready checkpoint;
+- bypass active checkpoint remediation;
 - use Interview or Puzzle as first exposure;
 - remove required expert outcomes or capstones;
 - invalidate evidence already earned when the goal changes.
@@ -59,15 +60,35 @@ A module may omit a stage when it has no matching artifact, but a later availabl
 The unified selector applies this priority:
 
 1. due retrieval review;
-2. a ready but unpassed phase checkpoint;
-3. Interview/Puzzle transfer opened by a passed checkpoint;
-4. the selected goal's highest-priority eligible foundation module;
-5. prerequisite recovery when evidence is incomplete or contradictory;
-6. final assessment;
-7. capstone project;
-8. completed-route maintenance.
+2. targeted repair from the latest failed completed checkpoint attempt;
+3. explicit retry of that checkpoint after every targeted weak task has fresh independent evidence;
+4. another ready but unpassed phase checkpoint;
+5. Interview/Puzzle transfer opened by a passed checkpoint;
+6. the selected goal's highest-priority eligible foundation module;
+7. prerequisite recovery when evidence is incomplete or contradictory;
+8. final assessment;
+9. capstone project;
+10. completed-route maintenance.
 
-Checkpoint failure or missing independent evidence temporarily outranks career specialization. The learner returns to the exact prerequisite/remediation gap before the route advances.
+Checkpoint failure temporarily outranks career specialization. Changing goal may reorder later eligible work, but it must not change the active remediation action for identical evidence.
+
+An unrelated due retrieval item may remain above checkpoint remediation according to the existing spaced-repetition policy. The learner-facing explanation must make both obligations visible rather than silently hiding the failed checkpoint.
+
+## Failed checkpoint remediation
+
+A completed failed report creates a temporary remediation state owned by its checkpoint phase.
+
+- Only valid reports for the current learner are considered.
+- `expired`, `abandoned`, cross-user and unknown checkpoint/module/task data are ignored.
+- The **latest completed attempt** controls pass or fail state. A later failure reactivates remediation even after an older pass; a later pass clears it.
+- Historical `bestScore` may remain visible for reporting, but it cannot override a later failed attempt for routing, eligibility or phase completion.
+- Remediation modules are intersected with checkpoint membership, deduplicated and ordered by lowest module score, then canonical route order.
+- A repair counts only when the exact weak task receives new independent evidence after the failed report timestamp.
+- Placement or diagnostic bypass is ignored for a module explicitly contradicted by the failed checkpoint.
+- Completing remediation does not mark the checkpoint passed. It only unlocks an explicit checkpoint retry.
+- Transfer, specialization and later checkpoints remain closed until a real later attempt passes.
+
+Raw checkpoint report fields are interpreted only in the evidence/remediation domain. Today, Learning Path, goal preview and Workspace consume normalized remediation state or frontier metadata; React components must not sort attempts, inspect `moduleScores`/`taskScores`, or infer pass state independently.
 
 ## Evidence rules
 
@@ -79,6 +100,7 @@ Checkpoint failure or missing independent evidence temporarily outranks career s
 - Assessment and project evidence complement, rather than replace, missing fundamentals.
 - Diagnostic bypass is accepted only as a contiguous prerequisite-safe prefix.
 - Goal changes affect future selection only; completed evidence remains valid.
+- Latest checkpoint attempt controls current pass/fail state; best historical score is reporting evidence only.
 
 ## One frontier across product surfaces
 
@@ -90,21 +112,23 @@ The same frontier snapshot must provide:
 - currently eligible module IDs;
 - safely bypassed diagnostic prefix;
 - passed phase IDs;
+- active checkpoint remediation, if any;
 - next action;
 - a machine-readable reason code and learner-facing explanation.
 
 It drives:
 
-- the main **Today** recommendation;
+- the main **Today** recommendation and failed-checkpoint banner;
 - the first-week onboarding plan;
 - lesson → guided → independent continuation;
 - Practice execution gates;
 - Interview/Puzzle opening;
-- checkpoint and remediation priority;
+- checkpoint remediation and retry priority;
+- goal-switch preview;
 - post-success navigation;
 - cross-device resume.
 
-Adaptive Learning Path and evidence-graph recommendations must consume the same frontier contract or an explicit projection of it. They must not calculate a conflicting next module from raw array indexes.
+Adaptive Learning Path and evidence-graph recommendations must consume the same frontier contract or an explicit projection of it. They must not calculate a conflicting next module from raw array indexes or raw checkpoint reports.
 
 ## Workspace behavior
 
@@ -115,6 +139,7 @@ The full catalog remains browseable, but execution is capability-gated by the fr
 - another prerequisite-complete module is visible as **eligible but later by goal**;
 - a module with missing prerequisites remains preview-only;
 - transfer is runnable only after its phase checkpoint;
+- active remediation keeps the weak task or checkpoint retry executable while later transfer remains preview-only;
 - route completion opens free expert practice.
 
 Physical phase position, `moduleOrderIndex`, `earlierPhase` and `laterPhase` are not readiness evidence.
@@ -132,9 +157,11 @@ A change is a route regression when any primary surface:
 - uses `tasks.find(...)` or physical array order as its recommendation;
 - opens a module with missing prerequisites;
 - skips a ready checkpoint for a goal-preferred module;
+- allows an older pass or best score to override a later failed checkpoint;
 - opens Interview/Puzzle before checkpoint evidence;
 - accepts a non-contiguous diagnostic bypass;
 - produces a different next action from the shared frontier for the same evidence;
+- parses raw checkpoint `moduleScores`, `taskScores` or attempt ordering in UI code;
 - hides why the step is next.
 
-All five goals, beginner and advanced placement bands, workspace gates and desktop/mobile resume must be validated on one exact head before merge.
+All five goals, failed→repair→retry→pass transitions, beginner and advanced placement bands, workspace gates and desktop/mobile resume must be validated on one exact head before merge.
