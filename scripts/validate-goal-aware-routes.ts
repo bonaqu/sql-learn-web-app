@@ -14,6 +14,14 @@ const goals: LearnerGoal[] = ['support', 'analyst', 'backend', 'interview', 'ful
 const routes = new Map(goals.map(goal => [goal, goalModuleRoute(goal)]));
 const canonicalSet = new Set(canonicalModuleIds);
 
+function firstDifference(left: readonly string[], right: readonly string[]) {
+  const length = Math.min(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    if (left[index] !== right[index]) return index;
+  }
+  return left.length === right.length ? -1 : length;
+}
+
 for (const goal of goals) {
   const route = routes.get(goal) || [];
   assert.equal(route.length, canonicalModuleIds.length, `${goal}: route must contain every module.`);
@@ -55,15 +63,33 @@ for (const goal of goals) {
 }
 
 const sharedLength = SHARED_FOUNDATION_MODULE_IDS.length;
-const postFoundationSignatures = new Set(goals.map(goal =>
-  (routes.get(goal) || []).slice(sharedLength, sharedLength + 8).join('>')
-));
-assert.ok(postFoundationSignatures.size >= 4,
-  'Onboarding goals must produce meaningfully different prerequisite-safe post-foundation routes.');
+const fullRouteSignatures = new Set(goals.map(goal => (routes.get(goal) || []).join('>')));
+assert.ok(fullRouteSignatures.size >= 4,
+  'At least four learner goals must produce distinct complete prerequisite-safe routes.');
 assert.notDeepEqual(routes.get('analyst'), routes.get('backend'),
   'Analyst and backend routes must not be cosmetic aliases.');
 assert.notDeepEqual(routes.get('support'), routes.get('interview'),
   'Support and interview routes must not be cosmetic aliases.');
+
+const fullRoute = routes.get('full') || [];
+for (const goal of goals.filter(item => item !== 'full')) {
+  const route = routes.get(goal) || [];
+  const divergence = firstDifference(route, fullRoute);
+  assert.ok(divergence >= sharedLength,
+    `${goal}: specialization must preserve the declared shared foundation.`);
+  assert.ok(divergence >= 0 && divergence < canonicalModuleIds.length - 4,
+    `${goal}: specialization must change a meaningful route choice before the final four modules.`);
+}
+
+const analystRoute = routes.get('analyst') || [];
+const backendRoute = routes.get('backend') || [];
+const analystBackendDivergence = firstDifference(analystRoute, backendRoute);
+assert.ok(analystBackendDivergence >= sharedLength,
+  'Analyst and backend routes must share the beginner foundation before diverging.');
+assert.ok(analystBackendDivergence >= 0 && analystBackendDivergence < canonicalModuleIds.length - 4,
+  'Analyst and backend routes must diverge at a meaningful prerequisite-safe branch.');
+assert.notEqual(analystRoute[analystBackendDivergence], backendRoute[analystBackendDivergence],
+  'The first analyst/backend branch must select different eligible modules.');
 
 for (const goal of goals) {
   const route = routes.get(goal) || [];
@@ -86,7 +112,9 @@ for (const marker of [
   'goalModuleFrontier'
 ]) assert.ok(routeSource.includes(marker), `Goal-aware route safety contract is missing ${marker}.`);
 
-console.log(`Goal-aware routes validated: ${goals.length} deterministic prerequisite-safe routes, shared ${sharedLength}-module foundation, ${postFoundationSignatures.size} distinct post-foundation signatures, prerequisite-closed evidence and contiguous diagnostic bypass.`);
+console.log(`Goal-aware routes validated: ${goals.length} deterministic prerequisite-safe routes, shared ${sharedLength}-module beginner foundation, ${fullRouteSignatures.size} distinct complete routes, analyst/backend divergence at index ${analystBackendDivergence}, prerequisite-closed evidence and contiguous diagnostic bypass.`);
 for (const goal of goals) {
-  console.log(`${goal}: ${(routes.get(goal) || []).slice(0, 14).join(' -> ')}`);
+  const route = routes.get(goal) || [];
+  const divergence = goal === 'full' ? -1 : firstDifference(route, fullRoute);
+  console.log(`${goal} (first difference vs full: ${divergence}): ${route.slice(0, 24).join(' -> ')}`);
 }
