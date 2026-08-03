@@ -20,10 +20,8 @@ export type ContactSecurityEventType =
   | 'confirmed'
   | 'ticket-consumed';
 
-export type ContactOperationsEnvironment = VerificationProviderEnvironment & Partial<Record<
-  'CONTACT_DELIVERY_RECEIPT_SECRET' | 'FEATURE_EMAIL_VERIFICATION' | 'FEATURE_SMS_VERIFICATION',
-  string
->>;
+export type ContactOperationsEnvironment = VerificationProviderEnvironment
+  & Partial<Record<'CONTACT_DELIVERY_RECEIPT_SECRET', string>>;
 
 type Channel = 'email' | 'sms';
 type Purpose = 'register' | 'password-reset' | 'sensitive-action';
@@ -70,19 +68,14 @@ function sqliteTime(date = new Date()) {
   return date.toISOString().slice(0, 19).replace('T', ' ');
 }
 
-function enabled(value: string | undefined) {
-  return value?.trim().toLowerCase() === 'on';
-}
-
 function receiptSecret(env: ContactOperationsEnvironment) {
   const value = (env.CONTACT_DELIVERY_RECEIPT_SECRET || '').trim();
   return value.length >= 32 && value.length <= 2_000 ? value : '';
 }
 
 export function contactDeliveryReceiptReady(env: ContactOperationsEnvironment) {
-  const emailReady = enabled(env.FEATURE_EMAIL_VERIFICATION) && verificationProviderReady('email', env);
-  const smsReady = enabled(env.FEATURE_SMS_VERIFICATION) && verificationProviderReady('sms', env);
-  return receiptSecret(env).length > 0 && (emailReady || smsReady);
+  return receiptSecret(env).length > 0
+    && (verificationProviderReady('email', env) || verificationProviderReady('sms', env));
 }
 
 function constantTimeEqual(left: string, right: string) {
