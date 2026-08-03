@@ -59,6 +59,7 @@ jobs:
       - name: Validate acceptance harness and staging secrets
         shell: bash
         run: |
+          printf 'configuration-validation\n' > contact-provider-staging-stage.txt
           node --check scripts/contact-provider-staging-acceptance.mjs
           test -n "$CONTACT_STAGING_PROVIDER_URL"
           test -n "$CONTACT_STAGING_PROVIDER_SECRET"
