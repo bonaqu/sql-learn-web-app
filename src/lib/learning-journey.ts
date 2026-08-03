@@ -8,6 +8,11 @@ import { modules, tasks, type SqlTask } from '../data/course-catalog';
 import { phaseDefinitions, phaseForModule } from '../data/learning-structure';
 import type { CurriculumProgressV1 } from './curriculum-progress';
 import {
+  routeFocus,
+  routePriority,
+  type LearningRoutePolicy
+} from './goal-aware-learning-route';
+import {
   hasIndependentTaskEvidence,
   reviewQueue,
   type Progress
@@ -47,6 +52,8 @@ export type JourneyAction = {
   lessonId: string | null;
   checkpointId: string | null;
   projectId: string | null;
+  routeTitle?: string;
+  routeRationale?: string;
 };
 
 export type JourneyOptions = {
@@ -54,6 +61,7 @@ export type JourneyOptions = {
   passedCheckpointIds?: readonly string[];
   assessmentComplete?: boolean;
   bypassedModuleIds?: readonly string[];
+  route?: LearningRoutePolicy;
 };
 
 const moduleTitles = new Map(modules.map(([id, title]) => [id, title]));
@@ -95,6 +103,17 @@ function taskAction(task: SqlTask, stage: JourneyStage, description: string, cta
     lessonId: null,
     checkpointId: null,
     projectId: null
+  };
+}
+
+function applyRoute(action: JourneyAction, route?: LearningRoutePolicy): JourneyAction {
+  if (!route) return action;
+  const rationale = routeFocus(action.stage, route);
+  return {
+    ...action,
+    routeTitle: route.title,
+    routeRationale: rationale,
+    description: `${rationale} ${action.description}`
   };
 }
 
@@ -200,8 +219,20 @@ function checkpointAction(phaseId: string): JourneyAction | null {
   };
 }
 
-function transferAction(moduleId: string, progress: Progress): JourneyAction | null {
-  for (const task of transferTasksForModule(moduleId)) {
+function transferAction(
+  moduleId: string,
+  progress: Progress,
+  route?: LearningRoutePolicy
+): JourneyAction | null {
+  const candidates = transferTasksForModule(moduleId);
+  const ordered = route
+    ? [...candidates].sort((left, right) => {
+        const weight = (task: SqlTask) => task.mode === route.preferredTransferMode ? 0 : 1;
+        return weight(left) - weight(right)
+          || candidates.indexOf(left) - candidates.indexOf(right);
+      })
+    : candidates;
+  for (const task of ordered) {
     if (taskSatisfied(task, progress)) continue;
     if (task.mode === 'interview') {
       return taskAction(
@@ -221,8 +252,15 @@ function transferAction(moduleId: string, progress: Progress): JourneyAction | n
   return null;
 }
 
-function reviewAction(progress: Progress): JourneyAction | null {
-  const task = reviewQueue(progress, 1)[0];
+function reviewAction(progress: Progress, route?: LearningRoutePolicy): JourneyAction | null {
+  const queue = reviewQueue(progress, 24);
+  const shortlist = queue.slice(0, 5);
+  const task = route
+    ? [...shortlist].sort((left, right) =>
+        routePriority(left.module, route) - routePriority(right.module, route)
+        || shortlist.indexOf(left) - shortlist.indexOf(right)
+      )[0]
+    : queue[0];
   if (!task) return null;
   return taskAction(
     task,
@@ -232,13 +270,23 @@ function reviewAction(progress: Progress): JourneyAction | null {
   );
 }
 
-export function nextJourneyAction(
+function preferredProjects(route?: LearningRoutePolicy) {
+  if (!route) return capstoneProjects;
+  const priority = new Map(route.preferredProjectIds.map((id, index) => [id, index]));
+  return [...capstoneProjects].sort((left, right) =>
+    (priority.get(left.id) ?? Number.MAX_SAFE_INTEGER)
+      - (priority.get(right.id) ?? Number.MAX_SAFE_INTEGER)
+    || capstoneProjects.indexOf(left) - capstoneProjects.indexOf(right)
+  );
+}
+
+function canonicalJourneyAction(
   progress: Progress,
   curriculum: CurriculumProgressV1,
-  options: JourneyOptions = {}
+  options: JourneyOptions
 ): JourneyAction {
   if (options.includeReview !== false) {
-    const review = reviewAction(progress);
+    const review = reviewAction(progress, options.route);
     if (review) return review;
   }
 
@@ -259,7 +307,7 @@ export function nextJourneyAction(
 
     for (const moduleId of phaseModules) {
       if (bypassedModules.has(moduleId)) continue;
-      const transfer = transferAction(moduleId, progress);
+      const transfer = transferAction(moduleId, progress, options.route);
       if (transfer) return transfer;
     }
   }
@@ -282,7 +330,8 @@ export function nextJourneyAction(
     };
   }
 
-  const project = capstoneProjects.find(item => !curriculum.completedProjects.includes(item.id));
+  const project = preferredProjects(options.route)
+    .find(item => !curriculum.completedProjects.includes(item.id));
   if (project) {
     return {
       kind: 'project',
@@ -316,6 +365,14 @@ export function nextJourneyAction(
     checkpointId: null,
     projectId: null
   };
+}
+
+export function nextJourneyAction(
+  progress: Progress,
+  curriculum: CurriculumProgressV1,
+  options: JourneyOptions = {}
+): JourneyAction {
+  return applyRoute(canonicalJourneyAction(progress, curriculum, options), options.route);
 }
 
 export function journeyStageForTask(task: SqlTask): JourneyStage {
