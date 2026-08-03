@@ -1,4 +1,4 @@
-import { contactVerificationReady, type ContactVerificationEnvironment } from './contact-verification';
+import { verificationProviderReady, type VerificationProviderEnvironment } from './integrations/verification';
 
 export type DeliveryStatus =
   | 'accepted'
@@ -20,7 +20,11 @@ export type ContactSecurityEventType =
   | 'confirmed'
   | 'ticket-consumed';
 
-type ReceiptEnvironment = ContactVerificationEnvironment & Partial<Record<'CONTACT_DELIVERY_RECEIPT_SECRET', string>>;
+export type ContactOperationsEnvironment = VerificationProviderEnvironment & Partial<Record<
+  'CONTACT_DELIVERY_RECEIPT_SECRET' | 'FEATURE_EMAIL_VERIFICATION' | 'FEATURE_SMS_VERIFICATION',
+  string
+>>;
+
 type Channel = 'email' | 'sms';
 type Purpose = 'register' | 'password-reset' | 'sensitive-action';
 
@@ -58,14 +62,19 @@ function sqliteTime(date = new Date()) {
   return date.toISOString().slice(0, 19).replace('T', ' ');
 }
 
-function receiptSecret(env: ReceiptEnvironment) {
+function enabled(value: string | undefined) {
+  return value?.trim().toLowerCase() === 'on';
+}
+
+function receiptSecret(env: ContactOperationsEnvironment) {
   const value = (env.CONTACT_DELIVERY_RECEIPT_SECRET || '').trim();
   return value.length >= 32 && value.length <= 2_000 ? value : '';
 }
 
-export function contactDeliveryReceiptReady(env: ReceiptEnvironment) {
-  return receiptSecret(env).length > 0
-    && (contactVerificationReady('email', env) || contactVerificationReady('sms', env));
+export function contactDeliveryReceiptReady(env: ContactOperationsEnvironment) {
+  const emailReady = enabled(env.FEATURE_EMAIL_VERIFICATION) && verificationProviderReady('email', env);
+  const smsReady = enabled(env.FEATURE_SMS_VERIFICATION) && verificationProviderReady('sms', env);
+  return receiptSecret(env).length > 0 && (emailReady || smsReady);
 }
 
 function constantTimeEqual(left: string, right: string) {
@@ -79,7 +88,7 @@ function constantTimeEqual(left: string, right: string) {
   return difference === 0;
 }
 
-function authorized(request: Request, env: ReceiptEnvironment) {
+function authorized(request: Request, env: ContactOperationsEnvironment) {
   const header = request.headers.get('authorization') || '';
   const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
   const expected = receiptSecret(env);
@@ -112,7 +121,7 @@ function eventKey(channel: Channel, eventId: string) {
 }
 
 export function deliveryEventStatement(
-  env: ContactVerificationEnvironment,
+  env: ContactOperationsEnvironment,
   input: {
     eventId: string;
     challengeId: string;
@@ -142,7 +151,7 @@ export function deliveryEventStatement(
 }
 
 export function securityEventStatement(
-  env: ContactVerificationEnvironment,
+  env: ContactOperationsEnvironment,
   input: {
     challengeId?: string | null;
     channel: Channel;
@@ -164,20 +173,20 @@ export function securityEventStatement(
 }
 
 export async function recordDeliveryEvent(
-  env: ContactVerificationEnvironment,
+  env: ContactOperationsEnvironment,
   input: Parameters<typeof deliveryEventStatement>[1]
 ) {
   return deliveryEventStatement(env, input).run();
 }
 
 export async function recordSecurityEvent(
-  env: ContactVerificationEnvironment,
+  env: ContactOperationsEnvironment,
   input: Parameters<typeof securityEventStatement>[1]
 ) {
   return securityEventStatement(env, input).run();
 }
 
-export async function pruneContactOperationalEvents(env: ContactVerificationEnvironment) {
+export async function pruneContactOperationalEvents(env: ContactOperationsEnvironment) {
   const cutoff = sqliteTime(new Date(Date.now() - 30 * 86_400_000));
   await env.DB.batch([
     env.DB.prepare(`DELETE FROM contact_delivery_events WHERE event_key IN (
@@ -191,7 +200,7 @@ export async function pruneContactOperationalEvents(env: ContactVerificationEnvi
 
 export async function handleContactDeliveryReceiptRequest(
   request: Request,
-  env: ReceiptEnvironment
+  env: ContactOperationsEnvironment
 ): Promise<Response | null> {
   if (new URL(request.url).pathname !== RECEIPT_PATH) return null;
   if (!contactDeliveryReceiptReady(env)) return json({ error: 'Not found' }, 404);
