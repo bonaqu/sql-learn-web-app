@@ -49,6 +49,13 @@ type ProviderEvent = {
   suppressionReason: SuppressionReason | null;
 };
 
+type StoredProviderEventRow = {
+  provider_event_id: string;
+  provider: ProviderName;
+  provider_message_id: string;
+  event_type: string;
+};
+
 const DELIVERY_CONTRACT = 'contact-verification-delivery-v1';
 const MAX_DELIVERY_BODY_BYTES = 4_096;
 const MAX_WEBHOOK_BODY_BYTES = 64 * 1_024;
@@ -406,6 +413,10 @@ function publicAttempt(row: DeliveryAttemptRow) {
   };
 }
 
+function messageIdHeader(providerMessageId: string | null) {
+  return providerMessageId ? { 'x-verification-message-id': providerMessageId } : {};
+}
+
 async function consumeAbuseBucket(
   env: Cloudflare.Env,
   scope: 'destination' | 'source',
@@ -422,6 +433,145 @@ async function consumeAbuseBucket(
      RETURNING attempts`
   ).bind(scope, subjectHash, windowStart).first<{ attempts: number }>();
   return Boolean(row && row.attempts <= limit);
+}
+
+function allowedPriorStatuses(nextStatus: DeliveryStatus): DeliveryStatus[] {
+  const transitions: Record<DeliveryStatus, DeliveryStatus[]> = {
+    reserved: ['reserved'],
+    accepted: ['reserved', 'accepted'],
+    sent: ['reserved', 'accepted', 'sent'],
+    delayed: ['reserved', 'accepted', 'sent', 'delayed'],
+    delivered: ['reserved', 'accepted', 'sent', 'delayed', 'delivered'],
+    bounced: ['reserved', 'accepted', 'sent', 'delayed', 'bounced'],
+    failed: ['reserved', 'accepted', 'sent', 'delayed', 'failed'],
+    undelivered: ['reserved', 'accepted', 'sent', 'delayed', 'undelivered'],
+    complained: ['reserved', 'accepted', 'sent', 'delayed', 'delivered', 'bounced', 'complained'],
+    suppressed: ['reserved', 'accepted', 'sent', 'delayed', 'delivered', 'bounced', 'failed', 'undelivered', 'complained', 'suppressed']
+  };
+  return transitions[nextStatus];
+}
+
+function persistedEventSemantics(
+  provider: ProviderName,
+  providerEventId: string,
+  providerMessageId: string,
+  eventType: string
+): ProviderEvent | null {
+  if (provider === 'resend') {
+    const states: Record<string, { status: DeliveryStatus; suppressionReason: SuppressionReason | null }> = {
+      'email.sent': { status: 'sent', suppressionReason: null },
+      'email.delivered': { status: 'delivered', suppressionReason: null },
+      'email.delivery_delayed': { status: 'delayed', suppressionReason: null },
+      'email.bounced.transient': { status: 'delayed', suppressionReason: null },
+      'email.bounced.permanent': { status: 'bounced', suppressionReason: 'hard-bounce' },
+      'email.bounced': { status: 'bounced', suppressionReason: null },
+      'email.complained': { status: 'complained', suppressionReason: 'complaint' },
+      'email.suppressed': { status: 'suppressed', suppressionReason: 'hard-bounce' },
+      'email.failed': { status: 'failed', suppressionReason: null }
+    };
+    const semantics = states[eventType];
+    return semantics ? {
+      provider,
+      providerEventId,
+      providerMessageId,
+      eventType,
+      ...semantics
+    } : null;
+  }
+  const twilioStates: Record<string, DeliveryStatus> = {
+    'message.accepted': 'accepted',
+    'message.scheduled': 'accepted',
+    'message.queued': 'accepted',
+    'message.sending': 'accepted',
+    'message.sent': 'sent',
+    'message.delivered': 'delivered',
+    'message.failed': 'failed',
+    'message.undelivered': 'undelivered'
+  };
+  const status = twilioStates[eventType];
+  return status ? {
+    provider,
+    providerEventId,
+    providerMessageId,
+    eventType,
+    status,
+    suppressionReason: null
+  } : null;
+}
+
+async function applyProviderEventToAttempt(env: Cloudflare.Env, event: ProviderEvent) {
+  const attempt = await env.DELIVERY_DB.prepare(
+    `SELECT challenge_id, destination_hash
+       FROM contact_delivery_attempts
+      WHERE provider = ?1 AND provider_message_id = ?2`
+  ).bind(event.provider, event.providerMessageId).first<{ challenge_id: string; destination_hash: string }>();
+  if (!attempt) return false;
+
+  await env.DELIVERY_DB.prepare(
+    `UPDATE contact_delivery_events
+        SET challenge_id = ?2
+      WHERE provider_event_id = ?1 AND challenge_id IS NULL`
+  ).bind(event.providerEventId, attempt.challenge_id).run();
+
+  const priorStatuses = allowedPriorStatuses(event.status);
+  const placeholders = priorStatuses.map((_, index) => `?${index + 4}`).join(', ');
+  const errorCode = event.eventType.replace(/[^a-z0-9]+/gi, '_').slice(0, 80).toUpperCase();
+  const updated = await env.DELIVERY_DB.prepare(
+    `UPDATE contact_delivery_attempts
+        SET status = ?1,
+            error_code = CASE WHEN ?1 IN ('failed', 'bounced', 'complained', 'suppressed', 'undelivered') THEN ?2 ELSE NULL END,
+            delivered_at = CASE WHEN ?1 = 'delivered' THEN COALESCE(delivered_at, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')) ELSE delivered_at END,
+            updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE challenge_id = ?3 AND status IN (${placeholders})`
+  ).bind(event.status, errorCode, attempt.challenge_id, ...priorStatuses).run();
+
+  if ((updated.meta.changes || 0) !== 1 || !event.suppressionReason) return true;
+  await env.DELIVERY_DB.prepare(
+    `INSERT INTO contact_delivery_suppressions(destination_hash, reason, provider_event_id, created_at, released_at)
+     VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL)
+     ON CONFLICT(destination_hash) DO UPDATE SET
+       reason = excluded.reason,
+       provider_event_id = excluded.provider_event_id,
+       created_at = excluded.created_at,
+       released_at = NULL`
+  ).bind(attempt.destination_hash, event.suppressionReason, event.providerEventId).run();
+  return true;
+}
+
+async function recordProviderEvent(env: Cloudflare.Env, event: ProviderEvent) {
+  await env.DELIVERY_DB.prepare(
+    `INSERT OR IGNORE INTO contact_delivery_events(
+       provider_event_id, challenge_id, provider, provider_message_id, event_type, received_at
+     ) VALUES (
+       ?1,
+       (SELECT challenge_id FROM contact_delivery_attempts WHERE provider = ?2 AND provider_message_id = ?3 LIMIT 1),
+       ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+     )`
+  ).bind(
+    event.providerEventId,
+    event.provider,
+    event.providerMessageId,
+    event.eventType
+  ).run();
+  await applyProviderEventToAttempt(env, event);
+}
+
+async function reconcileProviderEvents(env: Cloudflare.Env, provider: ProviderName, providerMessageId: string) {
+  const pending = await env.DELIVERY_DB.prepare(
+    `SELECT provider_event_id, provider, provider_message_id, event_type
+       FROM contact_delivery_events
+      WHERE provider = ?1 AND provider_message_id = ?2 AND challenge_id IS NULL
+      ORDER BY received_at ASC, provider_event_id ASC`
+  ).bind(provider, providerMessageId).all<StoredProviderEventRow>();
+  for (const row of pending.results || []) {
+    const event = persistedEventSemantics(
+      row.provider,
+      row.provider_event_id,
+      row.provider_message_id,
+      row.event_type
+    );
+    if (event) await applyProviderEventToAttempt(env, event);
+  }
 }
 
 async function handleDelivery(request: Request, env: Cloudflare.Env) {
@@ -447,7 +597,11 @@ async function handleDelivery(request: Request, env: Cloudflare.Env) {
     if (existing.channel !== payload.channel || existing.purpose !== payload.purpose || existing.destination_hash !== destinationHash) {
       return safeError('CHALLENGE_CONFLICT', 409);
     }
-    return json(publicAttempt(existing), existing.status === 'failed' ? 502 : 200);
+    return json(
+      publicAttempt(existing),
+      existing.status === 'failed' ? 502 : 200,
+      messageIdHeader(existing.provider_message_id)
+    );
   }
 
   const suppression = await env.DELIVERY_DB.prepare(
@@ -480,28 +634,36 @@ async function handleDelivery(request: Request, env: Cloudflare.Env) {
   ).run();
   if (reserved.meta.changes !== 1) {
     const raced = await existingAttempt(env, payload.challengeId);
-    return raced ? json(publicAttempt(raced)) : safeError('CHALLENGE_RESERVATION_FAILED', 409);
+    return raced
+      ? json(publicAttempt(raced), 200, messageIdHeader(raced.provider_message_id))
+      : safeError('CHALLENGE_RESERVATION_FAILED', 409);
   }
 
   try {
     const providerMessageId = payload.channel === 'email'
       ? await sendWithResend(payload, destination, env)
       : await sendWithTwilio(payload, destination, env);
-    await env.DELIVERY_DB.prepare(
+    const persisted = await env.DELIVERY_DB.prepare(
       `UPDATE contact_delivery_attempts
-          SET provider_message_id = ?2, status = 'accepted', error_code = NULL,
+          SET provider_message_id = ?2,
+              status = CASE WHEN status = 'reserved' THEN 'accepted' ELSE status END,
+              error_code = CASE WHEN status = 'reserved' THEN NULL ELSE error_code END,
               updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-        WHERE challenge_id = ?1 AND status = 'reserved'`
+        WHERE challenge_id = ?1 AND provider_message_id IS NULL`
     ).bind(payload.challengeId, providerMessageId).run();
+    if ((persisted.meta.changes || 0) !== 1) throw new Error('DELIVERY_STATE_UNAVAILABLE');
+    await reconcileProviderEvents(env, provider, providerMessageId);
     const accepted = await existingAttempt(env, payload.challengeId);
-    return accepted ? json(publicAttempt(accepted), 202) : safeError('DELIVERY_STATE_UNAVAILABLE', 503);
+    return accepted
+      ? json(publicAttempt(accepted), 202, messageIdHeader(providerMessageId))
+      : safeError('DELIVERY_STATE_UNAVAILABLE', 503);
   } catch (error) {
     const errorCode = sanitizedProviderError(error);
     await env.DELIVERY_DB.prepare(
       `UPDATE contact_delivery_attempts
           SET status = 'failed', error_code = ?2,
               updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-        WHERE challenge_id = ?1`
+        WHERE challenge_id = ?1 AND status IN ('reserved', 'accepted')`
     ).bind(payload.challengeId, errorCode).run();
     return safeError(errorCode, 502, 30);
   }
@@ -538,19 +700,6 @@ async function verifyResendSignature(rawBody: string, request: Request, env: Clo
   return valid ? eventId : null;
 }
 
-function resendStatus(eventType: string): DeliveryStatus | null {
-  const states: Record<string, DeliveryStatus> = {
-    'email.sent': 'sent',
-    'email.delivered': 'delivered',
-    'email.delivery_delayed': 'delayed',
-    'email.bounced': 'bounced',
-    'email.complained': 'complained',
-    'email.suppressed': 'suppressed',
-    'email.failed': 'failed'
-  };
-  return states[eventType] || null;
-}
-
 function parseResendEvent(rawBody: string, providerEventId: string): ProviderEvent | null {
   const parsed = JSON.parse(rawBody) as {
     type?: unknown;
@@ -560,86 +709,22 @@ function parseResendEvent(rawBody: string, providerEventId: string): ProviderEve
       bounce?: { type?: unknown };
     };
   };
-  const eventType = typeof parsed.type === 'string' ? parsed.type : '';
+  const rawEventType = typeof parsed.type === 'string' ? parsed.type : '';
   const providerMessageId = typeof parsed.data?.email_id === 'string'
     ? parsed.data.email_id
     : typeof parsed.data?.id === 'string'
       ? parsed.data.id
       : '';
   if (!providerMessageId || providerMessageId.length > 160) return null;
-
-  const bounceType = typeof parsed.data?.bounce?.type === 'string' ? parsed.data.bounce.type : '';
-  if (eventType === 'email.bounced' && bounceType.toLowerCase() === 'transient') {
-    return {
-      provider: 'resend',
-      providerEventId,
-      providerMessageId,
-      eventType: 'email.bounced.transient',
-      status: 'delayed',
-      suppressionReason: null
-    };
-  }
-  const status = resendStatus(eventType);
-  if (!status) return null;
-  const permanentBounce = eventType === 'email.bounced' && bounceType.toLowerCase() === 'permanent';
-  return {
-    provider: 'resend',
-    providerEventId,
-    providerMessageId,
-    eventType: permanentBounce ? 'email.bounced.permanent' : eventType,
-    status,
-    suppressionReason: eventType === 'email.complained'
-      ? 'complaint'
-      : permanentBounce || eventType === 'email.suppressed'
-        ? 'hard-bounce'
-        : null
-  };
-}
-
-async function recordProviderEvent(env: Cloudflare.Env, event: ProviderEvent) {
-  const inserted = await env.DELIVERY_DB.prepare(
-    `INSERT OR IGNORE INTO contact_delivery_events(
-       provider_event_id, challenge_id, provider, provider_message_id, event_type, received_at
-     )
-     SELECT ?1, challenge_id, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-       FROM contact_delivery_attempts
-      WHERE provider = ?2 AND provider_message_id = ?3`
-  ).bind(
-    event.providerEventId,
-    event.provider,
-    event.providerMessageId,
-    event.eventType
-  ).run();
-  if (inserted.meta.changes !== 1) return;
-
-  const attempt = await env.DELIVERY_DB.prepare(
-    `SELECT challenge_id, destination_hash
-       FROM contact_delivery_attempts
-      WHERE provider = ?1 AND provider_message_id = ?2`
-  ).bind(event.provider, event.providerMessageId).first<{ challenge_id: string; destination_hash: string }>();
-  if (!attempt) return;
-
-  const errorCode = event.eventType.replace(/[^a-z0-9]+/gi, '_').slice(0, 80).toUpperCase();
-  await env.DELIVERY_DB.prepare(
-    `UPDATE contact_delivery_attempts
-        SET status = ?2,
-            error_code = CASE WHEN ?2 IN ('failed', 'bounced', 'complained', 'suppressed', 'undelivered') THEN ?3 ELSE NULL END,
-            delivered_at = CASE WHEN ?2 = 'delivered' THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now') ELSE delivered_at END,
-            updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-      WHERE challenge_id = ?1`
-  ).bind(attempt.challenge_id, event.status, errorCode).run();
-
-  if (event.suppressionReason) {
-    await env.DELIVERY_DB.prepare(
-      `INSERT INTO contact_delivery_suppressions(destination_hash, reason, provider_event_id, created_at, released_at)
-       VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL)
-       ON CONFLICT(destination_hash) DO UPDATE SET
-         reason = excluded.reason,
-         provider_event_id = excluded.provider_event_id,
-         created_at = excluded.created_at,
-         released_at = NULL`
-    ).bind(attempt.destination_hash, event.suppressionReason, event.providerEventId).run();
-  }
+  const bounceType = typeof parsed.data?.bounce?.type === 'string'
+    ? parsed.data.bounce.type.trim().toLowerCase()
+    : '';
+  const eventType = rawEventType === 'email.bounced' && bounceType === 'transient'
+    ? 'email.bounced.transient'
+    : rawEventType === 'email.bounced' && bounceType === 'permanent'
+      ? 'email.bounced.permanent'
+      : rawEventType;
+  return persistedEventSemantics('resend', providerEventId, providerMessageId, eventType);
 }
 
 async function handleResendWebhook(request: Request, env: Cloudflare.Env) {
@@ -727,6 +812,11 @@ async function handleHealth(request: Request, env: Cloudflare.Env) {
        FROM contact_delivery_suppressions
       WHERE released_at IS NULL`
   ).first<{ count: number }>();
+  const pendingCallbacks = await env.DELIVERY_DB.prepare(
+    `SELECT COUNT(*) AS count
+       FROM contact_delivery_events
+      WHERE challenge_id IS NULL AND datetime(received_at) >= datetime('now', '-24 hours')`
+  ).first<{ count: number }>();
   return json({
     contract: 'contact-provider-health-v1',
     environment: env.ENVIRONMENT || 'unknown',
@@ -736,6 +826,7 @@ async function handleHealth(request: Request, env: Cloudflare.Env) {
     },
     last24Hours: Object.fromEntries((statusRows.results || []).map(row => [row.status, row.count])),
     activeSuppressions: activeSuppressions?.count || 0,
+    pendingCallbacks: pendingCallbacks?.count || 0,
     generatedAt: new Date().toISOString()
   });
 }
