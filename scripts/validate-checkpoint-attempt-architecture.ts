@@ -44,8 +44,11 @@ assert.doesNotMatch(checkpoints, /bestCheckpointReport\(checkpointId, reports\)\
 
 assert.match(remediation, /checkpointRemediationsFromAttemptSnapshot/,
   'Remediation must consume the canonical attempt snapshot.');
-assert.doesNotMatch(remediation, /function normalizedReport|completedAt\.localeCompare/,
-  'Remediation must not normalize or sort checkpoint attempts again.');
+assert.doesNotMatch(
+  remediation,
+  /function normalizedReport|compareCheckpointAttempts|right\.completedAt\.localeCompare\(left\.completedAt\)/,
+  'Remediation must not normalize or select the latest raw checkpoint attempt again.'
+);
 
 for (const marker of [
   'checkpointAttemptSnapshotFromReports',
