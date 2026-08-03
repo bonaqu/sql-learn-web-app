@@ -241,8 +241,14 @@ export function moduleFoundationComplete(
   return nextFoundationAction(moduleId, progress, curriculum, new Set(bypassedModuleIds)) === null;
 }
 
-function checkpointPassedByEvidence(checkpointId: string, progress: Progress, passed: ReadonlySet<string>) {
+function checkpointPassedByEvidence(
+  checkpointId: string,
+  progress: Progress,
+  passed: ReadonlySet<string>,
+  failed: ReadonlySet<string>
+) {
   if (passed.has(checkpointId)) return true;
+  if (failed.has(checkpointId)) return false;
   const checkpoint = curriculumCheckpoints.find(item => item.id === checkpointId);
   return Boolean(checkpoint?.taskIds.length && checkpoint.taskIds.every(taskId =>
     hasIndependentTaskEvidence(progress, taskId)
@@ -418,13 +424,20 @@ export function buildJourneyFrontier(
   const completedModuleIds = moduleFrontier.completedModuleIds;
   const routePositions = new Map<string, number>(moduleFrontier.routeModuleIds.map((moduleId, index) => [moduleId, index]));
   const passedCheckpointIds = new Set(options.passedCheckpointIds || []);
+  const allCheckpointRemediations = [...(options.checkpointRemediations || [])];
+  const failedCheckpointIds = new Set(allCheckpointRemediations.map(state => state.checkpointId));
   const passedPhaseIds: string[] = phaseDefinitions
     .filter(phase => {
       const checkpoint = checkpointForPhase(phase.id);
-      return Boolean(checkpoint && checkpointPassedByEvidence(checkpoint.id, progress, passedCheckpointIds));
+      return Boolean(checkpoint && checkpointPassedByEvidence(
+        checkpoint.id,
+        progress,
+        passedCheckpointIds,
+        failedCheckpointIds
+      ));
     })
     .map(phase => phase.id);
-  const checkpointRemediations = (options.checkpointRemediations || [])
+  const checkpointRemediations = allCheckpointRemediations
     .filter(state => !passedCheckpointIds.has(state.checkpointId))
     .sort((left, right) =>
       phaseRouteRank(left.phaseId, routePositions) - phaseRouteRank(right.phaseId, routePositions)
@@ -467,7 +480,12 @@ export function buildJourneyFrontier(
       .filter(phase => phase.moduleIds.every(moduleId => completedModuleIds.includes(moduleId)))
       .filter(phase => {
         const checkpoint = checkpointForPhase(phase.id);
-        return Boolean(checkpoint && !checkpointPassedByEvidence(checkpoint.id, progress, passedCheckpointIds));
+        return Boolean(checkpoint && !checkpointPassedByEvidence(
+          checkpoint.id,
+          progress,
+          passedCheckpointIds,
+          failedCheckpointIds
+        ));
       })
       .sort((left, right) => phaseRouteRank(left.id, routePositions) - phaseRouteRank(right.id, routePositions))[0];
     const checkpoint = readyCheckpointPhase ? checkpointAction(readyCheckpointPhase.id) : null;
