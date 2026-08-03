@@ -130,6 +130,21 @@ const passed = checkpointRemediationsFromReports([
 ], userId);
 assert.deepEqual(passed, [], 'A passed checkpoint must clear active remediation.');
 
+const failedAfterPass = checkpointRemediationsFromReports([
+  report({
+    id: 'passed-earlier',
+    completedAt: '2026-08-03T17:30:00.000Z',
+    attemptNumber: 1,
+    score: 88,
+    bestScore: 88,
+    passed: true,
+    remediationModules: []
+  }),
+  latest
+], userId);
+assert.equal(failedAfterPass[0]?.reportId, latest.id,
+  'A later failed retake must reactivate remediation even after an older pass.');
+
 const fallback = checkpointRemediationsFromReports([
   report({ remediationModules: [], moduleScores: [], taskScores: [] })
 ], userId)[0];
@@ -231,10 +246,16 @@ const repairedCurriculum = {
   updatedAt: '2026-08-03T18:30:00.000Z'
 };
 const phaseFoundationTasks = checkpoint.moduleIds.flatMap(moduleId => foundationTasksForModule(moduleId));
+const repairedTaskIds = Array.from(new Set([
+  ...phaseFoundationTasks.map(task => task.id),
+  ...state.modules.flatMap(module => module.weakTaskIds)
+]));
 const repairedProgress = progressWithIndependentAt(
   '2026-08-03T18:30:00.000Z',
-  phaseFoundationTasks.map(task => task.id)
+  repairedTaskIds
 );
+assert.deepEqual(unresolvedCheckpointRemediationModules(state, repairedProgress), [],
+  'Retry fixture must repair every weak checkpoint task as well as the phase foundation.');
 const retry = buildJourneyFrontier(repairedProgress, repairedCurriculum, {
   includeReview: false,
   goal: 'analyst',
