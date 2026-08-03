@@ -15,6 +15,7 @@
     "src/data/dialect-lab-cases.ts",
     "src/data/dialect-lab-manifests.ts",
     "src/lib/dialect-lab-policy.ts",
-    "src/lib/checkpoint-report-integrity.ts"
+    "src/lib/checkpoint-report-integrity.ts",
+    "src/lib/checkpoint-attempt-reservation-contract.ts"
   ]
 }
