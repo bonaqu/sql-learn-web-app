@@ -12,7 +12,7 @@ import {
   safeDiagnosticBypass,
   type GoalRouteReasonCode
 } from './goal-aware-route';
-import type { LearnerGoal } from './learner-onboarding';
+import { loadOnboardingProfile, type LearnerGoal } from './learner-onboarding';
 import {
   hasIndependentTaskEvidence,
   reviewQueue,
@@ -63,6 +63,10 @@ export type JourneyAction = {
   projectId: string | null;
   routeReasonCode?: JourneyRouteReasonCode;
   routeReason?: string;
+  frontierCompletedModuleIds?: string[];
+  frontierEligibleModuleIds?: string[];
+  frontierRouteModuleIds?: string[];
+  frontierPassedPhaseIds?: string[];
 };
 
 export type JourneyOptions = {
@@ -343,16 +347,16 @@ export function buildJourneyFrontier(
   curriculum: CurriculumProgressV1,
   options: JourneyOptions = {}
 ): JourneyFrontier {
-  const goal = options.goal || 'full';
+  const goal = options.goal || loadOnboardingProfile().goal || 'full';
   const safeBypassedModuleIds = safeDiagnosticBypass(goal, options.bypassedModuleIds || []);
-  const bypassed = new Set(safeBypassedModuleIds);
-  const completedModuleIds = canonicalModuleIds.filter(moduleId =>
+  const bypassed = new Set<string>(safeBypassedModuleIds);
+  const completedModuleIds: string[] = canonicalModuleIds.filter(moduleId =>
     nextFoundationAction(moduleId, progress, curriculum, bypassed) === null
   );
   const moduleFrontier = goalModuleFrontier(goal, completedModuleIds);
-  const routePositions = new Map(moduleFrontier.routeModuleIds.map((moduleId, index) => [moduleId, index]));
+  const routePositions = new Map<string, number>(moduleFrontier.routeModuleIds.map((moduleId, index) => [moduleId, index]));
   const passedCheckpointIds = new Set(options.passedCheckpointIds || []);
-  const passedPhaseIds = phaseDefinitions
+  const passedPhaseIds: string[] = phaseDefinitions
     .filter(phase => {
       const checkpoint = checkpointForPhase(phase.id);
       return Boolean(checkpoint && checkpointPassedByEvidence(checkpoint.id, progress, passedCheckpointIds));
@@ -451,8 +455,16 @@ export function buildJourneyFrontier(
       : withReason(completeAction(), 'route-complete', 'Все обязательные evidence-ступени академии завершены.');
   }
 
+  const decoratedAction: JourneyAction = {
+    ...action,
+    frontierCompletedModuleIds: [...completedModuleIds],
+    frontierEligibleModuleIds: [...moduleFrontier.eligibleModuleIds],
+    frontierRouteModuleIds: [...moduleFrontier.routeModuleIds],
+    frontierPassedPhaseIds: [...passedPhaseIds]
+  };
+
   return {
-    action,
+    action: decoratedAction,
     goal,
     routeModuleIds: moduleFrontier.routeModuleIds,
     completedModuleIds,
