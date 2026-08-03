@@ -68,7 +68,8 @@ const configured = {
   FEATURE_EMAIL_VERIFICATION: 'on',
   CONTACT_VERIFICATION_SIGNING_SECRET: 'test-signing-secret-with-at-least-thirty-two-characters',
   EMAIL_VERIFICATION_WEBHOOK_URL: 'https://verification.example.test/deliver',
-  EMAIL_VERIFICATION_WEBHOOK_SECRET: 'provider-secret-at-least-sixteen'
+  EMAIL_VERIFICATION_WEBHOOK_SECRET: 'provider-secret-at-least-sixteen',
+  EMAIL_VERIFICATION_EVENT_SECRET: 'delivery-event-secret-at-least-thirty-two-characters'
 } as Cloudflare.Env;
 assert.equal(verificationProviderReady('email', configured), true);
 assert.equal(contactVerificationReady('email', configured), true);
@@ -77,6 +78,10 @@ assert.equal(verificationProviderReady('email', {
   ...configured,
   EMAIL_VERIFICATION_WEBHOOK_URL: 'http://verification.example.test/deliver'
 } as Cloudflare.Env), false, 'Provider delivery must require HTTPS.');
+assert.equal(verificationProviderReady('email', {
+  ...configured,
+  EMAIL_VERIFICATION_EVENT_SECRET: ''
+} as Cloudflare.Env), false, 'A provider without signed delivery events must not be advertised as ready.');
 
 const migration = readFileSync(new URL('../migrations/0018_contact_verification.sql', import.meta.url), 'utf8');
 assert.match(migration, /CREATE TABLE IF NOT EXISTS contact_verification_challenges/);
@@ -104,6 +109,7 @@ assert.doesNotMatch(routeSource, /console\.(?:log|error)\([^\n]*destination/,
 const providerSource = readFileSync(new URL('../worker/integrations/verification.ts', import.meta.url), 'utf8');
 assert.match(providerSource, /redirect: 'error'/);
 assert.match(providerSource, /idempotency-key/);
+assert.match(providerSource, /verificationEventSecret\(channel, env\)\.length >= 32/);
 assert.doesNotMatch(providerSource, /await response\.(?:text|json)\(/,
   'The provider adapter must not read an unbounded response body.');
 
@@ -119,9 +125,11 @@ for (const source of [productionConfig, typegenConfig, workflow]) {
     'CONTACT_VERIFICATION_SIGNING_SECRET',
     'EMAIL_VERIFICATION_WEBHOOK_URL',
     'EMAIL_VERIFICATION_WEBHOOK_SECRET',
+    'EMAIL_VERIFICATION_EVENT_SECRET',
     'SMS_VERIFICATION_WEBHOOK_URL',
-    'SMS_VERIFICATION_WEBHOOK_SECRET'
+    'SMS_VERIFICATION_WEBHOOK_SECRET',
+    'SMS_VERIFICATION_EVENT_SECRET'
   ]) assert.ok(!source.includes(secret), `${secret} must remain a Cloudflare secret, not deployment configuration.`);
 }
 
-console.log('Contact challenge normalization, HMAC tickets, expiry, one-time consumption schema and fail-closed provider readiness are valid.');
+console.log('Contact challenge normalization, HMAC tickets, signed delivery-event readiness, expiry, one-time consumption and fail-closed activation are valid.');
