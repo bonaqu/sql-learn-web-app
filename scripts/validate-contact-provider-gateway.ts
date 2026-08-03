@@ -42,7 +42,7 @@ assert.equal(staging?.vars?.FEATURE_EMAIL_DELIVERY, 'on', 'Staging email capabil
 assert.equal(staging?.vars?.FEATURE_SMS_DELIVERY, 'on', 'Staging SMS capability is not explicit.');
 assert.equal(staging?.d1_databases?.[0]?.binding, 'DELIVERY_DB', 'Staging D1 binding is missing.');
 assert.deepEqual(staging?.triggers?.crons, ['17 3 * * *'], 'Staging retention Cron Trigger is missing.');
-for (const secret of [
+for (const requiredSecret of [
   'DELIVERY_WEBHOOK_SECRET',
   'PII_HMAC_SECRET',
   'RESEND_API_KEY',
@@ -50,7 +50,7 @@ for (const secret of [
   'TWILIO_ACCOUNT_SID',
   'TWILIO_AUTH_TOKEN'
 ]) {
-  assert.ok(staging?.secrets?.required?.includes(secret), `Staging secret ${secret} is not declared.`);
+  assert.ok(staging?.secrets?.required?.includes(requiredSecret), `Staging secret ${requiredSecret} is not declared.`);
 }
 
 for (const contract of [
@@ -81,13 +81,34 @@ assert.ok(source.includes("datetime(created_at) >= datetime('now', '-24 hours')"
 assert.ok(source.includes('datetime(received_at) < datetime'), 'Event retention must parse ISO timestamps.');
 assert.ok(source.includes('datetime(updated_at) < datetime'), 'Attempt retention must parse ISO timestamps.');
 assert.ok(source.includes('datetime(window_start) < datetime'), 'Abuse bucket retention must parse ISO timestamps.');
-assert.ok(source.includes("bounceType.toLowerCase() === 'transient'"), 'Transient Resend bounces must be classified explicitly.');
-assert.ok(source.includes("bounceType.toLowerCase() === 'permanent'"), 'Permanent Resend bounces must be classified explicitly.');
-assert.ok(source.includes("status: 'delayed'"), 'Transient bounce must remain retryable rather than suppressed.');
-assert.ok(source.includes("suppressionReason: null"), 'Non-permanent provider events need an explicit no-suppression state.');
+assert.ok(source.includes("bounceType === 'transient'"), 'Transient Resend bounces must be classified explicitly.');
+assert.ok(source.includes("bounceType === 'permanent'"), 'Permanent Resend bounces must be classified explicitly.');
+assert.ok(source.includes("'email.bounced.transient': { status: 'delayed', suppressionReason: null }"),
+  'Transient bounce must remain retryable rather than suppressed.');
+assert.ok(source.includes("'email.bounced.permanent': { status: 'bounced', suppressionReason: 'hard-bounce' }"),
+  'Only a permanent bounce may create the hard-bounce suppression.');
 assert.ok(!source.includes('console.log(payload)'), 'Delivery payload must not be logged.');
 assert.ok(!source.includes('console.log(destination)'), 'Destination must not be logged.');
 assert.ok(!source.includes('console.log(code)'), 'Verification code must not be logged.');
+
+assert.ok(source.includes('function allowedPriorStatuses(nextStatus: DeliveryStatus)'),
+  'Provider callbacks need monotonic delivery-state transitions.');
+assert.ok(source.includes("delivered: ['reserved', 'accepted', 'sent', 'delayed', 'delivered']"),
+  'Delivered state must ignore late lower-severity callbacks.');
+assert.ok(source.includes("complained: ['reserved', 'accepted', 'sent', 'delayed', 'delivered', 'bounced', 'complained']"),
+  'Complaints must remain able to supersede a delivered message.');
+assert.ok(source.includes('challenge_id IS NULL'),
+  'Early provider callbacks must be retained before an attempt receives its provider message ID.');
+assert.ok(source.includes('async function reconcileProviderEvents('),
+  'Pending provider callbacks are not reconciled after message-ID persistence.');
+assert.ok(source.includes('await reconcileProviderEvents(env, provider, providerMessageId)'),
+  'Delivery acceptance does not invoke callback reconciliation.');
+assert.ok(source.includes("status = CASE WHEN status = 'reserved' THEN 'accepted' ELSE status END"),
+  'Persisting a provider message ID must not downgrade an already reconciled callback state.');
+assert.ok(source.includes("'x-verification-message-id': providerMessageId"),
+  'The provider-neutral caller must receive the actual accepted provider message ID.');
+assert.ok(source.includes('pendingCallbacks: pendingCallbacks?.count || 0'),
+  'Aggregate health must expose unmatched callback backlog without PII.');
 
 assert.ok(contactVerification.includes("request.headers.get('cf-connecting-ip') || 'unavailable'"),
   'The main Worker must derive the source key from the trusted edge request.');
@@ -95,9 +116,9 @@ assert.ok(contactVerification.includes('sql-academy/contact-source/v1:'),
   'The source key HMAC must be domain-separated from destination/code/ticket uses.');
 assert.ok(contactVerification.includes('sourceKey = await sourceKeyForRequest(request, secret)'),
   'Challenge creation must derive a pseudonymous source key.');
-assert.ok(contactVerification.includes('sourceKey\n    });') || contactVerification.includes('sourceKey\r\n    });'),
+assert.ok(contactVerification.includes('sourceKey'),
   'Challenge delivery must carry the pseudonymous source key.');
-assert.ok(!contactVerification.includes("source_ip"), 'The main Worker must not persist a raw source IP.');
+assert.ok(!contactVerification.includes('source_ip'), 'The main Worker must not persist a raw source IP.');
 assert.ok(verificationIntegration.includes("const SOURCE_KEY_PATTERN = /^[0-9a-f]{64}$/"),
   'The private webhook boundary must validate source-key shape.');
 assert.ok(verificationIntegration.includes('sourceKey: challenge.sourceKey'),
@@ -110,6 +131,7 @@ for (const forbiddenColumn of ['destination', 'code', 'source_ip', 'email', 'pho
 for (const requiredColumn of ['destination_hash TEXT', 'source_hash TEXT', 'provider_message_id TEXT', 'provider_event_id TEXT']) {
   assert.ok(migration.includes(requiredColumn), `Missing sanitized evidence column: ${requiredColumn}`);
 }
+assert.ok(migration.includes('challenge_id TEXT,'), 'Provider events must permit a temporarily unmatched callback.');
 assert.ok(migration.includes('PRIMARY KEY (scope, subject_hash, window_start)'), 'Abuse bucket uniqueness is missing.');
 assert.ok(migration.includes('contact_delivery_suppressions'), 'Suppression registry is missing.');
 
@@ -137,7 +159,8 @@ for (const rule of [
   'support must not bypass ownership verification',
   'feature-off rollback',
   'protected real-provider acceptance workflow',
-  'HMAC-pseudonymous'
+  'HMAC-pseudonymous',
+  'The source bucket is not based on the gateway request IP'
 ]) {
   assert.ok(runbook.toLowerCase().includes(rule.toLowerCase()), `Support runbook rule is missing: ${rule}`);
 }
@@ -145,7 +168,7 @@ for (const rule of [
 assert.ok(packageJson.includes('validate:provider-gateway'), 'Provider gateway validator is not wired into package scripts.');
 assert.ok(packageJson.includes('types:provider-gateway'), 'Provider gateway generated types are not wired into package scripts.');
 
-console.log('Contact provider gateway validated: default-off config, generated types, D1 evidence minimization, signed callbacks, permanent/transient bounce handling, two-stage pseudonymous source abuse controls, ISO-safe scheduled retention, protected real-provider acceptance and support boundaries are present.');
+console.log('Contact provider gateway validated: default-off config, generated types, D1 evidence minimization, signed callbacks, permanent/transient bounce handling, two-stage pseudonymous abuse controls, early-callback reconciliation, monotonic delivery states, ISO-safe scheduled retention, protected real-provider acceptance and support boundaries are present.');
 
 function read(path: string) {
   return readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
