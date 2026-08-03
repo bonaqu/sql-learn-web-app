@@ -1,5 +1,10 @@
 import { AxeBuilder } from '@axe-core/playwright';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { curriculumCheckpoints } from '../../src/data/complete-curriculum';
+import { modules, tasks } from '../../src/data/course-catalog';
+import { phaseDefinitions } from '../../src/data/learning-structure';
+import { goalModuleRoute } from '../../src/lib/goal-aware-route';
+import type { LearnerGoal } from '../../src/lib/learner-onboarding';
 import { authenticatePage, loginPage } from './auth-helper';
 import { openAdvancedTool } from './navigation-helper';
 
@@ -34,11 +39,11 @@ function diagnosticReport(userId: string) {
   };
 }
 
-async function openOnboarding(page: import('@playwright/test').Page) {
+async function openOnboarding(page: Page) {
   await openAdvancedTool(page, 'onboarding-trigger');
 }
 
-async function chooseCoreContract(page: import('@playwright/test').Page) {
+async function chooseCoreContract(page: Page) {
   const dialog = page.getByTestId('onboarding-portal');
   await dialog.getByRole('button', { name: /Support SQL/i }).click();
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
@@ -53,12 +58,12 @@ async function chooseCoreContract(page: import('@playwright/test').Page) {
   await expect(dialog.getByTestId('onboarding-placement')).toBeVisible();
 }
 
-async function expectNoHorizontalOverflow(page: import('@playwright/test').Page) {
+async function expectNoHorizontalOverflow(page: Page) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(overflow).toBe(false);
 }
 
-async function expectGuidedTodayAccessible(page: import('@playwright/test').Page) {
+async function expectGuidedTodayAccessible(page: Page) {
   const result = await new AxeBuilder({ page })
     .include('[data-testid="guided-today"]')
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
@@ -67,7 +72,7 @@ async function expectGuidedTodayAccessible(page: import('@playwright/test').Page
   expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
 }
 
-async function expectSharedFoundationToday(page: import('@playwright/test').Page, goalLabel: RegExp) {
+async function expectSharedFoundationToday(page: Page, goalLabel: RegExp) {
   const today = page.getByTestId('guided-today');
   await expect(today).toBeVisible();
   await expect(today).toContainText(goalLabel);
@@ -76,6 +81,100 @@ async function expectSharedFoundationToday(page: import('@playwright/test').Page
   await expect(action).toContainText(/Общая база обязательна|общей баз/i);
   await expectNoHorizontalOverflow(page);
   await expectGuidedTodayAccessible(page);
+}
+
+function checkpointForPhase(phaseId: string) {
+  const phase = phaseDefinitions.find(item => item.id === phaseId);
+  return phase
+    ? curriculumCheckpoints.find(checkpoint => checkpoint.moduleIds.some(moduleId => phase.moduleIds.some(id => id === moduleId))) || null
+    : null;
+}
+
+function advancedFrontierFixture(userId: string, goal: LearnerGoal, prefixLength = 14) {
+  const route = goalModuleRoute(goal);
+  const strongModuleIds = route.slice(0, prefixLength);
+  const fullyCoveredPhases = phaseDefinitions.filter(phase => phase.moduleIds.every(moduleId => strongModuleIds.includes(moduleId)));
+  const checkpointReports = fullyCoveredPhases.flatMap(phase => {
+    const checkpoint = checkpointForPhase(phase.id);
+    return checkpoint ? [{
+      version: 1,
+      id: `checkpoint-${goal}-${phase.id}`,
+      userId,
+      checkpointId: checkpoint.id,
+      status: 'completed',
+      passed: true,
+      score: 100,
+      startedAt: '2026-08-03T15:00:00.000Z',
+      completedAt: '2026-08-03T15:10:00.000Z',
+      durationSeconds: 600,
+      taskResults: []
+    }] : [];
+  });
+  const openedPhaseIds = new Set(fullyCoveredPhases.map(phase => phase.id));
+  const transferTasks = tasks.filter(task => {
+    if (task.mode !== 'interview' && task.mode !== 'puzzle') return false;
+    const phase = phaseDefinitions.find(item => item.moduleIds.some(moduleId => moduleId === task.module));
+    return Boolean(phase && openedPhaseIds.has(phase.id));
+  });
+  const completedAt = '2026-08-03T15:15:00.000Z';
+  const progress = {
+    version: 4,
+    completed: transferTasks.map(task => task.id),
+    taskStats: Object.fromEntries(transferTasks.map(task => [task.id, {
+      attempts: 1,
+      incorrect: 0,
+      hintsUsed: 0,
+      solutionViews: 0,
+      independentPasses: 1,
+      lastIndependentAt: completedAt,
+      completedAt,
+      lastAttemptAt: completedAt
+    }])),
+    xp: transferTasks.reduce((sum, task) => sum + task.xp, 0),
+    streak: 1,
+    history: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => ({ day, solved: 0 })),
+    lastStudyDate: '2026-08-03'
+  };
+  const profile = {
+    version: 1,
+    goal,
+    experience: 'advanced',
+    dailyMinutes: 25,
+    studyDays: ['MO', 'WE', 'FR'],
+    pace: 'steady',
+    placement: {
+      status: 'completed',
+      reportId: `advanced-${goal}`,
+      score: 95,
+      level: 'advanced',
+      recommendedTrack: goal === 'analyst' ? 'analytics' : goal === 'backend' ? 'performance' : 'fundamentals',
+      strongModuleIds,
+      focusModuleIds: [],
+      completedAt
+    },
+    firstWeekPlan: [],
+    recoveryRule: 'Resume only the next prerequisite-safe frontier step.',
+    completedAt,
+    updatedAt: completedAt
+  };
+  return {
+    profile,
+    progress,
+    checkpointReports,
+    expectedModuleId: route[prefixLength],
+    expectedModuleTitle: modules.find(([moduleId]) => moduleId === route[prefixLength])?.[1] || route[prefixLength]
+  };
+}
+
+async function seedAdvancedFrontier(page: Page, userId: string, goal: LearnerGoal) {
+  const fixture = advancedFrontierFixture(userId, goal);
+  await page.evaluate(({ id, value }) => {
+    localStorage.setItem(`sql-academy-onboarding-v1:${id}`, JSON.stringify(value.profile));
+    localStorage.setItem('sql-academy-progress-v4', JSON.stringify(value.progress));
+    localStorage.setItem(`sql-academy-checkpoint-reports-v1:${id}`, JSON.stringify(value.checkpointReports));
+  }, { id: userId, value: fixture });
+  await page.reload();
+  return fixture;
 }
 
 test('desktop onboarding uses executable placement and resumes one shared frontier on a second device', async ({ page, browser }, testInfo) => {
@@ -131,6 +230,30 @@ test('desktop onboarding uses executable placement and resumes one shared fronti
   await secondDialog.getByRole('button', { name: 'Закрыть стартовый план' }).click();
   await expectSharedFoundationToday(secondPage, /Support SQL/i);
   await secondContext.close();
+});
+
+test('desktop onboarding advanced analyst and backend evidence resume different goal-priority frontiers', async ({ page, browser }, testInfo) => {
+  const analystAuth = await authenticatePage(page, 'advancedanalyst');
+  const analyst = await seedAdvancedFrontier(page, String(analystAuth.session.userId), 'analyst');
+  const analystAction = page.getByTestId('guided-journey-action');
+  await expect(analystAction).toHaveAttribute('data-route-reason', 'goal-priority');
+  await expect(analystAction).toContainText(analyst.expectedModuleTitle);
+  await expect(page.getByTestId('guided-today')).toContainText(/Аналитика/i);
+  await expectGuidedTodayAccessible(page);
+  await page.screenshot({ path: testInfo.outputPath('desktop-analyst-frontier.png'), fullPage: true });
+
+  const backendContext = await browser.newContext();
+  const backendPage = await backendContext.newPage();
+  const backendAuth = await authenticatePage(backendPage, 'advancedbackend');
+  const backend = await seedAdvancedFrontier(backendPage, String(backendAuth.session.userId), 'backend');
+  const backendAction = backendPage.getByTestId('guided-journey-action');
+  await expect(backendAction).toHaveAttribute('data-route-reason', 'goal-priority');
+  await expect(backendAction).toContainText(backend.expectedModuleTitle);
+  await expect(backendPage.getByTestId('guided-today')).toContainText(/Backend SQL/i);
+  expect(backend.expectedModuleId).not.toBe(analyst.expectedModuleId);
+  await expectNoHorizontalOverflow(backendPage);
+  await backendPage.screenshot({ path: testInfo.outputPath('desktop-backend-frontier.png'), fullPage: true });
+  await backendContext.close();
 });
 
 test('mobile deferred placement starts from zero and keeps the shared goal frontier accessible', async ({ page }, testInfo) => {
