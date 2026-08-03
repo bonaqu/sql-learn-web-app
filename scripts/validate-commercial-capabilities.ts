@@ -43,8 +43,10 @@ const configured = {
   CONTACT_VERIFICATION_SIGNING_SECRET: 'test-signing-secret-with-at-least-thirty-two-characters',
   EMAIL_VERIFICATION_WEBHOOK_URL: 'https://verification.example.test/email',
   EMAIL_VERIFICATION_WEBHOOK_SECRET: 'email-provider-secret-at-least-sixteen',
+  EMAIL_VERIFICATION_EVENT_SECRET: 'email-event-secret-at-least-thirty-two-characters',
   SMS_VERIFICATION_WEBHOOK_URL: 'https://verification.example.test/sms',
   SMS_VERIFICATION_WEBHOOK_SECRET: 'sms-provider-secret-at-least-sixteen',
+  SMS_VERIFICATION_EVENT_SECRET: 'sms-event-secret-at-least-thirty-two-characters',
   FEATURE_TURNSTILE: 'on',
   TURNSTILE_SECRET_KEY: 'turnstile-secret',
   TURNSTILE_EXPECTED_HOSTNAMES: 'academy.example.com',
@@ -59,6 +61,14 @@ assert.deepEqual(commercialCapabilities(configured).integrations, {
 });
 assert.deepEqual(commercialConfigurationErrors(configured), []);
 assert.equal(handleHiddenAdminBoundary(new Request('https://academy.example.test/api/admin/health'), configured), null);
+
+const missingDeliveryEvents = {
+  ...configured,
+  EMAIL_VERIFICATION_EVENT_SECRET: ''
+} as Cloudflare.Env;
+assert.equal(commercialCapabilities(missingDeliveryEvents).integrations.emailVerification.enabled, false,
+  'Outbound-only email configuration must remain hidden without signed delivery events.');
+assert.deepEqual(commercialConfigurationErrors(missingDeliveryEvents), ['EMAIL_VERIFICATION_INCOMPLETE']);
 
 const response = handleCommercialCapabilitiesRequest(new Request('https://academy.example.test/api/capabilities'), {} as Cloudflare.Env);
 assert.ok(response);
@@ -99,6 +109,9 @@ assert.match(workerSource, /handleContactAccountRequest/);
 assert.ok(workerSource.indexOf('handleContactAccountRequest(request, env)') < workerSource.indexOf('handleAuthRequest(request, env)'),
   'Verified-contact account routes must be evaluated before the generic auth fallback.');
 assert.match(workerSource, /x-contact-account-contract/);
+assert.match(workerSource, /handleContactDeliveryEventRequest/);
+assert.ok(workerSource.indexOf('handleContactDeliveryEventRequest(request, env)') < workerSource.indexOf('enforceTurnstile(request, env)'),
+  'Provider callbacks must run before browser Turnstile enforcement.');
 assert.match(workerSource, /enforceTurnstile/);
 assert.match(workerSource, /handleAdminHealthRequest/);
 assert.match(workerSource, /withSecurityHeaders/);
@@ -141,10 +154,12 @@ for (const secret of [
   'CONTACT_VERIFICATION_SIGNING_SECRET:',
   'EMAIL_VERIFICATION_WEBHOOK_URL:',
   'EMAIL_VERIFICATION_WEBHOOK_SECRET:',
+  'EMAIL_VERIFICATION_EVENT_SECRET:',
   'SMS_VERIFICATION_WEBHOOK_URL:',
   'SMS_VERIFICATION_WEBHOOK_SECRET:',
+  'SMS_VERIFICATION_EVENT_SECRET:',
   'EMAIL_API_KEY:',
   'SMS_API_KEY:'
 ]) assert.ok(!workflow.includes(secret), `Secret must not be written into deployment config: ${secret}`);
 
-console.log('Commercial capability contract, verified-contact account routing, Turnstile/admin security and observable production deployment wiring are fail-closed.');
+console.log('Commercial capability contract, verified-contact account routing, signed delivery-event readiness, Turnstile/admin security and observable deployment wiring are fail-closed.');

@@ -1,0 +1,107 @@
+name: Contact Provider Staging Acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      channels:
+        description: Provider channels to verify
+        required: true
+        default: both
+        type: choice
+        options:
+          - email
+          - sms
+          - both
+      timeout_ms:
+        description: Maximum wait per provider delivery
+        required: true
+        default: '180000'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contact-provider-staging
+  cancel-in-progress: false
+
+jobs:
+  accept:
+    name: Verify real email and SMS delivery
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: contact-provider-staging
+    env:
+      CONTACT_STAGING_CHANNELS: ${{ inputs.channels }}
+      CONTACT_STAGING_TIMEOUT_MS: ${{ inputs.timeout_ms }}
+      CONTACT_STAGING_APP_URL: ${{ vars.CONTACT_STAGING_APP_URL }}
+      CONTACT_STAGING_ADAPTER_URL: ${{ vars.CONTACT_STAGING_ADAPTER_URL }}
+      CONTACT_STAGING_EMAIL_DESTINATION: ${{ secrets.CONTACT_STAGING_EMAIL_DESTINATION }}
+      CONTACT_STAGING_SMS_DESTINATION: ${{ secrets.CONTACT_STAGING_SMS_DESTINATION }}
+      CONTACT_STAGING_CAPTURE_SECRET: ${{ secrets.CONTACT_STAGING_CAPTURE_SECRET }}
+      CONTACT_STAGING_TURNSTILE_TOKEN: ${{ secrets.CONTACT_STAGING_TURNSTILE_TOKEN }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+      TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+      EMAIL_VERIFICATION_EVENT_SECRET: ${{ secrets.EMAIL_VERIFICATION_EVENT_SECRET }}
+      SMS_VERIFICATION_EVENT_SECRET: ${{ secrets.SMS_VERIFICATION_EVENT_SECRET }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Validate selected staging secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CONTACT_STAGING_APP_URL"
+          test -n "$CONTACT_STAGING_ADAPTER_URL"
+          test -n "$CONTACT_STAGING_CAPTURE_SECRET"
+          case "$CONTACT_STAGING_CHANNELS" in
+            email)
+              test -n "$CONTACT_STAGING_EMAIL_DESTINATION"
+              test -n "$RESEND_API_KEY"
+              test -n "$EMAIL_VERIFICATION_EVENT_SECRET"
+              ;;
+            sms)
+              test -n "$CONTACT_STAGING_SMS_DESTINATION"
+              test -n "$TWILIO_ACCOUNT_SID"
+              test -n "$TWILIO_AUTH_TOKEN"
+              test -n "$SMS_VERIFICATION_EVENT_SECRET"
+              ;;
+            both)
+              test -n "$CONTACT_STAGING_EMAIL_DESTINATION"
+              test -n "$CONTACT_STAGING_SMS_DESTINATION"
+              test -n "$RESEND_API_KEY"
+              test -n "$TWILIO_ACCOUNT_SID"
+              test -n "$TWILIO_AUTH_TOKEN"
+              test -n "$EMAIL_VERIFICATION_EVENT_SECRET"
+              test -n "$SMS_VERIFICATION_EVENT_SECRET"
+              ;;
+            *) exit 1 ;;
+          esac
+
+      - name: Validate acceptance runner syntax
+        run: node --check scripts/contact-provider-staging-acceptance.mjs
+
+      - name: Run real-provider staging acceptance
+        shell: bash
+        run: |
+          set -o pipefail
+          node scripts/contact-provider-staging-acceptance.mjs 2>&1 | tee contact-provider-staging.log
+          test -s contact-provider-staging-evidence.json
+
+      - name: Upload redacted provider evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contact-provider-staging-evidence-${{ github.run_attempt }}
+          path: |
+            contact-provider-staging-evidence.json
+            contact-provider-staging.log
+          if-no-files-found: ignore
+          retention-days: 30

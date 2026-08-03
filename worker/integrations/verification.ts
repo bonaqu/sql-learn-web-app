@@ -1,8 +1,8 @@
 /**
  * Commercial verification provider boundary.
  *
- * The current Free deployment keeps every provider disabled. A buyer can attach
- * a private HTTPS webhook and enable the matching feature only after delivery,
+ * The Free deployment keeps every provider disabled. A buyer can attach a
+ * private HTTPS adapter only after outbound delivery, signed delivery events,
  * abuse monitoring and legal acceptance are in place. Provider credentials are
  * Cloudflare secrets and are never written to Wrangler vars or source control.
  */
@@ -28,8 +28,10 @@ export interface SmsVerificationProvider extends VerificationProvider {}
 type VerificationSecretKey =
   | 'EMAIL_VERIFICATION_WEBHOOK_URL'
   | 'EMAIL_VERIFICATION_WEBHOOK_SECRET'
+  | 'EMAIL_VERIFICATION_EVENT_SECRET'
   | 'SMS_VERIFICATION_WEBHOOK_URL'
-  | 'SMS_VERIFICATION_WEBHOOK_SECRET';
+  | 'SMS_VERIFICATION_WEBHOOK_SECRET'
+  | 'SMS_VERIFICATION_EVENT_SECRET';
 
 export type VerificationProviderEnvironment = Cloudflare.Env & Partial<Record<VerificationSecretKey, string>>;
 
@@ -61,8 +63,16 @@ function webhookSecret(channel: VerificationChannel, env: VerificationProviderEn
     : env.SMS_VERIFICATION_WEBHOOK_SECRET, 2_000);
 }
 
+export function verificationEventSecret(channel: VerificationChannel, env: VerificationProviderEnvironment) {
+  return secretValue(channel === 'email'
+    ? env.EMAIL_VERIFICATION_EVENT_SECRET
+    : env.SMS_VERIFICATION_EVENT_SECRET, 2_000);
+}
+
 export function verificationProviderReady(channel: VerificationChannel, env: VerificationProviderEnvironment) {
-  return webhookUrl(channel, env) !== null && webhookSecret(channel, env).length >= 16;
+  return webhookUrl(channel, env) !== null
+    && webhookSecret(channel, env).length >= 16
+    && verificationEventSecret(channel, env).length >= 32;
 }
 
 export class DisabledVerificationProvider implements VerificationProvider {
@@ -125,6 +135,8 @@ export function verificationProvider(
 ): VerificationProvider {
   const url = webhookUrl(channel, env);
   const secret = webhookSecret(channel, env);
-  if (!url || secret.length < 16) return new DisabledVerificationProvider();
+  if (!url || secret.length < 16 || verificationEventSecret(channel, env).length < 32) {
+    return new DisabledVerificationProvider();
+  }
   return new WebhookVerificationProvider(channel, url, secret);
 }
