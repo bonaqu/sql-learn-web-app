@@ -17,11 +17,12 @@ Support and operators must never:
 ## Components
 
 1. SQL Academy sends the private `contact-verification-delivery-v1` contract to the gateway.
-2. The gateway reserves the challenge in D1 before calling a provider.
-3. Resend sends email with `challengeId` as the API idempotency key.
-4. Twilio sends SMS once for a reserved challenge and reports status through a signed callback.
-5. Resend Svix callbacks and Twilio `X-Twilio-Signature` callbacks update sanitized delivery evidence.
-6. D1 stores HMAC-pseudonymous destination/source identifiers, provider IDs, event IDs, statuses and timestamps. It does not store the raw destination or verification code.
+2. Before that call, the main Worker derives a domain-separated HMAC `sourceKey` from Cloudflare's trusted `CF-Connecting-IP`. The raw address exists only in request memory. The gateway validates that 64-hex key and HMAC-pseudonymizes it again with its independent `PII_HMAC_SECRET`, so the provider service never mistakes the calling backend Worker IP for the learner source and neither service persists a raw IP.
+3. The gateway reserves the challenge in D1 before calling a provider.
+4. Resend sends email with `challengeId` as the API idempotency key.
+5. Twilio sends SMS once for a reserved challenge and reports status through a signed callback.
+6. Resend Svix callbacks and Twilio `X-Twilio-Signature` callbacks update sanitized delivery evidence.
+7. D1 stores HMAC-pseudonymous destination/source identifiers, provider IDs, event IDs, statuses and timestamps. It does not store the raw destination, source IP, upstream source key or verification code.
 
 ## Required staging assets
 
@@ -143,15 +144,18 @@ Trigger when:
 - challenge creation grows without matching confirmations;
 - Turnstile failures or provider rejects rise together.
 
+The source bucket is not based on the gateway request IP: that address belongs to the calling SQL Academy Worker. The main Worker first HMAC-pseudonymizes the edge source, and the gateway HMAC-pseudonymizes that upstream key again. Operators may compare aggregate bucket activity, but must not attempt to reverse, export or join these identifiers to raw IP logs.
+
 Actions:
 
 1. Keep rate limits fail-closed; do not raise them during the incident.
 2. Disable the targeted channel if volume threatens provider reputation or cost controls.
-3. Review only HMAC-pseudonymous aggregate buckets and timestamps; do not export raw destinations.
+3. Review only HMAC-pseudonymous aggregate buckets and timestamps; do not export raw destinations or source keys.
 4. Rotate `DELIVERY_WEBHOOK_SECRET` if unauthorized gateway calls are plausible.
 5. Rotate `PII_HMAC_SECRET` only as a planned migration because changing it breaks correlation with existing suppression/bucket records.
-6. Tighten challenge limits and Turnstile policy in the main application, then validate legitimate registration/reset/binding flows.
-7. Document the attack window, controls changed and criteria for rollback.
+6. Rotating `CONTACT_VERIFICATION_SIGNING_SECRET` also changes upstream source-key correlation and the destination/ticket signing domains in the main application; perform it only through the approved application secret-rotation plan.
+7. Tighten challenge limits and Turnstile policy in the main application, then validate legitimate registration/reset/binding flows.
+8. Document the attack window, controls changed and criteria for rollback.
 
 ## Credential rotation
 
