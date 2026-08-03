@@ -25,6 +25,14 @@ For each checkpoint, the current attempt is selected deterministically by:
 
 The same comparator orders local storage and merged local/cloud histories. Input order and sync partition must not change the snapshot.
 
+The Worker returns the bounded 50-report cloud page in the same order:
+
+```sql
+ORDER BY completed_at DESC, attempt_number DESC, id DESC
+```
+
+This ordering matters before the limit is applied. Two devices must receive the same bounded candidate set even when several attempts share a completion timestamp. The client still validates and reorders the returned payload through the canonical comparator rather than trusting server response order as pass evidence.
+
 ## Current state
 
 The current attempt controls:
@@ -70,6 +78,17 @@ Once any valid completed report exists:
 - its current pass/fail state is authoritative;
 - legacy task completion cannot override a failure;
 - expired and abandoned sessions do not count as completed attempts and therefore do not suppress fallback by themselves.
+
+## Cross-device contract
+
+Saving reports to D1 must preserve their owner, report ID, checkpoint ID, completion timestamp, attempt number, score, historical best and pass flag. A second authenticated browser with no local checkpoint history must reconstruct the same:
+
+- current attempt;
+- current pass count;
+- historical best;
+- remediation or next-checkpoint gate.
+
+Local/cloud merge is deterministic regardless of which reports were already present locally or in what order the server returned them.
 
 ## Ownership boundary
 
