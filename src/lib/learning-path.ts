@@ -1,6 +1,7 @@
 import { curriculumCheckpoints } from '../data/complete-curriculum';
 import { modules, type SqlTask, tasks } from '../data/course-catalog';
 import { phaseDefinitions, phaseForModule } from '../data/learning-structure';
+import type { CheckpointRemediationState } from './checkpoint-remediation';
 import {
   buildJourneyFrontier,
   foundationTasksForModule,
@@ -58,6 +59,7 @@ export type LearningPhase = {
 export type LearningSessionEvidence = {
   curriculum: CurriculumProgressV1;
   passedCheckpointIds?: readonly string[];
+  checkpointRemediations?: readonly CheckpointRemediationState[];
   assessmentComplete?: boolean;
   bypassedModuleIds?: readonly string[];
   goal?: LearnerGoal | null;
@@ -121,6 +123,7 @@ function frontierFor(progress: Progress, evidence: LearningSessionEvidence) {
     includeReview: false,
     goal: evidence.goal,
     passedCheckpointIds: evidence.passedCheckpointIds,
+    checkpointRemediations: evidence.checkpointRemediations,
     assessmentComplete: evidence.assessmentComplete,
     bypassedModuleIds: evidence.bypassedModuleIds
   });
@@ -271,11 +274,17 @@ function pushReview(items: SessionItem[], task: SqlTask | undefined) {
 
 function actionReason(action: JourneyAction, progress: Progress): SessionItem['reason'] {
   if (action.stage === 'checkpoint') return 'checkpoint';
+  if (action.routeReasonCode === 'checkpoint-remediation') return 'weakness';
   if (action.task && (progress.taskStats[action.task.id]?.attempts || 0) > 0) return 'weakness';
   return 'new';
 }
 
 function actionLabel(action: JourneyAction) {
+  if (action.routeReasonCode === 'checkpoint-remediation') {
+    return action.stage === 'checkpoint'
+      ? 'Повтор checkpoint после targeted remediation'
+      : 'Targeted remediation после failed checkpoint';
+  }
   if (action.stage === 'lesson') return 'Mental model и knowledge checks';
   if (action.stage === 'guided') return 'Guided application после урока';
   if (action.stage === 'practice') return 'Independent practice без подсказок';
@@ -384,6 +393,13 @@ export function mentorPlanContext(
   return {
     goal: session.frontier.goal,
     nextReasonCode: session.frontier.action.routeReasonCode || null,
+    checkpointRemediation: session.frontier.checkpointRemediation
+      ? {
+          checkpointId: session.frontier.checkpointRemediation.checkpointId,
+          score: session.frontier.checkpointRemediation.score,
+          modules: session.frontier.checkpointRemediation.modules.map(module => module.moduleTitle)
+        }
+      : null,
     readiness: overallReadiness(progress, evidence),
     weakest: weakest.map(item => ({ title: item.title, mastery: item.mastery, errors: item.incorrect, hints: item.hints })),
     session: session.items.map(item => ({ title: item.title, reason: item.reason, topic: item.topic })),
