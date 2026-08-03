@@ -3,26 +3,24 @@ import { expect, Page, test } from '@playwright/test';
 import { authenticatePage, loginPage } from './auth-helper';
 import { openAdvancedTool } from './navigation-helper';
 
-const SQLITE_NULL_ORDERING = `SELECT ticket_id, resolved_at
+const SQLITE_NULL_ORDERING = `SELECT ticket_id, closed_at
 FROM tickets
-ORDER BY (resolved_at IS NULL) ASC, resolved_at ASC, ticket_id ASC;`;
+ORDER BY (closed_at IS NULL), closed_at, ticket_id;`;
 
-const POSTGRES_NULL_ORDERING = `SELECT ticket_id, resolved_at
+const POSTGRES_NULL_ORDERING = `SELECT ticket_id, closed_at
 FROM tickets
-ORDER BY resolved_at ASC NULLS LAST, ticket_id ASC;`;
+ORDER BY closed_at NULLS LAST, ticket_id;`;
 
-const SQLITE_DATE_BOUNDARY = `SELECT ticket_id, opened_at,
-  CASE
-    WHEN date(opened_at) = date('now') THEN 'today'
-    WHEN date(opened_at) = date('now', '-1 day') THEN 'yesterday'
-    ELSE 'older'
-  END AS bucket
+const SQLITE_DATE_BOUNDARY = `SELECT ticket_id
 FROM tickets
+WHERE closed_at >= datetime('2026-07-08 00:00:00', '-1 day')
+  AND closed_at < datetime('2026-07-08 00:00:00')
 ORDER BY ticket_id;`;
 
-const MYSQL_OPTIMISTIC_UPDATE = `UPDATE tickets
-SET status = 'closed', version = version + 1
-WHERE ticket_id = 101 AND version = 3;`;
+const MYSQL_OPTIMISTIC_UPDATE = `UPDATE ticket_versions
+SET priority = 'Critical', version = version + 1
+WHERE ticket_id = 1002 AND version = 7;
+SELECT ROW_COUNT() AS affected_rows;`;
 
 async function openDialectLab(page: Page, mobile = false) {
   await page.goto('./');
