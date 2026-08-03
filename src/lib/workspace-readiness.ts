@@ -98,15 +98,17 @@ export function workspaceTaskReadiness(
   const isTransfer = task.mode === 'interview' || task.mode === 'puzzle';
 
   if (isTransfer) {
-    if (taskPhase && passedPhaseIds.includes(taskPhase.id)) {
+    if (taskPhase
+      && passedPhaseIds.includes(taskPhase.id)
+      && completedModuleIds.includes(task.module)) {
       return ready(
         task.mode === 'interview' ? 'Interview открыт' : 'Puzzle открыт',
-        'Foundation этой фазы и её checkpoint уже пройдены.'
+        'Foundation этого модуля и checkpoint его фазы уже пройдены.'
       );
     }
     return preview(
       task.mode === 'interview' ? 'Interview preview' : 'Puzzle preview',
-      `Сначала заверши foundation фазы и её checkpoint. Единый следующий шаг — ${frontierDescription(action)}.`
+      `Сначала заверши foundation модуля и checkpoint его фазы. Единый следующий шаг — ${frontierDescription(action)}.`
     );
   }
 
