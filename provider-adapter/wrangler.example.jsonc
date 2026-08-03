@@ -1,0 +1,19 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "sql-academy-contact-staging-adapter",
+  "main": "staging-worker.mjs",
+  "compatibility_date": "2026-08-03",
+  "kv_namespaces": [
+    {
+      "binding": "CONTACT_STAGING_STATE",
+      "id": "REPLACE_WITH_STAGING_KV_NAMESPACE_ID"
+    }
+  ],
+  "vars": {
+    "STAGING_CAPTURE_ENABLED": "on"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}
