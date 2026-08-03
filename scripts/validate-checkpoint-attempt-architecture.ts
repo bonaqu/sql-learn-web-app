@@ -111,7 +111,9 @@ for (const marker of [
   "code: 'CHECKPOINT_REPORT_CONFLICT'",
   'replayed: true',
   'replayed: false',
-  'INSERT INTO checkpoint_reports'
+  'INSERT OR IGNORE INTO checkpoint_reports',
+  'inserted.meta.changes !== 1',
+  'storedReportResponse'
 ]) {
   assert.ok(checkpointWorker.includes(marker),
     `Checkpoint Worker deterministic append-only cloud contract is missing ${marker}.`);
@@ -156,4 +158,4 @@ for (const marker of [
     `Checkpoint attempt policy documentation is missing ${marker}.`);
 }
 
-console.log('Checkpoint attempt architecture validated: one current-state snapshot, historical best reporting only, append-only deterministic cloud history, current eligibility/readiness/certificate gates and explicit desktop/mobile/second-device UI contracts.');
+console.log('Checkpoint attempt architecture validated: one current-state snapshot, historical best reporting only, concurrent-safe append-only cloud history, current eligibility/readiness/certificate gates and explicit desktop/mobile/second-device UI contracts.');
