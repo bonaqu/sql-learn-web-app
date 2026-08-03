@@ -9,7 +9,10 @@ import type { CapstoneReport } from './capstone-evaluator';
 import { bestCapstoneReport } from './capstone-report-policy';
 import { loadLocalCapstoneReports } from './capstone-reports';
 import {
-  bestCheckpointReport,
+  checkpointAttemptSnapshotFromReports,
+  type CheckpointAttemptState
+} from './checkpoint-attempt-policy';
+import {
   checkpointPassed,
   legacyCheckpointPassed,
   type CheckpointReport
@@ -20,9 +23,7 @@ import { moduleAppliedLessonScore } from './mastery-loop';
 import type { Progress } from './progress';
 import {
   bestCompletedModuleAssessmentScore,
-  bestCompletedModuleCheckpointScore,
   completedAssessmentReports,
-  completedCheckpointReports,
   normalizedEvidenceScore,
   READINESS_POLICY,
   type ReadinessEvidenceKind,
@@ -61,6 +62,9 @@ export type PhaseSkillEvidence = {
   checkpointId: string;
   checkpointPassed: boolean;
   checkpointSource: 'report' | 'legacy' | 'none';
+  checkpointCurrentScore: number | null;
+  checkpointHistoricalBestScore: number | null;
+  checkpointAttemptNumber: number | null;
   completed: boolean;
   blockers: string[];
   completionCriteria: string[];
@@ -97,6 +101,18 @@ function metric(
   };
 }
 
+function currentModuleCheckpointScore(state: CheckpointAttemptState, moduleId: string) {
+  const moduleScores = state.currentAttempt.source.moduleScores;
+  if (!Array.isArray(moduleScores)) return 0;
+  return moduleScores.reduce((best, candidate) => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return best;
+    const item = candidate as Record<string, unknown>;
+    if (item.module !== moduleId) return best;
+    const score = Number(item.score);
+    return Number.isFinite(score) ? Math.max(best, clamp(score)) : best;
+  }, 0);
+}
+
 export function buildSkillEvidenceGraph(
   progress: Progress,
   curriculum: CurriculumProgressV1,
@@ -107,7 +123,9 @@ export function buildSkillEvidenceGraph(
   const thresholds = READINESS_POLICY.thresholds;
   const mastery = moduleMastery(progress);
   const validAssessmentReports = completedAssessmentReports(assessmentReports);
-  const validCheckpointReports = completedCheckpointReports(checkpointReports);
+  const checkpointOwnerId = checkpointReports.find(report => report.status === 'completed')?.userId || null;
+  const checkpointSnapshot = checkpointAttemptSnapshotFromReports(checkpointReports, checkpointOwnerId);
+  const checkpointStates = new Map(checkpointSnapshot.states.map(state => [state.checkpointId, state]));
 
   const moduleEvidence = modules.map(([moduleId, title]) => {
     const masteryState = mastery.find(item => item.id === moduleId);
@@ -118,19 +136,19 @@ export function buildSkillEvidenceGraph(
     const moduleCheckpoints = curriculumCheckpoints.filter(checkpoint =>
       checkpoint.moduleIds.some(candidate => candidate === moduleId)
     );
-
-    const directCheckpointReports = validCheckpointReports.filter(report =>
-      report.moduleScores.some(item => item.module === moduleId)
-    );
+    const moduleAttemptStates = moduleCheckpoints.flatMap(checkpoint => {
+      const state = checkpointStates.get(checkpoint.id);
+      return state ? [state] : [];
+    });
     const directPassedCheckpoints = moduleCheckpoints.filter(checkpoint =>
-      Boolean(bestCheckpointReport(checkpoint.id, validCheckpointReports)?.passed)
+      checkpointStates.get(checkpoint.id)?.currentAttempt.passed === true
     );
     const legacyPassedCheckpoints = moduleCheckpoints.filter(checkpoint =>
-      !directPassedCheckpoints.some(item => item.id === checkpoint.id)
+      !checkpointStates.has(checkpoint.id)
       && legacyCheckpointPassed(checkpoint.id, progress)
     );
     const checkpointScore = Math.max(
-      bestCompletedModuleCheckpointScore(validCheckpointReports, moduleId),
+      ...moduleAttemptStates.map(state => currentModuleCheckpointScore(state, moduleId)),
       ...legacyPassedCheckpoints.map(checkpoint => checkpoint.passingScore),
       0
     );
@@ -152,11 +170,11 @@ export function buildSkillEvidenceGraph(
       : 0;
 
     const checkpointSourceIds = [
-      ...directCheckpointReports.map(report => report.id),
+      ...moduleAttemptStates.map(state => state.currentAttempt.id),
       ...legacyPassedCheckpoints.map(checkpoint => `legacy:${checkpoint.id}`)
     ];
     const checkpointSourceKinds: ReadinessEvidenceSource[] = [
-      ...(directCheckpointReports.length ? ['checkpoint-report' as const] : []),
+      ...(moduleAttemptStates.length ? ['checkpoint-report' as const] : []),
       ...(legacyPassedCheckpoints.length ? ['legacy-checkpoint-task' as const] : [])
     ];
 
@@ -226,7 +244,7 @@ export function buildSkillEvidenceGraph(
     const nextLesson = moduleLessons.find(lesson => !appliedLessons.lessonIds.includes(lesson.id));
     const nextTask = masteryState?.recommendedTask || null;
     const nextCheckpoint = moduleCheckpoints.find(checkpoint =>
-      !checkpointPassed(checkpoint.id, progress, validCheckpointReports)
+      !checkpointPassed(checkpoint.id, progress, checkpointReports)
     );
     const nextProject = relatedProjects.find(project => !bestCapstoneReport(project.id, capstoneReports));
 
@@ -262,9 +280,9 @@ export function buildSkillEvidenceGraph(
     const phaseModules = moduleEvidence.filter(item => definition.moduleIds.some(id => id === item.moduleId));
     const checkpoint = curriculumCheckpoints[index];
     if (!checkpoint) throw new Error(`Missing checkpoint definition for phase ${definition.id}`);
-    const report = bestCheckpointReport(checkpoint.id, validCheckpointReports);
-    const reportPassed = Boolean(report?.passed);
-    const legacyPassed = !reportPassed && legacyCheckpointPassed(checkpoint.id, progress);
+    const attemptState = checkpointStates.get(checkpoint.id) || null;
+    const reportPassed = attemptState?.currentAttempt.passed === true;
+    const legacyPassed = !attemptState && legacyCheckpointPassed(checkpoint.id, progress);
     const passed = reportPassed || legacyPassed;
     const checkpointSource = reportPassed ? 'report' : legacyPassed ? 'legacy' : 'none';
     const readiness = clamp(
@@ -273,7 +291,7 @@ export function buildSkillEvidenceGraph(
     const blockers: string[] = [];
     if (index > 0) {
       const previousCheckpoint = curriculumCheckpoints[index - 1];
-      if (previousCheckpoint && !checkpointPassed(previousCheckpoint.id, progress, validCheckpointReports)) {
+      if (previousCheckpoint && !checkpointPassed(previousCheckpoint.id, progress, checkpointReports)) {
         blockers.push(`Не пройден предыдущий checkpoint: ${previousCheckpoint.title}`);
       }
     }
@@ -290,17 +308,24 @@ export function buildSkillEvidenceGraph(
       checkpointId: checkpoint.id,
       checkpointPassed: passed,
       checkpointSource,
+      checkpointCurrentScore: attemptState?.currentAttempt.score ?? null,
+      checkpointHistoricalBestScore: attemptState?.historicalBestScore ?? null,
+      checkpointAttemptNumber: attemptState?.currentAttempt.attemptNumber ?? null,
       completed: passed && phaseModules.every(item => item.evidence.practice.score >= thresholds.phasePracticeCompletion),
       blockers,
       completionCriteria: [
         `Practice mastery каждого модуля не ниже ${thresholds.phasePracticeCompletion}%`,
         `Checkpoint score не ниже ${checkpoint.passingScore}%`,
         checkpointSource === 'report'
-          ? 'Источник: completed checkpoint report, синхронизируемый между устройствами'
+          ? 'Источник: текущая completed checkpoint attempt, синхронизируемая между устройствами'
           : checkpointSource === 'legacy'
             ? 'Источник: migrated legacy task evidence; рекомендуется подтвердить новым report'
-            : 'Checkpoint evidence ещё не получено',
-        report ? `Текущий лучший checkpoint score: ${report.bestScore}%` : 'Новый executable report отсутствует'
+            : attemptState
+              ? 'Последняя completed attempt не пройдена; historical best не открывает текущий gate'
+              : 'Checkpoint evidence ещё не получено',
+        attemptState
+          ? `Текущая попытка #${attemptState.currentAttempt.attemptNumber}: ${attemptState.currentAttempt.score}%. Исторический максимум: ${attemptState.historicalBestScore}%`
+          : 'Новый executable report отсутствует'
       ]
     } satisfies PhaseSkillEvidence;
   });
