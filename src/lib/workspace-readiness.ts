@@ -74,10 +74,18 @@ export function workspaceTaskReadiness(
   }
 
   const action = journey.action;
-  const passedPhaseIds = journey.passedPhaseIds;
-  const completedModuleIds = journey.completedModuleIds || [];
-  const eligibleModuleIds = journey.eligibleModuleIds || [];
-  const routeModuleIds = journey.routeModuleIds || [];
+  const passedPhaseIds = journey.passedPhaseIds.length
+    ? journey.passedPhaseIds
+    : action.frontierPassedPhaseIds || [];
+  const completedModuleIds = journey.completedModuleIds
+    || action.frontierCompletedModuleIds
+    || [];
+  const eligibleModuleIds = journey.eligibleModuleIds
+    || action.frontierEligibleModuleIds
+    || [];
+  const routeModuleIds = journey.routeModuleIds
+    || action.frontierRouteModuleIds
+    || [];
   if (action.kind === 'complete') {
     return ready('Свободная expert-практика', 'Обязательный маршрут завершён; все задачи доступны для поддержания навыка.');
   }
