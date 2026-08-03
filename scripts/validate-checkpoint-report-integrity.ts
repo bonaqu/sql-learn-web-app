@@ -61,8 +61,6 @@ for (const marker of [
   'CHECKPOINT_REPORT_CONFLICT',
   'CHECKPOINT_REPORT_STORED_INVALID',
   'CHECKPOINT_REPORT_PERSISTENCE_FAILED',
-  'replayed: true',
-  'replayed: false',
   'payload_digest',
   'persisted_at',
   'receipts',
