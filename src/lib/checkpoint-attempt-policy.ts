@@ -13,6 +13,11 @@ export type CheckpointAttemptRecord = {
   passingScore: number;
 };
 
+export type CheckpointAttemptOrder = Pick<
+  CheckpointAttemptRecord,
+  'completedAt' | 'attemptNumber' | 'id'
+>;
+
 export type CheckpointAttemptState = {
   checkpointId: string;
   currentAttempt: CheckpointAttemptRecord;
@@ -54,8 +59,8 @@ function attemptNumber(value: unknown) {
 }
 
 export function compareCheckpointAttempts(
-  left: CheckpointAttemptRecord,
-  right: CheckpointAttemptRecord
+  left: CheckpointAttemptOrder,
+  right: CheckpointAttemptOrder
 ) {
   return right.completedAt.localeCompare(left.completedAt)
     || right.attemptNumber - left.attemptNumber
