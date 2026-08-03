@@ -7,6 +7,8 @@ import { handleCapstoneRequest } from './capstones';
 import { handleCheckpointRequest } from './checkpoints';
 import { handleCommercialCapabilitiesRequest } from './commercial-capabilities';
 import { handleContactAccountRequest } from './contact-account';
+import { handleContactDeliveryEventRequest } from './contact-delivery-events';
+import { recordContactSecurityOutcome } from './contact-security-events';
 import { handleContactVerificationRequest } from './contact-verification';
 import { handleCurriculumRequest } from './curriculum';
 import { handleDialectLabRequest } from './dialect-labs';
@@ -20,7 +22,7 @@ import { enforceTurnstile } from './turnstile';
 export { Sandbox } from '@cloudflare/sandbox';
 
 const CORS_METHODS = 'GET, PUT, POST, DELETE, OPTIONS';
-const CORS_HEADERS = 'authorization, content-type, x-profile-id, cf-turnstile-response';
+const CORS_HEADERS = 'authorization, content-type, x-profile-id, cf-turnstile-response, x-verification-event-id, x-verification-event-timestamp, x-verification-signature';
 
 type Pipeline = 'auth' | 'assessment' | 'checkpoint' | 'capstone' | 'dialect' | 'analytics' | 'curriculum' | 'onboarding' | 'commercial';
 type OriginEnvironment = Cloudflare.Env & Partial<Record<'ALLOWED_ORIGINS', string>>;
@@ -57,7 +59,7 @@ function corsHeaders(origin: string) {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': CORS_METHODS,
     'access-control-allow-headers': CORS_HEADERS,
-    'access-control-expose-headers': 'retry-after, x-request-id, x-progress-contract, x-onboarding-contract, x-dialect-lab-contract, x-learning-analytics-contract, x-commercial-capabilities-contract, x-contact-verification-contract, x-contact-account-contract',
+    'access-control-expose-headers': 'retry-after, x-request-id, x-progress-contract, x-onboarding-contract, x-dialect-lab-contract, x-learning-analytics-contract, x-commercial-capabilities-contract, x-contact-verification-contract, x-contact-account-contract, x-contact-delivery-contract',
     'access-control-max-age': '86400',
     vary: 'Origin'
   };
@@ -153,6 +155,14 @@ export default {
     }
     if (commercialResponse) return finalize(commercialResponse, request, origin);
 
+    let contactDeliveryEventResponse: Response | null;
+    try {
+      contactDeliveryEventResponse = await handleContactDeliveryEventRequest(request, env);
+    } catch (error) {
+      return finalize(pipelineFailure(error, url.pathname, 'commercial'), request, origin);
+    }
+    if (contactDeliveryEventResponse) return finalize(contactDeliveryEventResponse, request, origin);
+
     let turnstileResponse: Response | null;
     try {
       turnstileResponse = await enforceTurnstile(request, env);
@@ -162,12 +172,16 @@ export default {
     if (turnstileResponse) return finalize(turnstileResponse, request, origin);
 
     let contactVerificationResponse: Response | null;
+    const contactSecurityRequest = request.clone();
     try {
       contactVerificationResponse = await handleContactVerificationRequest(request, env);
     } catch (error) {
       return finalize(pipelineFailure(error, url.pathname, 'commercial'), request, origin);
     }
-    if (contactVerificationResponse) return finalize(contactVerificationResponse, request, origin);
+    if (contactVerificationResponse) {
+      await recordContactSecurityOutcome(contactSecurityRequest, contactVerificationResponse, env);
+      return finalize(contactVerificationResponse, request, origin);
+    }
 
     let contactAccountResponse: Response | null;
     try {
