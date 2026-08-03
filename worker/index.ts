@@ -7,6 +7,7 @@ import { handleCapstoneRequest } from './capstones';
 import { handleCheckpointRequest } from './checkpoints';
 import { handleCommercialCapabilitiesRequest } from './commercial-capabilities';
 import { handleContactAccountRequest } from './contact-account';
+import { handleContactDeliveryReceiptRequest } from './contact-delivery-operations';
 import { handleContactVerificationRequest } from './contact-verification';
 import { handleCurriculumRequest } from './curriculum';
 import { handleDialectLabRequest } from './dialect-labs';
@@ -57,7 +58,7 @@ function corsHeaders(origin: string) {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': CORS_METHODS,
     'access-control-allow-headers': CORS_HEADERS,
-    'access-control-expose-headers': 'retry-after, x-request-id, x-progress-contract, x-onboarding-contract, x-dialect-lab-contract, x-learning-analytics-contract, x-commercial-capabilities-contract, x-contact-verification-contract, x-contact-account-contract',
+    'access-control-expose-headers': 'retry-after, x-request-id, x-progress-contract, x-onboarding-contract, x-dialect-lab-contract, x-learning-analytics-contract, x-commercial-capabilities-contract, x-contact-verification-contract, x-contact-account-contract, x-contact-delivery-contract',
     'access-control-max-age': '86400',
     vary: 'Origin'
   };
@@ -152,6 +153,14 @@ export default {
       return finalize(pipelineFailure(error, url.pathname, 'commercial'), request, origin);
     }
     if (commercialResponse) return finalize(commercialResponse, request, origin);
+
+    let contactDeliveryReceiptResponse: Response | null;
+    try {
+      contactDeliveryReceiptResponse = await handleContactDeliveryReceiptRequest(request, env);
+    } catch (error) {
+      return finalize(pipelineFailure(error, url.pathname, 'commercial'), request, origin);
+    }
+    if (contactDeliveryReceiptResponse) return finalize(contactDeliveryReceiptResponse, request, origin);
 
     let turnstileResponse: Response | null;
     try {
