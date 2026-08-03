@@ -54,11 +54,11 @@ function validCompletedAt(value: unknown) {
 
 function phaseForCheckpoint(checkpointId: string) {
   const checkpoint = checkpointMap.get(checkpointId);
-  return checkpoint
-    ? phaseDefinitions.find(phase =>
-        checkpoint.moduleIds.some(moduleId => phase.moduleIds.includes(moduleId))
-      ) || null
-    : null;
+  if (!checkpoint) return null;
+  const checkpointModules = new Set<string>(checkpoint.moduleIds);
+  return phaseDefinitions.find(phase =>
+    phase.moduleIds.some(moduleId => checkpointModules.has(moduleId))
+  ) || null;
 }
 
 function moduleScoreMap(value: unknown, allowed: ReadonlySet<string>) {
@@ -148,6 +148,9 @@ export function checkpointRemediationsFromReports(
     if (!checkpoint || !phase) continue;
 
     const allowedModules = new Set<string>(checkpoint.moduleIds);
+    const checkpointModuleOrder = new Map<string, number>(
+      checkpoint.moduleIds.map((moduleId, index) => [moduleId, index])
+    );
     const checkpointTaskIds = new Set<string>(checkpoint.taskIds);
     const scores = moduleScoreMap(latest.raw.moduleScores, allowedModules);
     const weakTasks = weakTaskMap(latest.raw.taskScores, checkpointTaskIds, allowedModules);
@@ -160,7 +163,8 @@ export function checkpointRemediationsFromReports(
     const fallback = [...checkpoint.moduleIds]
       .sort((left, right) =>
         (scores.get(left) ?? 100) - (scores.get(right) ?? 100)
-        || checkpoint.moduleIds.indexOf(left) - checkpoint.moduleIds.indexOf(right)
+        || (checkpointModuleOrder.get(left) ?? Number.MAX_SAFE_INTEGER)
+          - (checkpointModuleOrder.get(right) ?? Number.MAX_SAFE_INTEGER)
       )[0];
     const targetModules = Array.from(new Set(
       requested.length ? requested : derived.length ? derived : fallback ? [fallback] : []
@@ -177,7 +181,8 @@ export function checkpointRemediationsFromReports(
       }))
       .sort((left, right) =>
         left.score - right.score
-        || checkpoint.moduleIds.indexOf(left.moduleId) - checkpoint.moduleIds.indexOf(right.moduleId)
+        || (checkpointModuleOrder.get(left.moduleId) ?? Number.MAX_SAFE_INTEGER)
+          - (checkpointModuleOrder.get(right.moduleId) ?? Number.MAX_SAFE_INTEGER)
         || left.moduleId.localeCompare(right.moduleId)
       );
     if (!remediationModules.length) continue;
