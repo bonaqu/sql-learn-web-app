@@ -3,6 +3,9 @@ const AUTH_SESSION_KEY = 'sql-academy-auth-session-v2';
 const AUTH_CHANGED_EVENT = 'sql-academy-auth-changed';
 const LEGACY_PROGRESS_PATH = '/api/user/progress';
 const MASTERY_PROGRESS_PATH = '/api/mastery/progress';
+const TRANSIENT_STATUSES = new Set([502, 503, 504]);
+const REPLAYABLE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'PUT']);
+const MAX_API_ATTEMPTS = 4;
 const nativeFetch = window.fetch.bind(window);
 
 const configuredApiBase = (import.meta.env.VITE_API_BASE || '').replace(/\/$/, '');
@@ -60,6 +63,57 @@ function publicAuthRequest(url: URL) {
     || url.pathname === '/api/health';
 }
 
+function requestMethod(input: RequestInfo | URL, init?: RequestInit) {
+  const fromRequest = input instanceof Request ? input.method : 'GET';
+  return String(init?.method || fromRequest || 'GET').toUpperCase();
+}
+
+function retryDelay(attempt: number, response?: Response) {
+  const retryAfter = Number(response?.headers.get('retry-after'));
+  if (Number.isFinite(retryAfter) && retryAfter > 0) return Math.min(retryAfter * 1_000, 2_000);
+  return Math.min(250 * 2 ** Math.max(0, attempt - 1), 1_500);
+}
+
+function sleep(milliseconds: number, signal?: AbortSignal | null) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason || new DOMException('The operation was aborted.', 'AbortError'));
+      return;
+    }
+    const timer = window.setTimeout(resolve, milliseconds);
+    signal?.addEventListener('abort', () => {
+      window.clearTimeout(timer);
+      reject(signal.reason || new DOMException('The operation was aborted.', 'AbortError'));
+    }, { once: true });
+  });
+}
+
+async function fetchWithTransientRecovery(
+  resolved: RequestInfo | URL,
+  init: RequestInit,
+  method: string,
+  isApiRequest: boolean
+) {
+  const replayable = isApiRequest && REPLAYABLE_METHODS.has(method);
+  const requestTemplate = resolved instanceof Request ? resolved.clone() : resolved;
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= (replayable ? MAX_API_ATTEMPTS : 1); attempt += 1) {
+    try {
+      const attemptInput = requestTemplate instanceof Request ? requestTemplate.clone() : requestTemplate;
+      const response = await nativeFetch(attemptInput, init);
+      if (!replayable || !TRANSIENT_STATUSES.has(response.status) || attempt === MAX_API_ATTEMPTS) return response;
+      await sleep(retryDelay(attempt, response), init.signal);
+    } catch (error) {
+      lastError = error;
+      if (!replayable || init.signal?.aborted || attempt === MAX_API_ATTEMPTS) throw error;
+      await sleep(retryDelay(attempt), init.signal);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('API request failed after transient recovery attempts.');
+}
+
 window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const resolved = resolveInput(input);
   const url = requestUrl(resolved);
@@ -69,7 +123,9 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.pathname.startsWith('/api/') && token && !headers.has('authorization')) {
     headers.set('authorization', `Bearer ${token}`);
   }
-  const response = await nativeFetch(resolved, { ...init, headers });
+  const method = requestMethod(input, init);
+  const requestInit = { ...init, headers };
+  const response = await fetchWithTransientRecovery(resolved, requestInit, method, url.pathname.startsWith('/api/'));
   if (response.status === 401 && url.pathname.startsWith('/api/') && !publicAuthRequest(url)) {
     localStorage.removeItem(AUTH_SESSION_KEY);
     localStorage.removeItem('sql-academy-account-session-v1');
