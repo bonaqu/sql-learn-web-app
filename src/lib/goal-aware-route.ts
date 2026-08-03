@@ -240,7 +240,13 @@ export function goalModuleFrontier(
 ): GoalModuleFrontier {
   const goal = normalizedGoal(goalInput);
   const routeModuleIds = goalModuleRoute(goal).filter(isModuleId);
-  const completed = new Set<ModuleId>(completedModuleIds.filter(isModuleId));
+  const requestedCompleted = new Set<ModuleId>(completedModuleIds.filter(isModuleId));
+  const completed = new Set<ModuleId>();
+  for (const moduleId of routeModuleIds) {
+    if (!requestedCompleted.has(moduleId)) continue;
+    if (!(prerequisitesByModule.get(moduleId) || []).every(prerequisite => completed.has(prerequisite))) continue;
+    completed.add(moduleId);
+  }
   const eligibleModuleIds = routeModuleIds.filter(moduleId =>
     !completed.has(moduleId)
     && (prerequisitesByModule.get(moduleId) || []).every(prerequisite => completed.has(prerequisite))
