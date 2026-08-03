@@ -3,12 +3,24 @@ import { expect, test, type Page } from '@playwright/test';
 import { curriculumCheckpoints } from '../../src/data/complete-curriculum';
 import { modules, tasks } from '../../src/data/course-catalog';
 import { phaseDefinitions } from '../../src/data/learning-structure';
-import { goalModuleRoute } from '../../src/lib/goal-aware-route';
+import { goalModuleRoute, SHARED_FOUNDATION_MODULE_IDS } from '../../src/lib/goal-aware-route';
 import type { LearnerGoal } from '../../src/lib/learner-onboarding';
 import { authenticatePage, loginPage } from './auth-helper';
 import { openAdvancedTool } from './navigation-helper';
 
 const ASSESSMENT_REPORTS_CHANGED_EVENT = 'sql-academy-assessment-reports-changed';
+
+function firstRouteDifference(left: readonly string[], right: readonly string[]) {
+  const length = Math.min(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    if (left[index] !== right[index]) return index;
+  }
+  return left.length === right.length ? -1 : length;
+}
+
+const ANALYST_ROUTE = goalModuleRoute('analyst');
+const BACKEND_ROUTE = goalModuleRoute('backend');
+const ANALYST_BACKEND_DIVERGENCE = firstRouteDifference(ANALYST_ROUTE, BACKEND_ROUTE);
 
 function diagnosticReport(userId: string) {
   return {
@@ -90,9 +102,10 @@ function checkpointForPhase(phaseId: string) {
     : null;
 }
 
-function advancedFrontierFixture(userId: string, goal: LearnerGoal, prefixLength = 14) {
+function advancedFrontierFixture(userId: string, goal: LearnerGoal, prefixLength: number) {
   const route = goalModuleRoute(goal);
-  const strongModuleIds = route.slice(0, prefixLength);
+  const safePrefixLength = Math.max(SHARED_FOUNDATION_MODULE_IDS.length, Math.min(prefixLength, route.length - 1));
+  const strongModuleIds = route.slice(0, safePrefixLength);
   const fullyCoveredPhases = phaseDefinitions.filter(phase => phase.moduleIds.every(moduleId => strongModuleIds.includes(moduleId)));
   const checkpointReports = fullyCoveredPhases.flatMap(phase => {
     const checkpoint = checkpointForPhase(phase.id);
@@ -114,7 +127,7 @@ function advancedFrontierFixture(userId: string, goal: LearnerGoal, prefixLength
   const transferTasks = tasks.filter(task => {
     if (task.mode !== 'interview' && task.mode !== 'puzzle') return false;
     const phase = phaseDefinitions.find(item => item.moduleIds.some(moduleId => moduleId === task.module));
-    return Boolean(phase && openedPhaseIds.has(phase.id));
+    return Boolean(phase && openedPhaseIds.has(phase.id) && strongModuleIds.includes(task.module));
   });
   const completedAt = '2026-08-03T15:15:00.000Z';
   const progress = {
@@ -161,13 +174,13 @@ function advancedFrontierFixture(userId: string, goal: LearnerGoal, prefixLength
     profile,
     progress,
     checkpointReports,
-    expectedModuleId: route[prefixLength],
-    expectedModuleTitle: modules.find(([moduleId]) => moduleId === route[prefixLength])?.[1] || route[prefixLength]
+    expectedModuleId: route[safePrefixLength],
+    expectedModuleTitle: modules.find(([moduleId]) => moduleId === route[safePrefixLength])?.[1] || route[safePrefixLength]
   };
 }
 
-async function seedAdvancedFrontier(page: Page, userId: string, goal: LearnerGoal) {
-  const fixture = advancedFrontierFixture(userId, goal);
+async function seedAdvancedFrontier(page: Page, userId: string, goal: LearnerGoal, prefixLength: number) {
+  const fixture = advancedFrontierFixture(userId, goal, prefixLength);
   await page.evaluate(({ id, value }) => {
     localStorage.setItem(`sql-academy-onboarding-v1:${id}`, JSON.stringify(value.profile));
     localStorage.setItem('sql-academy-progress-v4', JSON.stringify(value.progress));
@@ -233,8 +246,16 @@ test('desktop onboarding uses executable placement and resumes one shared fronti
 });
 
 test('desktop onboarding advanced analyst and backend evidence resume different goal-priority frontiers', async ({ page, browser }, testInfo) => {
+  expect(ANALYST_BACKEND_DIVERGENCE).toBeGreaterThanOrEqual(SHARED_FOUNDATION_MODULE_IDS.length);
+  expect(ANALYST_ROUTE[ANALYST_BACKEND_DIVERGENCE]).not.toBe(BACKEND_ROUTE[ANALYST_BACKEND_DIVERGENCE]);
+
   const analystAuth = await authenticatePage(page, 'advancedanalyst');
-  const analyst = await seedAdvancedFrontier(page, String(analystAuth.session.userId), 'analyst');
+  const analyst = await seedAdvancedFrontier(
+    page,
+    String(analystAuth.session.userId),
+    'analyst',
+    ANALYST_BACKEND_DIVERGENCE
+  );
   const analystAction = page.getByTestId('guided-journey-action');
   await expect(analystAction).toHaveAttribute('data-route-reason', 'goal-priority');
   await expect(analystAction).toContainText(analyst.expectedModuleTitle);
@@ -245,7 +266,12 @@ test('desktop onboarding advanced analyst and backend evidence resume different 
   const backendContext = await browser.newContext();
   const backendPage = await backendContext.newPage();
   const backendAuth = await authenticatePage(backendPage, 'advancedbackend');
-  const backend = await seedAdvancedFrontier(backendPage, String(backendAuth.session.userId), 'backend');
+  const backend = await seedAdvancedFrontier(
+    backendPage,
+    String(backendAuth.session.userId),
+    'backend',
+    ANALYST_BACKEND_DIVERGENCE
+  );
   const backendAction = backendPage.getByTestId('guided-journey-action');
   await expect(backendAction).toHaveAttribute('data-route-reason', 'goal-priority');
   await expect(backendAction).toContainText(backend.expectedModuleTitle);
