@@ -205,9 +205,14 @@ if (targetPractice && foundationCheckpoint) {
     bypassedModuleIds: bypassedPrefix,
     passedCheckpointIds: [foundationCheckpoint.id]
   });
-  assert.equal(guidedAction.task?.id, targetPractice.id,
-    'Guided completion must not let the learner skip required independent practice.');
-  assert.equal(guidedAction.stage, 'practice');
+  assert.equal(guidedAction.stage, 'practice',
+    'Guided completion must keep the learner in independent practice instead of opening transfer.');
+  assert.equal(guidedAction.moduleId, transferModule,
+    'The remaining independent practice must stay inside the current foundation module.');
+  assert.ok(guidedAction.task && transferFoundation.some(task => task.id === guidedAction.task?.id),
+    'The selector must choose a real unfinished foundation task, not a transfer task.');
+  assert.notEqual(guidedAction.routeReasonCode, 'checkpoint-transfer',
+    'Guided evidence must never unlock Interview/Puzzle transfer.');
 
   const transferAction = nextJourneyAction(progressWithEvidence(transferFoundation), transferCurriculum, {
     includeReview: false,
