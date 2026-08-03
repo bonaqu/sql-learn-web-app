@@ -18,6 +18,8 @@ type GatewayConfig = {
 
 const config = JSON.parse(read('provider-gateway/wrangler.jsonc')) as GatewayConfig;
 const source = read('provider-gateway/src/index.ts');
+const contactVerification = read('worker/contact-verification.ts');
+const verificationIntegration = read('worker/integrations/verification.ts');
 const migration = read('provider-gateway/migrations/0001_delivery_evidence.sql');
 const smoke = read('scripts/contact-provider-staging-smoke.mjs');
 const workflow = read('.github/workflows/contact-provider-staging.yml');
@@ -67,7 +69,12 @@ assert.ok(source.includes("request.headers.get('svix-timestamp')"), 'Resend repl
 assert.ok(source.includes("request.headers.get('x-twilio-signature')"), 'Twilio signature verification is missing.');
 assert.ok(source.includes("hash: 'SHA-1'"), 'Twilio HMAC-SHA1 validation contract is missing.');
 assert.ok(source.includes("pseudonym(env, `destination:${payload.channel}`"), 'Destination HMAC pseudonym is missing.');
-assert.ok(source.includes("pseudonym(env, 'source'"), 'Source HMAC pseudonym is missing.');
+assert.ok(source.includes("typeof candidate.sourceKey !== 'string' || !DIGEST_PATTERN.test(candidate.sourceKey)"),
+  'Gateway must reject malformed source abuse keys.');
+assert.ok(source.includes("pseudonym(env, 'source', payload.sourceKey)"),
+  'Gateway must re-HMAC the upstream source key instead of using its own caller IP.');
+assert.ok(!source.includes("request.headers.get('cf-connecting-ip') || 'unknown'"),
+  'Gateway must not mistake the calling backend Worker IP for the learner source.');
 assert.ok(source.includes("boundedResponseText(response, MAX_PROVIDER_RESPONSE_BYTES)"), 'Provider responses are not bounded.');
 assert.ok(source.includes("ctx.waitUntil(purgeExpiredEvidence(env))"), 'Retention purge is not scheduled safely.');
 assert.ok(source.includes("datetime(created_at) >= datetime('now', '-24 hours')"), '24-hour health window must parse ISO timestamps.');
@@ -81,6 +88,20 @@ assert.ok(source.includes("suppressionReason: null"), 'Non-permanent provider ev
 assert.ok(!source.includes('console.log(payload)'), 'Delivery payload must not be logged.');
 assert.ok(!source.includes('console.log(destination)'), 'Destination must not be logged.');
 assert.ok(!source.includes('console.log(code)'), 'Verification code must not be logged.');
+
+assert.ok(contactVerification.includes("request.headers.get('cf-connecting-ip') || 'unavailable'"),
+  'The main Worker must derive the source key from the trusted edge request.');
+assert.ok(contactVerification.includes('sql-academy/contact-source/v1:'),
+  'The source key HMAC must be domain-separated from destination/code/ticket uses.');
+assert.ok(contactVerification.includes('sourceKey = await sourceKeyForRequest(request, secret)'),
+  'Challenge creation must derive a pseudonymous source key.');
+assert.ok(contactVerification.includes('sourceKey\n    });') || contactVerification.includes('sourceKey\r\n    });'),
+  'Challenge delivery must carry the pseudonymous source key.');
+assert.ok(!contactVerification.includes("source_ip"), 'The main Worker must not persist a raw source IP.');
+assert.ok(verificationIntegration.includes("const SOURCE_KEY_PATTERN = /^[0-9a-f]{64}$/"),
+  'The private webhook boundary must validate source-key shape.');
+assert.ok(verificationIntegration.includes('sourceKey: challenge.sourceKey'),
+  'The provider-neutral webhook must transmit the pseudonymous source key.');
 
 for (const forbiddenColumn of ['destination', 'code', 'source_ip', 'email', 'phone']) {
   assert.ok(!new RegExp(`^\\s*${forbiddenColumn}\\s+text\\b`, 'im').test(migration),
@@ -99,11 +120,16 @@ assert.ok(workflow.includes('CONTACT_PROVIDER_STAGING_PHONE'), 'Staging phone de
 assert.ok(workflow.includes('retention-days: 3'), 'Staging evidence retention must stay short.');
 assert.ok(!workflow.includes('pull_request:'), 'Provider delivery must never run automatically on pull requests.');
 
+assert.ok(smoke.includes("const sourceKey = randomBytes(32).toString('hex')"),
+  'Staging smoke must exercise the pseudonymous source-key contract.');
+assert.ok(smoke.includes('sourceKey,'), 'Staging delivery does not include its synthetic source key.');
 assert.ok(smoke.includes("latest.status !== 'delivered'"), 'Staging acceptance does not require delivered status.');
 assert.ok(smoke.includes('destinationIncluded: false'), 'Evidence does not declare destination redaction.');
 assert.ok(smoke.includes('verificationCodeIncluded: false'), 'Evidence does not declare code redaction.');
+assert.ok(smoke.includes('sourceKeyIncluded: false'), 'Evidence does not declare source-key redaction.');
 assert.ok(!smoke.includes('console.log(destination)'), 'Staging smoke logs the destination.');
 assert.ok(!smoke.includes('console.log(code)'), 'Staging smoke logs the verification code.');
+assert.ok(!smoke.includes('console.log(sourceKey)'), 'Staging smoke logs the pseudonymous source key.');
 
 for (const rule of [
   'ask a learner for their password, six-digit verification code or recovery code',
@@ -119,7 +145,7 @@ for (const rule of [
 assert.ok(packageJson.includes('validate:provider-gateway'), 'Provider gateway validator is not wired into package scripts.');
 assert.ok(packageJson.includes('types:provider-gateway'), 'Provider gateway generated types are not wired into package scripts.');
 
-console.log('Contact provider gateway validated: default-off config, generated types, D1 evidence minimization, signed callbacks, permanent/transient bounce handling, abuse controls, ISO-safe scheduled retention, protected real-provider acceptance and support boundaries are present.');
+console.log('Contact provider gateway validated: default-off config, generated types, D1 evidence minimization, signed callbacks, permanent/transient bounce handling, two-stage pseudonymous source abuse controls, ISO-safe scheduled retention, protected real-provider acceptance and support boundaries are present.');
 
 function read(path: string) {
   return readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
