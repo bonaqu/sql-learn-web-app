@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { curriculumCheckpoints } from '../src/data/complete-curriculum';
 import { tasks } from '../src/data/course-catalog';
 import { phaseDefinitions } from '../src/data/learning-structure';
@@ -159,4 +160,41 @@ for (const currentGoal of goals) {
 }
 
 assert.equal(switches, 20, 'The validator must cover every ordered switch between five goals.');
-console.log(`Goal switching validated: ${switches} ordered switches preserve evidence, checkpoints/remediation outrank preference, and real DAG divergences update only future route choices.`);
+
+const switchDomainSource = readFileSync(new URL('../src/lib/goal-switch.ts', import.meta.url), 'utf8');
+for (const marker of [
+  'buildJourneyFrontier',
+  'currentFrontier',
+  'proposedFrontier',
+  'unchangedFuturePrefixModuleIds',
+  'movedEarlierModuleIds',
+  'deferredModuleIds',
+  'profileAfterGoalChange'
+]) assert.ok(switchDomainSource.includes(marker), `Goal switch domain is missing ${marker}.`);
+
+const switchPanelSource = readFileSync(new URL('../src/components/GoalSwitchPanel.tsx', import.meta.url), 'utf8');
+for (const marker of [
+  'previewGoalChange',
+  'saveOnboardingProfile',
+  'syncOnboardingProfile',
+  'goal-switch-panel',
+  'goal-switch-cancel',
+  'goal-switch-apply'
+]) assert.ok(switchPanelSource.includes(marker), `Goal switch UI is missing ${marker}.`);
+assert.ok(!switchPanelSource.includes('goalModuleRoute'),
+  'Goal switch UI must not calculate a second route outside the canonical preview domain.');
+
+const learningPathSource = readFileSync(new URL('../src/components/LearningPathPortal.tsx', import.meta.url), 'utf8');
+for (const marker of [
+  'GoalSwitchPanel',
+  'goal: profile.goal',
+  'moduleMastery(progress, sessionEvidence)',
+  'learningPhases(progress, mastery, sessionEvidence)',
+  'goal-switch-trigger',
+  'goal-route-legend',
+  'data-route-state'
+]) assert.ok(learningPathSource.includes(marker), `Learning Path goal integration is missing ${marker}.`);
+assert.ok(!learningPathSource.includes('goalModuleRoute'),
+  'Learning Path must render canonical frontier state instead of calculating its own goal route.');
+
+console.log(`Goal switching validated: ${switches} ordered switches preserve evidence, checkpoints/remediation outrank preference, real DAG divergences update only future route choices, and UI consumes one canonical preview domain.`);
