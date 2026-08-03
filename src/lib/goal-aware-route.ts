@@ -6,6 +6,8 @@ import {
 } from '../data/learning-structure';
 import type { LearnerGoal } from './learner-onboarding';
 
+type ModuleId = typeof canonicalModuleIds[number];
+
 export type GoalRouteReasonCode =
   | 'shared-foundation'
   | 'goal-priority'
@@ -22,7 +24,7 @@ export type GoalModuleFrontier = {
   nextReason: string | null;
 };
 
-export const SHARED_FOUNDATION_MODULE_IDS = [...phaseDefinitions[0].moduleIds];
+export const SHARED_FOUNDATION_MODULE_IDS: readonly ModuleId[] = [...phaseDefinitions[0].moduleIds];
 
 const goalPriority: Record<LearnerGoal, readonly string[]> = {
   support: [
@@ -134,14 +136,18 @@ const goalPriority: Record<LearnerGoal, readonly string[]> = {
   full: canonicalModuleIds
 };
 
-const knownModuleIds = new Set(canonicalModuleIds);
-const sharedFoundation = new Set(SHARED_FOUNDATION_MODULE_IDS);
+const knownModuleIds = new Set<ModuleId>(canonicalModuleIds);
+const sharedFoundation = new Set<ModuleId>(SHARED_FOUNDATION_MODULE_IDS);
 
-const prerequisitesByModule = new Map<string, string[]>(canonicalModuleIds.map(moduleId => {
-  const prerequisites = new Set<string>();
+function isModuleId(value: string): value is ModuleId {
+  return knownModuleIds.has(value as ModuleId);
+}
+
+const prerequisitesByModule = new Map<ModuleId, ModuleId[]>(canonicalModuleIds.map(moduleId => {
+  const prerequisites = new Set<ModuleId>();
   for (const lesson of curriculumLessons.filter(item => item.module === moduleId)) {
     for (const prerequisite of lesson.prerequisites) {
-      if (prerequisite !== moduleId && knownModuleIds.has(prerequisite)) prerequisites.add(prerequisite);
+      if (prerequisite !== moduleId && isModuleId(prerequisite)) prerequisites.add(prerequisite);
     }
   }
   return [moduleId, [...prerequisites].sort((left, right) => moduleOrderIndex(left) - moduleOrderIndex(right))];
@@ -151,12 +157,12 @@ function normalizedGoal(goal: LearnerGoal | null | undefined): LearnerGoal {
   return goal || 'full';
 }
 
-export function modulePrerequisiteIds(moduleId: string) {
-  return [...(prerequisitesByModule.get(moduleId) || [])];
+export function modulePrerequisiteIds(moduleId: string): string[] {
+  return isModuleId(moduleId) ? [...(prerequisitesByModule.get(moduleId) || [])] : [];
 }
 
-function priorityIndex(goal: LearnerGoal, moduleId: string) {
-  const foundationIndex = SHARED_FOUNDATION_MODULE_IDS.indexOf(moduleId as never);
+function priorityIndex(goal: LearnerGoal, moduleId: ModuleId) {
+  const foundationIndex = SHARED_FOUNDATION_MODULE_IDS.indexOf(moduleId);
   if (foundationIndex >= 0) return foundationIndex - 10_000;
   const preferred = goalPriority[goal].indexOf(moduleId);
   return preferred >= 0 ? preferred : goalPriority[goal].length + moduleOrderIndex(moduleId);
@@ -164,13 +170,13 @@ function priorityIndex(goal: LearnerGoal, moduleId: string) {
 
 export function goalModuleRoute(goalInput: LearnerGoal | null | undefined): string[] {
   const goal = normalizedGoal(goalInput);
-  const completed = new Set<string>();
-  const remaining = new Set(canonicalModuleIds);
-  const route: string[] = [];
+  const completed = new Set<ModuleId>();
+  const remaining = new Set<ModuleId>(canonicalModuleIds);
+  const route: ModuleId[] = [];
 
   while (remaining.size) {
     const eligible = [...remaining]
-      .filter(moduleId => modulePrerequisiteIds(moduleId).every(prerequisite => completed.has(prerequisite)))
+      .filter(moduleId => (prerequisitesByModule.get(moduleId) || []).every(prerequisite => completed.has(prerequisite)))
       .sort((left, right) =>
         priorityIndex(goal, left) - priorityIndex(goal, right)
         || moduleOrderIndex(left) - moduleOrderIndex(right)
@@ -193,17 +199,17 @@ export function safeDiagnosticBypass(
   goalInput: LearnerGoal | null | undefined,
   strongModuleIds: readonly string[] = []
 ) {
-  const requested = new Set(strongModuleIds.filter(moduleId => knownModuleIds.has(moduleId)));
-  const safe: string[] = [];
-  for (const moduleId of goalModuleRoute(goalInput)) {
-    if (!requested.has(moduleId)) break;
-    if (!modulePrerequisiteIds(moduleId).every(prerequisite => safe.includes(prerequisite))) break;
-    safe.push(moduleId);
+  const requested = new Set<ModuleId>(strongModuleIds.filter(isModuleId));
+  const safe: ModuleId[] = [];
+  for (const candidate of goalModuleRoute(goalInput)) {
+    if (!isModuleId(candidate) || !requested.has(candidate)) break;
+    if (!(prerequisitesByModule.get(candidate) || []).every(prerequisite => safe.includes(prerequisite))) break;
+    safe.push(candidate);
   }
   return safe;
 }
 
-function routeReason(goal: LearnerGoal, moduleId: string): Pick<GoalModuleFrontier, 'nextReasonCode' | 'nextReason'> {
+function routeReason(goal: LearnerGoal, moduleId: ModuleId): Pick<GoalModuleFrontier, 'nextReasonCode' | 'nextReason'> {
   if (sharedFoundation.has(moduleId)) {
     return {
       nextReasonCode: 'shared-foundation',
@@ -233,11 +239,11 @@ export function goalModuleFrontier(
   completedModuleIds: readonly string[]
 ): GoalModuleFrontier {
   const goal = normalizedGoal(goalInput);
-  const routeModuleIds = goalModuleRoute(goal);
-  const completed = new Set(completedModuleIds.filter(moduleId => knownModuleIds.has(moduleId)));
+  const routeModuleIds = goalModuleRoute(goal).filter(isModuleId);
+  const completed = new Set<ModuleId>(completedModuleIds.filter(isModuleId));
   const eligibleModuleIds = routeModuleIds.filter(moduleId =>
     !completed.has(moduleId)
-    && modulePrerequisiteIds(moduleId).every(prerequisite => completed.has(prerequisite))
+    && (prerequisitesByModule.get(moduleId) || []).every(prerequisite => completed.has(prerequisite))
   );
   const nextModuleId = eligibleModuleIds[0] || null;
   const reason = nextModuleId ? routeReason(goal, nextModuleId) : {
