@@ -5,6 +5,10 @@ import {
 } from '../data/complete-curriculum';
 import { modules, tasks, type SqlTask } from '../data/course-catalog';
 import { loadAuthSession } from './auth';
+import {
+  checkpointAttemptState,
+  compareCheckpointAttempts
+} from './checkpoint-attempt-policy';
 import { moduleMastery } from './learning-path';
 import type { Progress } from './progress';
 
@@ -125,8 +129,10 @@ function validReport(report: unknown, userId?: string): report is CheckpointRepo
     && Boolean(checkpointById(value.checkpointId))
     && (value.status === 'completed' || value.status === 'expired' || value.status === 'abandoned')
     && typeof value.completedAt === 'string'
+    && typeof value.attemptNumber === 'number'
     && typeof value.score === 'number'
     && typeof value.bestScore === 'number'
+    && typeof value.passed === 'boolean'
     && Array.isArray(value.taskScores)
     && Array.isArray(value.moduleScores)
     && Array.isArray(value.remediationModules);
@@ -164,11 +170,26 @@ export function legacyCheckpointPassed(checkpointId: string, progress: Progress)
 export function bestCheckpointReport(checkpointId: string, reports: CheckpointReport[]) {
   return reports
     .filter(report => report.checkpointId === checkpointId && report.status === 'completed')
-    .sort((left, right) => right.score - left.score || right.completedAt.localeCompare(left.completedAt))[0] || null;
+    .sort((left, right) =>
+      right.score - left.score
+      || compareCheckpointAttempts(left, right)
+    )[0] || null;
+}
+
+export function currentCheckpointReport(checkpointId: string, reports: CheckpointReport[]) {
+  const ownerId = reports.find(report => report.status === 'completed')?.userId || null;
+  const state = checkpointAttemptState(checkpointId, reports, ownerId);
+  if (!state) return null;
+  return reports.find(report =>
+    report.status === 'completed'
+    && report.id === state.currentAttempt.id
+    && report.userId === state.currentAttempt.userId
+  ) || null;
 }
 
 export function checkpointPassed(checkpointId: string, progress: Progress, reports: CheckpointReport[]) {
-  return Boolean(bestCheckpointReport(checkpointId, reports)?.passed || legacyCheckpointPassed(checkpointId, progress));
+  const current = currentCheckpointReport(checkpointId, reports);
+  return current ? current.passed : legacyCheckpointPassed(checkpointId, progress);
 }
 
 export function checkpointEligibility(
@@ -445,7 +466,7 @@ export function loadLocalCheckpointReports(userId = loadAuthSession()?.userId): 
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter(item => validReport(item, userId))
-      .sort((left, right) => right.completedAt.localeCompare(left.completedAt))
+      .sort(compareCheckpointAttempts)
       .slice(0, 50);
   } catch {
     return [];
@@ -455,7 +476,7 @@ export function loadLocalCheckpointReports(userId = loadAuthSession()?.userId): 
 export function saveLocalCheckpointReport(report: CheckpointReport) {
   const previous = loadLocalCheckpointReports(report.userId).filter(item => item.id !== report.id);
   const next = [report, ...previous]
-    .sort((left, right) => right.completedAt.localeCompare(left.completedAt))
+    .sort(compareCheckpointAttempts)
     .slice(0, 50);
   localStorage.setItem(reportsKey(report.userId), JSON.stringify(next));
   window.dispatchEvent(new CustomEvent(CHECKPOINT_REPORTS_CHANGED_EVENT, { detail: next }));
@@ -477,9 +498,9 @@ export function mergeCheckpointReports(local: CheckpointReport[], remote: Checkp
   for (const report of [...remote, ...local]) {
     if (!validReport(report)) continue;
     const existing = byId.get(report.id);
-    if (!existing || report.completedAt >= existing.completedAt) byId.set(report.id, report);
+    if (!existing || compareCheckpointAttempts(report, existing) <= 0) byId.set(report.id, report);
   }
   return Array.from(byId.values())
-    .sort((left, right) => right.completedAt.localeCompare(left.completedAt))
+    .sort(compareCheckpointAttempts)
     .slice(0, 50);
 }
