@@ -46,6 +46,7 @@ const configured = {
   SMS_VERIFICATION_WEBHOOK_URL: 'https://verification.example.test/sms',
   SMS_VERIFICATION_WEBHOOK_SECRET: 'sms-provider-secret-at-least-sixteen',
   FEATURE_TURNSTILE: 'on',
+  TURNSTILE_SITE_KEY: '1x00000000000000000000AA',
   TURNSTILE_SECRET_KEY: 'turnstile-secret',
   TURNSTILE_EXPECTED_HOSTNAMES: 'academy.example.com',
   FEATURE_ADMIN_CONSOLE: 'on',
@@ -54,7 +55,7 @@ const configured = {
 assert.deepEqual(commercialCapabilities(configured).integrations, {
   emailVerification: { enabled: true },
   smsVerification: { enabled: true },
-  turnstile: { enabled: true },
+  turnstile: { enabled: true, siteKey: '1x00000000000000000000AA' },
   adminConsole: { enabled: true }
 });
 assert.deepEqual(commercialConfigurationErrors(configured), []);
@@ -111,6 +112,7 @@ for (const config of [productionConfig, typegenConfig]) {
   assert.match(config, /"FEATURE_SMS_VERIFICATION": "off"/);
   assert.match(config, /"FEATURE_TURNSTILE": "off"/);
   assert.match(config, /"FEATURE_ADMIN_CONSOLE": "off"/);
+  assert.match(config, /"TURNSTILE_SITE_KEY"/);
   assert.match(config, /"TURNSTILE_EXPECTED_HOSTNAMES"/);
   assert.match(config, /"ADMIN_ALLOWED_USER_IDS"/);
 }
@@ -147,4 +149,4 @@ for (const secret of [
   'SMS_API_KEY:'
 ]) assert.ok(!workflow.includes(secret), `Secret must not be written into deployment config: ${secret}`);
 
-console.log('Commercial capability contract, verified-contact account routing, Turnstile/admin security and observable production deployment wiring are fail-closed.');
+console.log('Commercial capability contract, verified-contact account routing, client-ready Turnstile/admin security and observable production deployment wiring are fail-closed.');
