@@ -18,6 +18,12 @@ type ChallengeMetadata = {
   purpose: VerificationPurpose | null;
 };
 
+type ContactSecurityRequest = {
+  readonly url: string;
+  readonly headers: Headers;
+  text(): Promise<string>;
+};
+
 const CHALLENGE_PATH = '/api/auth/contact/challenge';
 const CONFIRM_PATH = '/api/auth/contact/confirm';
 const MAX_BODY_BYTES = 4_096;
@@ -35,7 +41,7 @@ function bytesToHex(bytes: Uint8Array) {
   return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-async function actorDigest(request: Request, secret: string) {
+async function actorDigest(request: ContactSecurityRequest, secret: string) {
   const dateBucket = new Date().toISOString().slice(0, 10);
   const address = (request.headers.get('cf-connecting-ip') || 'unknown').trim().slice(0, 80);
   const agent = (request.headers.get('user-agent') || 'unknown').trim().slice(0, 160);
@@ -62,7 +68,7 @@ function validPurpose(value: unknown): value is VerificationPurpose {
   return value === 'register' || value === 'password-reset' || value === 'sensitive-action';
 }
 
-async function boundedJson(request: Request) {
+async function boundedJson(request: ContactSecurityRequest) {
   const declared = Number(request.headers.get('content-length') || 0);
   if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return null;
   try {
@@ -88,7 +94,7 @@ function confirmationEvent(status: number): SecurityEventType | null {
 }
 
 async function metadataForRequest(
-  request: Request,
+  request: ContactSecurityRequest,
   env: ContactVerificationEnvironment,
   pathname: string
 ): Promise<ChallengeMetadata> {
@@ -135,7 +141,7 @@ async function pruneSecurityEvents(env: ContactVerificationEnvironment) {
 }
 
 export async function recordContactSecurityOutcome(
-  request: Request,
+  request: ContactSecurityRequest,
   response: Response,
   env: ContactVerificationEnvironment
 ) {
