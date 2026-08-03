@@ -13,8 +13,8 @@ import {
 } from 'lucide-react';
 import { type SqlTask, TOTAL_TASK_COUNT } from '../data/course-catalog';
 import { openJourneyDestination } from '../lib/academy-navigation';
+import { learningRouteForProfile } from '../lib/goal-aware-learning-route';
 import {
-  goalOptions,
   loadOnboardingProfile,
   ONBOARDING_CHANGED_EVENT,
   onboardingReady,
@@ -74,6 +74,10 @@ export default function GuidedHome({
   const [profile, setProfile] = useState(() => loadOnboardingProfile());
   const [evidenceRevision, setEvidenceRevision] = useState(0);
   const [journey, setJourney] = useState<JourneySnapshot | null>(null);
+  const route = useMemo(
+    () => learningRouteForProfile(profile),
+    [profile.dailyMinutes, profile.goal, profile.pace]
+  );
 
   useEffect(() => {
     let disposed = false;
@@ -111,12 +115,12 @@ export default function GuidedHome({
       if (disposed) return;
       const evidence = evidenceModule.loadJourneyEvidenceSnapshot();
       const action = journeyModule.nextJourneyAction(progress, evidence.curriculum, {
-        includeReview: false,
         passedCheckpointIds: evidence.passedCheckpointIds,
         assessmentComplete: evidence.assessmentComplete,
         bypassedModuleIds: profile.placement.status === 'completed'
           ? profile.placement.strongModuleIds
-          : []
+          : [],
+        route
       });
       setJourney({
         action,
@@ -126,10 +130,9 @@ export default function GuidedHome({
       if (!disposed) setJourney(null);
     });
     return () => { disposed = true; };
-  }, [evidenceRevision, profile.placement, progress]);
+  }, [evidenceRevision, profile.placement, progress, route]);
 
   const ready = onboardingReady(profile);
-  const goal = goalOptions.find(item => item.id === profile.goal);
   const planned = useMemo(() => nextPlanItem(profile.firstWeekPlan), [profile.firstWeekPlan]);
   const nextStep = journey?.action || null;
   const completion = Math.round(progress.completed.length / TOTAL_TASK_COUNT * 100);
@@ -138,6 +141,10 @@ export default function GuidedHome({
     if (!nextStep) return;
     if (nextStep.kind === 'task' && nextStep.task) {
       onStartTask(nextStep.task);
+      return;
+    }
+    if (nextStep.stage === 'review') {
+      onReview();
       return;
     }
     openJourneyDestination(nextStep);
@@ -162,43 +169,39 @@ export default function GuidedHome({
     </section>;
   }
 
-  const primaryIsReview = reviewCount > 0;
+  const primaryIsReview = nextStep?.stage === 'review';
   const loadingJourney = !nextStep;
-  return <section className="guided-home" data-testid="guided-today">
+  return <section className="guided-home" data-testid="guided-today" data-route-goal={route.goal}>
     <header className="guided-header">
       <div>
-        <span className="guided-kicker">Сегодня · {goal?.title || 'SQL Academy'}</span>
-        <h1>{primaryIsReview ? 'Сначала закрепим изученное.' : 'Продолжим единый маршрут.'}</h1>
-        <p>{primaryIsReview
-          ? `В очереди ${reviewCount} ${reviewCount === 1 ? 'задача' : 'задач'} на повторение.${nextStep ? ` После них вернёмся к этапу «${nextStep.title}».` : ''}`
-          : nextStep?.description || 'Сверяю уроки, independent evidence, checkpoints и assessment, чтобы выбрать правильный следующий этап.'}</p>
+        <span className="guided-kicker">Сегодня · {route.title}</span>
+        <h1>{primaryIsReview ? 'Сначала закрепим нужный для цели навык.' : 'Продолжим единый маршрут без пробелов.'}</h1>
+        <p>{loadingJourney
+          ? 'Сверяю уроки, independent evidence, checkpoints и assessment, чтобы выбрать правильный следующий этап.'
+          : `${route.promise} ${primaryIsReview && reviewCount > 1 ? `В общей очереди ${reviewCount} задач; маршрут выбрал самую своевременную для цели.` : ''}`}</p>
       </div>
       <button className="guided-configure" onClick={onConfigure}><Settings2 /> Изменить цель и ритм</button>
     </header>
 
-    <div className="guided-primary-card" data-testid="guided-journey-action" data-stage={primaryIsReview ? 'review' : nextStep?.stage || 'loading'} aria-busy={loadingJourney && !primaryIsReview}>
+    <div className="guided-primary-card" data-testid="guided-journey-action" data-stage={nextStep?.stage || 'loading'} aria-busy={loadingJourney}>
       <div className="guided-primary-copy">
         <span>{primaryIsReview ? <RefreshCw /> : <Target />}</span>
         <div>
-          <small>{primaryIsReview
-            ? 'Приоритет на сегодня · retrieval review'
-            : nextStep
-              ? `${nextStep.phaseTitle || 'Итоговый этап'}${nextStep.moduleTitle ? ` · ${nextStep.moduleTitle}` : ''} · ${nextStep.stage}`
-              : 'Синхронизация evidence-графа'}</small>
-          <h2>{primaryIsReview ? 'Адаптивное повторение' : nextStep?.title || 'Строю следующий шаг…'}</h2>
-          <p>{primaryIsReview
-            ? 'Восстанови решение по памяти, не перечитывая урок заранее.'
-            : nextStep?.description || 'Загружаю только компактную сводку прогресса, не поднимая assessment и SQLite runtime.'}</p>
+          <small>{nextStep
+            ? `${nextStep.phaseTitle || route.title}${nextStep.moduleTitle ? ` · ${nextStep.moduleTitle}` : ''} · ${nextStep.stage}`
+            : 'Синхронизация evidence-графа'}</small>
+          <h2>{nextStep?.title || 'Строю следующий шаг…'}</h2>
+          <p>{nextStep?.description || 'Загружаю только компактную сводку прогресса, не поднимая assessment и SQLite runtime.'}</p>
         </div>
       </div>
-      <button className="primary" disabled={!primaryIsReview && !nextStep} onClick={() => primaryIsReview ? onReview() : startNextStep()}>
-        {primaryIsReview ? 'Начать повторение' : nextStep?.cta || 'Анализирую маршрут'} <ArrowRight />
+      <button className="primary" disabled={!nextStep} onClick={startNextStep}>
+        {nextStep?.cta || 'Анализирую маршрут'} <ArrowRight />
       </button>
     </div>
 
     <div className="guided-grid">
       <article className="guided-week">
-        <div className="guided-card-heading"><div><CalendarDays /><span><strong>Первая неделя</strong><small>Твой устойчивый контракт</small></span></div><button onClick={onOpenPlan}>Весь план <Route /></button></div>
+        <div className="guided-card-heading"><div><CalendarDays /><span><strong>Первая неделя</strong><small>{route.title} · {route.dailyMinutes} минут в учебный день</small></span></div><button onClick={onOpenPlan}>Весь план <Route /></button></div>
         <div className="guided-week-list">{profile.firstWeekPlan.slice(0, 5).map(item => {
           const active = planned?.id === item.id;
           return <div key={item.id} className={active ? 'active' : ''}>
