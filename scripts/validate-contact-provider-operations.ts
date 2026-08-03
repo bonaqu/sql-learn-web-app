@@ -168,6 +168,14 @@ assert.equal(String(securityRow.actor_digest).length, 64);
 assert.equal(securityRow.channel, 'email');
 assert.equal(securityRow.purpose, 'register');
 
+const burstTimestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+const burstInsert = database.prepare(`INSERT INTO contact_security_events(
+  event_id, actor_digest, event_type, channel, purpose, response_status, created_at
+) VALUES(?, ?, 'challenge-rejected', 'email', 'register', 400, ?)`);
+for (let index = 0; index < 29; index += 1) {
+  burstInsert.run(`burst-event-${String(index).padStart(2, '0')}`, securityRow.actor_digest, burstTimestamp);
+}
+
 const adminResponse = await handleAdminHealthRequest(
   new Request('https://academy.example.test/api/admin/health'),
   env,
@@ -179,13 +187,16 @@ const adminText = await adminResponse.text();
 const admin = JSON.parse(adminText) as {
   contactOperations: {
     delivery: { sent: number; delivered: number };
-    security: { rateLimited: number };
+    security: { rateLimited: number; activeActorBuckets15m: number; maxActorEvents15m: number };
     alerts: string[];
   };
 };
 assert.equal(admin.contactOperations.delivery.sent, 1);
 assert.equal(admin.contactOperations.delivery.delivered, 1);
 assert.equal(admin.contactOperations.security.rateLimited, 1);
+assert.equal(admin.contactOperations.security.activeActorBuckets15m, 1);
+assert.equal(admin.contactOperations.security.maxActorEvents15m, 30);
+assert.ok(admin.contactOperations.alerts.includes('CONTACT_ACTOR_BURST_HIGH'));
 for (const forbidden of [challengeId, 'provider-message-20', String(securityRow.actor_digest), 'learner@example.com']) {
   assert.ok(!adminText.includes(forbidden), `Admin health leaked operational identifier: ${forbidden}`);
 }
@@ -234,8 +245,11 @@ for (const marker of [
   'CONTACT_BOUNCE_RATE_HIGH',
   'CONTACT_COMPLAINT_RATE_HIGH',
   'CONTACT_PROVIDER_FAILURES_HIGH',
-  'CONTACT_ABUSE_PRESSURE_HIGH'
+  'CONTACT_ABUSE_PRESSURE_HIGH',
+  'CONTACT_ACTOR_BURST_HIGH',
+  'maxActorEvents15m',
+  'GROUP BY actor_digest'
 ]) assert.ok(adminSource.includes(marker), `Admin health is missing alert: ${marker}`);
 
 database.close();
-console.log('Contact provider operations validated: signed idempotent delivery events, collision rejection, privacy-safe abuse telemetry, aggregate health and no PII leakage.');
+console.log('Contact provider operations validated: signed idempotent delivery events, collision rejection, privacy-safe abuse telemetry, concentrated actor alerting, aggregate health and no PII leakage.');

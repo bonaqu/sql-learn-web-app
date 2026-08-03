@@ -91,17 +91,15 @@ jobs:
       - name: Run real-provider staging acceptance
         shell: bash
         run: |
-          set -o pipefail
-          node scripts/contact-provider-staging-acceptance.mjs 2>&1 | tee contact-provider-staging.log
+          set -euo pipefail
+          node scripts/contact-provider-staging-acceptance.mjs
           test -s contact-provider-staging-evidence.json
 
       - name: Upload redacted provider evidence
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: contact-provider-staging-evidence-${{ github.run_attempt }}
-          path: |
-            contact-provider-staging-evidence.json
-            contact-provider-staging.log
-          if-no-files-found: ignore
-          retention-days: 30
+          path: contact-provider-staging-evidence.json
+          if-no-files-found: error
+          retention-days: 3

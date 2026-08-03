@@ -52,6 +52,7 @@ type SecurityAggregateRow = {
   locked_confirmations: number;
   confirmed: number;
   active_actor_buckets: number;
+  max_actor_events_15m: number;
 };
 
 function count(value: unknown) {
@@ -109,7 +110,16 @@ async function contactSecurityAggregates(env: Cloudflare.Env) {
     SUM(CASE WHEN event_type = 'confirmation-invalid' THEN 1 ELSE 0 END) AS invalid_confirmations,
     SUM(CASE WHEN event_type = 'confirmation-locked' THEN 1 ELSE 0 END) AS locked_confirmations,
     SUM(CASE WHEN event_type = 'contact-confirmed' THEN 1 ELSE 0 END) AS confirmed,
-    COUNT(DISTINCT CASE WHEN created_at >= datetime('now', '-15 minutes') THEN actor_digest END) AS active_actor_buckets
+    COUNT(DISTINCT CASE WHEN created_at >= datetime('now', '-15 minutes') THEN actor_digest END) AS active_actor_buckets,
+    COALESCE((
+      SELECT MAX(actor_events)
+      FROM (
+        SELECT COUNT(*) AS actor_events
+        FROM contact_security_events
+        WHERE created_at >= datetime('now', '-15 minutes')
+        GROUP BY actor_digest
+      )
+    ), 0) AS max_actor_events_15m
     FROM contact_security_events WHERE created_at >= datetime('now', '-24 hours')`)
     .first<SecurityAggregateRow>();
   return {
@@ -121,7 +131,8 @@ async function contactSecurityAggregates(env: Cloudflare.Env) {
     invalidConfirmations: count(row?.invalid_confirmations),
     lockedConfirmations: count(row?.locked_confirmations),
     confirmed: count(row?.confirmed),
-    activeActorBuckets15m: count(row?.active_actor_buckets)
+    activeActorBuckets15m: count(row?.active_actor_buckets),
+    maxActorEvents15m: count(row?.max_actor_events_15m)
   };
 }
 
@@ -135,6 +146,7 @@ function contactAlerts(
   if (delivery.sent >= 20 && (delivery.complaintRate ?? 0) >= 0.005) alerts.push('CONTACT_COMPLAINT_RATE_HIGH');
   if (security.providerFailed >= 5) alerts.push('CONTACT_PROVIDER_FAILURES_HIGH');
   if (security.rateLimited >= 20 || security.lockedConfirmations >= 10) alerts.push('CONTACT_ABUSE_PRESSURE_HIGH');
+  if (security.maxActorEvents15m >= 30) alerts.push('CONTACT_ACTOR_BURST_HIGH');
   return alerts;
 }
 

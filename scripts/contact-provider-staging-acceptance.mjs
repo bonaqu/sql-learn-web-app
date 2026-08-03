@@ -4,6 +4,7 @@ import { writeFileSync } from 'node:fs';
 const REQUIRED_TERMINAL_STATUS = 'delivered';
 const DEFAULT_TIMEOUT_MS = 180_000;
 const POLL_INTERVAL_MS = 4_000;
+const REQUEST_TIMEOUT_MS = 15_000;
 const EVIDENCE_PATH = process.env.CONTACT_STAGING_EVIDENCE_PATH || 'contact-provider-staging-evidence.json';
 
 function required(name) {
@@ -18,7 +19,12 @@ function optional(name) {
 
 function baseUrl(value) {
   const parsed = new URL(value);
-  if (parsed.protocol !== 'https:' && parsed.hostname !== '127.0.0.1' && parsed.hostname !== 'localhost') {
+  const localHttp = parsed.protocol === 'http:'
+    && ['127.0.0.1', 'localhost', '::1'].includes(parsed.hostname);
+  if ((parsed.protocol !== 'https:' && !localHttp)
+    || parsed.username
+    || parsed.password
+    || parsed.hash) {
     throw new Error('STAGING_URL_MUST_USE_HTTPS');
   }
   return parsed.href.replace(/\/$/, '');
@@ -34,8 +40,21 @@ async function responseJson(response, maximum = 32_768) {
   try { return text ? JSON.parse(text) : {}; } catch { return {}; }
 }
 
+async function fetchWithTimeout(url, init = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort('staging-request-timeout'), timeoutMs);
+  try {
+    return await fetch(url, { redirect: 'error', ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw new Error('STAGING_REQUEST_TIMEOUT');
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function checkedJson(url, init, label) {
-  const response = await fetch(url, { redirect: 'error', ...init });
+  const response = await fetchWithTimeout(url, init);
   const body = await responseJson(response);
   if (!response.ok) throw new Error(`${label}_${response.status}`);
   return body;
@@ -159,9 +178,8 @@ async function acceptChannel(channel, configuration) {
 
   let capture;
   for (let attempt = 1; attempt <= 20; attempt += 1) {
-    const response = await fetch(`${configuration.adapterUrl}/capture/${encodeURIComponent(challenge.challengeId)}`, {
-      headers: { authorization: `Bearer ${configuration.captureSecret}` },
-      redirect: 'error'
+    const response = await fetchWithTimeout(`${configuration.adapterUrl}/capture/${encodeURIComponent(challenge.challengeId)}`, {
+      headers: { authorization: `Bearer ${configuration.captureSecret}` }
     });
     if (response.ok) {
       capture = await responseJson(response);
@@ -228,5 +246,5 @@ writeFileSync(EVIDENCE_PATH, `${JSON.stringify({
   appOrigin: new URL(configuration.appUrl).origin,
   requiredTerminalStatus: REQUIRED_TERMINAL_STATUS,
   results
-}, null, 2)}\n`);
+}, null, 2)}\n`, { mode: 0o600 });
 console.log(`Contact provider staging acceptance passed for ${results.map(result => result.channel).join(', ')}; redacted evidence: ${EVIDENCE_PATH}`);
