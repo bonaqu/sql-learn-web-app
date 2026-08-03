@@ -70,6 +70,6 @@ export function validCheckpointReportReceipt(value: unknown): value is Checkpoin
 
 export function checkpointConflictMessage(error: unknown) {
   return error instanceof CheckpointReportConflictError
-    ? `Конфликт immutable checkpoint report ${error.reportId}. Локальная история сохранена без перезаписи; обнови историю или обратись в поддержку.`
+    ? `Конфликт immutable checkpoint report ${error.reportId}. Accepted cloud evidence остаётся активным; конфликтующая локальная версия не меняет маршрут и сохраняется отдельно для диагностики.`
     : null;
 }
