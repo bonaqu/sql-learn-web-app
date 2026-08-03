@@ -148,25 +148,51 @@ function loadCheckpointEvidence(userId: string | null) {
   if (!userId) return { passedCheckpointIds: [], checkpointRemediations: [] };
   const raw = readJson(`${CHECKPOINT_REPORTS_PREFIX}:${userId}`);
   if (!Array.isArray(raw)) return { passedCheckpointIds: [], checkpointRemediations: [] };
-  const reports = raw.slice(0, MAX_CHECKPOINT_REPORTS);
   const knownCheckpointIds = new Set(curriculumCheckpoints.map(checkpoint => checkpoint.id));
-  const passed = new Set<string>();
-  for (const item of reports) {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
-    const report = item as Record<string, unknown>;
-    if (report.version !== 1
-      || report.userId !== userId
-      || report.status !== 'completed'
-      || report.passed !== true
-      || typeof report.checkpointId !== 'string'
-      || !knownCheckpointIds.has(report.checkpointId)) continue;
-    passed.add(report.checkpointId);
+  const reports = raw
+    .flatMap(item => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+      const report = item as Record<string, unknown>;
+      if (report.version !== 1
+        || report.userId !== userId
+        || report.status !== 'completed'
+        || typeof report.id !== 'string'
+        || typeof report.checkpointId !== 'string'
+        || !knownCheckpointIds.has(report.checkpointId)
+        || typeof report.completedAt !== 'string'
+        || !Number.isFinite(Date.parse(report.completedAt))) return [];
+      return [{
+        raw: item,
+        id: report.id,
+        checkpointId: report.checkpointId,
+        completedAt: report.completedAt,
+        attemptNumber: Math.max(1, Math.round(Number(report.attemptNumber) || 1)),
+        passed: report.passed === true
+      }];
+    })
+    .sort((left, right) =>
+      right.completedAt.localeCompare(left.completedAt)
+      || right.attemptNumber - left.attemptNumber
+      || right.id.localeCompare(left.id)
+    )
+    .slice(0, MAX_CHECKPOINT_REPORTS);
+  const latestByCheckpoint = new Map<string, typeof reports[number]>();
+  for (const report of reports) {
+    if (!latestByCheckpoint.has(report.checkpointId)) {
+      latestByCheckpoint.set(report.checkpointId, report);
+    }
   }
+  const passed = new Set(
+    [...latestByCheckpoint.values()]
+      .filter(report => report.passed)
+      .map(report => report.checkpointId)
+  );
+  const boundedRawReports = reports.map(report => report.raw);
   return {
     passedCheckpointIds: curriculumCheckpoints
       .map(checkpoint => checkpoint.id)
       .filter(checkpointId => passed.has(checkpointId)),
-    checkpointRemediations: checkpointRemediationsFromReports(reports, userId)
+    checkpointRemediations: checkpointRemediationsFromReports(boundedRawReports, userId)
   };
 }
 
