@@ -60,12 +60,17 @@ for (const marker of [
   "crypto.subtle.digest('SHA-256'",
   'CHECKPOINT_REPORT_CONFLICT',
   'CHECKPOINT_REPORT_STORED_INVALID',
+  'CHECKPOINT_REPORT_PERSISTENCE_FAILED',
   'replayed: true',
   'replayed: false',
   'payload_digest',
   'persisted_at',
   'receipts',
-  'ORDER BY completed_at DESC, attempt_number DESC, id DESC'
+  'ORDER BY completed_at DESC, attempt_number DESC, id DESC',
+  'INSERT OR IGNORE INTO checkpoint_reports',
+  'inserted.meta.changes !== 1',
+  'storedReportResponse',
+  'const persisted = await storedReport(env, body.id)'
 ]) {
   assert.ok(worker.includes(marker), `Checkpoint Worker immutable report contract is missing ${marker}.`);
 }
@@ -77,6 +82,8 @@ assert.match(worker, /storedDigest !== incomingDigest/,
   'Same-ID replay must compare canonical payload digests.');
 assert.doesNotMatch(worker, /error:[^\n]*existing\.payload|JSON\.stringify\(existing/,
   'Conflict responses must not expose stored payloads.');
+assert.doesNotMatch(worker, /INSERT INTO checkpoint_reports\(/,
+  'Checkpoint report creation must use INSERT OR IGNORE so concurrent exact requests become idempotent replays.');
 
 const migration = readFileSync(new URL('../migrations/0021_checkpoint_report_receipts.sql', import.meta.url), 'utf8');
 for (const marker of [
@@ -90,4 +97,4 @@ for (const marker of [
 assert.doesNotMatch(migration, /DELETE FROM checkpoint_reports|UPDATE checkpoint_reports\s+SET attempt_number|UNIQUE\s*\(user_id, checkpoint_id, attempt_number\)/i,
   'Receipt migration must not delete or destructively renumber legacy checkpoint evidence.');
 
-console.log('Checkpoint report integrity validated: canonical equality, typed conflicts, stable receipt shape, append-only Worker semantics and non-destructive legacy migration.');
+console.log('Checkpoint report integrity validated: canonical equality, typed conflicts, stable receipts, concurrent-safe append-only Worker semantics and non-destructive legacy migration.');
