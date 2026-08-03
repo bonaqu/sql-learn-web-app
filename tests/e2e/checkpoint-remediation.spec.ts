@@ -11,24 +11,78 @@ const CHECKPOINT_EVENT = 'sql-academy-checkpoint-reports-changed';
 const PROGRESS_EVENT = 'sql-academy-progress-changed';
 
 function phaseCheckpointFixture() {
-  const result = phaseDefinitions.flatMap(phase => {
+  const result = phaseDefinitions.flatMap((phase, phaseIndex) => {
     const phaseModules = new Set<string>(phase.moduleIds);
-    const checkpoint = curriculumCheckpoints.find(item => {
+    const checkpointIndex = curriculumCheckpoints.findIndex(item => {
       const checkpointModules = new Set<string>(item.moduleIds);
       return checkpointModules.size === phaseModules.size
         && phase.moduleIds.every(moduleId => checkpointModules.has(moduleId));
     });
-    return checkpoint ? [{ phase, checkpoint }] : [];
+    const checkpoint = checkpointIndex >= 0 ? curriculumCheckpoints[checkpointIndex] : null;
+    return checkpoint ? [{ phase, phaseIndex, checkpoint, checkpointIndex }] : [];
   })[0];
   if (!result) throw new Error('Expected one checkpoint covering a complete canonical phase.');
   return result;
 }
 
+function checkpointReport(
+  userId: string,
+  checkpoint: typeof curriculumCheckpoints[number],
+  id: string,
+  completedAt: string,
+  attemptNumber: number
+) {
+  const score = Math.min(100, checkpoint.passingScore + 10);
+  return {
+    version: 1,
+    id,
+    userId,
+    checkpointId: checkpoint.id,
+    status: 'completed',
+    startedAt: new Date(Date.parse(completedAt) - 300_000).toISOString(),
+    completedAt,
+    durationSeconds: 300,
+    attemptNumber,
+    score,
+    bestScore: score,
+    passingScore: checkpoint.passingScore,
+    passed: true,
+    accuracy: 100,
+    firstAttemptRate: 100,
+    independence: 100,
+    taskScores: checkpoint.taskIds.map(taskId => {
+      const task = tasks.find(item => item.id === taskId);
+      return {
+        taskId,
+        title: task?.title || taskId,
+        module: task?.module || checkpoint.moduleIds[0],
+        correct: true,
+        skipped: false,
+        attempts: 1,
+        elapsedSeconds: 60,
+        score
+      };
+    }),
+    moduleScores: checkpoint.moduleIds.map(module => ({
+      module,
+      title: module,
+      score,
+      correct: 1,
+      total: 1
+    })),
+    remediationModules: []
+  };
+}
+
 function fixture(userId: string) {
-  const { phase, checkpoint } = phaseCheckpointFixture();
+  const { phase, phaseIndex, checkpoint, checkpointIndex } = phaseCheckpointFixture();
   const checkpointModules = new Set<string>(checkpoint.moduleIds);
-  const phaseLessons = curriculumLessons.filter(lesson => checkpointModules.has(lesson.module));
-  const foundationTasks = checkpoint.moduleIds.flatMap(moduleId => foundationTasksForModule(moduleId));
+  const prerequisiteModuleIds = phaseDefinitions
+    .slice(0, phaseIndex + 1)
+    .flatMap(item => [...item.moduleIds]);
+  const prerequisiteModuleSet = new Set<string>(prerequisiteModuleIds);
+  const prerequisiteLessons = curriculumLessons.filter(lesson => prerequisiteModuleSet.has(lesson.module));
+  const foundationTasks = prerequisiteModuleIds.flatMap(moduleId => foundationTasksForModule(moduleId));
   const failedAt = new Date(Date.now() - 45_000).toISOString();
   const beforeFailure = new Date(Date.parse(failedAt) - 60_000).toISOString();
   const weakTasks = checkpoint.taskIds.flatMap(taskId => {
@@ -59,10 +113,10 @@ function fixture(userId: string) {
   };
   const curriculum = {
     version: 1,
-    completedSections: phaseLessons.flatMap(lesson => lesson.sections.map(section => section.id)),
-    completedLessons: phaseLessons.map(lesson => lesson.id),
+    completedSections: prerequisiteLessons.flatMap(lesson => lesson.sections.map(section => section.id)),
+    completedLessons: prerequisiteLessons.map(lesson => lesson.id),
     completedProjects: [],
-    answers: Object.fromEntries(phaseLessons.flatMap(lesson => lessonChecks(lesson).map(check => [check.id, {
+    answers: Object.fromEntries(prerequisiteLessons.flatMap(lesson => lessonChecks(lesson).map(check => [check.id, {
       optionIndex: check.correctIndex,
       correct: true,
       answeredAt: beforeFailure
@@ -84,7 +138,7 @@ function fixture(userId: string) {
       score: 95,
       level: 'advanced',
       recommendedTrack: 'analytics',
-      strongModuleIds: [...checkpoint.moduleIds],
+      strongModuleIds: [...prerequisiteModuleIds],
       focusModuleIds: [],
       completedAt: beforeFailure
     },
@@ -129,6 +183,15 @@ function fixture(userId: string) {
     })),
     remediationModules: [...weakModules]
   };
+  const priorPassedReports = curriculumCheckpoints
+    .slice(0, checkpointIndex)
+    .map((item, index) => checkpointReport(
+      userId,
+      item,
+      `checkpoint-remediation-prior-${item.id}`,
+      new Date(Date.parse(beforeFailure) - (checkpointIndex - index) * 120_000).toISOString(),
+      1
+    ));
   return {
     phase,
     checkpoint,
@@ -136,6 +199,7 @@ function fixture(userId: string) {
     progress,
     curriculum,
     failedReport,
+    reports: [...priorPassedReports, failedReport],
     targetedTaskIds: targetedTasks.map(task => task.id),
     weakestModule: weakModules[0],
     weakestTaskTitle: targetedTasks[0]?.title || '',
@@ -150,7 +214,7 @@ async function seed(page: Page, userId: string) {
     localStorage.setItem(`sql-academy-onboarding-v1:${id}`, JSON.stringify(state.profile));
     localStorage.setItem('sql-academy-progress-v4', JSON.stringify(state.progress));
     localStorage.setItem(`sql-academy-curriculum-progress-v1:${id}`, JSON.stringify(state.curriculum));
-    localStorage.setItem(`sql-academy-checkpoint-reports-v1:${id}`, JSON.stringify([state.failedReport]));
+    localStorage.setItem(`sql-academy-checkpoint-reports-v1:${id}`, JSON.stringify(state.reports));
   }, { id: userId, state: value });
   await page.reload();
   return value;
