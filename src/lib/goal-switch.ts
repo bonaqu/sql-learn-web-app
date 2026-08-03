@@ -1,3 +1,4 @@
+import type { CheckpointRemediationState } from './checkpoint-remediation';
 import type { CurriculumProgressV1 } from './curriculum-progress';
 import {
   buildJourneyFrontier,
@@ -16,6 +17,7 @@ import type { Progress } from './progress';
 export type GoalSwitchEvidence = {
   curriculum: CurriculumProgressV1;
   passedCheckpointIds?: readonly string[];
+  checkpointRemediations?: readonly CheckpointRemediationState[];
   assessmentComplete?: boolean;
   includeReview?: boolean;
 };
@@ -80,6 +82,7 @@ function frontierForGoal(
   return buildJourneyFrontier(progress, evidence.curriculum, {
     includeReview: evidence.includeReview,
     passedCheckpointIds: evidence.passedCheckpointIds,
+    checkpointRemediations: evidence.checkpointRemediations,
     assessmentComplete: evidence.assessmentComplete,
     bypassedModuleIds: profile.placement.status === 'completed'
       ? profile.placement.strongModuleIds

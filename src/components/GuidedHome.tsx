@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Clock3,
   Compass,
+  Flag,
   ListChecks,
   RefreshCw,
   Route,
@@ -23,6 +24,8 @@ import {
 } from '../lib/learner-onboarding';
 import type { JourneyFrontier } from '../lib/learning-journey';
 import type { Progress } from '../lib/progress';
+
+import '../checkpoint-remediation.css';
 
 type GuidedHomeProps = {
   progress: Progress;
@@ -114,6 +117,7 @@ export default function GuidedHome({
         includeReview: false,
         goal: profile.goal,
         passedCheckpointIds: evidence.passedCheckpointIds,
+        checkpointRemediations: evidence.checkpointRemediations,
         assessmentComplete: evidence.assessmentComplete,
         bypassedModuleIds: profile.placement.status === 'completed'
           ? profile.placement.strongModuleIds
@@ -133,6 +137,7 @@ export default function GuidedHome({
   const goal = goalOptions.find(item => item.id === profile.goal);
   const planned = useMemo(() => nextPlanItem(profile.firstWeekPlan), [profile.firstWeekPlan]);
   const nextStep = journey?.frontier.action || null;
+  const remediation = journey?.frontier.checkpointRemediation || null;
   const completion = Math.round(progress.completed.length / TOTAL_TASK_COUNT * 100);
 
   const startNextStep = () => {
@@ -176,6 +181,25 @@ export default function GuidedHome({
       </div>
       <button className="guided-configure" onClick={onConfigure}><Settings2 /> Изменить цель и ритм</button>
     </header>
+
+    {remediation && <aside
+      className="guided-remediation-banner"
+      data-testid="guided-checkpoint-remediation"
+      aria-label={`Восстановление после checkpoint ${remediation.checkpointTitle}`}
+    >
+      <Flag />
+      <div>
+        <strong>{remediation.checkpointTitle} · попытка {remediation.attemptNumber}</strong>
+        <p>
+          Результат {remediation.score}% при пороге {remediation.passingScore}%. Слабые модули: {remediation.modules.map(module => module.moduleTitle).join(', ')}.{' '}
+          {primaryIsReview
+            ? 'Сначала закрой уже назревшее retrieval-повторение, затем маршрут вернётся к восстановлению.'
+            : nextStep?.stage === 'checkpoint'
+              ? 'Новые independent-попытки подтверждены — повтори checkpoint; transfer пока закрыт.'
+              : 'Исправь отмеченные навыки новой самостоятельной попыткой после даты провала.'}
+        </p>
+      </div>
+    </aside>}
 
     <div
       className="guided-primary-card"

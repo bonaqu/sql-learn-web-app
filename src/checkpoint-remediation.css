@@ -1,0 +1,117 @@
+.checkpoint-remediation-banner {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin: 18px 0;
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, #f0a95d 52%, var(--border, transparent));
+  border-radius: 18px;
+  background: linear-gradient(135deg, color-mix(in srgb, #f0a95d 12%, transparent), var(--surface, rgba(255,255,255,.035)));
+}
+
+.checkpoint-remediation-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: color-mix(in srgb, #f0a95d 18%, transparent);
+  color: #f0a95d;
+}
+
+.checkpoint-remediation-copy small {
+  display: block;
+  margin-bottom: 4px;
+  color: #f0a95d;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.checkpoint-remediation-copy h2 {
+  margin: 0 0 6px;
+  font-size: clamp(17px, 2vw, 22px);
+}
+
+.checkpoint-remediation-copy p,
+.checkpoint-remediation-copy span {
+  display: block;
+  margin: 0;
+  color: var(--text-secondary, #a7adbb);
+  line-height: 1.5;
+}
+
+.checkpoint-remediation-copy span {
+  margin-top: 7px;
+  font-size: 13px;
+}
+
+.checkpoint-remediation-banner > button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 15px;
+  border: 1px solid color-mix(in srgb, #f0a95d 60%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, #f0a95d 16%, transparent);
+  color: inherit;
+  font-weight: 800;
+}
+
+.checkpoint-remediation-banner > button:disabled {
+  opacity: .5;
+}
+
+.guided-remediation-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 14px 0;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, #f0a95d 48%, transparent);
+  border-radius: 15px;
+  background: color-mix(in srgb, #f0a95d 9%, transparent);
+}
+
+.guided-remediation-banner > svg {
+  flex: 0 0 auto;
+  color: #f0a95d;
+}
+
+.guided-remediation-banner strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.guided-remediation-banner p {
+  margin: 0;
+  color: var(--text-secondary, #a7adbb);
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  .checkpoint-remediation-banner {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .checkpoint-remediation-banner > button {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .checkpoint-remediation-banner {
+    grid-template-columns: 1fr;
+    padding: 15px;
+  }
+
+  .checkpoint-remediation-icon {
+    width: 40px;
+    height: 40px;
+  }
+}

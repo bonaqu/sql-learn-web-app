@@ -6,12 +6,18 @@ import {
 } from '../data/complete-curriculum';
 import { modules, tasks, type SqlTask } from '../data/course-catalog';
 import { canonicalModuleIds, phaseDefinitions, phaseForModule } from '../data/learning-structure';
+import {
+  nextCheckpointRemediationTaskId,
+  unresolvedCheckpointRemediationModules,
+  type CheckpointRemediationState
+} from './checkpoint-remediation';
 import type { CurriculumProgressV1 } from './curriculum-progress';
 import {
   goalModuleFrontier,
   safeDiagnosticBypass,
   type GoalRouteReasonCode
 } from './goal-aware-route';
+import { loadJourneyEvidenceSnapshot } from './journey-evidence';
 import { loadOnboardingProfile, type LearnerGoal } from './learner-onboarding';
 import {
   hasIndependentTaskEvidence,
@@ -41,6 +47,7 @@ export type JourneyActionKind =
 
 export type JourneyRouteReasonCode = GoalRouteReasonCode
   | 'retrieval-review'
+  | 'checkpoint-remediation'
   | 'phase-checkpoint'
   | 'checkpoint-transfer'
   | 'final-assessment'
@@ -63,6 +70,12 @@ export type JourneyAction = {
   projectId: string | null;
   routeReasonCode?: JourneyRouteReasonCode;
   routeReason?: string;
+  remediationCheckpointId?: string;
+  remediationReportId?: string;
+  remediationModuleIds?: string[];
+  remediationScore?: number;
+  remediationPassingScore?: number;
+  remediationAttemptNumber?: number;
   frontierCompletedModuleIds?: string[];
   frontierEligibleModuleIds?: string[];
   frontierRouteModuleIds?: string[];
@@ -72,6 +85,7 @@ export type JourneyAction = {
 export type JourneyOptions = {
   includeReview?: boolean;
   passedCheckpointIds?: readonly string[];
+  checkpointRemediations?: readonly CheckpointRemediationState[];
   assessmentComplete?: boolean;
   bypassedModuleIds?: readonly string[];
   goal?: LearnerGoal | null;
@@ -85,6 +99,7 @@ export type JourneyFrontier = {
   eligibleModuleIds: string[];
   safeBypassedModuleIds: string[];
   passedPhaseIds: string[];
+  checkpointRemediation: CheckpointRemediationState | null;
 };
 
 const moduleTitles = new Map(modules.map(([id, title]) => [id, title]));
@@ -105,6 +120,22 @@ function withReason(
   routeReason: string
 ): JourneyAction {
   return { ...action, routeReasonCode, routeReason };
+}
+
+function withRemediation(
+  action: JourneyAction,
+  state: CheckpointRemediationState,
+  moduleIds: readonly string[]
+): JourneyAction {
+  return {
+    ...action,
+    remediationCheckpointId: state.checkpointId,
+    remediationReportId: state.reportId,
+    remediationModuleIds: [...moduleIds],
+    remediationScore: state.score,
+    remediationPassingScore: state.passingScore,
+    remediationAttemptNumber: state.attemptNumber
+  };
 }
 
 function lessonAction(lesson: CurriculumLesson): JourneyAction {
@@ -211,8 +242,14 @@ export function moduleFoundationComplete(
   return nextFoundationAction(moduleId, progress, curriculum, new Set(bypassedModuleIds)) === null;
 }
 
-function checkpointPassedByEvidence(checkpointId: string, progress: Progress, passed: ReadonlySet<string>) {
+function checkpointPassedByEvidence(
+  checkpointId: string,
+  progress: Progress,
+  passed: ReadonlySet<string>,
+  failed: ReadonlySet<string>
+) {
   if (passed.has(checkpointId)) return true;
+  if (failed.has(checkpointId)) return false;
   const checkpoint = curriculumCheckpoints.find(item => item.id === checkpointId);
   return Boolean(checkpoint?.taskIds.length && checkpoint.taskIds.every(taskId =>
     hasIndependentTaskEvidence(progress, taskId)
@@ -286,6 +323,37 @@ function phaseRouteRank(phaseId: string, routePositions: ReadonlyMap<string, num
   return Math.max(...phase.moduleIds.map(moduleId => routePositions.get(moduleId) ?? Number.MAX_SAFE_INTEGER));
 }
 
+function remediationAction(
+  state: CheckpointRemediationState,
+  progress: Progress,
+  curriculum: CurriculumProgressV1,
+  routePositions: ReadonlyMap<string, number>
+) {
+  const unresolved = unresolvedCheckpointRemediationModules(state, progress)
+    .sort((left, right) =>
+      left.score - right.score
+      || (routePositions.get(left.moduleId) ?? Number.MAX_SAFE_INTEGER)
+        - (routePositions.get(right.moduleId) ?? Number.MAX_SAFE_INTEGER)
+      || left.moduleId.localeCompare(right.moduleId)
+    );
+  for (const module of unresolved) {
+    const missingFoundation = nextFoundationAction(module.moduleId, progress, curriculum, new Set());
+    if (missingFoundation) {
+      return withRemediation(missingFoundation, state, unresolved.map(item => item.moduleId));
+    }
+    const taskId = nextCheckpointRemediationTaskId(state, module.moduleId, progress);
+    const task = taskId ? tasks.find(item => item.id === taskId) || null : null;
+    if (!task) continue;
+    return withRemediation(taskAction(
+      task,
+      'review',
+      `Checkpoint «${state.checkpointTitle}» показал слабое удержание модуля «${module.moduleTitle}» (${module.score}%). Повтори задачу самостоятельно после отчёта, без подсказки и эталона.`,
+      'Исправить слабое место'
+    ), state, unresolved.map(item => item.moduleId));
+  }
+  return null;
+}
+
 function assessmentAction(): JourneyAction {
   return {
     kind: 'assessment',
@@ -357,14 +425,29 @@ export function buildJourneyFrontier(
   const completedModuleIds = moduleFrontier.completedModuleIds;
   const routePositions = new Map<string, number>(moduleFrontier.routeModuleIds.map((moduleId, index) => [moduleId, index]));
   const passedCheckpointIds = new Set(options.passedCheckpointIds || []);
+  const allCheckpointRemediations = [...(options.checkpointRemediations || [])];
+  const failedCheckpointIds = new Set(allCheckpointRemediations.map(state => state.checkpointId));
   const passedPhaseIds: string[] = phaseDefinitions
     .filter(phase => {
       const checkpoint = checkpointForPhase(phase.id);
-      return Boolean(checkpoint && checkpointPassedByEvidence(checkpoint.id, progress, passedCheckpointIds));
+      return Boolean(checkpoint && checkpointPassedByEvidence(
+        checkpoint.id,
+        progress,
+        passedCheckpointIds,
+        failedCheckpointIds
+      ));
     })
     .map(phase => phase.id);
+  const checkpointRemediations = allCheckpointRemediations
+    .filter(state => !passedCheckpointIds.has(state.checkpointId))
+    .sort((left, right) =>
+      phaseRouteRank(left.phaseId, routePositions) - phaseRouteRank(right.phaseId, routePositions)
+      || left.completedAt.localeCompare(right.completedAt)
+      || left.checkpointId.localeCompare(right.checkpointId)
+    );
 
   let action: JourneyAction | null = null;
+  let checkpointRemediation: CheckpointRemediationState | null = null;
   if (options.includeReview !== false) {
     const review = reviewAction(progress);
     if (review) {
@@ -377,20 +460,53 @@ export function buildJourneyFrontier(
   }
 
   if (!action) {
+    for (const state of checkpointRemediations) {
+      const remediation = remediationAction(state, progress, curriculum, routePositions);
+      if (!remediation) continue;
+      checkpointRemediation = state;
+      const weakTitles = unresolvedCheckpointRemediationModules(state, progress)
+        .map(module => module.moduleTitle)
+        .join(', ');
+      action = withReason(
+        remediation,
+        'checkpoint-remediation',
+        `Попытка ${state.attemptNumber}: ${state.score}% при пороге ${state.passingScore}%. Сначала восстанови ${weakTitles}; цель обучения не может обойти проваленный checkpoint.`
+      );
+      break;
+    }
+  }
+
+  if (!action) {
     const readyCheckpointPhase = phaseDefinitions
       .filter(phase => phase.moduleIds.every(moduleId => completedModuleIds.includes(moduleId)))
       .filter(phase => {
         const checkpoint = checkpointForPhase(phase.id);
-        return Boolean(checkpoint && !checkpointPassedByEvidence(checkpoint.id, progress, passedCheckpointIds));
+        return Boolean(checkpoint && !checkpointPassedByEvidence(
+          checkpoint.id,
+          progress,
+          passedCheckpointIds,
+          failedCheckpointIds
+        ));
       })
       .sort((left, right) => phaseRouteRank(left.id, routePositions) - phaseRouteRank(right.id, routePositions))[0];
     const checkpoint = readyCheckpointPhase ? checkpointAction(readyCheckpointPhase.id) : null;
     if (checkpoint) {
-      action = withReason(
-        checkpoint,
-        'phase-checkpoint',
-        'Все foundation-модули этой фазы закрыты; mixed checkpoint обязателен до transfer и новой специализации.'
-      );
+      const repaired = checkpointRemediations.find(state =>
+        state.phaseId === readyCheckpointPhase?.id
+        && unresolvedCheckpointRemediationModules(state, progress).length === 0
+      ) || null;
+      checkpointRemediation = repaired;
+      action = repaired
+        ? withReason(
+            withRemediation(checkpoint, repaired, repaired.modules.map(module => module.moduleId)),
+            'checkpoint-remediation',
+            `Слабые модули после попытки ${repaired.attemptNumber} исправлены новым independent evidence. Повтори checkpoint: remediation сама по себе не засчитывает проход.`
+          )
+        : withReason(
+            checkpoint,
+            'phase-checkpoint',
+            'Все foundation-модули этой фазы закрыты; mixed checkpoint обязателен до transfer и новой специализации.'
+          );
     }
   }
 
@@ -472,7 +588,8 @@ export function buildJourneyFrontier(
     completedModuleIds,
     eligibleModuleIds: moduleFrontier.eligibleModuleIds,
     safeBypassedModuleIds,
-    passedPhaseIds
+    passedPhaseIds,
+    checkpointRemediation
   };
 }
 
@@ -481,7 +598,14 @@ export function nextJourneyAction(
   curriculum: CurriculumProgressV1,
   options: JourneyOptions = {}
 ): JourneyAction {
-  return buildJourneyFrontier(progress, curriculum, options).action;
+  const resolvedOptions = options.checkpointRemediations === undefined
+    && typeof localStorage !== 'undefined'
+    ? {
+        ...options,
+        checkpointRemediations: loadJourneyEvidenceSnapshot().checkpointRemediations
+      }
+    : options;
+  return buildJourneyFrontier(progress, curriculum, resolvedOptions).action;
 }
 
 export function journeyStageForTask(task: SqlTask): JourneyStage {
