@@ -28,6 +28,7 @@ import {
   ASSESSMENT_REPORTS_CHANGED_EVENT,
   loadLocalAssessmentReports
 } from '../lib/assessment';
+import { checkpointRemediationsFromReports } from '../lib/checkpoint-remediation';
 import {
   CHECKPOINT_REPORTS_CHANGED_EVENT,
   loadLocalCheckpointReports
@@ -61,6 +62,8 @@ import {
 import { useDialogFocus } from '../lib/dialog-focus';
 import { openCheckpointCenter } from './CheckpointLauncher';
 import GoalSwitchPanel from './GoalSwitchPanel';
+
+import '../checkpoint-remediation.css';
 
 const TARGET_KEY = 'sql-academy-session-target-v1';
 const PROFILE_KEY = 'sql-academy-profile-id';
@@ -161,11 +164,16 @@ export default function LearningPathPortal({
     assessmentReports,
     checkpointReports
   ), [assessmentReports, checkpointReports, curriculumProgress, progress]);
+  const checkpointRemediations = useMemo(() => {
+    const ownerId = checkpointReports.find(report => typeof report.userId === 'string' && report.userId)?.userId || null;
+    return checkpointRemediationsFromReports(checkpointReports, ownerId);
+  }, [checkpointReports]);
   const sessionEvidence = useMemo<LearningSessionEvidence>(() => ({
     curriculum: curriculumProgress,
     passedCheckpointIds: evidenceGraph.phases
       .filter(phase => phase.checkpointPassed)
       .map(phase => phase.checkpointId),
+    checkpointRemediations,
     assessmentComplete: assessmentReports.some(report =>
       report.status === 'completed'
       && (report.mode === 'exam' || report.mode === 'production' || report.mode === 'final')
@@ -174,13 +182,14 @@ export default function LearningPathPortal({
       ? profile.placement.strongModuleIds
       : [],
     goal: profile.goal
-  }), [assessmentReports, curriculumProgress, evidenceGraph.phases, profile.goal, profile.placement]);
+  }), [assessmentReports, checkpointRemediations, curriculumProgress, evidenceGraph.phases, profile.goal, profile.placement]);
   const goalSwitchEvidence = useMemo<GoalSwitchEvidence>(() => ({
     curriculum: curriculumProgress,
     passedCheckpointIds: sessionEvidence.passedCheckpointIds,
+    checkpointRemediations,
     assessmentComplete: sessionEvidence.assessmentComplete,
     includeReview: true
-  }), [curriculumProgress, sessionEvidence.assessmentComplete, sessionEvidence.passedCheckpointIds]);
+  }), [checkpointRemediations, curriculumProgress, sessionEvidence.assessmentComplete, sessionEvidence.passedCheckpointIds]);
   const mastery = useMemo(
     () => moduleMastery(progress, sessionEvidence),
     [progress, sessionEvidence]
@@ -199,6 +208,7 @@ export default function LearningPathPortal({
   const nextPhase = evidenceGraph.phases.find(phase => !phase.completed)
     || evidenceGraph.phases[evidenceGraph.phases.length - 1];
   const currentGoalTitle = goalOptions.find(option => option.id === profile.goal)?.title || 'Полная академия';
+  const activeRemediation = checkpointRemediations[0] || null;
 
   useEffect(() => {
     if (externalLauncher) return;
@@ -474,6 +484,21 @@ export default function LearningPathPortal({
         <article><Flame /><span><small>Текущий streak</small><strong>{progress.streak}<b> дней</b></strong></span></article>
         <article><Flag /><span><small>Checkpoints</small><strong>{passedCheckpoints}<b>/{evidenceGraph.phases.length}</b></strong></span></article>
       </section>
+
+      {activeRemediation && <section className="checkpoint-remediation-banner" data-testid="checkpoint-remediation-banner">
+        <div className="checkpoint-remediation-icon"><Flag /></div>
+        <div className="checkpoint-remediation-copy">
+          <small>Failed checkpoint · попытка {activeRemediation.attemptNumber}</small>
+          <h2>{activeRemediation.checkpointTitle}: {activeRemediation.score}% из {activeRemediation.passingScore}%</h2>
+          <p>Targeted remediation временно сильнее специализации. Слабые модули: {activeRemediation.modules.map(module => `${module.moduleTitle} (${module.score}%)`).join(', ')}.</p>
+          <span>{session.frontier.action.routeReasonCode === 'checkpoint-remediation'
+            ? session.frontier.action.routeReason
+            : `Сначала завершится более приоритетный ${session.frontier.action.stage}; затем маршрут автоматически вернётся к remediation.`}</span>
+        </div>
+        <button onClick={() => session.items[0] && startSessionItem(session.items[0])} disabled={!session.items.length}>
+          {session.frontier.action.routeReasonCode === 'checkpoint-remediation' ? 'Начать восстановление' : 'Начать текущий шаг'} <ChevronRight />
+        </button>
+      </section>}
 
       <section className="path-content-grid">
         <div className="today-session path-card">
