@@ -118,6 +118,16 @@ Default warning thresholds:
 - five or more provider failures in the 24-hour window;
 - twenty or more rate-limited requests or ten locked confirmations in the 24-hour window.
 
+Alert code mapping:
+
+| Alert code | Trigger | First response |
+| --- | --- | --- |
+| `CONTACT_DELIVERY_RATE_LOW` | Delivery rate below 90% with at least 20 sends | Disable the affected channel if the provider dashboard confirms degradation; inspect deferred/failed statuses and rerun staging acceptance. |
+| `CONTACT_BOUNCE_RATE_HIGH` | Bounce rate at or above 5% with at least 20 sends | Pause the email channel, inspect sender reputation/suppression and verify destination validation behavior. |
+| `CONTACT_COMPLAINT_RATE_HIGH` | Complaint rate at or above 0.5% with at least 20 sends | Disable email immediately, inspect template/sender abuse and do not resume until the cause is corrected. |
+| `CONTACT_PROVIDER_FAILURES_HIGH` | At least five provider failures in 24 hours | Check credentials, provider status and adapter logs; rotate secrets if misuse is suspected. |
+| `CONTACT_ABUSE_PRESSURE_HIGH` | At least twenty rate-limited requests or ten locked confirmations in 24 hours | Keep rate limits intact, inspect Cloudflare evidence and apply edge controls where justified. |
+
 These are initial safety thresholds, not permanent business SLOs. Recalibrate them only from real traffic while preserving a minimum sample size.
 
 ## 7. Abuse monitoring and response
