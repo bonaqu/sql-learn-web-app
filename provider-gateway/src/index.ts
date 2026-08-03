@@ -12,6 +12,7 @@ type DeliveryStatus =
   | 'suppressed'
   | 'failed'
   | 'undelivered';
+type SuppressionReason = 'hard-bounce' | 'complaint' | 'operator';
 
 type DeliveryRequest = {
   contract: 'contact-verification-delivery-v1';
@@ -36,6 +37,15 @@ type DeliveryAttemptRow = {
   created_at: string;
   updated_at: string;
   delivered_at: string | null;
+};
+
+type ProviderEvent = {
+  provider: ProviderName;
+  providerEventId: string;
+  providerMessageId: string;
+  eventType: string;
+  status: DeliveryStatus;
+  suppressionReason: SuppressionReason | null;
 };
 
 const DELIVERY_CONTRACT = 'contact-verification-delivery-v1';
@@ -91,12 +101,6 @@ function bytesToHex(bytes: Uint8Array) {
   return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
-function bytesToBase64(bytes: Uint8Array) {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
 function base64ToBytes(value: string) {
   try {
     const binary = atob(value);
@@ -128,8 +132,12 @@ async function sha256Hex(value: string) {
 }
 
 async function secretMatches(candidate: string, expected: string) {
-  if (!candidate || !expected) return false;
-  const [candidateDigest, expectedDigest] = await Promise.all([digestBytes(candidate), digestBytes(expected)]);
+  const boundedCandidate = secret(candidate, 1, 4_096);
+  if (!boundedCandidate || !expected) return false;
+  const [candidateDigest, expectedDigest] = await Promise.all([
+    digestBytes(boundedCandidate),
+    digestBytes(expected)
+  ]);
   return constantTimeEqual(candidateDigest, expectedDigest);
 }
 
@@ -307,12 +315,8 @@ async function sendWithResend(payload: DeliveryRequest, destination: string, env
       subject: `Код SQL Academy для ${label}`,
       text: `Код SQL Academy: ${payload.code}. Он действует до ${payload.expiresAt}. Никому не сообщайте этот код.`,
       html: `<p>Код SQL Academy для ${label}: <strong>${payload.code}</strong></p><p>Действует до ${payload.expiresAt}. Никому не сообщайте этот код.</p>`,
-      headers: {
-        'X-SQL-Academy-Challenge': payload.challengeId
-      },
-      tags: [
-        { name: 'purpose', value: payload.purpose.replace(/-/g, '_') }
-      ]
+      headers: { 'X-SQL-Academy-Challenge': payload.challengeId },
+      tags: [{ name: 'purpose', value: payload.purpose.replace(/-/g, '_') }]
     })
   });
   const body = await boundedResponseText(response, MAX_PROVIDER_RESPONSE_BYTES);
@@ -471,7 +475,6 @@ async function handleDelivery(request: Request, env: Cloudflare.Env) {
     provider,
     payload.expiresAt
   ).run();
-
   if (reserved.meta.changes !== 1) {
     const raced = await existingAttempt(env, payload.challengeId);
     return raced ? json(publicAttempt(raced)) : safeError('CHALLENGE_RESERVATION_FAILED', 409);
@@ -519,8 +522,11 @@ async function verifyResendSignature(rawBody: string, request: Request, env: Clo
     false,
     ['sign']
   );
-  const signed = `${eventId}.${timestamp}.${rawBody}`;
-  const expected = new Uint8Array(await crypto.subtle.sign('HMAC', key, ownedBuffer(encoder.encode(signed))));
+  const expected = new Uint8Array(await crypto.subtle.sign(
+    'HMAC',
+    key,
+    ownedBuffer(encoder.encode(`${eventId}.${timestamp}.${rawBody}`))
+  ));
   const valid = signatures.some(item => {
     const encoded = item.startsWith('v1,') ? item.slice(3) : '';
     const actual = encoded ? base64ToBytes(encoded) : null;
@@ -542,43 +548,85 @@ function resendStatus(eventType: string): DeliveryStatus | null {
   return states[eventType] || null;
 }
 
-async function recordProviderEvent(
-  env: Cloudflare.Env,
-  provider: ProviderName,
-  providerEventId: string,
-  providerMessageId: string,
-  eventType: string,
-  status: DeliveryStatus
-) {
-  const duplicate = await env.DELIVERY_DB.prepare(
-    'SELECT provider_event_id FROM contact_delivery_events WHERE provider_event_id = ?1'
-  ).bind(providerEventId).first();
-  if (duplicate) return;
+function parseResendEvent(rawBody: string, providerEventId: string): ProviderEvent | null {
+  const parsed = JSON.parse(rawBody) as {
+    type?: unknown;
+    data?: {
+      email_id?: unknown;
+      id?: unknown;
+      bounce?: { type?: unknown };
+    };
+  };
+  const eventType = typeof parsed.type === 'string' ? parsed.type : '';
+  const providerMessageId = typeof parsed.data?.email_id === 'string'
+    ? parsed.data.email_id
+    : typeof parsed.data?.id === 'string'
+      ? parsed.data.id
+      : '';
+  if (!providerMessageId || providerMessageId.length > 160) return null;
+
+  const bounceType = typeof parsed.data?.bounce?.type === 'string' ? parsed.data.bounce.type : '';
+  if (eventType === 'email.bounced' && bounceType.toLowerCase() === 'transient') {
+    return {
+      provider: 'resend',
+      providerEventId,
+      providerMessageId,
+      eventType: 'email.bounced.transient',
+      status: 'delayed',
+      suppressionReason: null
+    };
+  }
+  const status = resendStatus(eventType);
+  if (!status) return null;
+  const permanentBounce = eventType === 'email.bounced' && bounceType.toLowerCase() === 'permanent';
+  return {
+    provider: 'resend',
+    providerEventId,
+    providerMessageId,
+    eventType: permanentBounce ? 'email.bounced.permanent' : eventType,
+    status,
+    suppressionReason: eventType === 'email.complained'
+      ? 'complaint'
+      : permanentBounce || eventType === 'email.suppressed'
+        ? 'hard-bounce'
+        : null
+  };
+}
+
+async function recordProviderEvent(env: Cloudflare.Env, event: ProviderEvent) {
+  const inserted = await env.DELIVERY_DB.prepare(
+    `INSERT OR IGNORE INTO contact_delivery_events(
+       provider_event_id, challenge_id, provider, provider_message_id, event_type, received_at
+     )
+     SELECT ?1, challenge_id, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+       FROM contact_delivery_attempts
+      WHERE provider = ?2 AND provider_message_id = ?3`
+  ).bind(
+    event.providerEventId,
+    event.provider,
+    event.providerMessageId,
+    event.eventType
+  ).run();
+  if (inserted.meta.changes !== 1) return;
+
   const attempt = await env.DELIVERY_DB.prepare(
     `SELECT challenge_id, destination_hash
        FROM contact_delivery_attempts
       WHERE provider = ?1 AND provider_message_id = ?2`
-  ).bind(provider, providerMessageId).first<{ challenge_id: string; destination_hash: string }>();
-  await env.DELIVERY_DB.prepare(
-    `INSERT OR IGNORE INTO contact_delivery_events(
-       provider_event_id, challenge_id, provider, provider_message_id, event_type, received_at
-     ) VALUES (?1, ?2, ?3, ?4, ?5, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`
-  ).bind(providerEventId, attempt?.challenge_id || null, provider, providerMessageId, eventType).run();
+  ).bind(event.provider, event.providerMessageId).first<{ challenge_id: string; destination_hash: string }>();
   if (!attempt) return;
+
+  const errorCode = event.eventType.replace(/[^a-z0-9]+/gi, '_').slice(0, 80).toUpperCase();
   await env.DELIVERY_DB.prepare(
     `UPDATE contact_delivery_attempts
         SET status = ?2,
-            error_code = CASE WHEN ?2 IN ('failed', 'bounced', 'complained', 'suppressed', 'undelivered') THEN upper(?3) ELSE NULL END,
+            error_code = CASE WHEN ?2 IN ('failed', 'bounced', 'complained', 'suppressed', 'undelivered') THEN ?3 ELSE NULL END,
             delivered_at = CASE WHEN ?2 = 'delivered' THEN strftime('%Y-%m-%dT%H:%M:%fZ', 'now') ELSE delivered_at END,
             updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       WHERE challenge_id = ?1`
-  ).bind(attempt.challenge_id, status, eventType.replace(/[^a-z0-9]+/gi, '_').slice(0, 80)).run();
-  const suppressionReason = status === 'complained'
-    ? 'complaint'
-    : status === 'bounced' || status === 'suppressed'
-      ? 'hard-bounce'
-      : null;
-  if (suppressionReason) {
+  ).bind(attempt.challenge_id, event.status, errorCode).run();
+
+  if (event.suppressionReason) {
     await env.DELIVERY_DB.prepare(
       `INSERT INTO contact_delivery_suppressions(destination_hash, reason, provider_event_id, created_at, released_at)
        VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL)
@@ -587,7 +635,7 @@ async function recordProviderEvent(
          provider_event_id = excluded.provider_event_id,
          created_at = excluded.created_at,
          released_at = NULL`
-    ).bind(attempt.destination_hash, suppressionReason, providerEventId).run();
+    ).bind(attempt.destination_hash, event.suppressionReason, event.providerEventId).run();
   }
 }
 
@@ -597,19 +645,9 @@ async function handleResendWebhook(request: Request, env: Cloudflare.Env) {
   const providerEventId = await verifyResendSignature(rawBody, request, env);
   if (!providerEventId) return safeError('INVALID_PROVIDER_SIGNATURE', 401);
   try {
-    const parsed = JSON.parse(rawBody) as {
-      type?: unknown;
-      data?: { email_id?: unknown; id?: unknown };
-    };
-    const eventType = typeof parsed.type === 'string' ? parsed.type : '';
-    const providerMessageId = typeof parsed.data?.email_id === 'string'
-      ? parsed.data.email_id
-      : typeof parsed.data?.id === 'string'
-        ? parsed.data.id
-        : '';
-    const status = resendStatus(eventType);
-    if (!status || !providerMessageId || providerMessageId.length > 160) return json({ accepted: true }, 202);
-    await recordProviderEvent(env, 'resend', providerEventId, providerMessageId, eventType, status);
+    const event = parseResendEvent(rawBody, providerEventId);
+    if (!event) return json({ accepted: true }, 202);
+    await recordProviderEvent(env, event);
     return json({ accepted: true });
   } catch {
     return safeError('INVALID_PROVIDER_WEBHOOK', 400);
@@ -655,8 +693,14 @@ async function handleTwilioWebhook(request: Request, env: Cloudflare.Env) {
   const rawStatus = parameters.get('MessageStatus') || parameters.get('SmsStatus') || '';
   const status = twilioStatus(rawStatus);
   if (!/^SM[0-9a-f]{32}$/i.test(providerMessageId) || !status) return json({ accepted: true }, 202);
-  const providerEventId = `twilio:${await sha256Hex(`${providerMessageId}:${rawStatus}:${rawBody}`)}`;
-  await recordProviderEvent(env, 'twilio', providerEventId, providerMessageId, `message.${rawStatus.toLowerCase()}`, status);
+  await recordProviderEvent(env, {
+    provider: 'twilio',
+    providerEventId: `twilio:${await sha256Hex(`${providerMessageId}:${rawStatus}:${rawBody}`)}`,
+    providerMessageId,
+    eventType: `message.${rawStatus.toLowerCase()}`,
+    status,
+    suppressionReason: null
+  });
   return json({ accepted: true });
 }
 
@@ -672,7 +716,7 @@ async function handleHealth(request: Request, env: Cloudflare.Env) {
   const statusRows = await env.DELIVERY_DB.prepare(
     `SELECT status, COUNT(*) AS count
        FROM contact_delivery_attempts
-      WHERE created_at >= datetime('now', '-24 hours')
+      WHERE datetime(created_at) >= datetime('now', '-24 hours')
       GROUP BY status`
   ).all<{ status: DeliveryStatus; count: number }>();
   const activeSuppressions = await env.DELIVERY_DB.prepare(
@@ -698,17 +742,25 @@ async function purgeExpiredEvidence(env: Cloudflare.Env) {
   await env.DELIVERY_DB.batch([
     env.DELIVERY_DB.prepare(
       `DELETE FROM contact_delivery_events
-        WHERE received_at < datetime('now', ?1)`
+        WHERE datetime(received_at) < datetime('now', ?1)`
     ).bind(`-${retentionDays} days`),
     env.DELIVERY_DB.prepare(
       `DELETE FROM contact_delivery_attempts
-        WHERE updated_at < datetime('now', ?1)`
+        WHERE datetime(updated_at) < datetime('now', ?1)`
     ).bind(`-${retentionDays} days`),
     env.DELIVERY_DB.prepare(
       `DELETE FROM contact_delivery_abuse_buckets
-        WHERE window_start < datetime('now', '-2 days')`
+        WHERE datetime(window_start) < datetime('now', '-2 days')`
     )
   ]);
+}
+
+function decodedChallengeId(pathname: string) {
+  try {
+    return decodeURIComponent(pathname.slice('/v1/status/'.length));
+  } catch {
+    return '';
+  }
 }
 
 export default {
@@ -719,7 +771,7 @@ export default {
     if (request.method === 'POST' && url.pathname === '/webhooks/twilio') return handleTwilioWebhook(request, env);
     if (request.method === 'GET' && url.pathname === '/v1/health') return handleHealth(request, env);
     if (request.method === 'GET' && url.pathname.startsWith('/v1/status/')) {
-      return handleStatus(request, env, decodeURIComponent(url.pathname.slice('/v1/status/'.length)));
+      return handleStatus(request, env, decodedChallengeId(url.pathname));
     }
     return safeError('NOT_FOUND', 404);
   },
