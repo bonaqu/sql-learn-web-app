@@ -96,13 +96,14 @@ Twilio API and webhook references:
    - channel event secrets.
 8. Run **Contact Provider Staging Acceptance** manually and select `email`, `sms` or `both`.
 9. Approve the protected environment deployment.
-10. Download the redacted artifact and verify for each channel:
+10. Download the redacted evidence-only artifact and verify for each channel:
     - terminal status is `delivered`;
     - code confirmation succeeded;
     - provider and end-to-end latency are recorded;
     - no destination, code, ticket, challenge ID or provider message ID is present.
-11. Run at least one controlled bounce/undelivered scenario and confirm the workflow fails and the admin aggregate changes without exposing PII.
-12. Only after successful evidence, set the corresponding public feature flag to `on` in the intended environment.
+11. Confirm that no runner log is uploaded as an artifact. GitHub masking commands and dynamic secrets must never be copied into a file with `tee` or another transcript mechanism.
+12. Run at least one controlled bounce/undelivered scenario and confirm the workflow fails and the admin aggregate changes without exposing PII.
+13. Only after successful evidence, set the corresponding public feature flag to `on` in the intended environment.
 
 A successful CI contract without the protected real-provider workflow is not real deliverability evidence.
 
@@ -205,7 +206,8 @@ Disabling a channel does not delete verified-contact records. Deletion/export po
 - provider delivery and security events: 30 days, pruned in bounded batches;
 - confirmed but unused challenges: 24 hours, even though the ticket expires after 10 minutes;
 - raw staging capture values: KV TTL of one hour;
-- redacted staging artifacts: 30 days;
+- redacted staging evidence artifact: 3 days;
+- staging runner transcript artifact: none;
 - provider-side retention: configure to the minimum operational/legal requirement and document it during handoff.
 
 Production activation is blocked until the protected workflow has passed with buyer-owned credentials and controlled test destinations for every enabled channel.
