@@ -1,0 +1,93 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import {
+  canonicalEvidenceJson,
+  checkpointConflictMessage,
+  CheckpointReportConflictError,
+  sameImmutableCheckpointReport,
+  validCheckpointReportReceipt
+} from '../src/lib/checkpoint-report-integrity';
+
+const first = {
+  version: 1,
+  id: 'a0000000-0000-0000-0000-000000000001',
+  checkpointId: 'checkpoint-foundation',
+  score: 91,
+  passed: true,
+  nested: { b: 2, a: 1 },
+  values: [{ z: false, a: null }, 0]
+};
+const reordered = {
+  values: [{ a: null, z: false }, -0],
+  nested: { a: 1, b: 2 },
+  passed: true,
+  score: 91,
+  checkpointId: 'checkpoint-foundation',
+  id: 'a0000000-0000-0000-0000-000000000001',
+  version: 1
+};
+assert.equal(canonicalEvidenceJson(first), canonicalEvidenceJson(reordered),
+  'Canonical evidence JSON must ignore object key insertion order and normalize negative zero.');
+assert.equal(sameImmutableCheckpointReport(first, reordered), true);
+assert.equal(sameImmutableCheckpointReport(first, { ...reordered, score: 90 }), false,
+  'Changing score must create an immutable report conflict.');
+assert.equal(sameImmutableCheckpointReport(first, { ...reordered, passed: false }), false,
+  'Changing pass state must create an immutable report conflict.');
+assert.equal(sameImmutableCheckpointReport(first, { ...reordered, id: 'b0000000-0000-0000-0000-000000000002' }), false);
+assert.throws(() => canonicalEvidenceJson({ invalid: Number.NaN }), /non-finite number/);
+assert.throws(() => canonicalEvidenceJson({ invalid: BigInt(1) }), /unsupported bigint/);
+
+const conflict = new CheckpointReportConflictError(first.id, 'local-cloud-merge');
+assert.equal(conflict.code, 'CHECKPOINT_REPORT_CONFLICT');
+assert.equal(conflict.reportId, first.id);
+assert.match(checkpointConflictMessage(conflict) || '', /immutable checkpoint report/);
+assert.equal(checkpointConflictMessage(new Error('other')), null);
+
+const receipt = {
+  version: 1,
+  reportId: first.id,
+  checkpointId: first.checkpointId,
+  persistedAt: '2026-08-03T22:30:00.000Z',
+  payloadDigest: 'a'.repeat(64)
+};
+assert.equal(validCheckpointReportReceipt(receipt), true);
+assert.equal(validCheckpointReportReceipt({ ...receipt, payloadDigest: 'not-a-digest' }), false);
+assert.equal(validCheckpointReportReceipt({ ...receipt, persistedAt: 'invalid' }), false);
+
+const worker = readFileSync(new URL('../worker/checkpoints.ts', import.meta.url), 'utf8');
+for (const marker of [
+  'canonicalEvidenceJson',
+  "crypto.subtle.digest('SHA-256'",
+  'CHECKPOINT_REPORT_CONFLICT',
+  'CHECKPOINT_REPORT_STORED_INVALID',
+  'replayed: true',
+  'replayed: false',
+  'payload_digest',
+  'persisted_at',
+  'receipts',
+  'ORDER BY completed_at DESC, attempt_number DESC, id DESC'
+]) {
+  assert.ok(worker.includes(marker), `Checkpoint Worker immutable report contract is missing ${marker}.`);
+}
+assert.doesNotMatch(worker, /UPDATE checkpoint_reports SET\s*checkpoint_id|SET\s+checkpoint_id = \?/,
+  'Completed checkpoint evidence columns must never be updated after the first accepted report ID.');
+assert.match(worker, /SET payload_digest = \?, persisted_at = COALESCE\(persisted_at, \?\)/,
+  'Legacy replay may backfill receipt metadata without rewriting evidence.');
+assert.match(worker, /storedDigest !== incomingDigest/,
+  'Same-ID replay must compare canonical payload digests.');
+assert.doesNotMatch(worker, /error:[^\n]*existing\.payload|JSON\.stringify\(existing/,
+  'Conflict responses must not expose stored payloads.');
+
+const migration = readFileSync(new URL('../migrations/0021_checkpoint_report_receipts.sql', import.meta.url), 'utf8');
+for (const marker of [
+  'ADD COLUMN payload_digest TEXT',
+  'ADD COLUMN persisted_at TEXT',
+  'COALESCE(persisted_at, created_at, updated_at, completed_at)',
+  'idx_checkpoint_reports_canonical_history'
+]) {
+  assert.ok(migration.includes(marker), `Checkpoint receipt migration is missing ${marker}.`);
+}
+assert.doesNotMatch(migration, /DELETE FROM checkpoint_reports|UPDATE checkpoint_reports\s+SET attempt_number|UNIQUE\s*\(user_id, checkpoint_id, attempt_number\)/i,
+  'Receipt migration must not delete or destructively renumber legacy checkpoint evidence.');
+
+console.log('Checkpoint report integrity validated: canonical equality, typed conflicts, stable receipt shape, append-only Worker semantics and non-destructive legacy migration.');
