@@ -289,13 +289,29 @@ for (const forbiddenDependency of [
 }
 for (const marker of [
   'MAX_EVIDENCE_BYTES',
-  'MAX_CHECKPOINT_REPORTS',
   'MAX_ASSESSMENT_REPORTS',
   'lessonChecksComplete',
-  'report.userId !== userId',
-  'report.passed !== true'
+  'checkpointAttemptSnapshotFromReports',
+  'attemptSnapshot.passedCheckpointIds',
+  'checkpointRemediationsFromAttemptSnapshot'
 ]) {
   assert.ok(evidenceSource.includes(marker), `Journey evidence safety boundary is missing ${marker}.`);
+}
+assert.doesNotMatch(evidenceSource, /MAX_CHECKPOINT_REPORTS|latestByCheckpoint|report\.passed !== true|completedAt\.localeCompare|checkpointRemediationsFromReports/,
+  'Journey evidence must delegate checkpoint normalization, owner/status filtering and latest-attempt selection to the canonical attempt policy.');
+
+const attemptPolicySource = readFileSync(new URL('../src/lib/checkpoint-attempt-policy.ts', import.meta.url), 'utf8');
+for (const marker of [
+  "item.status !== 'completed'",
+  'item.userId !== expectedUserId',
+  'knownCheckpointIds.has',
+  'compareCheckpointAttempts',
+  'checkpointAttemptSnapshotFromReports',
+  'currentAttempt',
+  'historicalBestScore'
+]) {
+  assert.ok(attemptPolicySource.includes(marker),
+    `Canonical checkpoint attempt safety boundary is missing ${marker}.`);
 }
 
 const checkpointSource = readFileSync(new URL('../src/lib/checkpoints.ts', import.meta.url), 'utf8');
