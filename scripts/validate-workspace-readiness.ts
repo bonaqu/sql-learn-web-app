@@ -54,11 +54,21 @@ if (firstInterview) {
   const phase = phaseForModule(firstInterview.module);
   assert.ok(phase, 'Interview task must belong to a checkpoint phase.');
   if (phase) {
-    const opened = workspaceTaskReadiness(firstInterview, emptyProgress, {
+    const staleCheckpoint = workspaceTaskReadiness(firstInterview, emptyProgress, {
       action: firstAction,
       passedPhaseIds: [phase.id]
     }, 'interview');
-    assert.equal(opened.status, 'ready', 'A real phase checkpoint must open transfer tasks.');
+    assert.equal(staleCheckpoint.status, 'preview',
+      'A checkpoint report alone must not open transfer when the module foundation is incomplete.');
+    assert.equal(staleCheckpoint.canRun, false);
+
+    const opened = workspaceTaskReadiness(firstInterview, emptyProgress, {
+      action: firstAction,
+      passedPhaseIds: [phase.id],
+      completedModuleIds: [firstInterview.module]
+    }, 'interview');
+    assert.equal(opened.status, 'ready',
+      'Checkpoint plus completed module foundation must open transfer tasks.');
     assert.equal(opened.canRun, true);
   }
 }
@@ -172,6 +182,8 @@ for (const marker of [
   'frontierCompletedModuleIds',
   'frontierEligibleModuleIds',
   'frontierRouteModuleIds',
+  'passedPhaseIds.includes(taskPhase.id)',
+  'completedModuleIds.includes(task.module)',
   'Prerequisites готовы · позже по цели',
   'Prerequisites не закрыты · preview'
 ]) assert.ok(readinessSource.includes(marker), `Workspace frontier logic is missing ${marker}.`);
@@ -200,4 +212,4 @@ for (const marker of ['.task-row.preview', '.workspace-readiness-gate', '.worksp
   assert.ok(cssSource.includes(marker), `Workspace readiness styling is missing ${marker}.`);
 }
 
-console.log('Workspace readiness validated: one goal-aware frontier, browseable eligible previews, prerequisite locks, checkpoint-opened transfer and canonical post-success navigation.');
+console.log('Workspace readiness validated: one goal-aware frontier, browseable eligible previews, prerequisite locks, module-plus-checkpoint transfer and canonical post-success navigation.');
