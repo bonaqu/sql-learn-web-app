@@ -232,6 +232,62 @@ function receipt(
   };
 }
 
+async function storedReportResponse(
+  env: Cloudflare.Env,
+  existing: StoredCheckpointReport,
+  body: CheckpointReportPayload,
+  incomingDigest: string,
+  userId: string,
+  replayed: boolean
+) {
+  if (existing.user_id !== userId) return json({ error: 'Checkpoint owner mismatch' }, 403);
+  let storedReport: CheckpointReportPayload | null = null;
+  try {
+    const parsed = JSON.parse(existing.payload) as unknown;
+    storedReport = validReport(parsed) ? parsed : null;
+  } catch {
+    storedReport = null;
+  }
+  if (!storedReport || existing.checkpoint_id !== body.checkpointId) {
+    return json({
+      error: 'Stored checkpoint report cannot be replayed safely',
+      code: 'CHECKPOINT_REPORT_STORED_INVALID',
+      reportId: body.id
+    }, 409);
+  }
+  const storedDigest = existing.payload_digest && DIGEST_PATTERN.test(existing.payload_digest)
+    ? existing.payload_digest.toLowerCase()
+    : await reportDigest(storedReport);
+  if (storedDigest !== incomingDigest) {
+    return json({
+      error: 'Completed checkpoint report is immutable',
+      code: 'CHECKPOINT_REPORT_CONFLICT',
+      reportId: body.id
+    }, 409);
+  }
+  const receiptTime = persistedAt(existing.persisted_at, existing.created_at, existing.updated_at, storedReport.completedAt);
+  if (existing.payload_digest !== storedDigest || !existing.persisted_at) {
+    await env.DB.prepare(`UPDATE checkpoint_reports
+      SET payload_digest = ?, persisted_at = COALESCE(persisted_at, ?)
+      WHERE id = ? AND user_id = ?`)
+      .bind(storedDigest, receiptTime, body.id, userId)
+      .run();
+  }
+  return json({
+    ok: true,
+    replayed,
+    receipt: receipt(storedReport, storedDigest, receiptTime)
+  });
+}
+
+async function storedReport(env: Cloudflare.Env, reportId: string) {
+  return env.DB.prepare(`SELECT
+      user_id, checkpoint_id, payload, payload_digest, persisted_at, created_at, updated_at
+    FROM checkpoint_reports WHERE id = ?`)
+    .bind(reportId)
+    .first<StoredCheckpointReport>();
+}
+
 async function listReports(env: Cloudflare.Env, userId: string) {
   const rows = await env.DB.prepare(`SELECT payload, payload_digest, persisted_at, created_at, updated_at
     FROM checkpoint_reports
@@ -268,55 +324,11 @@ async function saveReport(request: Request, env: Cloudflare.Env, userId: string)
   if (new TextEncoder().encode(serialized).byteLength > MAX_REPORT_BYTES) return json({ error: 'Checkpoint report is too large' }, 413);
   const incomingDigest = await reportDigest(body);
 
-  const existing = await env.DB.prepare(`SELECT
-      user_id, checkpoint_id, payload, payload_digest, persisted_at, created_at, updated_at
-    FROM checkpoint_reports WHERE id = ?`)
-    .bind(body.id)
-    .first<StoredCheckpointReport>();
-  if (existing && existing.user_id !== userId) return json({ error: 'Checkpoint owner mismatch' }, 403);
-
-  if (existing) {
-    let storedReport: CheckpointReportPayload | null = null;
-    try {
-      const parsed = JSON.parse(existing.payload) as unknown;
-      storedReport = validReport(parsed) ? parsed : null;
-    } catch {
-      storedReport = null;
-    }
-    if (!storedReport || existing.checkpoint_id !== body.checkpointId) {
-      return json({
-        error: 'Stored checkpoint report cannot be replayed safely',
-        code: 'CHECKPOINT_REPORT_STORED_INVALID',
-        reportId: body.id
-      }, 409);
-    }
-    const storedDigest = existing.payload_digest && DIGEST_PATTERN.test(existing.payload_digest)
-      ? existing.payload_digest.toLowerCase()
-      : await reportDigest(storedReport);
-    if (storedDigest !== incomingDigest) {
-      return json({
-        error: 'Completed checkpoint report is immutable',
-        code: 'CHECKPOINT_REPORT_CONFLICT',
-        reportId: body.id
-      }, 409);
-    }
-    const receiptTime = persistedAt(existing.persisted_at, existing.created_at, existing.updated_at, storedReport.completedAt);
-    if (existing.payload_digest !== storedDigest || !existing.persisted_at) {
-      await env.DB.prepare(`UPDATE checkpoint_reports
-        SET payload_digest = ?, persisted_at = COALESCE(persisted_at, ?)
-        WHERE id = ? AND user_id = ?`)
-        .bind(storedDigest, receiptTime, body.id, userId)
-        .run();
-    }
-    return json({
-      ok: true,
-      replayed: true,
-      receipt: receipt(storedReport, storedDigest, receiptTime)
-    });
-  }
+  const existing = await storedReport(env, body.id);
+  if (existing) return storedReportResponse(env, existing, body, incomingDigest, userId, true);
 
   const receiptTime = new Date().toISOString();
-  await env.DB.prepare(`INSERT INTO checkpoint_reports(
+  const inserted = await env.DB.prepare(`INSERT OR IGNORE INTO checkpoint_reports(
     id, user_id, checkpoint_id, status, started_at, completed_at, duration_seconds,
     attempt_number, score, best_score, passed, payload, payload_digest, persisted_at
   ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -337,11 +349,23 @@ async function saveReport(request: Request, env: Cloudflare.Env, userId: string)
       receiptTime
     )
     .run();
-  return json({
-    ok: true,
-    replayed: false,
-    receipt: receipt(body, incomingDigest, receiptTime)
-  });
+
+  const persisted = await storedReport(env, body.id);
+  if (!persisted) {
+    return json({
+      error: 'Checkpoint report could not be persisted',
+      code: 'CHECKPOINT_REPORT_PERSISTENCE_FAILED',
+      reportId: body.id
+    }, 500);
+  }
+  return storedReportResponse(
+    env,
+    persisted,
+    body,
+    incomingDigest,
+    userId,
+    inserted.meta.changes !== 1
+  );
 }
 
 export async function handleCheckpointRequest(request: Request, env: Cloudflare.Env, userId: string): Promise<Response | null> {
