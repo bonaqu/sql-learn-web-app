@@ -10,17 +10,12 @@ type CommercialEnvKey =
   | 'EMAIL_VERIFICATION_WEBHOOK_SECRET'
   | 'SMS_VERIFICATION_WEBHOOK_URL'
   | 'SMS_VERIFICATION_WEBHOOK_SECRET'
+  | 'TURNSTILE_SITE_KEY'
   | 'TURNSTILE_SECRET_KEY'
   | 'TURNSTILE_EXPECTED_HOSTNAMES'
   | 'ADMIN_ALLOWED_USER_IDS';
 
 export type CommercialEnvironment = Cloudflare.Env & Partial<Record<CommercialEnvKey, string>>;
-
-type CommercialCapabilityName =
-  | 'emailVerification'
-  | 'smsVerification'
-  | 'turnstile'
-  | 'adminConsole';
 
 export type CommercialCapabilities = {
   contract: 'commercial-capabilities-v1';
@@ -28,11 +23,17 @@ export type CommercialCapabilities = {
     usernamePassword: true;
     recoveryCodes: true;
   };
-  integrations: Record<CommercialCapabilityName, { enabled: boolean }>;
+  integrations: {
+    emailVerification: { enabled: boolean };
+    smsVerification: { enabled: boolean };
+    turnstile: { enabled: boolean; siteKey?: string };
+    adminConsole: { enabled: boolean };
+  };
 };
 
 const USER_ID_PATTERN = /^[a-zA-Z0-9_-]{8,80}$/;
 const HOSTNAME_PATTERN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const TURNSTILE_SITE_KEY_PATTERN = /^[A-Za-z0-9_-]{8,160}$/;
 
 export function enabledFlag(value: string | undefined) {
   return value?.trim().toLowerCase() === 'on';
@@ -52,12 +53,18 @@ export function expectedTurnstileHostnames(env: CommercialEnvironment) {
     .filter(value => HOSTNAME_PATTERN.test(value)));
 }
 
+export function turnstileSiteKey(env: CommercialEnvironment) {
+  const value = (env.TURNSTILE_SITE_KEY || '').trim();
+  return TURNSTILE_SITE_KEY_PATTERN.test(value) ? value : '';
+}
+
 export function turnstileSecret(env: CommercialEnvironment) {
   return (env.TURNSTILE_SECRET_KEY || '').trim().slice(0, 2_000);
 }
 
 export function turnstileReady(env: CommercialEnvironment) {
   return enabledFlag(env.FEATURE_TURNSTILE)
+    && turnstileSiteKey(env).length > 0
     && turnstileSecret(env).length >= 8
     && expectedTurnstileHostnames(env).size > 0;
 }
@@ -80,6 +87,8 @@ export function commercialConfigurationErrors(env: CommercialEnvironment) {
 }
 
 export function commercialCapabilities(env: CommercialEnvironment): CommercialCapabilities {
+  const turnstileEnabled = turnstileReady(env);
+  const siteKey = turnstileSiteKey(env);
   return {
     contract: 'commercial-capabilities-v1',
     authentication: {
@@ -89,7 +98,7 @@ export function commercialCapabilities(env: CommercialEnvironment): CommercialCa
     integrations: {
       emailVerification: { enabled: contactVerificationReady('email', env) },
       smsVerification: { enabled: contactVerificationReady('sms', env) },
-      turnstile: { enabled: turnstileReady(env) },
+      turnstile: turnstileEnabled ? { enabled: true, siteKey } : { enabled: false },
       adminConsole: { enabled: adminConsoleReady(env) }
     }
   };
