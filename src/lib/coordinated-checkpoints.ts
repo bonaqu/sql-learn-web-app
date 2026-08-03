@@ -1,9 +1,11 @@
 import type { CoordinatedCheckpointId } from './checkpoint-attempt-reservation-contract';
 import {
   CheckpointAttemptReservationError,
+  CheckpointAttemptReservationUnavailableError,
   clearCheckpointReservationClientRequest,
   reserveCheckpointAttempt
 } from './checkpoint-attempt-reservations';
+import { loadAuthSession } from './auth';
 import {
   buildCheckpointReport,
   clearCheckpointSession,
@@ -57,12 +59,14 @@ export async function createCheckpointSessionWithCoordination(
   progress: Progress,
   reports = loadLocalCheckpointReports()
 ): Promise<StartCheckpointSessionResult> {
+  const auth = loadAuthSession();
+  if (!auth) throw new Error('Необходим вход в аккаунт');
   try {
     const result = await reserveCheckpointAttempt(checkpointId);
     const reservation = result.reservation;
     if (reservation.status !== 'active') {
       clearCheckpointReservationClientRequest(
-        reservation.clientRequestId,
+        auth.userId,
         checkpointId,
         reservation.clientRequestId
       );
@@ -92,7 +96,7 @@ export async function createCheckpointSessionWithCoordination(
       reservationDeviceName: reservation.deviceName
     } satisfies CoordinatedCheckpointSession) as CoordinatedCheckpointSession;
     clearCheckpointReservationClientRequest(
-      session.userId,
+      auth.userId,
       checkpointId,
       reservation.clientRequestId
     );
@@ -113,6 +117,8 @@ export async function createCheckpointSessionWithCoordination(
         };
       }
       if (error.status < 500) throw error;
+    } else if (!(error instanceof CheckpointAttemptReservationUnavailableError)) {
+      throw error;
     }
 
     const base = createCheckpointSession(checkpointId, progress, reports);
