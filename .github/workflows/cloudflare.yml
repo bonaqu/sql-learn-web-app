@@ -209,6 +209,14 @@ jobs:
           node scripts/checkpoint-production-smoke.mjs
           test -s cloudflare-checkpoint-stage.txt
 
+      - name: Smoke-test coordinated checkpoint attempt lifecycle
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          echo 'checkpoint-reservation-smoke' > cloudflare-deployment-stage.txt
+          node scripts/checkpoint-reservation-production-smoke.mjs
+          test -s cloudflare-checkpoint-reservation-stage.txt
+
       - name: Smoke-test immutable capstone report lifecycle
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
