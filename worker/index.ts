@@ -11,6 +11,7 @@ import { handleContactAccountRequest } from './contact-account';
 import { handleContactDeliveryEventRequest } from './contact-delivery-events';
 import { recordContactSecurityOutcome } from './contact-security-events';
 import { handleContactVerificationRequest } from './contact-verification';
+import { handleCoordinatedCheckpointReportRequest } from './coordinated-checkpoint-reports';
 import { handleCurriculumRequest } from './curriculum';
 import { handleDialectLabRequest } from './dialect-labs';
 import { handleDialectRealEngineRequest } from './dialect-real-engine-route';
@@ -242,17 +243,27 @@ export default {
       }
       if (assessmentResponse) return finalize(assessmentResponse, request, origin);
 
+      const checkpointAuth = {
+        userId: auth.userId,
+        sessionId: auth.sessionId,
+        deviceName: auth.deviceName
+      };
+
       let checkpointReservationResponse: Response | null;
       try {
-        checkpointReservationResponse = await handleCheckpointAttemptReservationRequest(request, env, {
-          userId: auth.userId,
-          sessionId: auth.sessionId,
-          deviceName: auth.deviceName
-        });
+        checkpointReservationResponse = await handleCheckpointAttemptReservationRequest(request, env, checkpointAuth);
       } catch (error) {
         return finalize(pipelineFailure(error, url.pathname, 'checkpoint'), request, origin);
       }
       if (checkpointReservationResponse) return finalize(checkpointReservationResponse, request, origin);
+
+      let coordinatedCheckpointReportResponse: Response | null;
+      try {
+        coordinatedCheckpointReportResponse = await handleCoordinatedCheckpointReportRequest(request, env, checkpointAuth);
+      } catch (error) {
+        return finalize(pipelineFailure(error, url.pathname, 'checkpoint'), request, origin);
+      }
+      if (coordinatedCheckpointReportResponse) return finalize(coordinatedCheckpointReportResponse, request, origin);
 
       let checkpointResponse: Response | null;
       try {
