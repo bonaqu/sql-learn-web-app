@@ -2,9 +2,10 @@ import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { curriculumCheckpoints } from '../../src/data/complete-curriculum';
 import { tasks } from '../../src/data/course-catalog';
-import { authenticatePage } from './auth-helper';
+import { authenticatePage, loginPage } from './auth-helper';
 import { openAdvancedTool } from './navigation-helper';
 
+const WORKER_URL = 'http://127.0.0.1:8787';
 const checkpoint = curriculumCheckpoints[0];
 if (!checkpoint) throw new Error('Checkpoint current-attempt browser contract requires one checkpoint.');
 
@@ -44,7 +45,7 @@ function report(
         skipped: false,
         attempts: 1,
         elapsedSeconds: 60,
-        score
+        score: passed ? score : 0
       };
     }),
     moduleScores: checkpoint.moduleIds.map(module => ({
@@ -62,9 +63,9 @@ function fixture(userId: string) {
   const olderAt = new Date(Date.now() - 120_000).toISOString();
   const newerAt = new Date(Date.now() - 60_000).toISOString();
   return {
-    olderPass: report(userId, 'checkpoint-current-older-pass', olderAt, 1, 91, true, 91),
-    newerFail: report(userId, 'checkpoint-current-newer-fail', newerAt, 2, 45, false, 91),
-    laterPass: report(userId, 'checkpoint-current-later-pass', new Date().toISOString(), 3, 88, true, 91)
+    olderPass: report(userId, 'a0000000-0000-0000-0000-000000000001', olderAt, 1, 91, true, 91),
+    newerFail: report(userId, 'b0000000-0000-0000-0000-000000000002', newerAt, 2, 45, false, 91),
+    laterPass: report(userId, 'c0000000-0000-0000-0000-000000000003', new Date().toISOString(), 3, 88, true, 91)
   };
 }
 
@@ -74,6 +75,16 @@ async function seedReports(page: Page, userId: string, reports: unknown[]) {
     localStorage.setItem(`sql-academy-checkpoint-reports-v1:${id}`, JSON.stringify(value));
   }, { id: userId, value: reports });
   await page.reload();
+}
+
+async function saveCloudReports(page: Page, token: string, reports: unknown[]) {
+  for (const value of reports) {
+    const response = await page.request.post(`${WORKER_URL}/api/checkpoints/reports`, {
+      headers: { authorization: `Bearer ${token}` },
+      data: value
+    });
+    expect(response.ok(), await response.text()).toBe(true);
+  }
 }
 
 async function openCenter(page: Page) {
@@ -94,10 +105,12 @@ async function expectAccessible(page: Page) {
   expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
 }
 
-test('desktop checkpoint attempt shows current failure separately from historical best and restores on later pass', async ({ page }, testInfo) => {
+test('desktop checkpoint attempt shows current failure separately from historical best and restores on later pass', async ({ page, browser }, testInfo) => {
   const auth = await authenticatePage(page, 'checkpoint-current-attempt');
-  const value = fixture(String(auth.session.userId));
-  await seedReports(page, String(auth.session.userId), [value.olderPass, value.newerFail]);
+  const userId = String(auth.session.userId);
+  const token = String(auth.session.token);
+  const value = fixture(userId);
+  await seedReports(page, userId, [value.olderPass, value.newerFail]);
   await openCenter(page);
 
   await expect(page.getByTestId('checkpoint-current-pass-count')).toContainText('0');
@@ -112,7 +125,19 @@ test('desktop checkpoint attempt shows current failure separately from historica
   await expect(page.getByTestId('checkpoint-report-historical-best')).toContainText('91%');
   await page.screenshot({ path: testInfo.outputPath('desktop-checkpoint-current-vs-best.png'), fullPage: true });
 
-  await seedReports(page, String(auth.session.userId), [value.newerFail, value.olderPass, value.laterPass]);
+  await saveCloudReports(page, token, [value.olderPass, value.newerFail]);
+  const secondContext = await browser.newContext();
+  const secondPage = await secondContext.newPage();
+  await loginPage(secondPage, auth.username, auth.password);
+  await secondPage.goto('./');
+  await openCenter(secondPage);
+  await expect(secondPage.getByTestId('checkpoint-current-pass-count')).toContainText('0');
+  const secondCard = secondPage.getByTestId(`checkpoint-${checkpoint.id}`);
+  await expect(secondCard.getByTestId(`checkpoint-current-score-${checkpoint.id}`)).toContainText('текущая попытка #2: 45%');
+  await expect(secondCard.getByTestId(`checkpoint-historical-best-${checkpoint.id}`)).toContainText('исторический максимум 91%');
+  await secondContext.close();
+
+  await seedReports(page, userId, [value.newerFail, value.olderPass, value.laterPass]);
   await openCenter(page);
   await expect(page.getByTestId('checkpoint-current-pass-count')).toContainText('1');
   const restoredCard = page.getByTestId(`checkpoint-${checkpoint.id}`);
