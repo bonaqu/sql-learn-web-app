@@ -78,6 +78,8 @@ export default function GoalSwitchPanel({
 
   const apply = async () => {
     if (!preview.changed || syncState === 'syncing') return;
+    const proposedActionTitle = preview.proposedFrontier.action.title;
+    const immediateActionChanged = preview.immediateActionChanged;
     const saved = saveOnboardingProfile(preview.proposedProfile);
     onProfileChanged(saved);
     setApplied(true);
@@ -87,8 +89,8 @@ export default function GoalSwitchPanel({
       const synced = await syncOnboardingProfile(saved);
       onProfileChanged(synced.profile);
       setSyncState('synced');
-      setMessage(preview.immediateActionChanged
-        ? `Цель изменена. Следующий шаг теперь: ${synced.profile.goal ? goalOptions.find(item => item.id === synced.profile.goal)?.title : preview.proposedGoalTitle}.`
+      setMessage(immediateActionChanged
+        ? `Цель изменена. Следующий шаг теперь — «${proposedActionTitle}».`
         : 'Цель изменена, но текущий обязательный шаг остался прежним. Новый приоритет включится после него.');
     } catch {
       setSyncState('offline');
