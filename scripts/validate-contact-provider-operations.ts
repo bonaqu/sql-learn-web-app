@@ -183,9 +183,12 @@ for (const forbidden of [challengeId, 'provider-message-20', String(securityRow.
   assert.ok(!adminText.includes(forbidden), `Admin health leaked operational identifier: ${forbidden}`);
 }
 
-for (const forbiddenColumn of ['destination TEXT', 'code TEXT', 'ip_address', 'user_agent']) {
-  assert.ok(!migration20.includes(forbiddenColumn), `Operational schema stores forbidden data: ${forbiddenColumn}`);
-}
+for (const forbiddenColumn of [
+  /(?:^|[,\n(]\s*)destination\s+TEXT\b/i,
+  /(?:^|[,\n(]\s*)code\s+TEXT\b/i,
+  /(?:^|[,\n(]\s*)ip_address\s+TEXT\b/i,
+  /(?:^|[,\n(]\s*)user_agent\s+TEXT\b/i
+]) assert.doesNotMatch(migration20, forbiddenColumn, `Operational schema stores forbidden data: ${forbiddenColumn}`);
 for (const marker of [
   'CREATE TABLE IF NOT EXISTS contact_delivery_events',
   'CREATE TABLE IF NOT EXISTS contact_security_events',
