@@ -79,6 +79,15 @@ function progressWithEvidence(independent: readonly SqlTask[], guided: readonly 
   };
 }
 
+function checkpointForPhase(phaseId: string) {
+  const phase = phaseDefinitions.find(item => item.id === phaseId);
+  return phase
+    ? curriculumCheckpoints.find(checkpoint =>
+        checkpoint.moduleIds.some(moduleId => phase.moduleIds.some(id => id === moduleId))
+      ) || null
+    : null;
+}
+
 const totalModes: Record<TaskMode, number> = { lesson: 0, practice: 0, interview: 0, puzzle: 0 };
 
 for (const moduleId of coreModuleIds) {
@@ -121,11 +130,17 @@ for (const moduleId of coreModuleIds) {
   const phaseIndex = phaseDefinitions.findIndex(phase => phase.moduleIds.some(id => id === moduleId));
   const phase = phaseDefinitions[phaseIndex];
   assert.ok(phase, `${moduleId}: missing canonical phase`);
-  const phaseLastModuleIndex = Math.max(...phase.moduleIds.map(moduleOrderIndex));
-  const bypassedModuleIds = canonicalModuleIds.filter(id => id !== moduleId && moduleOrderIndex(id) <= phaseLastModuleIndex);
-  const priorCheckpointIds = curriculumCheckpoints.slice(0, phaseIndex).map(item => item.id);
-  const targetCheckpoint = curriculumCheckpoints[phaseIndex];
-  assert.ok(targetCheckpoint, `${moduleId}: missing target checkpoint`);
+  const targetCheckpoint = checkpointForPhase(phase.id);
+  assert.ok(targetCheckpoint, `${moduleId}: missing target phase checkpoint`);
+  const priorCheckpointIds = phaseDefinitions
+    .slice(0, phaseIndex)
+    .flatMap(priorPhase => {
+      const priorCheckpoint = checkpointForPhase(priorPhase.id);
+      return priorCheckpoint ? [priorCheckpoint.id] : [];
+    });
+  const bypassedModuleIds = canonicalModuleIds.filter(id => moduleOrderIndex(id) < moduleOrderIndex(moduleId));
+  const isLastModuleInPhase = phase.moduleIds.at(-1) === moduleId;
+  const nextModuleId = canonicalModuleIds[moduleOrderIndex(moduleId) + 1] || null;
 
   const curriculum = {
     ...emptyCurriculumProgress(),
@@ -144,6 +159,7 @@ for (const moduleId of coreModuleIds) {
 
   const afterGuided = nextJourneyAction(progressWithEvidence([], guided), curriculum, {
     includeReview: false,
+    goal: 'full',
     bypassedModuleIds,
     passedCheckpointIds: priorCheckpointIds
   });
@@ -152,24 +168,35 @@ for (const moduleId of coreModuleIds) {
 
   const afterFoundation = nextJourneyAction(progressWithEvidence(practice, guided), curriculum, {
     includeReview: false,
+    goal: 'full',
     bypassedModuleIds,
     passedCheckpointIds: priorCheckpointIds
   });
-  assert.equal(afterFoundation.stage, 'checkpoint', `${moduleId}: checkpoint must follow all three independent practices`);
-  assert.equal(afterFoundation.checkpointId, targetCheckpoint.id, `${moduleId}: wrong checkpoint after foundation`);
+
+  if (!isLastModuleInPhase) {
+    assert.equal(afterFoundation.stage, 'lesson', `${moduleId}: an intermediate phase module must continue to the next lesson, not checkpoint early`);
+    assert.equal(afterFoundation.moduleId, nextModuleId, `${moduleId}: route must continue to the next prerequisite-safe module`);
+    assert.notEqual(afterFoundation.routeReasonCode, 'phase-checkpoint', `${moduleId}: checkpoint cannot open before the full phase foundation`);
+    continue;
+  }
+
+  assert.equal(afterFoundation.stage, 'checkpoint', `${moduleId}: checkpoint must follow the complete phase foundation`);
+  assert.equal(afterFoundation.checkpointId, targetCheckpoint!.id, `${moduleId}: wrong checkpoint after the phase foundation`);
 
   const afterCheckpoint = nextJourneyAction(progressWithEvidence(practice, guided), curriculum, {
     includeReview: false,
+    goal: 'full',
     bypassedModuleIds,
-    passedCheckpointIds: [...priorCheckpointIds, targetCheckpoint.id]
+    passedCheckpointIds: [...priorCheckpointIds, targetCheckpoint!.id]
   });
   assert.equal(afterCheckpoint.stage, 'interview', `${moduleId}: Interview must be the first post-checkpoint transfer`);
   assert.equal(afterCheckpoint.task?.id, transfer[0]?.id, `${moduleId}: wrong Interview task`);
 
   const afterInterview = nextJourneyAction(progressWithEvidence([...practice, transfer[0]], guided), curriculum, {
     includeReview: false,
+    goal: 'full',
     bypassedModuleIds,
-    passedCheckpointIds: [...priorCheckpointIds, targetCheckpoint.id]
+    passedCheckpointIds: [...priorCheckpointIds, targetCheckpoint!.id]
   });
   assert.equal(afterInterview.stage, 'puzzle', `${moduleId}: Puzzle must follow Interview evidence`);
   assert.equal(afterInterview.task?.id, transfer[1]?.id, `${moduleId}: wrong Puzzle task`);
@@ -182,4 +209,4 @@ assert.deepEqual(totalModes, {
   puzzle: coreModuleIds.length
 }, 'Core aggregate stage distribution drifted');
 
-console.log(`Core task progression validated: ${coreModuleIds.length} modules, ${totalModes.lesson} guided, ${totalModes.practice} practice, ${totalModes.interview} interview and ${totalModes.puzzle} puzzle tasks with practice-backed checkpoints.`);
+console.log(`Core task progression validated: ${coreModuleIds.length} modules, phase-wide checkpoints, ${totalModes.lesson} guided, ${totalModes.practice} practice, ${totalModes.interview} interview and ${totalModes.puzzle} puzzle tasks.`);
