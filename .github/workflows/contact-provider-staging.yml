@@ -1,0 +1,83 @@
+name: Contact Provider Staging Acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Real provider channel to verify
+        required: true
+        type: choice
+        options:
+          - email
+          - sms
+      timeout_seconds:
+        description: Maximum wait for a delivered receipt
+        required: true
+        default: '180'
+        type: choice
+        options:
+          - '60'
+          - '120'
+          - '180'
+          - '300'
+          - '600'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: contact-provider-staging-${{ inputs.channel }}
+  cancel-in-progress: false
+
+jobs:
+  accept:
+    name: Verify real ${{ inputs.channel }} delivery and receipt
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: contact-provider-staging
+    env:
+      CONTACT_STAGING_CHANNEL: ${{ inputs.channel }}
+      CONTACT_STAGING_PROVIDER_URL: ${{ inputs.channel == 'email' && secrets.CONTACT_STAGING_EMAIL_PROVIDER_URL || secrets.CONTACT_STAGING_SMS_PROVIDER_URL }}
+      CONTACT_STAGING_PROVIDER_SECRET: ${{ inputs.channel == 'email' && secrets.CONTACT_STAGING_EMAIL_PROVIDER_SECRET || secrets.CONTACT_STAGING_SMS_PROVIDER_SECRET }}
+      CONTACT_STAGING_DESTINATION: ${{ inputs.channel == 'email' && secrets.CONTACT_STAGING_EMAIL_DESTINATION || secrets.CONTACT_STAGING_SMS_DESTINATION }}
+      CONTACT_STAGING_RECEIPT_URL: ${{ secrets.CONTACT_STAGING_RECEIPT_URL }}
+      CONTACT_STAGING_RECEIPT_SECRET: ${{ secrets.CONTACT_STAGING_RECEIPT_SECRET }}
+      CONTACT_STAGING_TIMEOUT_MS: ${{ fromJSON(inputs.timeout_seconds) * 1000 }}
+      CONTACT_STAGING_ARTIFACT: contact-provider-staging-result.json
+      CONTACT_STAGING_STAGE: contact-provider-staging-stage.txt
+    steps:
+      - name: Checkout exact default branch
+        uses: actions/checkout@v4
+        with:
+          ref: bonaqu_projects
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Validate acceptance harness
+        shell: bash
+        run: |
+          node --check scripts/contact-provider-staging-acceptance.mjs
+          test -n "$CONTACT_STAGING_PROVIDER_URL"
+          test -n "$CONTACT_STAGING_PROVIDER_SECRET"
+          test -n "$CONTACT_STAGING_DESTINATION"
+          test -n "$CONTACT_STAGING_RECEIPT_URL"
+          test -n "$CONTACT_STAGING_RECEIPT_SECRET"
+
+      - name: Send a real verification message and wait for provider receipt
+        shell: bash
+        run: node scripts/contact-provider-staging-acceptance.mjs
+
+      - name: Upload scrubbed acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contact-provider-${{ inputs.channel }}-staging-${{ github.run_id }}
+          path: |
+            contact-provider-staging-result.json
+            contact-provider-staging-stage.txt
+            contact-provider-staging-error.txt
+          if-no-files-found: error
+          retention-days: 30
