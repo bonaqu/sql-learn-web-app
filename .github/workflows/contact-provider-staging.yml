@@ -73,10 +73,10 @@ jobs:
         run: node scripts/contact-provider-staging-smoke.mjs
 
       - name: Upload redacted delivery evidence
-        if: always() && hashFiles(format('{0}', env.CONTACT_PROVIDER_EVIDENCE_PATH)) != ''
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: contact-provider-${{ inputs.channel }}-staging-evidence
           path: ${{ env.CONTACT_PROVIDER_EVIDENCE_PATH }}
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 3
