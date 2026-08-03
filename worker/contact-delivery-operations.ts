@@ -34,9 +34,17 @@ type ChallengeRow = {
   provider_message_id: string | null;
 };
 
+type DeliveryEventRow = {
+  status: DeliveryStatus;
+  reason_code: string | null;
+  occurred_at: string;
+  recorded_at: string;
+};
+
 const RECEIPT_PATH = '/api/integrations/contact-delivery-receipt';
 const MAX_JSON_BYTES = 12_000;
 const EVENT_ID_PATTERN = /^[A-Za-z0-9._:/-]{1,180}$/;
+const CHALLENGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MESSAGE_ID_PATTERN = /^[A-Za-z0-9._:/-]{1,160}$/;
 const REASON_PATTERN = /^[A-Za-z0-9._:/-]{1,96}$/;
 const STATUSES = new Set<DeliveryStatus>([
@@ -198,15 +206,33 @@ export async function pruneContactOperationalEvents(env: ContactOperationsEnviro
   ]);
 }
 
+async function deliveryStatus(request: Request, env: ContactOperationsEnvironment) {
+  const challengeId = new URL(request.url).searchParams.get('challengeId') || '';
+  if (!CHALLENGE_ID_PATTERN.test(challengeId)) return json({ error: 'Invalid challenge id' }, 400);
+  const rows = await env.DB.prepare(`SELECT status, reason_code, occurred_at, recorded_at
+    FROM contact_delivery_events WHERE challenge_id = ? ORDER BY occurred_at, recorded_at LIMIT 50`)
+    .bind(challengeId).all<DeliveryEventRow>();
+  return json({
+    challengeId,
+    events: rows.results.map(row => ({
+      status: row.status,
+      reasonCode: row.reason_code,
+      occurredAt: row.occurred_at,
+      recordedAt: row.recorded_at
+    }))
+  });
+}
+
 export async function handleContactDeliveryReceiptRequest(
   request: Request,
   env: ContactOperationsEnvironment
 ): Promise<Response | null> {
   if (new URL(request.url).pathname !== RECEIPT_PATH) return null;
   if (!contactDeliveryReceiptReady(env)) return json({ error: 'Not found' }, 404);
-  if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405, { allow: 'POST' });
   if (!authorized(request, env)) return json({ error: 'Not found' }, 404);
   if (!env.DB) return json({ error: 'Delivery storage is unavailable' }, 503);
+  if (request.method === 'GET') return deliveryStatus(request, env);
+  if (request.method !== 'POST') return json({ error: 'Method not allowed' }, 405, { allow: 'GET, POST' });
 
   const body = await boundedJson(request) as {
     contract?: unknown;
@@ -225,8 +251,7 @@ export async function handleContactDeliveryReceiptRequest(
     || typeof body.eventId !== 'string'
     || !EVENT_ID_PATTERN.test(body.eventId)
     || typeof body.challengeId !== 'string'
-    || body.challengeId.length < 8
-    || body.challengeId.length > 80
+    || !CHALLENGE_ID_PATTERN.test(body.challengeId)
     || typeof body.channel !== 'string'
     || !CHANNELS.has(body.channel as Channel)
     || typeof body.purpose !== 'string'
