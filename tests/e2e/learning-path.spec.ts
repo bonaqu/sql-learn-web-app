@@ -1,10 +1,120 @@
-import { expect, test } from '@playwright/test';
-import { authenticatePage } from './auth-helper';
+import { AxeBuilder } from '@axe-core/playwright';
+import { expect, test, type Page } from '@playwright/test';
+import { curriculumCheckpoints } from '../../src/data/complete-curriculum';
+import { modules } from '../../src/data/course-catalog';
+import { phaseDefinitions } from '../../src/data/learning-structure';
+import { goalModuleRoute } from '../../src/lib/goal-aware-route';
+import type { LearnerGoal } from '../../src/lib/learner-onboarding';
+import { authenticatePage, loginPage } from './auth-helper';
 
-const expectNoHorizontalOverflow = async (page: import('@playwright/test').Page) => {
+const expectNoHorizontalOverflow = async (page: Page) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(overflow).toBe(false);
 };
+
+function firstDifference(left: readonly string[], right: readonly string[]) {
+  const length = Math.min(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    if (left[index] !== right[index]) return index;
+  }
+  return left.length === right.length ? -1 : length;
+}
+
+function moduleTitle(moduleId: string) {
+  return modules.find(([id]) => id === moduleId)?.[1] || moduleId;
+}
+
+function checkpointForPhase(phaseId: string) {
+  const phase = phaseDefinitions.find(item => item.id === phaseId);
+  return phase
+    ? curriculumCheckpoints.find(checkpoint => checkpoint.moduleIds.some(moduleId => phase.moduleIds.includes(moduleId))) || null
+    : null;
+}
+
+function goalSwitchFixture(userId: string, currentGoal: LearnerGoal, proposedGoal: LearnerGoal) {
+  const currentRoute = goalModuleRoute(currentGoal);
+  const proposedRoute = goalModuleRoute(proposedGoal);
+  const divergence = firstDifference(currentRoute, proposedRoute);
+  if (divergence < 0) throw new Error(`${currentGoal} and ${proposedGoal} do not diverge.`);
+  const strongModuleIds = currentRoute.slice(0, divergence);
+  const fullyCoveredPhases = phaseDefinitions.filter(phase =>
+    phase.moduleIds.every(moduleId => strongModuleIds.includes(moduleId))
+  );
+  const now = new Date().toISOString();
+  return {
+    profile: {
+      version: 1,
+      goal: currentGoal,
+      experience: 'advanced',
+      dailyMinutes: 25,
+      studyDays: ['MO', 'WE', 'FR'],
+      pace: 'steady',
+      placement: {
+        status: 'completed',
+        reportId: `goal-switch-${currentGoal}`,
+        score: 95,
+        level: 'advanced',
+        recommendedTrack: currentGoal === 'analyst' ? 'analytics' : 'performance',
+        strongModuleIds,
+        focusModuleIds: ['filtering'],
+        completedAt: now
+      },
+      firstWeekPlan: [],
+      recoveryRule: 'Resume only the next prerequisite-safe frontier step.',
+      completedAt: now,
+      updatedAt: now
+    },
+    progress: {
+      version: 4,
+      completed: [],
+      taskStats: {},
+      xp: 0,
+      streak: 0,
+      history: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => ({ day, solved: 0 }))
+    },
+    checkpointReports: fullyCoveredPhases.flatMap(phase => {
+      const checkpoint = checkpointForPhase(phase.id);
+      return checkpoint ? [{
+        version: 1,
+        id: `goal-switch-${phase.id}`,
+        userId,
+        checkpointId: checkpoint.id,
+        status: 'completed',
+        passed: true,
+        score: 100,
+        startedAt: now,
+        completedAt: now,
+        durationSeconds: 300,
+        taskResults: []
+      }] : [];
+    }),
+    currentModuleId: currentRoute[divergence],
+    proposedModuleId: proposedRoute[divergence],
+    currentModuleTitle: moduleTitle(currentRoute[divergence]),
+    proposedModuleTitle: moduleTitle(proposedRoute[divergence])
+  };
+}
+
+async function seedGoalSwitch(page: Page, userId: string, currentGoal: LearnerGoal, proposedGoal: LearnerGoal) {
+  const fixture = goalSwitchFixture(userId, currentGoal, proposedGoal);
+  await page.goto('./');
+  await page.evaluate(({ id, value }) => {
+    localStorage.setItem(`sql-academy-onboarding-v1:${id}`, JSON.stringify(value.profile));
+    localStorage.setItem('sql-academy-progress-v4', JSON.stringify(value.progress));
+    localStorage.setItem(`sql-academy-checkpoint-reports-v1:${id}`, JSON.stringify(value.checkpointReports));
+  }, { id: userId, value: fixture });
+  await page.reload();
+  return fixture;
+}
+
+async function expectGoalSwitchAccessible(page: Page) {
+  const result = await new AxeBuilder({ page })
+    .include('[data-testid="goal-switch-panel"]')
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
+  const violations = result.violations.filter(item => item.impact === 'serious' || item.impact === 'critical');
+  expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
+}
 
 test('desktop adaptive learning path shares the canonical beginner frontier and readiness evidence', async ({ page }, testInfo) => {
   await authenticatePage(page, 'desktop-path');
@@ -58,6 +168,69 @@ test('desktop adaptive learning path shares the canonical beginner frontier and 
   await expect(curriculum).toContainText(/Как читать схему и превращать вопрос в запрос/i);
 });
 
+test('desktop goal preview cancels without writes and applies only future Analyst to Backend choices', async ({ page, browser }, testInfo) => {
+  const auth = await authenticatePage(page, 'goal-switch');
+  const fixture = await seedGoalSwitch(page, String(auth.session.userId), 'analyst', 'backend');
+  expect(fixture.currentModuleId).not.toBe(fixture.proposedModuleId);
+
+  await page.evaluate(() => {
+    (window as Window & { __goalSwitchEvents?: number }).__goalSwitchEvents = 0;
+    window.addEventListener('sql-academy-onboarding-changed', () => {
+      const target = window as Window & { __goalSwitchEvents?: number };
+      target.__goalSwitchEvents = (target.__goalSwitchEvents || 0) + 1;
+    });
+  });
+  const before = await page.evaluate(id => localStorage.getItem(`sql-academy-onboarding-v1:${id}`), String(auth.session.userId));
+  const placementBefore = JSON.parse(before || '{}').placement;
+
+  await page.getByTestId('learning-path-trigger').click();
+  const learningPath = page.getByTestId('learning-path');
+  await expect(learningPath.locator('.session-list > button').first()).toContainText(fixture.currentModuleTitle);
+  await learningPath.getByTestId('goal-switch-trigger').click();
+  const panel = learningPath.getByTestId('goal-switch-panel');
+  await expect(panel).toBeVisible();
+  await panel.getByTestId('goal-switch-option-backend').click();
+  await expect(panel.getByTestId('goal-switch-current-action')).toContainText(fixture.currentModuleTitle);
+  await expect(panel.getByTestId('goal-switch-proposed-action')).toContainText(fixture.proposedModuleTitle);
+  await expect(panel.getByTestId('goal-switch-impact')).toContainText(/Следующий шаг изменится/i);
+  await expectGoalSwitchAccessible(page);
+  await page.screenshot({ path: testInfo.outputPath('desktop-goal-switch-preview.png'), fullPage: true });
+
+  await panel.getByTestId('goal-switch-cancel').click();
+  await expect(panel).toBeHidden();
+  const afterCancel = await page.evaluate(id => localStorage.getItem(`sql-academy-onboarding-v1:${id}`), String(auth.session.userId));
+  expect(afterCancel).toBe(before);
+  expect(await page.evaluate(() => (window as Window & { __goalSwitchEvents?: number }).__goalSwitchEvents || 0)).toBe(0);
+
+  await learningPath.getByTestId('goal-switch-trigger').click();
+  await learningPath.getByTestId('goal-switch-option-backend').click();
+  await learningPath.getByTestId('goal-switch-apply').click();
+  await expect(learningPath.getByRole('status')).toContainText(/сохранена|изменена|синхрониз/i);
+  await expect.poll(async () => page.evaluate(id => {
+    const raw = localStorage.getItem(`sql-academy-onboarding-v1:${id}`);
+    return raw ? JSON.parse(raw).goal : null;
+  }, String(auth.session.userId))).toBe('backend');
+  const afterApply = await page.evaluate(id => JSON.parse(localStorage.getItem(`sql-academy-onboarding-v1:${id}`) || '{}'), String(auth.session.userId));
+  expect(afterApply.placement).toEqual(placementBefore);
+  expect(afterApply.completedAt).toBe(JSON.parse(before || '{}').completedAt);
+  expect(await page.evaluate(() => (window as Window & { __goalSwitchEvents?: number }).__goalSwitchEvents || 0)).toBe(1);
+
+  await learningPath.getByTestId('goal-switch-cancel').click();
+  await expect(learningPath.locator('.session-list > button').first()).toContainText(fixture.proposedModuleTitle);
+  await page.reload();
+  await page.getByTestId('learning-path-trigger').click();
+  await expect(page.getByTestId('learning-path').locator('.session-list > button').first()).toContainText(fixture.proposedModuleTitle);
+
+  const secondContext = await browser.newContext();
+  const secondPage = await secondContext.newPage();
+  await loginPage(secondPage, auth.username, auth.password);
+  await secondPage.goto('./');
+  await secondPage.waitForTimeout(1200);
+  await secondPage.getByTestId('learning-path-trigger').click();
+  await expect(secondPage.getByTestId('learning-path').locator('.session-list > button').first()).toContainText(fixture.proposedModuleTitle);
+  await secondContext.close();
+});
+
 test('mobile adaptive learning path keeps the same lesson frontier and readiness explanation responsive', async ({ page }, testInfo) => {
   await authenticatePage(page, 'mobile-path');
   await page.goto('./');
@@ -87,4 +260,25 @@ test('mobile adaptive learning path keeps the same lesson frontier and readiness
 
   await learningPath.getByRole('button', { name: 'Закрыть учебный путь' }).click();
   await expect(learningPath).toBeHidden();
+});
+
+test('mobile goal preview is accessible, responsive and cancel-only', async ({ page }, testInfo) => {
+  const auth = await authenticatePage(page, 'mobile-goal-switch');
+  const fixture = await seedGoalSwitch(page, String(auth.session.userId), 'analyst', 'backend');
+  const before = await page.evaluate(id => localStorage.getItem(`sql-academy-onboarding-v1:${id}`), String(auth.session.userId));
+
+  await page.getByTestId('learning-path-mobile-trigger').click();
+  const learningPath = page.getByTestId('learning-path');
+  await learningPath.getByTestId('goal-switch-trigger').click();
+  const panel = learningPath.getByTestId('goal-switch-panel');
+  await panel.getByTestId('goal-switch-option-backend').click();
+  await expect(panel.getByTestId('goal-switch-proposed-action')).toContainText(fixture.proposedModuleTitle);
+  await expectGoalSwitchAccessible(page);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath('mobile-goal-switch-preview.png'), fullPage: true });
+
+  await panel.getByTestId('goal-switch-cancel').click();
+  await expect(panel).toBeHidden();
+  const after = await page.evaluate(id => localStorage.getItem(`sql-academy-onboarding-v1:${id}`), String(auth.session.userId));
+  expect(after).toBe(before);
 });

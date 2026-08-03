@@ -37,6 +37,7 @@ import {
   loadCurriculumProgress
 } from '../lib/curriculum-progress';
 import { openDeferredFeature } from '../lib/deferred-features';
+import type { GoalSwitchEvidence } from '../lib/goal-switch';
 import {
   buildDailySession,
   learningPhases,
@@ -48,6 +49,7 @@ import {
   type SessionItem
 } from '../lib/learning-path';
 import {
+  goalOptions,
   loadOnboardingProfile,
   ONBOARDING_CHANGED_EVENT
 } from '../lib/learner-onboarding';
@@ -58,6 +60,7 @@ import {
 } from '../lib/skill-evidence';
 import { useDialogFocus } from '../lib/dialog-focus';
 import { openCheckpointCenter } from './CheckpointLauncher';
+import GoalSwitchPanel from './GoalSwitchPanel';
 
 const TARGET_KEY = 'sql-academy-session-target-v1';
 const PROFILE_KEY = 'sql-academy-profile-id';
@@ -73,10 +76,14 @@ function profileId() {
 }
 
 function levelLabel(module: ModuleMastery) {
+  if (module.routeState === 'current') return 'Текущий goal-priority';
+  if (module.routeState === 'eligible') return 'Prerequisites готовы · позже по цели';
+  if (module.routeState === 'locked') return 'Prerequisites не закрыты';
   if (module.level === 'mastered') return 'Освоено';
+  if (module.routeState === 'completed' && module.recommendedTask) return 'Foundation закрыт · transfer';
+  if (module.routeState === 'completed') return 'Foundation закрыт';
   if (module.level === 'practice') return 'Закрепление';
   if (module.level === 'learning') return 'В работе';
-  if (module.level === 'locked') return 'Закрыто';
   return 'Новый модуль';
 }
 
@@ -131,6 +138,7 @@ export default function LearningPathPortal({
   const [desktopSlot, setDesktopSlot] = useState<HTMLElement | null>(null);
   const [mobileSlot, setMobileSlot] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState(Boolean(openRequest));
+  const [goalSwitchOpen, setGoalSwitchOpen] = useState(false);
   const [progress, setProgress] = useState<Progress>(() => loadProgress());
   const [curriculumProgress, setCurriculumProgress] = useState(() => loadCurriculumProgress());
   const [assessmentReports, setAssessmentReports] = useState(() => loadLocalAssessmentReports());
@@ -147,8 +155,6 @@ export default function LearningPathPortal({
   const previousOverflow = useRef('');
   const shellRef = useRef<HTMLDivElement>(null);
 
-  const mastery = useMemo(() => moduleMastery(progress), [progress]);
-  const legacyPhases = useMemo(() => learningPhases(progress, mastery), [mastery, progress]);
   const evidenceGraph = useMemo(() => buildSkillEvidenceGraph(
     progress,
     curriculumProgress,
@@ -166,8 +172,23 @@ export default function LearningPathPortal({
     ),
     bypassedModuleIds: profile.placement.status === 'completed'
       ? profile.placement.strongModuleIds
-      : []
-  }), [assessmentReports, curriculumProgress, evidenceGraph.phases, profile.placement]);
+      : [],
+    goal: profile.goal
+  }), [assessmentReports, curriculumProgress, evidenceGraph.phases, profile.goal, profile.placement]);
+  const goalSwitchEvidence = useMemo<GoalSwitchEvidence>(() => ({
+    curriculum: curriculumProgress,
+    passedCheckpointIds: sessionEvidence.passedCheckpointIds,
+    assessmentComplete: sessionEvidence.assessmentComplete,
+    includeReview: true
+  }), [curriculumProgress, sessionEvidence.assessmentComplete, sessionEvidence.passedCheckpointIds]);
+  const mastery = useMemo(
+    () => moduleMastery(progress, sessionEvidence),
+    [progress, sessionEvidence]
+  );
+  const legacyPhases = useMemo(
+    () => learningPhases(progress, mastery, sessionEvidence),
+    [mastery, progress, sessionEvidence]
+  );
   const session = useMemo(
     () => buildDailySession(progress, targetMinutes, sessionEvidence),
     [progress, sessionEvidence, targetMinutes]
@@ -177,6 +198,7 @@ export default function LearningPathPortal({
   const passedCheckpoints = evidenceGraph.phases.filter(phase => phase.checkpointPassed).length;
   const nextPhase = evidenceGraph.phases.find(phase => !phase.completed)
     || evidenceGraph.phases[evidenceGraph.phases.length - 1];
+  const currentGoalTitle = goalOptions.find(option => option.id === profile.goal)?.title || 'Полная академия';
 
   useEffect(() => {
     if (externalLauncher) return;
@@ -210,7 +232,10 @@ export default function LearningPathPortal({
   }, [externalLauncher]);
 
   useEffect(() => {
-    if (openRequest > 0) setOpen(true);
+    if (openRequest > 0) {
+      setGoalSwitchOpen(false);
+      setOpen(true);
+    }
   }, [openRequest]);
 
   useEffect(() => {
@@ -257,10 +282,14 @@ export default function LearningPathPortal({
     }
   }, [mentorSource, progress, sessionEvidence]);
 
-  useDialogFocus(open, shellRef, () => setOpen(false));
+  useDialogFocus(open, shellRef, () => {
+    if (goalSwitchOpen) setGoalSwitchOpen(false);
+    else setOpen(false);
+  });
 
   useEffect(() => {
     if (!open) return;
+    setGoalSwitchOpen(false);
     setProgress(loadProgress());
     setCurriculumProgress(loadCurriculumProgress());
     setAssessmentReports(loadLocalAssessmentReports());
@@ -273,27 +302,32 @@ export default function LearningPathPortal({
     };
   }, [open]);
 
+  const closePath = () => {
+    setGoalSwitchOpen(false);
+    setOpen(false);
+  };
+
   const startTask = (task: SqlTask) => {
     setActiveTask(task.id);
-    setOpen(false);
+    closePath();
     openAcademyTask(task.id);
     window.setTimeout(() => setActiveTask(null), 1000);
   };
 
   const openCheckpoint = (checkpointId: string) => {
-    setOpen(false);
+    closePath();
     window.setTimeout(() => openCheckpointCenter(checkpointId), 40);
   };
 
   const openEvidenceAction = (evidence: ModuleSkillEvidence, fallbackTask: SqlTask | null) => {
     const target = evidence.recommendedTargetId;
     if (evidence.recommendedAction === 'lesson' && target) {
-      setOpen(false);
+      closePath();
       window.setTimeout(() => openCurriculumTarget('lesson', target), 40);
       return;
     }
     if (evidence.recommendedAction === 'project' && target) {
-      setOpen(false);
+      closePath();
       window.setTimeout(() => openCurriculumTarget('project', target), 40);
       return;
     }
@@ -302,7 +336,7 @@ export default function LearningPathPortal({
       return;
     }
     if (evidence.recommendedAction === 'assessment') {
-      setOpen(false);
+      closePath();
       window.setTimeout(() => openDeferredFeature('assessment'), 40);
       return;
     }
@@ -315,7 +349,7 @@ export default function LearningPathPortal({
       return;
     }
     if (item.action) {
-      setOpen(false);
+      closePath();
       window.setTimeout(() => openJourneyDestination(item.action as NonNullable<SessionItem['action']>), 40);
     }
   };
@@ -396,22 +430,28 @@ export default function LearningPathPortal({
     className="learning-path-shell"
     role="dialog"
     aria-modal="true"
-    aria-labelledby="learning-path-title"
+    aria-labelledby={goalSwitchOpen ? 'goal-switch-title' : 'learning-path-title'}
     data-testid="learning-path"
   >
     <header className="path-topbar">
       <div className="path-brand"><div><Route /></div><span><strong>Adaptive Learning Path</strong><small>Единый evidence graph SQL Academy</small></span></div>
       <div className="path-top-actions">
-        <label><Clock3 />Сессия<select value={targetMinutes} onChange={event => setTargetMinutes(Number(event.target.value))}>
+        {!goalSwitchOpen && <label><Clock3 />Сессия<select value={targetMinutes} onChange={event => setTargetMinutes(Number(event.target.value))}>
           <option value={15}>15 минут</option>
           <option value={25}>25 минут</option>
           <option value={40}>40 минут</option>
-        </select></label>
-        <button className="path-close" onClick={() => setOpen(false)} aria-label="Закрыть учебный путь"><X /></button>
+        </select></label>}
+        <button className="path-close" onClick={closePath} aria-label="Закрыть учебный путь"><X /></button>
       </div>
     </header>
 
-    <main className="learning-path-page">
+    {goalSwitchOpen ? <GoalSwitchPanel
+      profile={profile}
+      progress={progress}
+      evidence={goalSwitchEvidence}
+      onCancel={() => setGoalSwitchOpen(false)}
+      onProfileChanged={setProfile}
+    /> : <main className="learning-path-page">
       <section className="path-hero">
         <div className="path-hero-copy">
           <span className="path-kicker"><Sparkles /> lesson + practice + checkpoint + assessment + project</span>
@@ -420,6 +460,7 @@ export default function LearningPathPortal({
           <div className="path-hero-actions">
             <button className="path-primary" onClick={() => session.items[0] && startSessionItem(session.items[0])} disabled={!session.items.length || Boolean(activeTask)}><Play />Начать сессию</button>
             <button onClick={() => void askMentor()} disabled={mentorLoading}><Sparkles />AI-план</button>
+            <button onClick={() => setGoalSwitchOpen(true)} data-testid="goal-switch-trigger"><Route />Изменить цель</button>
           </div>
         </div>
         <div className="readiness-ring" style={{ '--readiness': `${readiness * 3.6}deg` } as React.CSSProperties}>
@@ -457,11 +498,19 @@ export default function LearningPathPortal({
       </section>
 
       <section className="roadmap-section">
-        <div className="roadmap-heading"><div><span className="path-eyebrow">Skill graph</span><h2>Карта доказательств</h2><p>Readiness объясняется уроками, практикой, контрольными, assessment и проектами.</p></div><Trophy /></div>
+        <div className="roadmap-heading"><div><span className="path-eyebrow">Skill graph · {currentGoalTitle}</span><h2>Карта доказательств и goal-route</h2><p>Readiness и порядок объясняются тем же frontier: общий foundation, текущий приоритет, eligible позже и обязательная expert-ширина.</p></div><Trophy /></div>
+        <div className="route-state-legend" data-testid="goal-route-legend">
+          <span className="current"><i />текущий приоритет</span>
+          <span className="eligible"><i />prerequisites готовы · позже</span>
+          <span className="completed"><i />completed evidence</span>
+          <span className="locked"><i />locked prerequisite</span>
+        </div>
         <div className="phase-list">
           {legacyPhases.map((phase, phaseIndex) => {
             const phaseEvidence = evidenceGraph.phases.find(item => item.phaseId === phase.id);
-            const phaseModules = mastery.filter(module => phase.moduleIds.includes(module.id));
+            const phaseModules = mastery
+              .filter(module => phase.moduleIds.includes(module.id))
+              .sort((left, right) => left.index - right.index);
             const expanded = expandedPhase === phase.id;
             const passed = Boolean(phaseEvidence?.checkpointPassed);
             const phaseReadiness = phaseEvidence?.readiness ?? phase.mastery;
@@ -479,12 +528,13 @@ export default function LearningPathPortal({
                   const evidence = evidenceGraph.modules.find(item => item.moduleId === module.id);
                   const readinessValue = evidence?.readiness ?? module.mastery;
                   return <button
-                    className={`module-node ${module.level}`}
+                    className={`module-node ${module.level} route-${module.routeState}`}
+                    data-route-state={module.routeState}
                     key={module.id}
                     onClick={() => evidence && openEvidenceAction(evidence, module.recommendedTask)}
-                    disabled={module.level === 'locked'}
+                    disabled={module.routeState === 'locked'}
                   >
-                    <span className="module-state">{readinessValue >= 82 ? <Check /> : module.level === 'locked' ? <LockKeyhole /> : <Circle />}</span>
+                    <span className="module-state">{readinessValue >= 82 ? <Check /> : module.routeState === 'locked' ? <LockKeyhole /> : <Circle />}</span>
                     <span className="module-copy"><strong>{module.title}</strong><small>{levelLabel(module)} · next: {evidence ? evidenceActionLabel(evidence.recommendedAction) : 'practice'}</small></span>
                     <span className="module-mastery"><strong>{readinessValue}%</strong><i><b style={{ width: `${readinessValue}%` }} /></i></span>
                     {evidence?.recommendedTargetId || module.recommendedTask ? <ChevronRight /> : <GraduationCap />}
@@ -501,7 +551,7 @@ export default function LearningPathPortal({
           })}
         </div>
       </section>
-    </main>
+    </main>}
   </div> : null;
 
   return <>
