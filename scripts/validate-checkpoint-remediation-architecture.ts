@@ -1,0 +1,105 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+function source(path: string) {
+  return readFileSync(new URL(path, import.meta.url), 'utf8');
+}
+
+const remediation = source('../src/lib/checkpoint-remediation.ts');
+const evidence = source('../src/lib/journey-evidence.ts');
+const journey = source('../src/lib/learning-journey.ts');
+const guidedHome = source('../src/components/GuidedHome.tsx');
+const learningPath = source('../src/components/LearningPathPortal.tsx');
+const goalSwitch = source('../src/lib/goal-switch.ts');
+const workspace = source('../src/App.tsx');
+const playwright = source('../playwright.config.ts');
+const browserContract = source('../tests/e2e/checkpoint-remediation.spec.ts');
+const journeyContract = source('../docs/learning-journey-contract.md');
+
+for (const marker of [
+  'normalizedReport',
+  "item.status !== 'completed'",
+  'item.userId !== userId',
+  'latest.passed',
+  'moduleScoreMap',
+  'weakTaskMap',
+  'checkpointRemediationsFromReports',
+  'unresolvedCheckpointRemediationModules',
+  'lastIndependentAt > completedAt'
+]) {
+  assert.ok(remediation.includes(marker),
+    `Checkpoint remediation domain ownership is missing ${marker}.`);
+}
+
+for (const marker of [
+  'latestByCheckpoint',
+  'report.passed !== true',
+  'checkpointRemediationsFromReports',
+  'MAX_CHECKPOINT_REPORTS'
+]) {
+  assert.ok(evidence.includes(marker),
+    `Lightweight checkpoint evidence is missing ${marker}.`);
+}
+
+for (const marker of [
+  "'checkpoint-remediation'",
+  'failedCheckpointIds',
+  'withRemediation',
+  'checkpointRemediation',
+  'unresolvedCheckpointRemediationModules'
+]) {
+  assert.ok(journey.includes(marker),
+    `Canonical Journey remediation frontier is missing ${marker}.`);
+}
+
+assert.match(guidedHome, /frontier\.checkpointRemediation/,
+  'Today must consume normalized remediation from the Journey frontier.');
+assert.match(guidedHome, /guided-checkpoint-remediation/,
+  'Today must expose the failed checkpoint state to browser contracts.');
+assert.doesNotMatch(guidedHome, /checkpointRemediationsFromReports|moduleScores|taskScores|remediationModules|completedAt\.localeCompare/,
+  'Today must not interpret raw checkpoint reports.');
+
+assert.match(learningPath, /checkpointRemediationsFromReports/,
+  'Learning Path must delegate raw report normalization to the remediation domain.');
+assert.match(learningPath, /checkpoint-remediation-banner/,
+  'Learning Path must expose normalized remediation state.');
+assert.doesNotMatch(learningPath, /moduleScores|taskScores|remediationModules|completedAt\.localeCompare/,
+  'Learning Path must not inspect raw checkpoint scoring or attempt ordering.');
+
+assert.match(goalSwitch, /checkpointRemediations/,
+  'Goal preview must receive active remediation evidence.');
+assert.doesNotMatch(goalSwitch, /moduleScores|taskScores|remediationModules|completedAt\.localeCompare/,
+  'Goal preview must not interpret raw checkpoint reports.');
+
+assert.doesNotMatch(workspace, /checkpointRemediationsFromReports|moduleScores|taskScores|remediationModules/,
+  'Workspace must consume Journey metadata instead of checkpoint report internals.');
+
+assert.match(playwright, /desktop failed checkpoint/,
+  'Desktop remediation browser contract must be included in a Playwright project.');
+assert.match(playwright, /mobile failed checkpoint/,
+  'Mobile remediation browser contract must be included in a Playwright project.');
+for (const marker of [
+  'guided-checkpoint-remediation',
+  'checkpoint-remediation-banner',
+  'goal-switch-proposed-action',
+  "data-route-reason', 'checkpoint-remediation'",
+  "data-stage', 'checkpoint'",
+  'appendPassedReport',
+  'AxeBuilder',
+  'expectNoOverflow'
+]) {
+  assert.ok(browserContract.includes(marker),
+    `Checkpoint remediation browser contract is missing ${marker}.`);
+}
+
+for (const marker of [
+  'latest completed attempt',
+  'bestScore',
+  'Raw checkpoint report fields',
+  'failed→repair→retry→pass'
+]) {
+  assert.ok(journeyContract.includes(marker),
+    `Learning journey contract is missing remediation rule ${marker}.`);
+}
+
+console.log('Checkpoint remediation architecture validated: one normalizer, one frontier, raw-report-free UI decisions and executable desktop/mobile contracts.');
