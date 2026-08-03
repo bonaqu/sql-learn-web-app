@@ -44,7 +44,7 @@ export default defineConfig({
     },
     {
       name: 'desktop-learning',
-      grep: /desktop curriculum|desktop guided journey|desktop adaptive learning|desktop mastery|desktop onboarding|desktop syllabus|desktop keeps SQLite|desktop analytics/,
+      grep: /desktop curriculum|desktop guided journey|desktop adaptive learning|desktop mastery|desktop onboarding|desktop syllabus|desktop keeps SQLite|desktop analytics|desktop failed checkpoint/,
       use: desktop
     },
     {
@@ -54,7 +54,7 @@ export default defineConfig({
     },
     {
       name: 'mobile-learning',
-      grep: /mobile misconception|mobile adaptive learning|mobile mastery|mobile onboarding|mobile syllabus|mobile blocks unsafe|mobile analytics/,
+      grep: /mobile misconception|mobile adaptive learning|mobile mastery|mobile onboarding|mobile syllabus|mobile blocks unsafe|mobile analytics|mobile failed checkpoint/,
       use: mobile
     }
   ]
