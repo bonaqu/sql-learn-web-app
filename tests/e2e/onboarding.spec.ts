@@ -1,3 +1,4 @@
+import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { authenticatePage, loginPage } from './auth-helper';
 import { openAdvancedTool } from './navigation-helper';
@@ -57,7 +58,27 @@ async function expectNoHorizontalOverflow(page: import('@playwright/test').Page)
   expect(overflow).toBe(false);
 }
 
-test('desktop onboarding uses executable placement and hydrates the accepted plan on a second device', async ({ page, browser }, testInfo) => {
+async function expectGuidedTodayAccessible(page: import('@playwright/test').Page) {
+  const result = await new AxeBuilder({ page })
+    .include('[data-testid="guided-today"]')
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
+  const violations = result.violations.filter(item => item.impact === 'serious' || item.impact === 'critical');
+  expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
+}
+
+async function expectSharedFoundationToday(page: import('@playwright/test').Page, goalLabel: RegExp) {
+  const today = page.getByTestId('guided-today');
+  await expect(today).toBeVisible();
+  await expect(today).toContainText(goalLabel);
+  const action = page.getByTestId('guided-journey-action');
+  await expect(action).toHaveAttribute('data-route-reason', 'shared-foundation');
+  await expect(action).toContainText(/Общая база обязательна|общей баз/i);
+  await expectNoHorizontalOverflow(page);
+  await expectGuidedTodayAccessible(page);
+}
+
+test('desktop onboarding uses executable placement and resumes one shared frontier on a second device', async ({ page, browser }, testInfo) => {
   const auth = await authenticatePage(page, 'onboarding');
   await page.goto('./');
   await openOnboarding(page);
@@ -84,6 +105,7 @@ test('desktop onboarding uses executable placement and hydrates the accepted pla
   await dialog.getByRole('button', { name: /Принять результат/i }).click();
   await expect(dialog.getByTestId('onboarding-plan')).toBeVisible();
   await expect(dialog.locator('.week-plan article')).toHaveCount(4);
+  await expect(dialog).toContainText(/Общая база обязательна/i);
   await expect(dialog.getByText('Правило восстановления')).toBeVisible();
   await dialog.getByTestId('complete-onboarding').click();
   await expect(dialog.getByRole('status')).toContainText(/облаке|локально/i);
@@ -91,6 +113,10 @@ test('desktop onboarding uses executable placement and hydrates the accepted pla
   await dialog.getByRole('button', { name: 'Закрыть стартовый план' }).click();
 
   await expect(page.getByTestId('onboarding-trigger')).toContainText('Мой учебный план');
+  await expectSharedFoundationToday(page, /Support SQL/i);
+  await page.reload();
+  await expectSharedFoundationToday(page, /Support SQL/i);
+  await page.screenshot({ path: testInfo.outputPath('desktop-goal-aware-today.png'), fullPage: true });
 
   const secondContext = await browser.newContext();
   const secondPage = await secondContext.newPage();
@@ -102,10 +128,12 @@ test('desktop onboarding uses executable placement and hydrates the accepted pla
   await expect(secondDialog.getByTestId('onboarding-plan')).toBeVisible();
   await expect(secondDialog).toContainText('Support');
   await expect(secondDialog.locator('.week-plan article')).toHaveCount(4);
+  await secondDialog.getByRole('button', { name: 'Закрыть стартовый план' }).click();
+  await expectSharedFoundationToday(secondPage, /Support SQL/i);
   await secondContext.close();
 });
 
-test('mobile onboarding supports a conservative deferred placement without horizontal overflow', async ({ page }, testInfo) => {
+test('mobile deferred placement starts from zero and keeps the shared goal frontier accessible', async ({ page }, testInfo) => {
   await authenticatePage(page, 'mobileonboarding');
   await page.goto('./');
   await openOnboarding(page);
@@ -123,8 +151,13 @@ test('mobile onboarding supports a conservative deferred placement without horiz
 
   await expect(dialog.getByTestId('onboarding-plan')).toBeVisible();
   await expect(dialog).toContainText('foundation');
+  await expect(dialog).toContainText(/Общая база обязательна/i);
   await expect(dialog.locator('.week-plan article')).toHaveCount(3);
   await expectNoHorizontalOverflow(page);
   await dialog.getByTestId('complete-onboarding').click();
-  await page.screenshot({ path: testInfo.outputPath('mobile-onboarding-plan.png'), fullPage: true });
+  await dialog.getByRole('button', { name: 'Закрыть стартовый план' }).click();
+  await expectSharedFoundationToday(page, /Полная академия/i);
+  await page.reload();
+  await expectSharedFoundationToday(page, /Полная академия/i);
+  await page.screenshot({ path: testInfo.outputPath('mobile-goal-aware-today.png'), fullPage: true });
 });
