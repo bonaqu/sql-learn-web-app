@@ -6,7 +6,12 @@ export type CheckpointReportReceipt = {
   payloadDigest: string;
 };
 
-export type CheckpointReportConflictLocation = 'local-storage' | 'local-cloud-merge' | 'cloud';
+export type CheckpointReportConflictLocation =
+  | 'local-storage'
+  | 'local-cloud-merge'
+  | 'receipt-storage'
+  | 'receipt-merge'
+  | 'cloud';
 
 export class CheckpointReportConflictError extends Error {
   readonly code = 'CHECKPOINT_REPORT_CONFLICT';
