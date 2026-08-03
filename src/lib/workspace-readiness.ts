@@ -19,9 +19,9 @@ export type WorkspaceTaskReadiness = {
 export type WorkspaceJourneyState = {
   action: JourneyAction;
   passedPhaseIds: readonly string[];
-  completedModuleIds: readonly string[];
-  eligibleModuleIds: readonly string[];
-  routeModuleIds: readonly string[];
+  completedModuleIds?: readonly string[];
+  eligibleModuleIds?: readonly string[];
+  routeModuleIds?: readonly string[];
 };
 
 const taskOrder = new Map<string, number>(tasks.map((task, index) => [task.id, index]));
@@ -73,13 +73,11 @@ export function workspaceTaskReadiness(
     };
   }
 
-  const {
-    action,
-    passedPhaseIds,
-    completedModuleIds,
-    eligibleModuleIds,
-    routeModuleIds
-  } = journey;
+  const action = journey.action;
+  const passedPhaseIds = journey.passedPhaseIds;
+  const completedModuleIds = journey.completedModuleIds || [];
+  const eligibleModuleIds = journey.eligibleModuleIds || [];
+  const routeModuleIds = journey.routeModuleIds || [];
   if (action.kind === 'complete') {
     return ready('Свободная expert-практика', 'Обязательный маршрут завершён; все задачи доступны для поддержания навыка.');
   }
