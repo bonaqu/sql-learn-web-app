@@ -114,20 +114,27 @@ function signedEvent(overrides: Record<string, unknown> = {}) {
   });
 }
 
-const accepted = await handleContactDeliveryEventRequest(signedEvent(), env);
+const occurredAt = new Date().toISOString();
+const accepted = await handleContactDeliveryEventRequest(signedEvent({ occurredAt }), env);
 assert.ok(accepted);
 assert.equal(accepted.status, 200);
 assert.equal((await accepted.json() as { duplicate: boolean }).duplicate, false);
 assert.equal(database.prepare('SELECT COUNT(*) AS count FROM contact_delivery_events').get()?.count, 1);
 
-const duplicate = await handleContactDeliveryEventRequest(signedEvent(), env);
+const duplicate = await handleContactDeliveryEventRequest(signedEvent({ occurredAt }), env);
 assert.ok(duplicate);
 assert.equal(duplicate.status, 200);
 assert.equal((await duplicate.json() as { duplicate: boolean }).duplicate, true);
 assert.equal(database.prepare('SELECT COUNT(*) AS count FROM contact_delivery_events').get()?.count, 1,
   'Provider retries must not duplicate delivery evidence.');
 
-const tamperedRequest = signedEvent();
+const collision = await handleContactDeliveryEventRequest(signedEvent({ occurredAt, status: 'bounced' }), env);
+assert.ok(collision);
+assert.equal(collision.status, 409, 'The same event ID must not silently identify a different signed provider event.');
+assert.equal(database.prepare('SELECT status FROM contact_delivery_events WHERE event_id = ?')
+  .get('provider-event-00000020')?.status, 'delivered');
+
+const tamperedRequest = signedEvent({ occurredAt });
 const tamperedBody = await tamperedRequest.text();
 const rejectedTamper = await handleContactDeliveryEventRequest(new Request(tamperedRequest.url, {
   method: 'POST',
@@ -203,6 +210,8 @@ for (const marker of [
   'crypto.subtle.verify',
   'INSERT OR IGNORE INTO contact_delivery_events',
   'provider_message_id !== body.providerMessageId',
+  'sameDeliveryEvent',
+  "Delivery event ID collision",
   'EVENT_TOLERANCE_MS'
 ]) assert.ok(routeSource.includes(marker), `Delivery event route is missing: ${marker}`);
 assert.doesNotMatch(routeSource, /console\.(?:log|error)\([^\n]*(?:providerMessageId|challengeId|destination|code)/,
@@ -229,4 +238,4 @@ for (const marker of [
 ]) assert.ok(adminSource.includes(marker), `Admin health is missing alert: ${marker}`);
 
 database.close();
-console.log('Contact provider operations validated: signed idempotent delivery events, privacy-safe abuse telemetry, aggregate health and no PII leakage.');
+console.log('Contact provider operations validated: signed idempotent delivery events, collision rejection, privacy-safe abuse telemetry, aggregate health and no PII leakage.');
