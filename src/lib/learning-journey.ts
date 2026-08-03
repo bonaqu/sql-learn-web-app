@@ -402,6 +402,7 @@ export function buildJourneyFrontier(
         .sort((left, right) => (routePositions.get(left) ?? 0) - (routePositions.get(right) ?? 0));
       for (const moduleId of phaseModules) {
         if (bypassed.has(moduleId)) continue;
+        if (!completedModuleIds.includes(moduleId)) continue;
         const transfer = transferAction(moduleId, progress);
         if (!transfer) continue;
         action = withReason(
