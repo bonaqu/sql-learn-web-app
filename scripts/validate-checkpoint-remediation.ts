@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict';
-import { curriculumCheckpoints } from '../src/data/complete-curriculum';
+import { curriculumCheckpoints, curriculumLessons } from '../src/data/complete-curriculum';
 import { tasks } from '../src/data/course-catalog';
+import { lessonChecks } from '../src/data/lesson-checks';
 import {
   checkpointRemediationsFromReports,
   nextCheckpointRemediationTaskId,
   unresolvedCheckpointRemediationModules
 } from '../src/lib/checkpoint-remediation';
+import { emptyCurriculumProgress } from '../src/lib/curriculum-progress';
+import {
+  buildJourneyFrontier,
+  foundationTasksForModule
+} from '../src/lib/learning-journey';
+import type { LearnerGoal } from '../src/lib/learner-onboarding';
 import type { Progress, TaskStats } from '../src/lib/progress';
 
 const checkpoint = curriculumCheckpoints.find(item => item.moduleIds.length >= 2) || curriculumCheckpoints[0];
@@ -115,9 +122,20 @@ assert.equal(fallback.modules.length, 1,
   'A failed report without usable remediation fields must fall back to one checkpoint-owned module.');
 assert.ok(checkpoint.moduleIds.includes(fallback.modules[0].moduleId));
 
-function progressWithIndependentAt(when: string | null): Progress {
+function emptyProgress(): Progress {
+  return {
+    version: 4,
+    completed: [],
+    taskStats: {},
+    xp: 0,
+    streak: 0,
+    history: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => ({ day, solved: 0 }))
+  };
+}
+
+function progressWithIndependentAt(when: string | null, taskIds = state.modules.flatMap(module => module.weakTaskIds)): Progress {
   const taskStats: Record<string, TaskStats> = {};
-  for (const taskId of state.modules.flatMap(module => module.weakTaskIds)) {
+  for (const taskId of taskIds) {
     taskStats[taskId] = {
       attempts: 1,
       incorrect: 0,
@@ -130,12 +148,9 @@ function progressWithIndependentAt(when: string | null): Progress {
     };
   }
   return {
-    version: 4,
+    ...emptyProgress(),
     completed: Object.keys(taskStats),
-    taskStats,
-    xp: 0,
-    streak: 0,
-    history: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => ({ day, solved: 0 }))
+    taskStats
   };
 }
 
@@ -149,4 +164,83 @@ const afterFailure = progressWithIndependentAt('2026-08-03T18:30:00.000Z');
 assert.deepEqual(unresolvedCheckpointRemediationModules(state, afterFailure), [],
   'Fresh independent evidence after the report must repair targeted tasks.');
 
-console.log(`Checkpoint remediation evidence validated: latest failed attempt, pass clearing, ownership/status filtering, ${state.modules.length} bounded weak modules and post-report independent repair.`);
+const goals: LearnerGoal[] = ['support', 'analyst', 'backend', 'interview', 'full'];
+const remediationActions = goals.map(goal => buildJourneyFrontier(emptyProgress(), emptyCurriculumProgress(), {
+  includeReview: false,
+  goal,
+  bypassedModuleIds: [...checkpoint.moduleIds],
+  checkpointRemediations: [state]
+}).action);
+for (const action of remediationActions) {
+  assert.equal(action.routeReasonCode, 'checkpoint-remediation',
+    'Failed checkpoint remediation must outrank goal specialization.');
+  assert.equal(action.moduleId, state.modules[0].moduleId,
+    'All goals must repair the lowest-scoring checkpoint module first.');
+  assert.equal(action.remediationCheckpointId, checkpoint.id);
+  assert.equal(action.remediationReportId, state.reportId);
+}
+assert.equal(new Set(remediationActions.map(action => action.moduleId)).size, 1,
+  'Identical evidence must produce identical active remediation for all goals.');
+
+const attemptedTask = tasks.find(task => !checkpoint.taskIds.includes(task.id)) || tasks[0];
+const reviewProgress: Progress = {
+  ...emptyProgress(),
+  taskStats: {
+    [attemptedTask.id]: {
+      attempts: 1,
+      incorrect: 1,
+      hintsUsed: 0,
+      lastAttemptAt: '2026-08-03T18:30:00.000Z'
+    }
+  }
+};
+const reviewFirst = buildJourneyFrontier(reviewProgress, emptyCurriculumProgress(), {
+  includeReview: true,
+  goal: 'backend',
+  bypassedModuleIds: [...checkpoint.moduleIds],
+  checkpointRemediations: [state]
+});
+assert.equal(reviewFirst.action.routeReasonCode, 'retrieval-review',
+  'Existing unresolved retrieval debt must remain above checkpoint remediation.');
+
+const phaseLessons = curriculumLessons.filter(lesson => checkpoint.moduleIds.includes(lesson.module));
+const repairedCurriculum = {
+  ...emptyCurriculumProgress(),
+  completedLessons: phaseLessons.map(lesson => lesson.id),
+  completedSections: phaseLessons.flatMap(lesson => lesson.sections.map(section => section.id)),
+  answers: Object.fromEntries(phaseLessons.flatMap(lesson => lessonChecks(lesson).map(check => [check.id, {
+    optionIndex: check.correctIndex,
+    correct: true,
+    answeredAt: '2026-08-03T18:30:00.000Z'
+  }]))),
+  updatedAt: '2026-08-03T18:30:00.000Z'
+};
+const phaseFoundationTasks = checkpoint.moduleIds.flatMap(moduleId => foundationTasksForModule(moduleId));
+const repairedProgress = progressWithIndependentAt(
+  '2026-08-03T18:30:00.000Z',
+  phaseFoundationTasks.map(task => task.id)
+);
+const retry = buildJourneyFrontier(repairedProgress, repairedCurriculum, {
+  includeReview: false,
+  goal: 'analyst',
+  checkpointRemediations: [state]
+});
+assert.equal(retry.action.stage, 'checkpoint',
+  'Fresh targeted repair must lead to checkpoint retry, not a new module or transfer.');
+assert.equal(retry.action.checkpointId, checkpoint.id);
+assert.equal(retry.action.routeReasonCode, 'checkpoint-remediation');
+assert.equal(retry.action.remediationCheckpointId, checkpoint.id);
+assert.ok(!retry.passedPhaseIds.includes(state.phaseId),
+  'Remediation activity alone must never mark the checkpoint phase passed.');
+
+const afterPass = buildJourneyFrontier(repairedProgress, repairedCurriculum, {
+  includeReview: false,
+  goal: 'analyst',
+  passedCheckpointIds: [checkpoint.id],
+  checkpointRemediations: [state]
+});
+assert.notEqual(afterPass.action.routeReasonCode, 'checkpoint-remediation',
+  'A real passed report must clear remediation priority.');
+assert.ok(afterPass.passedPhaseIds.includes(state.phaseId));
+
+console.log(`Checkpoint remediation validated: latest failed attempt, ownership/status filtering, ${state.modules.length} bounded weak modules, all-goal priority, post-report repair, explicit retry and pass clearing.`);
