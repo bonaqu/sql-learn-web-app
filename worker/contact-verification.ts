@@ -1,4 +1,10 @@
 import {
+  deliveryEventStatement,
+  pruneContactOperationalEvents,
+  recordSecurityEvent,
+  securityEventStatement
+} from './contact-delivery-operations';
+import {
   verificationProvider,
   verificationProviderReady,
   type VerificationChannel,
@@ -348,7 +354,15 @@ export async function consumeContactVerificationTicket(
       AND confirmed_at IS NOT NULL AND consumed_at IS NULL`).bind(
       now, now, payload.challengeId, payload.channel, payload.purpose, payload.destinationDigest
     ).run();
-  return (consumed.meta.changes || 0) === 1 ? payload : null;
+  if ((consumed.meta.changes || 0) !== 1) return null;
+  await recordSecurityEvent(env, {
+    challengeId: payload.challengeId,
+    channel: payload.channel,
+    purpose: payload.purpose,
+    eventType: 'ticket-consumed',
+    occurredAt: now
+  });
+  return payload;
 }
 
 async function pruneChallenges(env: ContactVerificationEnvironment) {
@@ -385,6 +399,11 @@ async function createChallenge(request: Request, env: ContactVerificationEnviron
   const latestAt = parseSqliteTime(latest?.created_at);
   if (latestAt && latestAt + RESEND_COOLDOWN_MS > now) {
     const retryAfter = Math.max(1, Math.ceil((latestAt + RESEND_COOLDOWN_MS - now) / 1_000));
+    await recordSecurityEvent(env, {
+      channel: body.channel,
+      purpose: body.purpose,
+      eventType: 'resend-cooldown'
+    });
     return json({ error: 'Verification challenge was requested recently' }, 429, {
       'retry-after': String(retryAfter)
     });
@@ -395,6 +414,11 @@ async function createChallenge(request: Request, env: ContactVerificationEnviron
     WHERE channel = ? AND purpose = ? AND destination_digest = ? AND created_at >= ?`)
     .bind(body.channel, body.purpose, digest, windowStart).first<{ count: number }>();
   if ((Number(recent?.count) || 0) >= MAX_CHALLENGES_PER_WINDOW) {
+    await recordSecurityEvent(env, {
+      channel: body.channel,
+      purpose: body.purpose,
+      eventType: 'challenge-rate-limit'
+    });
     return json({ error: 'Too many verification challenges' }, 429, {
       'retry-after': String(Math.ceil(CHALLENGE_WINDOW_MS / 1_000))
     });
@@ -406,21 +430,30 @@ async function createChallenge(request: Request, env: ContactVerificationEnviron
   const expiresAt = sqliteTime(new Date(now + CHALLENGE_TTL_MS));
   const maskedDestination = maskVerificationDestination(body.channel, destination);
   const verifier = await codeVerifier(challengeId, digest, body.purpose, code, secret);
-  await env.DB.prepare(`INSERT INTO contact_verification_challenges(
-    challenge_id, channel, purpose, destination_digest, masked_destination,
-    code_verifier, attempts_remaining, expires_at, created_at, updated_at
-  ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
-    challengeId,
-    body.channel,
-    body.purpose,
-    digest,
-    maskedDestination,
-    verifier,
-    MAX_CODE_ATTEMPTS,
-    expiresAt,
-    createdAt,
-    createdAt
-  ).run();
+  await env.DB.batch([
+    env.DB.prepare(`INSERT INTO contact_verification_challenges(
+      challenge_id, channel, purpose, destination_digest, masked_destination,
+      code_verifier, attempts_remaining, expires_at, created_at, updated_at
+    ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+      challengeId,
+      body.channel,
+      body.purpose,
+      digest,
+      maskedDestination,
+      verifier,
+      MAX_CODE_ATTEMPTS,
+      expiresAt,
+      createdAt,
+      createdAt
+    ),
+    securityEventStatement(env, {
+      challengeId,
+      channel: body.channel,
+      purpose: body.purpose,
+      eventType: 'challenge-created',
+      occurredAt: createdAt
+    })
+  ]);
 
   try {
     const delivery = await verificationProvider(body.channel, env).send({
@@ -449,27 +482,56 @@ async function createChallenge(request: Request, env: ContactVerificationEnviron
           digest,
           challengeId,
           persistedAt
-        )
+        ),
+      deliveryEventStatement(env, {
+        eventId: `accepted:${challengeId}`,
+        challengeId,
+        channel: body.channel,
+        purpose: body.purpose,
+        providerMessageId: delivery.providerMessageId,
+        status: 'accepted',
+        occurredAt: persistedAt
+      })
     ]);
     if ((updated.meta.changes || 0) !== 1) throw new Error('VERIFICATION_CHALLENGE_PERSISTENCE_FAILED');
   } catch (error) {
     await env.DB.prepare('DELETE FROM contact_verification_challenges WHERE challenge_id = ?')
       .bind(challengeId).run();
-    const code = error instanceof Error && /^VERIFICATION_[A-Z_]+$/.test(error.message)
+    const failureCode = error instanceof Error && /^VERIFICATION_[A-Z_]+$/.test(error.message)
       ? error.message
       : 'VERIFICATION_PROVIDER_UNAVAILABLE';
+    const status = failureCode === 'VERIFICATION_PROVIDER_REJECTED'
+      ? 'provider-rejected' as const
+      : 'provider-unavailable' as const;
+    await env.DB.batch([
+      deliveryEventStatement(env, {
+        eventId: `failure:${challengeId}`,
+        challengeId,
+        channel: body.channel,
+        purpose: body.purpose,
+        status,
+        reasonCode: failureCode,
+        occurredAt: sqliteTime()
+      }),
+      securityEventStatement(env, {
+        challengeId,
+        channel: body.channel,
+        purpose: body.purpose,
+        eventType: 'provider-failure'
+      })
+    ]);
     console.error('contact_verification_delivery_failed', {
       challengeId,
       channel: body.channel,
       purpose: body.purpose,
-      code
+      code: failureCode
     });
     return json({ error: 'Verification delivery is temporarily unavailable' }, 503, {
       'retry-after': '60'
     });
   }
 
-  await pruneChallenges(env);
+  await Promise.all([pruneChallenges(env), pruneContactOperationalEvents(env)]);
   return json({
     challengeId,
     channel: body.channel,
@@ -509,9 +571,23 @@ async function confirmChallenge(request: Request, env: ContactVerificationEnviro
       .bind(sqliteTime(), row.challenge_id).run();
     const current = await env.DB.prepare('SELECT attempts_remaining FROM contact_verification_challenges WHERE challenge_id = ?')
       .bind(row.challenge_id).first<{ attempts_remaining: number }>();
+    const attemptsRemaining = Math.max(0, Number(current?.attempts_remaining) || 0);
+    const events = [securityEventStatement(env, {
+      challengeId: row.challenge_id,
+      channel: row.channel,
+      purpose: row.purpose,
+      eventType: 'invalid-code'
+    })];
+    if (attemptsRemaining === 0) events.push(securityEventStatement(env, {
+      challengeId: row.challenge_id,
+      channel: row.channel,
+      purpose: row.purpose,
+      eventType: 'code-locked'
+    }));
+    await env.DB.batch(events);
     return json({
       error: 'Verification code is invalid',
-      attemptsRemaining: Math.max(0, Number(current?.attempts_remaining) || 0)
+      attemptsRemaining
     }, 400);
   }
 
@@ -528,6 +604,13 @@ async function confirmChallenge(request: Request, env: ContactVerificationEnviro
     } else {
       row.confirmed_at = confirmedAt;
       row.updated_at = confirmedAt;
+      await recordSecurityEvent(env, {
+        challengeId: row.challenge_id,
+        channel: row.channel,
+        purpose: row.purpose,
+        eventType: 'confirmed',
+        occurredAt: confirmedAt
+      });
     }
   }
 
