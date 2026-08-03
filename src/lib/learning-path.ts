@@ -1,6 +1,7 @@
 import { modules, type SqlTask, tasks } from '../data/course-catalog';
 import { phaseDefinitions, phaseForModule } from '../data/learning-structure';
 import {
+  learningRouteForProfile,
   prioritizeRouteReviews,
   type LearningRoutePolicy
 } from './goal-aware-learning-route';
@@ -14,6 +15,7 @@ import {
   emptyCurriculumProgress,
   type CurriculumProgressV1
 } from './curriculum-progress';
+import { loadOnboardingProfile } from './learner-onboarding';
 import {
   hasIndependentTaskEvidence,
   type Progress,
@@ -263,6 +265,10 @@ function pushAction(items: SessionItem[], action: JourneyAction, progress: Progr
   });
 }
 
+function resolveRoute(evidence: LearningSessionEvidence) {
+  return evidence.route || learningRouteForProfile(loadOnboardingProfile());
+}
+
 export function buildDailySession(
   progress: Progress,
   targetMinutes = 25,
@@ -270,16 +276,17 @@ export function buildDailySession(
 ): DailySession {
   const mastery = moduleMastery(progress);
   const items: SessionItem[] = [];
-  const reviews = prioritizeRouteReviews(reviewQueue(progress, 24), evidence.route, 2);
+  const route = resolveRoute(evidence);
+  const reviews = prioritizeRouteReviews(reviewQueue(progress, 24), route, 2);
   const primary = nextJourneyAction(progress, evidence.curriculum, {
     includeReview: false,
     passedCheckpointIds: evidence.passedCheckpointIds,
     assessmentComplete: evidence.assessmentComplete,
     bypassedModuleIds: evidence.bypassedModuleIds,
-    route: evidence.route
+    route
   });
 
-  for (const review of reviews) pushReview(items, review, evidence.route);
+  for (const review of reviews) pushReview(items, review, route);
   pushAction(items, primary, progress);
 
   const compact: SessionItem[] = [];
@@ -332,20 +339,22 @@ export function mentorPlanContext(
   progress: Progress,
   evidence: LearningSessionEvidence = { curriculum: emptyCurriculumProgress() }
 ) {
+  const route = resolveRoute(evidence);
+  const resolvedEvidence = { ...evidence, route };
   const mastery = moduleMastery(progress);
-  const session = buildDailySession(progress, evidence.route?.dailyMinutes || 25, evidence);
+  const session = buildDailySession(progress, route.dailyMinutes, resolvedEvidence);
   const weakest = [...mastery]
     .filter(item => item.level !== 'locked')
     .sort((left, right) => left.index - right.index || left.mastery - right.mastery)
     .slice(0, 4);
   return {
-    route: evidence.route ? {
-      goal: evidence.route.goal,
-      title: evidence.route.title,
-      promise: evidence.route.promise,
-      pace: evidence.route.pace,
-      dailyMinutes: evidence.route.dailyMinutes
-    } : null,
+    route: {
+      goal: route.goal,
+      title: route.title,
+      promise: route.promise,
+      pace: route.pace,
+      dailyMinutes: route.dailyMinutes
+    },
     readiness: overallReadiness(progress),
     weakest: weakest.map(item => ({ title: item.title, mastery: item.mastery, errors: item.incorrect, hints: item.hints })),
     session: session.items.map(item => ({ title: item.title, reason: item.reason, topic: item.topic, label: item.label })),
