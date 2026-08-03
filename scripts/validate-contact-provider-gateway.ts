@@ -94,7 +94,7 @@ assert.ok(!smoke.includes('console.log(code)'), 'Staging smoke logs the verifica
 for (const rule of [
   'ask a learner for their password, six-digit verification code or recovery code',
   'manually mark an unverified contact as verified',
-  'no manual bypass',
+  'support must not bypass ownership verification',
   'feature-off rollback',
   'protected real-provider acceptance workflow',
   'HMAC-pseudonymous'
