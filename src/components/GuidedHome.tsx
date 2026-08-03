@@ -114,6 +114,7 @@ export default function GuidedHome({
         includeReview: false,
         goal: profile.goal,
         passedCheckpointIds: evidence.passedCheckpointIds,
+        checkpointRemediations: evidence.checkpointRemediations,
         assessmentComplete: evidence.assessmentComplete,
         bypassedModuleIds: profile.placement.status === 'completed'
           ? profile.placement.strongModuleIds
