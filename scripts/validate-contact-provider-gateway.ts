@@ -70,6 +70,14 @@ assert.ok(source.includes("pseudonym(env, `destination:${payload.channel}`"), 'D
 assert.ok(source.includes("pseudonym(env, 'source'"), 'Source HMAC pseudonym is missing.');
 assert.ok(source.includes("boundedResponseText(response, MAX_PROVIDER_RESPONSE_BYTES)"), 'Provider responses are not bounded.');
 assert.ok(source.includes("ctx.waitUntil(purgeExpiredEvidence(env))"), 'Retention purge is not scheduled safely.');
+assert.ok(source.includes("datetime(created_at) >= datetime('now', '-24 hours')"), '24-hour health window must parse ISO timestamps.');
+assert.ok(source.includes('datetime(received_at) < datetime'), 'Event retention must parse ISO timestamps.');
+assert.ok(source.includes('datetime(updated_at) < datetime'), 'Attempt retention must parse ISO timestamps.');
+assert.ok(source.includes('datetime(window_start) < datetime'), 'Abuse bucket retention must parse ISO timestamps.');
+assert.ok(source.includes("bounceType.toLowerCase() === 'transient'"), 'Transient Resend bounces must be classified explicitly.');
+assert.ok(source.includes("bounceType.toLowerCase() === 'permanent'"), 'Permanent Resend bounces must be classified explicitly.');
+assert.ok(source.includes("status: 'delayed'"), 'Transient bounce must remain retryable rather than suppressed.');
+assert.ok(source.includes("suppressionReason: null"), 'Non-permanent provider events need an explicit no-suppression state.');
 assert.ok(!source.includes('console.log(payload)'), 'Delivery payload must not be logged.');
 assert.ok(!source.includes('console.log(destination)'), 'Destination must not be logged.');
 assert.ok(!source.includes('console.log(code)'), 'Verification code must not be logged.');
@@ -111,7 +119,7 @@ for (const rule of [
 assert.ok(packageJson.includes('validate:provider-gateway'), 'Provider gateway validator is not wired into package scripts.');
 assert.ok(packageJson.includes('types:provider-gateway'), 'Provider gateway generated types are not wired into package scripts.');
 
-console.log('Contact provider gateway validated: default-off config, generated types, D1 evidence minimization, signed callbacks, abuse controls, scheduled retention, protected real-provider acceptance and support boundaries are present.');
+console.log('Contact provider gateway validated: default-off config, generated types, D1 evidence minimization, signed callbacks, permanent/transient bounce handling, abuse controls, ISO-safe scheduled retention, protected real-provider acceptance and support boundaries are present.');
 
 function read(path: string) {
   return readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
