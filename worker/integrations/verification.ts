@@ -16,6 +16,7 @@ export type VerificationChallenge = {
   purpose: VerificationPurpose;
   code: string;
   expiresAt: string;
+  sourceKey: string;
 };
 
 export interface VerificationProvider {
@@ -35,6 +36,7 @@ export type VerificationProviderEnvironment = Cloudflare.Env & Partial<Record<Ve
 
 const WEBHOOK_TIMEOUT_MS = 5_000;
 const MESSAGE_ID_PATTERN = /^[A-Za-z0-9._:/-]{1,160}$/;
+const SOURCE_KEY_PATTERN = /^[0-9a-f]{64}$/;
 
 function secretValue(value: string | undefined, maxLength: number) {
   const normalized = (value || '').trim();
@@ -80,6 +82,7 @@ export class WebhookVerificationProvider implements VerificationProvider {
 
   async send(challenge: VerificationChallenge): Promise<{ providerMessageId: string }> {
     if (challenge.channel !== this.channel) throw new Error('VERIFICATION_CHANNEL_MISMATCH');
+    if (!SOURCE_KEY_PATTERN.test(challenge.sourceKey)) throw new Error('VERIFICATION_SOURCE_KEY_INVALID');
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort('verification-provider-timeout'), WEBHOOK_TIMEOUT_MS);
     try {
@@ -100,7 +103,8 @@ export class WebhookVerificationProvider implements VerificationProvider {
           destination: challenge.destination,
           purpose: challenge.purpose,
           code: challenge.code,
-          expiresAt: challenge.expiresAt
+          expiresAt: challenge.expiresAt,
+          sourceKey: challenge.sourceKey
         })
       });
       if (!response.ok) throw new Error('VERIFICATION_PROVIDER_REJECTED');
