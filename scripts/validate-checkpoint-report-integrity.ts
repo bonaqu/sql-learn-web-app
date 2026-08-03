@@ -97,4 +97,22 @@ for (const marker of [
 assert.doesNotMatch(migration, /DELETE FROM checkpoint_reports|UPDATE checkpoint_reports\s+SET attempt_number|UNIQUE\s*\(user_id, checkpoint_id, attempt_number\)/i,
   'Receipt migration must not delete or destructively renumber legacy checkpoint evidence.');
 
-console.log('Checkpoint report integrity validated: canonical equality, typed conflicts, stable receipts, concurrent-safe append-only Worker semantics and non-destructive legacy migration.');
+const productionSmoke = readFileSync(new URL('./checkpoint-production-smoke.mjs', import.meta.url), 'utf8');
+for (const marker of [
+  'checkpoint-report-exact-replay',
+  'checkpoint-report-mutation-conflict',
+  "savedPayload.replayed !== false",
+  "replayPayload.replayed !== true",
+  "conflictPayload.code !== 'CHECKPOINT_REPORT_CONFLICT'",
+  "stored.score !== 92",
+  'JSON.stringify(storedReceipt) !== JSON.stringify(originalReceipt)',
+  'immutableReceiptVerified: true',
+  'exactReplayVerified: true',
+  'mutationConflictVerified: true'
+]) {
+  assert.ok(productionSmoke.includes(marker), `Checkpoint production immutable lifecycle is missing ${marker}.`);
+}
+assert.doesNotMatch(productionSmoke, /writeJson\([^\n]*(?:taskScores|moduleScores|payloadDigest)(?!Prefix)/,
+  'Production smoke artifacts must not write complete checkpoint evidence or receipt digests.');
+
+console.log('Checkpoint report integrity validated: canonical equality, typed conflicts, stable receipts, concurrent-safe append-only Worker semantics, non-destructive legacy migration and deployed replay/conflict smoke coverage.');
