@@ -82,7 +82,7 @@ export async function createCheckpointSessionWithCoordination(
     }
 
     const base = createCheckpointSession(checkpointId, progress, reports);
-    const session = saveCheckpointSession({
+    const coordinatedSession: CoordinatedCheckpointSession = {
       ...base,
       id: reservation.reportId,
       startedAt: reservation.startedAt,
@@ -94,7 +94,8 @@ export async function createCheckpointSessionWithCoordination(
       coordinatedAttemptNumber: reservation.attemptNumber,
       reservationExpiresAt: reservation.expiresAt,
       reservationDeviceName: reservation.deviceName
-    } satisfies CoordinatedCheckpointSession) as CoordinatedCheckpointSession;
+    };
+    const session = saveCheckpointSession(coordinatedSession) as CoordinatedCheckpointSession;
     clearCheckpointReservationClientRequest(
       auth.userId,
       checkpointId,
@@ -122,10 +123,11 @@ export async function createCheckpointSessionWithCoordination(
     }
 
     const base = createCheckpointSession(checkpointId, progress, reports);
-    const session = saveCheckpointSession({
+    const provisionalSession: CoordinatedCheckpointSession = {
       ...base,
       coordination: 'provisional'
-    } satisfies CoordinatedCheckpointSession) as CoordinatedCheckpointSession;
+    };
+    const session = saveCheckpointSession(provisionalSession) as CoordinatedCheckpointSession;
     return {
       session,
       activeReservation: null,
