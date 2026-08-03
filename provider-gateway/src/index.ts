@@ -22,6 +22,7 @@ type DeliveryRequest = {
   purpose: DeliveryPurpose;
   code: string;
   expiresAt: string;
+  sourceKey: string;
 };
 
 type DeliveryAttemptRow = {
@@ -55,6 +56,7 @@ const MAX_PROVIDER_RESPONSE_BYTES = 32 * 1_024;
 const PROVIDER_TIMEOUT_MS = 7_000;
 const SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
 const CHALLENGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DIGEST_PATTERN = /^[0-9a-f]{64}$/;
 const CODE_PATTERN = /^[0-9]{6}$/;
 const PURPOSES = new Set<DeliveryPurpose>(['register', 'password-reset', 'sensitive-action']);
 const CHANNELS = new Set<DeliveryChannel>(['email', 'sms']);
@@ -249,6 +251,7 @@ function parseDeliveryRequest(value: unknown): DeliveryRequest | null {
   if (typeof candidate.purpose !== 'string' || !PURPOSES.has(candidate.purpose as DeliveryPurpose)) return null;
   if (typeof candidate.destination !== 'string' || candidate.destination.length > 320) return null;
   if (typeof candidate.code !== 'string' || !CODE_PATTERN.test(candidate.code)) return null;
+  if (typeof candidate.sourceKey !== 'string' || !DIGEST_PATTERN.test(candidate.sourceKey)) return null;
   if (typeof candidate.expiresAt !== 'string') return null;
   const expiry = Date.parse(candidate.expiresAt);
   if (!Number.isFinite(expiry) || expiry <= Date.now() || expiry > Date.now() + 15 * 60_000) return null;
@@ -259,7 +262,8 @@ function parseDeliveryRequest(value: unknown): DeliveryRequest | null {
     destination: candidate.destination,
     purpose: candidate.purpose as DeliveryPurpose,
     code: candidate.code,
-    expiresAt: new Date(expiry).toISOString()
+    expiresAt: new Date(expiry).toISOString(),
+    sourceKey: candidate.sourceKey
   };
 }
 
@@ -437,8 +441,7 @@ async function handleDelivery(request: Request, env: Cloudflare.Env) {
   if (!providerReady(payload.channel, env)) return safeError('CHANNEL_DISABLED', 404);
 
   const destinationHash = await pseudonym(env, `destination:${payload.channel}`, destination);
-  const sourceAddress = request.headers.get('cf-connecting-ip') || 'unknown';
-  const sourceHash = await pseudonym(env, 'source', sourceAddress);
+  const sourceHash = await pseudonym(env, 'source', payload.sourceKey);
   const existing = await existingAttempt(env, payload.challengeId);
   if (existing) {
     if (existing.channel !== payload.channel || existing.purpose !== payload.purpose || existing.destination_hash !== destinationHash) {
@@ -509,7 +512,7 @@ async function verifyResendSignature(rawBody: string, request: Request, env: Clo
   const eventId = (request.headers.get('svix-id') || '').trim();
   const timestamp = (request.headers.get('svix-timestamp') || '').trim();
   const signatures = (request.headers.get('svix-signature') || '').trim().split(/\s+/);
-  if (!secretValue || !eventId || !/^[0-9]{10}$/.test(timestamp) || signatures.length === 0) return null;
+  if (!secretValue || !eventId || eventId.length > 200 || !/^[0-9]{10}$/.test(timestamp) || signatures.length === 0) return null;
   const seconds = Number(timestamp);
   if (!Number.isFinite(seconds) || Math.abs(Date.now() / 1_000 - seconds) > SIGNATURE_TOLERANCE_SECONDS) return null;
   const encodedSecret = secretValue.startsWith('whsec_') ? secretValue.slice('whsec_'.length) : secretValue;
