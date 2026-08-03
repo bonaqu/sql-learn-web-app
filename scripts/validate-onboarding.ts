@@ -1,21 +1,32 @@
 import type { AssessmentReport } from '../src/lib/assessment.ts';
+import { goalModuleRoute, SHARED_FOUNDATION_MODULE_IDS } from '../src/lib/goal-aware-route.ts';
 import {
   buildFirstWeekPlan,
   calculatePlacement,
   completeOnboarding,
   deferredPlacement,
   emptyOnboardingProfile,
+  firstWeekRouteModuleIds,
   latestCompletedDiagnostic,
   onboardingReady,
   placementLevel,
   preferredOnboardingProfile,
   sanitizeOnboardingProfile,
+  type LearnerGoal,
   type LearnerOnboardingProfile
 } from '../src/lib/learner-onboarding.ts';
 
 const failures: string[] = [];
 const assert = (condition: unknown, message: string) => { if (!condition) failures.push(message); };
 const now = '2026-07-25T18:00:00.000Z';
+
+function firstRouteDifference(left: readonly string[], right: readonly string[]) {
+  const length = Math.min(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    if (left[index] !== right[index]) return index;
+  }
+  return left.length === right.length ? -1 : length;
+}
 
 function diagnosticReport(
   id: string,
@@ -102,7 +113,7 @@ const weakPlacement = calculatePlacement(supportProfile, weakReport);
 assert(weakPlacement.level === 'developing', '52 score must produce developing placement');
 assert(weakPlacement.recommendedTrack === 'fundamentals', 'Weak placement must not skip foundation for a support self-report');
 assert(weakPlacement.strongModuleIds.length === 0, 'Score below 80 must not become strong module evidence');
-assert(weakPlacement.focusModuleIds[0] === 'joins', 'Lowest module must lead the focus list');
+assert(weakPlacement.focusModuleIds[0] === 'joins', 'Lowest module must lead the remediation focus list');
 
 const strongReport = diagnosticReport('strong', 86, '2026-07-25T18:00:00.000Z', [
   { module: 'select', score: 95 },
@@ -128,14 +139,62 @@ assert(completed.firstWeekPlan.every(item => item.minutes === 25), 'Week plan mu
 assert(completed.firstWeekPlan.map(item => item.day).join(',') === 'MO,WE,FR', 'Week plan must preserve selected day order');
 assert(completed.firstWeekPlan.some(item => item.kind === 'review'), 'A sustainable week needs retrieval review');
 assert(completed.firstWeekPlan.some(item => item.kind === 'practice'), 'A sustainable week needs independent practice');
+assert(firstWeekRouteModuleIds(completed)[0] === 'sql-thinking',
+  'Non-contiguous strong modules must not skip the missing first shared prerequisite.');
+assert(completed.firstWeekPlan.filter(item => item.moduleId).every(item =>
+  firstWeekRouteModuleIds(completed).includes(item.moduleId || '')
+), 'Every lesson/practice session must come from the same safe goal route.');
 
 const pending = { ...supportProfile, placement: { ...supportProfile.placement, status: 'pending' as const } };
 const pendingPlan = buildFirstWeekPlan(pending);
 assert(pendingPlan[0]?.kind === 'placement', 'Pending onboarding must put executable placement first');
+assert(firstWeekRouteModuleIds(pending).slice(0, SHARED_FOUNDATION_MODULE_IDS.length)
+  .every((moduleId, index) => moduleId === SHARED_FOUNDATION_MODULE_IDS[index]),
+  'Pending placement must preview the shared beginner foundation, not an advanced self-report route.');
 
 const deferred = completeOnboarding(supportProfile, deferredPlacement(supportProfile), now);
 assert(onboardingReady(deferred), 'Learner may explicitly defer placement and start from foundation');
 assert(deferred.placement.recommendedTrack === 'fundamentals', 'Deferred placement must never infer an advanced track');
+assert(firstWeekRouteModuleIds(deferred)[0] === 'sql-thinking', 'Deferred placement must start from zero.');
+
+function advancedProfile(goal: LearnerGoal, prefixLength: number) {
+  const route = goalModuleRoute(goal);
+  const safePrefixLength = Math.max(SHARED_FOUNDATION_MODULE_IDS.length, Math.min(prefixLength, route.length - 1));
+  const placement = {
+    ...supportProfile.placement,
+    status: 'completed' as const,
+    score: 95,
+    level: 'advanced' as const,
+    recommendedTrack: goal === 'analyst' ? 'analytics' as const : goal === 'backend' ? 'performance' as const : 'fundamentals' as const,
+    strongModuleIds: route.slice(0, safePrefixLength),
+    focusModuleIds: [],
+    completedAt: now
+  };
+  return completeOnboarding({
+    ...supportProfile,
+    goal,
+    placement
+  }, placement, now);
+}
+
+const analystRoute = goalModuleRoute('analyst');
+const backendRoute = goalModuleRoute('backend');
+const analystBackendDivergence = firstRouteDifference(analystRoute, backendRoute);
+assert(analystBackendDivergence >= SHARED_FOUNDATION_MODULE_IDS.length,
+  'Analyst/backend advanced fixture must branch only after the shared beginner foundation.');
+assert(analystBackendDivergence >= 0 && analystBackendDivergence < analystRoute.length - 1,
+  'Analyst/backend routes need a usable prerequisite-safe divergence point.');
+
+const analystAdvanced = advancedProfile('analyst', analystBackendDivergence);
+const backendAdvanced = advancedProfile('backend', analystBackendDivergence);
+assert(firstWeekRouteModuleIds(analystAdvanced)[0] === analystRoute[analystBackendDivergence],
+  'Analyst week must resume at its first real goal-specific branch.');
+assert(firstWeekRouteModuleIds(backendAdvanced)[0] === backendRoute[analystBackendDivergence],
+  'Backend week must resume at its first real goal-specific branch.');
+assert(analystRoute[analystBackendDivergence] !== backendRoute[analystBackendDivergence],
+  'Analyst and backend must select different eligible modules at their first branch.');
+assert(firstWeekRouteModuleIds(analystAdvanced).join(',') !== firstWeekRouteModuleIds(backendAdvanced).join(','),
+  'Advanced analyst and backend first-week routes must differ meaningfully after the shared prefix.');
 
 const local = { ...completed, updatedAt: '2026-07-25T18:00:00.000Z' };
 const cloud = { ...completed, goal: 'analyst' as const, updatedAt: '2026-07-25T17:00:00.000Z' };
@@ -152,4 +211,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Onboarding validated: goal contract, placement thresholds, ${completed.firstWeekPlan.length}-session week plan, defer path and conflict resolution.`);
+console.log(`Onboarding validated: goal contract, safe placement prefix, dynamic analyst/backend divergence at ${analystBackendDivergence}, prerequisite-aware ${completed.firstWeekPlan.length}-session plan, defer path and conflict resolution.`);

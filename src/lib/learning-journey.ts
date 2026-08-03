@@ -5,8 +5,14 @@ import {
   type CurriculumLesson
 } from '../data/complete-curriculum';
 import { modules, tasks, type SqlTask } from '../data/course-catalog';
-import { phaseDefinitions, phaseForModule } from '../data/learning-structure';
+import { canonicalModuleIds, phaseDefinitions, phaseForModule } from '../data/learning-structure';
 import type { CurriculumProgressV1 } from './curriculum-progress';
+import {
+  goalModuleFrontier,
+  safeDiagnosticBypass,
+  type GoalRouteReasonCode
+} from './goal-aware-route';
+import { loadOnboardingProfile, type LearnerGoal } from './learner-onboarding';
 import {
   hasIndependentTaskEvidence,
   reviewQueue,
@@ -33,6 +39,14 @@ export type JourneyActionKind =
   | 'project'
   | 'complete';
 
+export type JourneyRouteReasonCode = GoalRouteReasonCode
+  | 'retrieval-review'
+  | 'phase-checkpoint'
+  | 'checkpoint-transfer'
+  | 'final-assessment'
+  | 'capstone-project'
+  | 'route-complete';
+
 export type JourneyAction = {
   kind: JourneyActionKind;
   stage: JourneyStage;
@@ -47,6 +61,12 @@ export type JourneyAction = {
   lessonId: string | null;
   checkpointId: string | null;
   projectId: string | null;
+  routeReasonCode?: JourneyRouteReasonCode;
+  routeReason?: string;
+  frontierCompletedModuleIds?: string[];
+  frontierEligibleModuleIds?: string[];
+  frontierRouteModuleIds?: string[];
+  frontierPassedPhaseIds?: string[];
 };
 
 export type JourneyOptions = {
@@ -54,6 +74,17 @@ export type JourneyOptions = {
   passedCheckpointIds?: readonly string[];
   assessmentComplete?: boolean;
   bypassedModuleIds?: readonly string[];
+  goal?: LearnerGoal | null;
+};
+
+export type JourneyFrontier = {
+  action: JourneyAction;
+  goal: LearnerGoal;
+  routeModuleIds: string[];
+  completedModuleIds: string[];
+  eligibleModuleIds: string[];
+  safeBypassedModuleIds: string[];
+  passedPhaseIds: string[];
 };
 
 const moduleTitles = new Map(modules.map(([id, title]) => [id, title]));
@@ -66,6 +97,14 @@ function context(moduleId: string | null) {
     phaseId: phase?.id || null,
     phaseTitle: phase?.title || null
   };
+}
+
+function withReason(
+  action: JourneyAction,
+  routeReasonCode: JourneyRouteReasonCode,
+  routeReason: string
+): JourneyAction {
+  return { ...action, routeReasonCode, routeReason };
 }
 
 function lessonAction(lesson: CurriculumLesson): JourneyAction {
@@ -163,6 +202,15 @@ function nextFoundationAction(
   return null;
 }
 
+export function moduleFoundationComplete(
+  moduleId: string,
+  progress: Progress,
+  curriculum: CurriculumProgressV1,
+  bypassedModuleIds: readonly string[] = []
+) {
+  return nextFoundationAction(moduleId, progress, curriculum, new Set(bypassedModuleIds)) === null;
+}
+
 function checkpointPassedByEvidence(checkpointId: string, progress: Progress, passed: ReadonlySet<string>) {
   if (passed.has(checkpointId)) return true;
   const checkpoint = curriculumCheckpoints.find(item => item.id === checkpointId);
@@ -232,75 +280,51 @@ function reviewAction(progress: Progress): JourneyAction | null {
   );
 }
 
-export function nextJourneyAction(
-  progress: Progress,
-  curriculum: CurriculumProgressV1,
-  options: JourneyOptions = {}
-): JourneyAction {
-  if (options.includeReview !== false) {
-    const review = reviewAction(progress);
-    if (review) return review;
-  }
+function phaseRouteRank(phaseId: string, routePositions: ReadonlyMap<string, number>) {
+  const phase = phaseDefinitions.find(item => item.id === phaseId);
+  if (!phase) return Number.MAX_SAFE_INTEGER;
+  return Math.max(...phase.moduleIds.map(moduleId => routePositions.get(moduleId) ?? Number.MAX_SAFE_INTEGER));
+}
 
-  const passedCheckpoints = new Set(options.passedCheckpointIds || []);
-  const bypassedModules = new Set(options.bypassedModuleIds || []);
+function assessmentAction(): JourneyAction {
+  return {
+    kind: 'assessment',
+    stage: 'assessment',
+    title: 'Итоговая проверка SQL',
+    description: 'Проверь удержание навыков на смешанном наборе задач без привязки к одному уроку.',
+    cta: 'Открыть Assessment Center',
+    moduleId: null,
+    moduleTitle: null,
+    phaseId: null,
+    phaseTitle: null,
+    task: null,
+    lessonId: null,
+    checkpointId: null,
+    projectId: null
+  };
+}
 
-  for (const phase of phaseDefinitions) {
-    const phaseModules = [...phase.moduleIds];
-    for (const moduleId of phaseModules) {
-      const foundation = nextFoundationAction(moduleId, progress, curriculum, bypassedModules);
-      if (foundation) return foundation;
-    }
-
-    const checkpoint = checkpointForPhase(phase.id);
-    if (checkpoint && !checkpointPassedByEvidence(checkpoint.id, progress, passedCheckpoints)) {
-      return checkpointAction(phase.id) || lessonAction(curriculumLessons[0]);
-    }
-
-    for (const moduleId of phaseModules) {
-      if (bypassedModules.has(moduleId)) continue;
-      const transfer = transferAction(moduleId, progress);
-      if (transfer) return transfer;
-    }
-  }
-
-  if (!options.assessmentComplete) {
-    return {
-      kind: 'assessment',
-      stage: 'assessment',
-      title: 'Итоговая проверка SQL',
-      description: 'Проверь удержание навыков на смешанном наборе задач без привязки к одному уроку.',
-      cta: 'Открыть Assessment Center',
-      moduleId: null,
-      moduleTitle: null,
-      phaseId: null,
-      phaseTitle: null,
-      task: null,
-      lessonId: null,
-      checkpointId: null,
-      projectId: null
-    };
-  }
-
+function projectAction(curriculum: CurriculumProgressV1): JourneyAction | null {
   const project = capstoneProjects.find(item => !curriculum.completedProjects.includes(item.id));
-  if (project) {
-    return {
-      kind: 'project',
-      stage: 'project',
-      title: project.title,
-      description: project.summary,
-      cta: 'Открыть Project Lab',
-      moduleId: project.moduleIds[0] || null,
-      moduleTitle: project.moduleIds[0] ? moduleTitles.get(project.moduleIds[0]) || project.moduleIds[0] : null,
-      phaseId: project.moduleIds[0] ? phaseForModule(project.moduleIds[0])?.id || null : null,
-      phaseTitle: project.moduleIds[0] ? phaseForModule(project.moduleIds[0])?.title || null : null,
-      task: null,
-      lessonId: null,
-      checkpointId: null,
-      projectId: project.id
-    };
-  }
+  if (!project) return null;
+  return {
+    kind: 'project',
+    stage: 'project',
+    title: project.title,
+    description: project.summary,
+    cta: 'Открыть Project Lab',
+    moduleId: project.moduleIds[0] || null,
+    moduleTitle: project.moduleIds[0] ? moduleTitles.get(project.moduleIds[0]) || project.moduleIds[0] : null,
+    phaseId: project.moduleIds[0] ? phaseForModule(project.moduleIds[0])?.id || null : null,
+    phaseTitle: project.moduleIds[0] ? phaseForModule(project.moduleIds[0])?.title || null : null,
+    task: null,
+    lessonId: null,
+    checkpointId: null,
+    projectId: project.id
+  };
+}
 
+function completeAction(): JourneyAction {
   return {
     kind: 'complete',
     stage: 'complete',
@@ -316,6 +340,148 @@ export function nextJourneyAction(
     checkpointId: null,
     projectId: null
   };
+}
+
+export function buildJourneyFrontier(
+  progress: Progress,
+  curriculum: CurriculumProgressV1,
+  options: JourneyOptions = {}
+): JourneyFrontier {
+  const goal = options.goal || loadOnboardingProfile().goal || 'full';
+  const safeBypassedModuleIds = safeDiagnosticBypass(goal, options.bypassedModuleIds || []);
+  const bypassed = new Set<string>(safeBypassedModuleIds);
+  const foundationCompleteModuleIds: string[] = canonicalModuleIds.filter(moduleId =>
+    nextFoundationAction(moduleId, progress, curriculum, bypassed) === null
+  );
+  const moduleFrontier = goalModuleFrontier(goal, foundationCompleteModuleIds);
+  const completedModuleIds = moduleFrontier.completedModuleIds;
+  const routePositions = new Map<string, number>(moduleFrontier.routeModuleIds.map((moduleId, index) => [moduleId, index]));
+  const passedCheckpointIds = new Set(options.passedCheckpointIds || []);
+  const passedPhaseIds: string[] = phaseDefinitions
+    .filter(phase => {
+      const checkpoint = checkpointForPhase(phase.id);
+      return Boolean(checkpoint && checkpointPassedByEvidence(checkpoint.id, progress, passedCheckpointIds));
+    })
+    .map(phase => phase.id);
+
+  let action: JourneyAction | null = null;
+  if (options.includeReview !== false) {
+    const review = reviewAction(progress);
+    if (review) {
+      action = withReason(
+        review,
+        'retrieval-review',
+        'Spaced retrieval имеет приоритет над новой темой, чтобы ранее изученное не распалось.'
+      );
+    }
+  }
+
+  if (!action) {
+    const readyCheckpointPhase = phaseDefinitions
+      .filter(phase => phase.moduleIds.every(moduleId => completedModuleIds.includes(moduleId)))
+      .filter(phase => {
+        const checkpoint = checkpointForPhase(phase.id);
+        return Boolean(checkpoint && !checkpointPassedByEvidence(checkpoint.id, progress, passedCheckpointIds));
+      })
+      .sort((left, right) => phaseRouteRank(left.id, routePositions) - phaseRouteRank(right.id, routePositions))[0];
+    const checkpoint = readyCheckpointPhase ? checkpointAction(readyCheckpointPhase.id) : null;
+    if (checkpoint) {
+      action = withReason(
+        checkpoint,
+        'phase-checkpoint',
+        'Все foundation-модули этой фазы закрыты; mixed checkpoint обязателен до transfer и новой специализации.'
+      );
+    }
+  }
+
+  if (!action) {
+    const passedPhases = phaseDefinitions
+      .filter(phase => passedPhaseIds.includes(phase.id))
+      .sort((left, right) => phaseRouteRank(left.id, routePositions) - phaseRouteRank(right.id, routePositions));
+    for (const phase of passedPhases) {
+      const phaseModules = [...phase.moduleIds]
+        .sort((left, right) => (routePositions.get(left) ?? 0) - (routePositions.get(right) ?? 0));
+      for (const moduleId of phaseModules) {
+        if (bypassed.has(moduleId)) continue;
+        if (!completedModuleIds.includes(moduleId)) continue;
+        const transfer = transferAction(moduleId, progress);
+        if (!transfer) continue;
+        action = withReason(
+          transfer,
+          'checkpoint-transfer',
+          'Foundation и checkpoint уже подтверждены; теперь тот же навык проверяется без учебного scaffolding.'
+        );
+        break;
+      }
+      if (action) break;
+    }
+  }
+
+  if (!action && moduleFrontier.nextModuleId) {
+    const foundation = nextFoundationAction(moduleFrontier.nextModuleId, progress, curriculum, bypassed);
+    if (foundation) {
+      action = withReason(
+        foundation,
+        moduleFrontier.nextReasonCode || 'prerequisite-recovery',
+        moduleFrontier.nextReason || 'Модуль является следующим prerequisite-safe шагом маршрута.'
+      );
+    }
+  }
+
+  if (!action) {
+    const incomplete = moduleFrontier.routeModuleIds.find(moduleId => !completedModuleIds.includes(moduleId));
+    if (incomplete) {
+      const recovery = nextFoundationAction(incomplete, progress, curriculum, bypassed);
+      if (recovery) {
+        action = withReason(
+          recovery,
+          'prerequisite-recovery',
+          'Маршрут восстанавливает недостающий prerequisite вместо небезопасного перехода вперёд.'
+        );
+      }
+    }
+  }
+
+  if (!action && !options.assessmentComplete) {
+    action = withReason(
+      assessmentAction(),
+      'final-assessment',
+      'Все обязательные модули, checkpoints и transfer закрыты; пора проверить смешанное удержание навыков.'
+    );
+  }
+
+  if (!action) {
+    const project = projectAction(curriculum);
+    action = project
+      ? withReason(project, 'capstone-project', 'Assessment закрыт; capstone собирает знания в воспроизводимый production-артефакт.')
+      : withReason(completeAction(), 'route-complete', 'Все обязательные evidence-ступени академии завершены.');
+  }
+
+  const decoratedAction: JourneyAction = {
+    ...action,
+    frontierCompletedModuleIds: [...completedModuleIds],
+    frontierEligibleModuleIds: [...moduleFrontier.eligibleModuleIds],
+    frontierRouteModuleIds: [...moduleFrontier.routeModuleIds],
+    frontierPassedPhaseIds: [...passedPhaseIds]
+  };
+
+  return {
+    action: decoratedAction,
+    goal,
+    routeModuleIds: moduleFrontier.routeModuleIds,
+    completedModuleIds,
+    eligibleModuleIds: moduleFrontier.eligibleModuleIds,
+    safeBypassedModuleIds,
+    passedPhaseIds
+  };
+}
+
+export function nextJourneyAction(
+  progress: Progress,
+  curriculum: CurriculumProgressV1,
+  options: JourneyOptions = {}
+): JourneyAction {
+  return buildJourneyFrontier(progress, curriculum, options).action;
 }
 
 export function journeyStageForTask(task: SqlTask): JourneyStage {

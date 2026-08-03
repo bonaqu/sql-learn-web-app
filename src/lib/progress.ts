@@ -33,6 +33,7 @@ export type AttemptEvidence = {
 
 export const STORAGE_KEY = 'sql-academy-progress-v4';
 export const PROGRESS_CHANGED_EVENT = 'sql-academy-progress-changed';
+export const CLEAN_REVIEW_INTERVAL_DAYS = 3;
 const LEGACY_KEYS = ['sql-academy-progress-v3', 'sql-academy-progress-v2'];
 const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
@@ -228,23 +229,41 @@ export function moduleErrorSummary(progress: Progress, moduleId: string) {
     .sort((left, right) => right.count - left.count || left.kind.localeCompare(right.kind));
 }
 
+function timestamp(value: string | undefined) {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function reviewQueue(progress: Progress, limit = 24): SqlTask[] {
   return tasks
     .map(task => {
       const stats = progress.taskStats[task.id] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
       const completed = progress.completed.includes(task.id);
-      const ageDays = stats.lastAttemptAt
-        ? Math.max(0, (Date.now() - new Date(stats.lastAttemptAt).getTime()) / 86_400_000)
-        : 0;
+      const independent = hasIndependentTaskEvidence(progress, task.id);
+      const lastAttemptAt = timestamp(stats.lastAttemptAt);
+      const lastIndependentAt = timestamp(stats.lastIndependentAt);
+      const latestAttemptWasIndependent = independent
+        && lastIndependentAt !== null
+        && (lastAttemptAt === null || lastIndependentAt >= lastAttemptAt);
+      const ageAnchor = latestAttemptWasIndependent ? lastIndependentAt : lastAttemptAt;
+      const ageDays = ageAnchor === null
+        ? 0
+        : Math.max(0, (Date.now() - ageAnchor) / 86_400_000);
       const diagnosed = Object.values(stats.errorKinds || {}).reduce((sum, count) => sum + (count || 0), 0);
-      const independentGap = completed && !hasIndependentTaskEvidence(progress, task.id) ? 4 : 0;
-      const score = stats.incorrect * 5
-        + stats.hintsUsed * 2
-        + diagnosed
-        + independentGap
-        + Math.min(stats.attempts, 5)
-        + (completed ? Math.min(ageDays / 3, 4) : stats.attempts ? 6 : 0);
-      return { task, score };
+      const independentGap = completed && !independent ? 4 : 0;
+      const unresolvedRemediation = latestAttemptWasIndependent
+        ? 0
+        : stats.incorrect * 5 + stats.hintsUsed * 2 + diagnosed + independentGap;
+      const unfinishedAttempt = !completed && stats.attempts
+        ? 6 + Math.min(stats.attempts, 5)
+        : 0;
+      const spacedReview = completed
+        && independent
+        && ageDays >= CLEAN_REVIEW_INTERVAL_DAYS
+        ? 1 + Math.min((ageDays - CLEAN_REVIEW_INTERVAL_DAYS) / CLEAN_REVIEW_INTERVAL_DAYS, 3)
+        : 0;
+      return { task, score: unresolvedRemediation + unfinishedAttempt + spacedReview };
     })
     .filter(item => item.score > 0)
     .sort((a, b) => b.score - a.score || a.task.id.localeCompare(b.task.id))

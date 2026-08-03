@@ -1,15 +1,18 @@
+import { curriculumCheckpoints } from '../data/complete-curriculum';
 import { modules, type SqlTask, tasks } from '../data/course-catalog';
 import { phaseDefinitions, phaseForModule } from '../data/learning-structure';
 import {
+  buildJourneyFrontier,
   foundationTasksForModule,
-  nextJourneyAction,
   transferTasksForModule,
-  type JourneyAction
+  type JourneyAction,
+  type JourneyFrontier
 } from './learning-journey';
 import {
   emptyCurriculumProgress,
   type CurriculumProgressV1
 } from './curriculum-progress';
+import type { LearnerGoal } from './learner-onboarding';
 import {
   hasIndependentTaskEvidence,
   type Progress,
@@ -36,6 +39,7 @@ export type ModuleMastery = {
   mastery: number;
   level: MasteryLevel;
   recommendedTask: SqlTask | null;
+  routeState: 'completed' | 'current' | 'eligible' | 'locked';
 };
 
 export type LearningPhase = {
@@ -56,6 +60,7 @@ export type LearningSessionEvidence = {
   passedCheckpointIds?: readonly string[];
   assessmentComplete?: boolean;
   bypassedModuleIds?: readonly string[];
+  goal?: LearnerGoal | null;
 };
 
 export type SessionItem = {
@@ -75,6 +80,7 @@ export type DailySession = {
   reviewCount: number;
   newCount: number;
   focusModule: ModuleMastery | null;
+  frontier: JourneyFrontier;
 };
 
 const difficultyMinutes: Record<SqlTask['difficulty'], number> = {
@@ -97,6 +103,10 @@ const stageMinutes: Record<JourneyAction['stage'], number> = {
   complete: 5
 };
 
+function defaultEvidence(): LearningSessionEvidence {
+  return { curriculum: emptyCurriculumProgress() };
+}
+
 function clamp(value: number, min = 0, max = 100) {
   return Math.min(max, Math.max(min, value));
 }
@@ -106,24 +116,40 @@ function taskSatisfied(task: SqlTask, progress: Progress) {
   return hasIndependentTaskEvidence(progress, task.id);
 }
 
-function foundationReady(moduleId: string, progress: Progress) {
-  const foundationTasks = foundationTasksForModule(moduleId);
-  if (!foundationTasks.length) return false;
-  const satisfied = foundationTasks.filter(task => taskSatisfied(task, progress)).length;
-  const lessonTasks = foundationTasks.filter(task => task.mode === 'lesson');
-  const guidedReady = !lessonTasks.length || lessonTasks.some(task => progress.completed.includes(task.id));
-  return guidedReady && satisfied >= Math.ceil(foundationTasks.length * 0.6);
+function frontierFor(progress: Progress, evidence: LearningSessionEvidence) {
+  return buildJourneyFrontier(progress, evidence.curriculum, {
+    includeReview: false,
+    goal: evidence.goal,
+    passedCheckpointIds: evidence.passedCheckpointIds,
+    assessmentComplete: evidence.assessmentComplete,
+    bypassedModuleIds: evidence.bypassedModuleIds
+  });
 }
 
-function recommendedTaskForModule(moduleId: string, progress: Progress) {
-  return foundationTasksForModule(moduleId).find(task => !taskSatisfied(task, progress))
-    || transferTasksForModule(moduleId).find(task => !taskSatisfied(task, progress))
-    || null;
+function recommendedTaskForModule(
+  moduleId: string,
+  progress: Progress,
+  frontier: JourneyFrontier
+) {
+  if (frontier.action.moduleId === moduleId) return frontier.action.task;
+  if (!frontier.completedModuleIds.includes(moduleId)) return null;
+  const phase = phaseForModule(moduleId);
+  if (!phase || !frontier.passedPhaseIds.includes(phase.id)) return null;
+  return transferTasksForModule(moduleId).find(task => !taskSatisfied(task, progress)) || null;
 }
 
-export function moduleMastery(progress: Progress): ModuleMastery[] {
+export function moduleMastery(
+  progress: Progress,
+  evidence: LearningSessionEvidence = defaultEvidence()
+): ModuleMastery[] {
   const completed = new Set(progress.completed);
-  return modules.map(([id, title, description], index) => {
+  const frontier = frontierFor(progress, evidence);
+  const completedModules = new Set(frontier.completedModuleIds);
+  const eligibleModules = new Set(frontier.eligibleModuleIds);
+  const currentModuleId = frontier.action.moduleId;
+  const routeOrder = new Map(frontier.routeModuleIds.map((moduleId, index) => [moduleId, index]));
+
+  return modules.map(([id, title, description], physicalIndex) => {
     const moduleTasks = tasks.filter(task => task.module === id);
     const solved = moduleTasks.filter(task => completed.has(task.id)).length;
     const independent = moduleTasks.filter(task => hasIndependentTaskEvidence(progress, task.id)).length;
@@ -141,14 +167,19 @@ export function moduleMastery(progress: Progress): ModuleMastery[] {
       + accuracy * 0.2
       + independence * 0.1
     ));
-    const recommendedTask = recommendedTaskForModule(id, progress);
-    const previousModule = index > 0 ? modules[index - 1][0] : null;
-    const previousReady = !previousModule || foundationReady(previousModule, progress);
-    const level: MasteryLevel = !previousReady
+    const routeState: ModuleMastery['routeState'] = completedModules.has(id)
+      ? 'completed'
+      : currentModuleId === id
+        ? 'current'
+        : eligibleModules.has(id)
+          ? 'eligible'
+          : 'locked';
+    const recommendedTask = recommendedTaskForModule(id, progress, frontier);
+    const level: MasteryLevel = routeState === 'locked'
       ? 'locked'
-      : !recommendedTask && mastery >= 82 && independent >= Math.ceil(moduleTasks.length * 0.7)
+      : routeState === 'completed' && !recommendedTask && mastery >= 82
         ? 'mastered'
-        : mastery >= 55
+        : mastery >= 55 || routeState === 'completed'
           ? 'practice'
           : attempts > 0 || solved > 0
             ? 'learning'
@@ -158,7 +189,7 @@ export function moduleMastery(progress: Progress): ModuleMastery[] {
       id,
       title,
       description,
-      index,
+      index: routeOrder.get(id) ?? physicalIndex,
       phaseId: phaseForModule(id)?.id || phaseDefinitions[0].id,
       solved,
       total: moduleTasks.length,
@@ -169,7 +200,8 @@ export function moduleMastery(progress: Progress): ModuleMastery[] {
       independence: Math.round(independence),
       mastery,
       level,
-      recommendedTask
+      recommendedTask,
+      routeState
     };
   });
 }
@@ -180,20 +212,36 @@ function checkpointFor(moduleIds: readonly string[]) {
     .sort((left, right) => {
       const modeWeight = (task: SqlTask) => task.mode === 'interview' ? 3 : task.mode === 'puzzle' ? 2 : task.mode === 'practice' ? 1 : 0;
       return modeWeight(right) - modeWeight(left) || right.id.localeCompare(left.id);
-    })[0];
+    })[0]!;
 }
 
-export function learningPhases(progress: Progress, mastery = moduleMastery(progress)): LearningPhase[] {
-  const completed = new Set(progress.completed);
-  return phaseDefinitions.map((definition, index) => {
+function checkpointIdForPhase(phaseId: string) {
+  const phase = phaseDefinitions.find(item => item.id === phaseId);
+  if (!phase) return null;
+  return curriculumCheckpoints.find(checkpoint =>
+    checkpoint.moduleIds.some(moduleId => phase.moduleIds.includes(moduleId as never))
+  )?.id || null;
+}
+
+export function learningPhases(
+  progress: Progress,
+  mastery: ModuleMastery[] = moduleMastery(progress),
+  evidence: LearningSessionEvidence = defaultEvidence()
+): LearningPhase[] {
+  const frontier = frontierFor(progress, evidence);
+  const passedCheckpointIds = new Set(evidence.passedCheckpointIds || []);
+  return phaseDefinitions.map(definition => {
     const phaseModules = mastery.filter(item => definition.moduleIds.some(id => id === item.id));
     const total = phaseModules.reduce((sum, item) => sum + item.total, 0);
     const solved = phaseModules.reduce((sum, item) => sum + item.solved, 0);
     const phaseMastery = Math.round(phaseModules.reduce((sum, item) => sum + item.mastery, 0) / Math.max(phaseModules.length, 1));
     const checkpointTask = checkpointFor(definition.moduleIds);
-    const prior = index === 0 ? null : phaseDefinitions[index - 1];
-    const priorModules = prior ? mastery.filter(item => prior.moduleIds.some(id => id === item.id)) : [];
-    const priorReady = !prior || priorModules.every(item => foundationReady(item.id, progress));
+    const checkpointId = checkpointIdForPhase(definition.id);
+    const checkpointPassed = frontier.passedPhaseIds.includes(definition.id)
+      || Boolean(checkpointId && passedCheckpointIds.has(checkpointId));
+    const unlocked = definition.id === phaseDefinitions[0].id
+      || phaseModules.some(item => item.routeState !== 'locked')
+      || frontier.action.phaseId === definition.id;
     return {
       ...definition,
       moduleIds: [...definition.moduleIds],
@@ -201,8 +249,8 @@ export function learningPhases(progress: Progress, mastery = moduleMastery(progr
       solved,
       total,
       checkpointTask,
-      checkpointPassed: completed.has(checkpointTask.id),
-      unlocked: priorReady
+      checkpointPassed,
+      unlocked
     };
   });
 }
@@ -260,17 +308,13 @@ function pushAction(items: SessionItem[], action: JourneyAction, progress: Progr
 export function buildDailySession(
   progress: Progress,
   targetMinutes = 25,
-  evidence: LearningSessionEvidence = { curriculum: emptyCurriculumProgress() }
+  evidence: LearningSessionEvidence = defaultEvidence()
 ): DailySession {
-  const mastery = moduleMastery(progress);
+  const frontier = frontierFor(progress, evidence);
+  const mastery = moduleMastery(progress, evidence);
   const items: SessionItem[] = [];
   const reviews = reviewQueue(progress, 2);
-  const primary = nextJourneyAction(progress, evidence.curriculum, {
-    includeReview: false,
-    passedCheckpointIds: evidence.passedCheckpointIds,
-    assessmentComplete: evidence.assessmentComplete,
-    bypassedModuleIds: evidence.bypassedModuleIds
-  });
+  const primary = frontier.action;
 
   for (const review of reviews) pushReview(items, review);
   pushAction(items, primary, progress);
@@ -291,20 +335,26 @@ export function buildDailySession(
 
   const focusModule = primary.moduleId
     ? mastery.find(module => module.id === primary.moduleId) || null
-    : mastery.find(module => module.level !== 'locked' && module.level !== 'mastered') || null;
+    : [...mastery]
+        .filter(module => module.routeState !== 'locked' && module.level !== 'mastered')
+        .sort((left, right) => left.index - right.index)[0] || null;
 
   return {
     items: compact,
     totalMinutes,
     reviewCount: compact.filter(item => item.reason === 'review' || item.reason === 'weakness').length,
     newCount: compact.filter(item => item.reason === 'new' || item.reason === 'checkpoint').length,
-    focusModule
+    focusModule,
+    frontier
   };
 }
 
-export function overallReadiness(progress: Progress) {
-  const mastery = moduleMastery(progress);
-  const phases = learningPhases(progress, mastery);
+export function overallReadiness(
+  progress: Progress,
+  evidence: LearningSessionEvidence = defaultEvidence()
+) {
+  const mastery = moduleMastery(progress, evidence);
+  const phases = learningPhases(progress, mastery, evidence);
   const weighted = mastery.reduce((sum, item) => sum + item.mastery, 0) / Math.max(mastery.length, 1);
   const checkpoints = phases.filter(phase => phase.checkpointPassed).length / phases.length * 100;
   const transferTasks = tasks.filter(task => task.mode === 'interview' || task.mode === 'puzzle');
@@ -323,16 +373,18 @@ export function readinessLabel(score: number) {
 
 export function mentorPlanContext(
   progress: Progress,
-  evidence: LearningSessionEvidence = { curriculum: emptyCurriculumProgress() }
+  evidence: LearningSessionEvidence = defaultEvidence()
 ) {
-  const mastery = moduleMastery(progress);
+  const mastery = moduleMastery(progress, evidence);
   const session = buildDailySession(progress, 25, evidence);
   const weakest = [...mastery]
-    .filter(item => item.level !== 'locked')
+    .filter(item => item.routeState !== 'locked')
     .sort((left, right) => left.index - right.index || left.mastery - right.mastery)
     .slice(0, 4);
   return {
-    readiness: overallReadiness(progress),
+    goal: session.frontier.goal,
+    nextReasonCode: session.frontier.action.routeReasonCode || null,
+    readiness: overallReadiness(progress, evidence),
     weakest: weakest.map(item => ({ title: item.title, mastery: item.mastery, errors: item.incorrect, hints: item.hints })),
     session: session.items.map(item => ({ title: item.title, reason: item.reason, topic: item.topic })),
     completed: progress.completed.length,

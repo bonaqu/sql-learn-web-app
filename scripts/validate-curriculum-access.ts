@@ -56,7 +56,7 @@ assert(Boolean(dmlLesson), 'DML advanced lesson is missing');
 assert(Boolean(coreLesson), 'Core SQL-thinking lesson is missing');
 assert(PREREQUISITE_MASTERY >= 50 && PREREQUISITE_MASTERY <= 80, 'Prerequisite mastery threshold is unreasonable');
 assert(DIAGNOSTIC_MODULE_BYPASS > PREREQUISITE_MASTERY, 'Module diagnostic bypass must be stricter than task readiness');
-assert(DIAGNOSTIC_GLOBAL_BYPASS > DIAGNOSTIC_MODULE_BYPASS, 'Global diagnostic bypass must be the strictest path');
+assert(DIAGNOSTIC_GLOBAL_BYPASS > DIAGNOSTIC_MODULE_BYPASS, 'Global diagnostic threshold may remain useful for placement, but not module access');
 assert(advancedCurriculumLessons.every(lesson => lesson.prerequisites.length > 0), 'Every advanced lesson must declare prerequisites');
 
 if (dmlLesson && coreLesson) {
@@ -113,8 +113,12 @@ if (dmlLesson && coreLesson) {
 
   const globalDiagnostic = diagnosticReport(DIAGNOSTIC_GLOBAL_BYPASS, 'select', 40);
   const globalAccess = lessonAccess(dmlLesson, emptyProgress, emptyCurriculum, [globalDiagnostic]);
-  assert(globalAccess.unlocked, 'Exceptional global diagnostic must unlock DML');
-  assert(globalAccess.bypassed.some(item => item.source === 'diagnostic-global'), 'Global bypass evidence must be visible');
+  assert(!globalAccess.unlocked,
+    'Exceptional global diagnostic score must not unlock a concrete module whose prerequisites were not measured');
+  assert(globalAccess.missing.some(item => item.moduleId === 'transactions' && item.diagnosticGlobalScore === DIAGNOSTIC_GLOBAL_BYPASS),
+    'The high global score may remain visible for placement, but the missing module prerequisite must stay explicit');
+  assert(globalAccess.bypassed.every(item => item.source === 'diagnostic-module'),
+    'Lesson access may only report explicit module-level diagnostic bypasses');
 }
 
 if (failures.length) {
@@ -123,4 +127,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Curriculum access validated: ${advancedCurriculumLessons.length} advanced lessons, multi-check prerequisite evidence, mastery ${PREREQUISITE_MASTERY}%, module bypass ${DIAGNOSTIC_MODULE_BYPASS}%, global bypass ${DIAGNOSTIC_GLOBAL_BYPASS}%.`);
+console.log(`Curriculum access validated: ${advancedCurriculumLessons.length} advanced lessons, multi-check prerequisite evidence, mastery ${PREREQUISITE_MASTERY}%, module bypass ${DIAGNOSTIC_MODULE_BYPASS}%, and no global-score teleport at ${DIAGNOSTIC_GLOBAL_BYPASS}%.`);

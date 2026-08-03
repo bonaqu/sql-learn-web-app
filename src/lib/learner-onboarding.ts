@@ -1,5 +1,6 @@
 import { onboardingModuleTitle } from '../data/onboarding-module-titles';
 import type { AssessmentReport } from './assessment';
+import { goalModuleRoute, safeDiagnosticBypass, SHARED_FOUNDATION_MODULE_IDS } from './goal-aware-route';
 
 export type LearnerGoal = 'support' | 'analyst' | 'backend' | 'interview' | 'full';
 export type ExperienceLevel = 'none' | 'basics' | 'regular' | 'advanced';
@@ -310,13 +311,21 @@ function weekKinds(profile: LearnerOnboardingProfile, count: number): WeekPlanIt
   });
 }
 
+export function firstWeekRouteModuleIds(profile: LearnerOnboardingProfile) {
+  const route = goalModuleRoute(profile.goal);
+  const safeBypasses = profile.placement.status === 'completed'
+    ? safeDiagnosticBypass(profile.goal, profile.placement.strongModuleIds)
+    : [];
+  const remaining = route.filter(moduleId => !safeBypasses.includes(moduleId));
+  return (remaining.length ? remaining : route).slice(0, 5);
+}
+
 export function buildFirstWeekPlan(profile: LearnerOnboardingProfile): WeekPlanItem[] {
   const selectedDays = (profile.studyDays.length >= 2 ? profile.studyDays : ['MO', 'WE', 'FR'] as StudyDay[]).slice(0, 7);
-  const focus = profile.placement.focusModuleIds.length
-    ? profile.placement.focusModuleIds
-    : ['sql-thinking', 'select', 'filtering'];
+  const focus = firstWeekRouteModuleIds(profile);
   const kinds = weekKinds(profile, selectedDays.length);
   const goalLabel = goalOptions.find(item => item.id === profile.goal)?.title || 'SQL';
+  const sharedFoundation = new Set<string>(SHARED_FOUNDATION_MODULE_IDS);
   let focusIndex = 0;
   return selectedDays.map((day, index) => {
     const kind = kinds[index];
@@ -324,13 +333,18 @@ export function buildFirstWeekPlan(profile: LearnerOnboardingProfile): WeekPlanI
       ? focus[focusIndex++ % focus.length]
       : null;
     const template = planTemplate(kind, moduleId);
+    const routeDetail = moduleId
+      ? sharedFoundation.has(moduleId)
+        ? ' Общая база обязательна для любой выбранной цели.'
+        : ` Это ближайший prerequisite-safe приоритет маршрута «${goalLabel}».`
+      : '';
     return {
       id: `week-${index + 1}-${day.toLowerCase()}`,
       day,
       minutes: profile.dailyMinutes,
       kind,
       title: index === 0 ? `${goalLabel} · ${template.title}` : template.title,
-      detail: template.detail,
+      detail: `${template.detail}${routeDetail}`,
       moduleId
     };
   });

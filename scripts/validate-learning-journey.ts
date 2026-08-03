@@ -13,11 +13,14 @@ import {
   taskModeOrder
 } from '../src/data/learning-structure';
 import { emptyCurriculumProgress } from '../src/lib/curriculum-progress';
+import { SHARED_FOUNDATION_MODULE_IDS } from '../src/lib/goal-aware-route';
 import {
+  buildJourneyFrontier,
   foundationTasksForModule,
   journeyStageForTask,
   nextJourneyAction
 } from '../src/lib/learning-journey';
+import type { LearnerGoal } from '../src/lib/learner-onboarding';
 import type { Progress, TaskStats } from '../src/lib/progress';
 
 function emptyProgress(): Progress {
@@ -89,14 +92,14 @@ for (let index = 1; index < tasks.length; index += 1) {
     previousKey[0] < currentKey[0]
       || previousKey[0] === currentKey[0] && previousKey[1] < currentKey[1]
       || previousKey[0] === currentKey[0] && previousKey[1] === currentKey[1] && previousKey[2] <= currentKey[2],
-    `Task route regressed at ${previous.id} -> ${current.id}.`
+    `Task catalog regressed at ${previous.id} -> ${current.id}. Physical catalog order remains deterministic even when the learner route is personalized.`
   );
 }
 
 for (let index = 1; index < curriculumLessons.length; index += 1) {
   assert.ok(
     moduleOrderIndex(curriculumLessons[index - 1].module) <= moduleOrderIndex(curriculumLessons[index].module),
-    `Lesson route regressed at ${curriculumLessons[index - 1].id} -> ${curriculumLessons[index].id}.`
+    `Lesson catalog regressed at ${curriculumLessons[index - 1].id} -> ${curriculumLessons[index].id}.`
   );
 }
 
@@ -104,16 +107,16 @@ for (const lesson of curriculumLessons) {
   for (const prerequisite of lesson.prerequisites) {
     assert.ok(
       moduleOrderIndex(prerequisite) < moduleOrderIndex(lesson.module),
-      `${lesson.id}: prerequisite ${prerequisite} must precede ${lesson.module} in the canonical route.`
+      `${lesson.id}: prerequisite ${prerequisite} must precede ${lesson.module} in the source catalog.`
     );
   }
 }
 
 for (const moduleId of canonicalModuleIds) {
   assert.ok(curriculumLessons.some(lesson => lesson.module === moduleId),
-    `${moduleId}: canonical route requires at least one lesson.`);
+    `${moduleId}: route requires at least one lesson.`);
   assert.ok(foundationTasksForModule(moduleId).length > 0,
-    `${moduleId}: canonical route requires guided or independent foundation tasks.`);
+    `${moduleId}: route requires guided or independent foundation tasks.`);
 }
 
 for (const task of tasks) {
@@ -124,13 +127,21 @@ for (const task of tasks) {
   if (task.mode === 'puzzle') assert.equal(stage, 'puzzle');
 }
 
+const goals: LearnerGoal[] = ['support', 'analyst', 'backend', 'interview', 'full'];
 const emptyCurriculum = emptyCurriculumProgress();
-const firstAction = nextJourneyAction(emptyProgress(), emptyCurriculum, { includeReview: false });
-assert.equal(firstAction.kind, 'lesson', 'A new learner must start with a lesson, not a random task.');
-assert.equal(firstAction.lessonId, curriculumLessons[0].id,
-  'A new learner must start with the first canonical lesson.');
-assert.equal(firstAction.moduleId, canonicalModuleIds[0],
-  'A new learner must start in the first canonical module.');
+for (const goal of goals) {
+  const frontier = buildJourneyFrontier(emptyProgress(), emptyCurriculum, {
+    includeReview: false,
+    goal
+  });
+  assert.equal(frontier.action.kind, 'lesson', `${goal}: a new learner must start with a lesson.`);
+  assert.equal(frontier.action.lessonId, curriculumLessons[0].id,
+    `${goal}: a zero-evidence learner must start with the first shared lesson.`);
+  assert.equal(frontier.action.moduleId, canonicalModuleIds[0],
+    `${goal}: a zero-evidence learner must start in the first shared module.`);
+  assert.equal(frontier.action.routeReasonCode, 'shared-foundation');
+  assert.deepEqual(frontier.safeBypassedModuleIds, []);
+}
 
 const firstLesson = curriculumLessons[0];
 const firstLessonComplete = {
@@ -145,77 +156,95 @@ const firstLessonComplete = {
     }
   }
 };
-const afterLesson = nextJourneyAction(emptyProgress(), firstLessonComplete, { includeReview: false });
+const afterLesson = nextJourneyAction(emptyProgress(), firstLessonComplete, { includeReview: false, goal: 'full' });
 assert.equal(afterLesson.kind, 'task', 'A completed lesson must flow into its connected task evidence.');
 assert.equal(afterLesson.moduleId, firstLesson.module,
   'A lesson must flow into practice from the same module.');
 assert.ok(afterLesson.stage === 'guided' || afterLesson.stage === 'practice',
   'The first task after a lesson must be guided or independent practice.');
 
-const transferModule = canonicalModuleIds.find(moduleId =>
-  tasks.some(task => task.module === moduleId && task.mode === 'practice')
-  && tasks.some(task => task.module === moduleId && task.mode === 'interview')
-);
-assert.ok(transferModule, 'The course needs at least one module with practice and interview transfer.');
-
-if (transferModule) {
-  const lessons = curriculumLessons.filter(lesson => lesson.module === transferModule);
-  const foundation = foundationTasksForModule(transferModule);
-  const targetPractice = foundation.find(task => task.mode === 'practice');
-  assert.ok(targetPractice, `${transferModule}: expected a practice task for journey validation.`);
-
-  if (targetPractice) {
-    const targetPhaseIndex = phaseDefinitions.findIndex(phase =>
-      phase.moduleIds.some(moduleId => moduleId === transferModule)
-    );
-    const targetPhase = phaseDefinitions[targetPhaseIndex];
-    const targetPhaseLastModuleIndex = Math.max(...targetPhase.moduleIds.map(moduleOrderIndex));
-    const bypassedToPhaseFrontier = canonicalModuleIds.filter(moduleId =>
-      moduleId !== transferModule && moduleOrderIndex(moduleId) <= targetPhaseLastModuleIndex
-    );
-    const passedCheckpointIds = curriculumCheckpoints
-      .slice(0, targetPhaseIndex + 1)
-      .map(checkpoint => checkpoint.id);
-    const curriculum = {
-      ...emptyCurriculumProgress(),
-      completedLessons: lessons.map(lesson => lesson.id),
-      completedSections: lessons.flatMap(lesson => lesson.sections.map(section => section.id)),
-      answers: Object.fromEntries(lessons.map(lesson => [lesson.check.id, {
-        optionIndex: lesson.check.correctIndex,
-        correct: true,
-        answeredAt: '2026-08-01T00:00:00.000Z'
-      }]))
-    };
-
-    const independent = foundation.filter(task => task.id !== targetPractice.id);
-    const guidedProgress = progressWithEvidence(independent, [targetPractice]);
-    const guidedAction = nextJourneyAction(guidedProgress, curriculum, {
-      includeReview: false,
-      bypassedModuleIds: bypassedToPhaseFrontier,
-      passedCheckpointIds
-    });
-    assert.equal(guidedAction.task?.id, targetPractice.id,
-      'Guided completion must not let the learner skip required independent practice.');
-    assert.equal(guidedAction.stage, 'practice');
-
-    const independentProgress = progressWithEvidence(foundation);
-    const transferAction = nextJourneyAction(independentProgress, curriculum, {
-      includeReview: false,
-      bypassedModuleIds: bypassedToPhaseFrontier,
-      passedCheckpointIds
-    });
-    assert.equal(transferAction.stage, 'interview',
-      'Interview transfer must follow phase foundation, checkpoint and independent practice evidence.');
-  }
+const foundationCheckpoint = curriculumCheckpoints.find(checkpoint =>
+  SHARED_FOUNDATION_MODULE_IDS.every(moduleId => checkpoint.moduleIds.includes(moduleId))
+) || curriculumCheckpoints[0];
+assert.ok(foundationCheckpoint, 'Shared foundation requires a checkpoint.');
+if (foundationCheckpoint) {
+  const checkpointFrontier = buildJourneyFrontier(emptyProgress(), emptyCurriculumProgress(), {
+    includeReview: false,
+    goal: 'analyst',
+    bypassedModuleIds: [...SHARED_FOUNDATION_MODULE_IDS]
+  });
+  assert.equal(checkpointFrontier.action.stage, 'checkpoint',
+    'A ready shared-foundation checkpoint must outrank a goal-priority module.');
+  assert.equal(checkpointFrontier.action.checkpointId, foundationCheckpoint.id);
+  assert.equal(checkpointFrontier.action.routeReasonCode, 'phase-checkpoint');
 }
 
+const transferModule = SHARED_FOUNDATION_MODULE_IDS[SHARED_FOUNDATION_MODULE_IDS.length - 1];
+const transferLessons = curriculumLessons.filter(lesson => lesson.module === transferModule);
+const transferFoundation = foundationTasksForModule(transferModule);
+const targetPractice = transferFoundation.find(task => task.mode === 'practice');
+assert.ok(targetPractice, `${transferModule}: expected a practice task for journey validation.`);
+
+if (targetPractice && foundationCheckpoint) {
+  const bypassedPrefix = SHARED_FOUNDATION_MODULE_IDS.slice(0, -1);
+  const transferCurriculum = {
+    ...emptyCurriculumProgress(),
+    completedLessons: transferLessons.map(lesson => lesson.id),
+    completedSections: transferLessons.flatMap(lesson => lesson.sections.map(section => section.id)),
+    answers: Object.fromEntries(transferLessons.map(lesson => [lesson.check.id, {
+      optionIndex: lesson.check.correctIndex,
+      correct: true,
+      answeredAt: '2026-08-01T00:00:00.000Z'
+    }]))
+  };
+  const independent = transferFoundation.filter(task => task.id !== targetPractice.id);
+  const guidedProgress = progressWithEvidence(independent, [targetPractice]);
+  const guidedAction = nextJourneyAction(guidedProgress, transferCurriculum, {
+    includeReview: false,
+    goal: 'support',
+    bypassedModuleIds: bypassedPrefix,
+    passedCheckpointIds: [foundationCheckpoint.id]
+  });
+  assert.equal(guidedAction.stage, 'practice',
+    'Guided completion must keep the learner in independent practice instead of opening transfer.');
+  assert.equal(guidedAction.moduleId, transferModule,
+    'The remaining independent practice must stay inside the current foundation module.');
+  assert.ok(guidedAction.task && transferFoundation.some(task => task.id === guidedAction.task?.id),
+    'The selector must choose a real unfinished foundation task, not a transfer task.');
+  assert.notEqual(guidedAction.routeReasonCode, 'checkpoint-transfer',
+    'Guided evidence must never unlock Interview/Puzzle transfer.');
+
+  const transferAction = nextJourneyAction(progressWithEvidence(transferFoundation), transferCurriculum, {
+    includeReview: false,
+    goal: 'support',
+    bypassedModuleIds: bypassedPrefix,
+    passedCheckpointIds: [foundationCheckpoint.id]
+  });
+  assert.equal(transferAction.stage, 'interview',
+    'Interview transfer must follow foundation, checkpoint and independent practice evidence.');
+  assert.equal(transferAction.routeReasonCode, 'checkpoint-transfer');
+}
+
+const brokenBypass = buildJourneyFrontier(emptyProgress(), emptyCurriculumProgress(), {
+  includeReview: false,
+  goal: 'backend',
+  bypassedModuleIds: SHARED_FOUNDATION_MODULE_IDS.slice(1)
+});
+assert.deepEqual(brokenBypass.safeBypassedModuleIds, [],
+  'A diagnostic bypass with a missing first prerequisite must be rejected completely.');
+assert.equal(brokenBypass.action.moduleId, SHARED_FOUNDATION_MODULE_IDS[0]);
+
 const guidedHomeSource = readFileSync(new URL('../src/components/GuidedHome.tsx', import.meta.url), 'utf8');
-assert.match(guidedHomeSource, /nextJourneyAction/,
-  'The Today page must use the unified journey selector.');
+assert.match(guidedHomeSource, /buildJourneyFrontier/,
+  'The Today page must consume the unified frontier snapshot.');
+assert.match(guidedHomeSource, /goal: profile\.goal/,
+  'The Today page must pass the selected onboarding goal explicitly.');
+assert.match(guidedHomeSource, /data-route-reason/,
+  'The Today action must expose why it is next for browser contracts.');
 assert.doesNotMatch(guidedHomeSource, /tasks\.find\(/,
   'The Today page must not fall back to physical task-array order.');
 assert.match(guidedHomeSource, /JOURNEY_EVIDENCE_EVENTS/,
-  'The Today page must react to the shared curriculum/checkpoint/assessment evidence events.');
+  'The Today page must react to shared curriculum/checkpoint/assessment evidence events.');
 for (const forbiddenImport of [
   "import('../lib/assessment')",
   "import('../lib/checkpoints')",
@@ -224,6 +253,29 @@ for (const forbiddenImport of [
   assert.ok(!guidedHomeSource.includes(forbiddenImport),
     `The Today page must not load the heavy runtime through ${forbiddenImport}.`);
 }
+
+const journeySource = readFileSync(new URL('../src/lib/learning-journey.ts', import.meta.url), 'utf8');
+for (const marker of [
+  'goalModuleFrontier',
+  'safeDiagnosticBypass',
+  'frontierCompletedModuleIds',
+  'frontierEligibleModuleIds',
+  'frontierRouteModuleIds',
+  'frontierPassedPhaseIds',
+  'phase-checkpoint',
+  'checkpoint-transfer'
+]) assert.ok(journeySource.includes(marker), `Unified journey frontier is missing ${marker}.`);
+
+const workspaceSource = readFileSync(new URL('../src/lib/workspace-readiness.ts', import.meta.url), 'utf8');
+for (const marker of [
+  'frontierCompletedModuleIds',
+  'frontierEligibleModuleIds',
+  'frontierRouteModuleIds',
+  'Prerequisites готовы · позже по цели',
+  'Prerequisites не закрыты · preview'
+]) assert.ok(workspaceSource.includes(marker), `Workspace frontier integration is missing ${marker}.`);
+assert.doesNotMatch(workspaceSource, /phaseOrder|moduleOrderIndex|earlierPhase|laterPhase/,
+  'Workspace must not reintroduce physical phase/module-index locking.');
 
 const evidenceSource = readFileSync(new URL('../src/lib/journey-evidence.ts', import.meta.url), 'utf8');
 for (const forbiddenDependency of [
@@ -253,9 +305,7 @@ for (const eventName of [
   'sql-academy-checkpoint-reports-changed',
   'sql-academy-assessment-reports-changed',
   'sql-academy-curriculum-progress-changed'
-]) {
-  assert.ok(evidenceSource.includes(eventName), `Lightweight evidence is missing event ${eventName}.`);
-}
+]) assert.ok(evidenceSource.includes(eventName), `Lightweight evidence is missing event ${eventName}.`);
 assert.ok(checkpointSource.includes('sql-academy-checkpoint-reports-changed'));
 assert.ok(assessmentSource.includes('sql-academy-assessment-reports-changed'));
 assert.ok(curriculumProgressSource.includes('sql-academy-curriculum-progress-changed'));
@@ -265,4 +315,4 @@ for (const marker of ['Lesson', 'Independent practice', 'Checkpoint', 'Interview
   assert.ok(journeyContract.includes(marker), `Learning journey contract is missing ${marker}.`);
 }
 
-console.log(`Coherent learning journey validated: ${canonicalModuleIds.length} modules, ${curriculumLessons.length} lessons, ${tasks.length} tasks and ${phaseDefinitions.length} phases.`);
+console.log(`Coherent goal-aware journey validated: ${goals.length} goals, ${canonicalModuleIds.length} modules, ${curriculumLessons.length} lessons, ${tasks.length} tasks and ${phaseDefinitions.length} checkpoint phases.`);

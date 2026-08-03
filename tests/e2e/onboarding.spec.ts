@@ -1,8 +1,26 @@
-import { expect, test } from '@playwright/test';
+import { AxeBuilder } from '@axe-core/playwright';
+import { expect, test, type Page } from '@playwright/test';
+import { curriculumCheckpoints } from '../../src/data/complete-curriculum';
+import { modules, tasks } from '../../src/data/course-catalog';
+import { phaseDefinitions } from '../../src/data/learning-structure';
+import { goalModuleRoute, SHARED_FOUNDATION_MODULE_IDS } from '../../src/lib/goal-aware-route';
+import type { LearnerGoal } from '../../src/lib/learner-onboarding';
 import { authenticatePage, loginPage } from './auth-helper';
 import { openAdvancedTool } from './navigation-helper';
 
 const ASSESSMENT_REPORTS_CHANGED_EVENT = 'sql-academy-assessment-reports-changed';
+
+function firstRouteDifference(left: readonly string[], right: readonly string[]) {
+  const length = Math.min(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    if (left[index] !== right[index]) return index;
+  }
+  return left.length === right.length ? -1 : length;
+}
+
+const ANALYST_ROUTE = goalModuleRoute('analyst');
+const BACKEND_ROUTE = goalModuleRoute('backend');
+const ANALYST_BACKEND_DIVERGENCE = firstRouteDifference(ANALYST_ROUTE, BACKEND_ROUTE);
 
 function diagnosticReport(userId: string) {
   return {
@@ -33,11 +51,11 @@ function diagnosticReport(userId: string) {
   };
 }
 
-async function openOnboarding(page: import('@playwright/test').Page) {
+async function openOnboarding(page: Page) {
   await openAdvancedTool(page, 'onboarding-trigger');
 }
 
-async function chooseCoreContract(page: import('@playwright/test').Page) {
+async function chooseCoreContract(page: Page) {
   const dialog = page.getByTestId('onboarding-portal');
   await dialog.getByRole('button', { name: /Support SQL/i }).click();
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
@@ -52,12 +70,128 @@ async function chooseCoreContract(page: import('@playwright/test').Page) {
   await expect(dialog.getByTestId('onboarding-placement')).toBeVisible();
 }
 
-async function expectNoHorizontalOverflow(page: import('@playwright/test').Page) {
+async function expectNoHorizontalOverflow(page: Page) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(overflow).toBe(false);
 }
 
-test('desktop onboarding uses executable placement and hydrates the accepted plan on a second device', async ({ page, browser }, testInfo) => {
+async function expectGuidedTodayAccessible(page: Page) {
+  const result = await new AxeBuilder({ page })
+    .include('[data-testid="guided-today"]')
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
+  const violations = result.violations.filter(item => item.impact === 'serious' || item.impact === 'critical');
+  expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
+}
+
+async function expectSharedFoundationToday(page: Page, goalLabel: RegExp) {
+  const today = page.getByTestId('guided-today');
+  await expect(today).toBeVisible();
+  await expect(today).toContainText(goalLabel);
+  const action = page.getByTestId('guided-journey-action');
+  await expect(action).toHaveAttribute('data-route-reason', 'shared-foundation');
+  await expect(action).toContainText(/Общая база обязательна|общей баз/i);
+  await expectNoHorizontalOverflow(page);
+  await expectGuidedTodayAccessible(page);
+}
+
+function checkpointForPhase(phaseId: string) {
+  const phase = phaseDefinitions.find(item => item.id === phaseId);
+  return phase
+    ? curriculumCheckpoints.find(checkpoint => checkpoint.moduleIds.some(moduleId => phase.moduleIds.some(id => id === moduleId))) || null
+    : null;
+}
+
+function advancedFrontierFixture(userId: string, goal: LearnerGoal, prefixLength: number) {
+  const route = goalModuleRoute(goal);
+  const safePrefixLength = Math.max(SHARED_FOUNDATION_MODULE_IDS.length, Math.min(prefixLength, route.length - 1));
+  const strongModuleIds = route.slice(0, safePrefixLength);
+  const fullyCoveredPhases = phaseDefinitions.filter(phase => phase.moduleIds.every(moduleId => strongModuleIds.includes(moduleId)));
+  const checkpointReports = fullyCoveredPhases.flatMap(phase => {
+    const checkpoint = checkpointForPhase(phase.id);
+    return checkpoint ? [{
+      version: 1,
+      id: `checkpoint-${goal}-${phase.id}`,
+      userId,
+      checkpointId: checkpoint.id,
+      status: 'completed',
+      passed: true,
+      score: 100,
+      startedAt: '2026-08-03T15:00:00.000Z',
+      completedAt: '2026-08-03T15:10:00.000Z',
+      durationSeconds: 600,
+      taskResults: []
+    }] : [];
+  });
+  const openedPhaseIds = new Set(fullyCoveredPhases.map(phase => phase.id));
+  const transferTasks = tasks.filter(task => {
+    if (task.mode !== 'interview' && task.mode !== 'puzzle') return false;
+    const phase = phaseDefinitions.find(item => item.moduleIds.some(moduleId => moduleId === task.module));
+    return Boolean(phase && openedPhaseIds.has(phase.id) && strongModuleIds.includes(task.module));
+  });
+  const completedAt = '2026-08-03T15:15:00.000Z';
+  const progress = {
+    version: 4,
+    completed: transferTasks.map(task => task.id),
+    taskStats: Object.fromEntries(transferTasks.map(task => [task.id, {
+      attempts: 1,
+      incorrect: 0,
+      hintsUsed: 0,
+      solutionViews: 0,
+      independentPasses: 1,
+      lastIndependentAt: completedAt,
+      completedAt,
+      lastAttemptAt: completedAt
+    }])),
+    xp: transferTasks.reduce((sum, task) => sum + task.xp, 0),
+    streak: 1,
+    history: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => ({ day, solved: 0 })),
+    lastStudyDate: '2026-08-03'
+  };
+  const profile = {
+    version: 1,
+    goal,
+    experience: 'advanced',
+    dailyMinutes: 25,
+    studyDays: ['MO', 'WE', 'FR'],
+    pace: 'steady',
+    placement: {
+      status: 'completed',
+      reportId: `advanced-${goal}`,
+      score: 95,
+      level: 'advanced',
+      recommendedTrack: goal === 'analyst' ? 'analytics' : goal === 'backend' ? 'performance' : 'fundamentals',
+      strongModuleIds,
+      focusModuleIds: [],
+      completedAt
+    },
+    firstWeekPlan: [],
+    recoveryRule: 'Resume only the next prerequisite-safe frontier step.',
+    completedAt,
+    updatedAt: completedAt
+  };
+  return {
+    profile,
+    progress,
+    checkpointReports,
+    expectedModuleId: route[safePrefixLength],
+    expectedModuleTitle: modules.find(([moduleId]) => moduleId === route[safePrefixLength])?.[1] || route[safePrefixLength]
+  };
+}
+
+async function seedAdvancedFrontier(page: Page, userId: string, goal: LearnerGoal, prefixLength: number) {
+  const fixture = advancedFrontierFixture(userId, goal, prefixLength);
+  await page.goto('./');
+  await page.evaluate(({ id, value }) => {
+    localStorage.setItem(`sql-academy-onboarding-v1:${id}`, JSON.stringify(value.profile));
+    localStorage.setItem('sql-academy-progress-v4', JSON.stringify(value.progress));
+    localStorage.setItem(`sql-academy-checkpoint-reports-v1:${id}`, JSON.stringify(value.checkpointReports));
+  }, { id: userId, value: fixture });
+  await page.reload();
+  return fixture;
+}
+
+test('desktop onboarding uses executable placement and resumes one shared frontier on a second device', async ({ page, browser }, testInfo) => {
   const auth = await authenticatePage(page, 'onboarding');
   await page.goto('./');
   await openOnboarding(page);
@@ -84,6 +218,7 @@ test('desktop onboarding uses executable placement and hydrates the accepted pla
   await dialog.getByRole('button', { name: /Принять результат/i }).click();
   await expect(dialog.getByTestId('onboarding-plan')).toBeVisible();
   await expect(dialog.locator('.week-plan article')).toHaveCount(4);
+  await expect(dialog).toContainText(/Общая база обязательна/i);
   await expect(dialog.getByText('Правило восстановления')).toBeVisible();
   await dialog.getByTestId('complete-onboarding').click();
   await expect(dialog.getByRole('status')).toContainText(/облаке|локально/i);
@@ -91,6 +226,10 @@ test('desktop onboarding uses executable placement and hydrates the accepted pla
   await dialog.getByRole('button', { name: 'Закрыть стартовый план' }).click();
 
   await expect(page.getByTestId('onboarding-trigger')).toContainText('Мой учебный план');
+  await expectSharedFoundationToday(page, /Support SQL/i);
+  await page.reload();
+  await expectSharedFoundationToday(page, /Support SQL/i);
+  await page.screenshot({ path: testInfo.outputPath('desktop-goal-aware-today.png'), fullPage: true });
 
   const secondContext = await browser.newContext();
   const secondPage = await secondContext.newPage();
@@ -102,10 +241,49 @@ test('desktop onboarding uses executable placement and hydrates the accepted pla
   await expect(secondDialog.getByTestId('onboarding-plan')).toBeVisible();
   await expect(secondDialog).toContainText('Support');
   await expect(secondDialog.locator('.week-plan article')).toHaveCount(4);
+  await secondDialog.getByRole('button', { name: 'Закрыть стартовый план' }).click();
+  await expectSharedFoundationToday(secondPage, /Support SQL/i);
   await secondContext.close();
 });
 
-test('mobile onboarding supports a conservative deferred placement without horizontal overflow', async ({ page }, testInfo) => {
+test('desktop onboarding advanced analyst and backend evidence resume different goal-priority frontiers', async ({ page, browser }, testInfo) => {
+  expect(ANALYST_BACKEND_DIVERGENCE).toBeGreaterThanOrEqual(SHARED_FOUNDATION_MODULE_IDS.length);
+  expect(ANALYST_ROUTE[ANALYST_BACKEND_DIVERGENCE]).not.toBe(BACKEND_ROUTE[ANALYST_BACKEND_DIVERGENCE]);
+
+  const analystAuth = await authenticatePage(page, 'advancedanalyst');
+  const analyst = await seedAdvancedFrontier(
+    page,
+    String(analystAuth.session.userId),
+    'analyst',
+    ANALYST_BACKEND_DIVERGENCE
+  );
+  const analystAction = page.getByTestId('guided-journey-action');
+  await expect(analystAction).toHaveAttribute('data-route-reason', 'goal-priority');
+  await expect(analystAction).toContainText(analyst.expectedModuleTitle);
+  await expect(page.getByTestId('guided-today')).toContainText(/Аналитика/i);
+  await expectGuidedTodayAccessible(page);
+  await page.screenshot({ path: testInfo.outputPath('desktop-analyst-frontier.png'), fullPage: true });
+
+  const backendContext = await browser.newContext();
+  const backendPage = await backendContext.newPage();
+  const backendAuth = await authenticatePage(backendPage, 'advancedbackend');
+  const backend = await seedAdvancedFrontier(
+    backendPage,
+    String(backendAuth.session.userId),
+    'backend',
+    ANALYST_BACKEND_DIVERGENCE
+  );
+  const backendAction = backendPage.getByTestId('guided-journey-action');
+  await expect(backendAction).toHaveAttribute('data-route-reason', 'goal-priority');
+  await expect(backendAction).toContainText(backend.expectedModuleTitle);
+  await expect(backendPage.getByTestId('guided-today')).toContainText(/Backend SQL/i);
+  expect(backend.expectedModuleId).not.toBe(analyst.expectedModuleId);
+  await expectNoHorizontalOverflow(backendPage);
+  await backendPage.screenshot({ path: testInfo.outputPath('desktop-backend-frontier.png'), fullPage: true });
+  await backendContext.close();
+});
+
+test('mobile deferred placement starts from zero and keeps the shared goal frontier accessible', async ({ page }, testInfo) => {
   await authenticatePage(page, 'mobileonboarding');
   await page.goto('./');
   await openOnboarding(page);
@@ -123,8 +301,13 @@ test('mobile onboarding supports a conservative deferred placement without horiz
 
   await expect(dialog.getByTestId('onboarding-plan')).toBeVisible();
   await expect(dialog).toContainText('foundation');
+  await expect(dialog).toContainText(/Общая база обязательна/i);
   await expect(dialog.locator('.week-plan article')).toHaveCount(3);
   await expectNoHorizontalOverflow(page);
   await dialog.getByTestId('complete-onboarding').click();
-  await page.screenshot({ path: testInfo.outputPath('mobile-onboarding-plan.png'), fullPage: true });
+  await dialog.getByRole('button', { name: 'Закрыть стартовый план' }).click();
+  await expectSharedFoundationToday(page, /Полная академия/i);
+  await page.reload();
+  await expectSharedFoundationToday(page, /Полная академия/i);
+  await page.screenshot({ path: testInfo.outputPath('mobile-goal-aware-today.png'), fullPage: true });
 });
