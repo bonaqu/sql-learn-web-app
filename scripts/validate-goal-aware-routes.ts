@@ -42,6 +42,16 @@ for (const goal of goals) {
   }
   assert.equal(goalModuleFrontier(goal, completed).nextModuleId, null,
     `${goal}: completed route must not invent another module.`);
+
+  const dependent = route.find(moduleId => modulePrerequisiteIds(moduleId).length > 0);
+  assert.ok(dependent, `${goal}: route needs at least one dependent module.`);
+  if (dependent) {
+    const scattered = goalModuleFrontier(goal, [dependent]);
+    assert.ok(!scattered.completedModuleIds.includes(dependent),
+      `${goal}: out-of-order evidence for ${dependent} must not count before its prerequisites.`);
+    assert.equal(scattered.nextModuleId, route[0],
+      `${goal}: scattered late evidence must recover from the first missing prerequisite.`);
+  }
 }
 
 const sharedLength = SHARED_FOUNDATION_MODULE_IDS.length;
@@ -69,13 +79,14 @@ for (const goal of goals) {
 const routeSource = readFileSync(new URL('../src/lib/goal-aware-route.ts', import.meta.url), 'utf8');
 for (const marker of [
   'GOAL_ROUTE_PREREQUISITE_DEADLOCK',
-  'modulePrerequisiteIds(moduleId).every',
+  'requestedCompleted',
+  'prerequisitesByModule.get(moduleId)',
   'SHARED_FOUNDATION_MODULE_IDS',
   'safeDiagnosticBypass',
   'goalModuleFrontier'
 ]) assert.ok(routeSource.includes(marker), `Goal-aware route safety contract is missing ${marker}.`);
 
-console.log(`Goal-aware routes validated: ${goals.length} deterministic prerequisite-safe routes, shared ${sharedLength}-module foundation, ${postFoundationSignatures.size} distinct post-foundation signatures and contiguous diagnostic bypass.`);
+console.log(`Goal-aware routes validated: ${goals.length} deterministic prerequisite-safe routes, shared ${sharedLength}-module foundation, ${postFoundationSignatures.size} distinct post-foundation signatures, prerequisite-closed evidence and contiguous diagnostic bypass.`);
 for (const goal of goals) {
   console.log(`${goal}: ${(routes.get(goal) || []).slice(0, 14).join(' -> ')}`);
 }
