@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { curriculumCheckpoints, curriculumLessons } from '../src/data/complete-curriculum';
 import { tasks } from '../src/data/course-catalog';
 import { lessonChecks } from '../src/data/lesson-checks';
+import { phaseDefinitions } from '../src/data/learning-structure';
 import {
   checkpointRemediationsFromReports,
   nextCheckpointRemediationTaskId,
@@ -15,8 +16,21 @@ import {
 import type { LearnerGoal } from '../src/lib/learner-onboarding';
 import type { Progress, TaskStats } from '../src/lib/progress';
 
-const checkpoint = curriculumCheckpoints.find(item => item.moduleIds.length >= 2) || curriculumCheckpoints[0];
-assert.ok(checkpoint, 'Checkpoint remediation validation requires a checkpoint.');
+const fixture = phaseDefinitions.flatMap(phase => {
+  const phaseModules = new Set<string>(phase.moduleIds);
+  const checkpoint = curriculumCheckpoints.find(item => {
+    const checkpointModules = new Set<string>(item.moduleIds);
+    return checkpointModules.size === phaseModules.size
+      && phase.moduleIds.every(moduleId => checkpointModules.has(moduleId));
+  });
+  return checkpoint ? [{ phase, checkpoint }] : [];
+})[0];
+assert.ok(fixture, 'Checkpoint remediation validation requires a checkpoint covering one whole phase.');
+const { checkpoint, phase: checkpointPhase } = fixture;
+const checkpointModules = new Set<string>(checkpoint.moduleIds);
+assert.ok(checkpointPhase.moduleIds.every(moduleId => checkpointModules.has(moduleId)),
+  'Checkpoint fixture must cover every module in its canonical phase.');
+
 const userId = 'checkpoint-remediation-validator';
 const weakModules = checkpoint.moduleIds.slice(0, 2);
 const weakTasks = checkpoint.taskIds.flatMap(taskId => {
@@ -85,7 +99,8 @@ const state = states[0];
 assert.equal(state.reportId, 'failed-latest');
 assert.equal(state.attemptNumber, 2);
 assert.equal(state.checkpointId, checkpoint.id);
-assert.ok(state.modules.every(module => checkpoint.moduleIds.includes(module.moduleId)),
+assert.equal(state.phaseId, checkpointPhase.id);
+assert.ok(state.modules.every(module => checkpointModules.has(module.moduleId)),
   'Remediation modules must stay inside checkpoint membership.');
 assert.deepEqual(
   state.modules.map(module => module.moduleId),
@@ -120,7 +135,7 @@ const fallback = checkpointRemediationsFromReports([
 ], userId)[0];
 assert.equal(fallback.modules.length, 1,
   'A failed report without usable remediation fields must fall back to one checkpoint-owned module.');
-assert.ok(checkpoint.moduleIds.includes(fallback.modules[0].moduleId));
+assert.ok(checkpointModules.has(fallback.modules[0].moduleId));
 
 function emptyProgress(): Progress {
   return {
@@ -182,7 +197,7 @@ for (const action of remediationActions) {
 assert.equal(new Set(remediationActions.map(action => action.moduleId)).size, 1,
   'Identical evidence must produce identical active remediation for all goals.');
 
-const attemptedTask = tasks.find(task => !checkpoint.taskIds.includes(task.id)) || tasks[0];
+const attemptedTask = tasks.find(task => !new Set<string>(checkpoint.taskIds).has(task.id)) || tasks[0];
 const reviewProgress: Progress = {
   ...emptyProgress(),
   taskStats: {
@@ -203,7 +218,7 @@ const reviewFirst = buildJourneyFrontier(reviewProgress, emptyCurriculumProgress
 assert.equal(reviewFirst.action.routeReasonCode, 'retrieval-review',
   'Existing unresolved retrieval debt must remain above checkpoint remediation.');
 
-const phaseLessons = curriculumLessons.filter(lesson => checkpoint.moduleIds.includes(lesson.module));
+const phaseLessons = curriculumLessons.filter(lesson => checkpointModules.has(lesson.module));
 const repairedCurriculum = {
   ...emptyCurriculumProgress(),
   completedLessons: phaseLessons.map(lesson => lesson.id),
