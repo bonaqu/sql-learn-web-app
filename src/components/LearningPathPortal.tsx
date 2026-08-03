@@ -49,6 +49,7 @@ import {
   type SessionItem
 } from '../lib/learning-path';
 import {
+  goalOptions,
   loadOnboardingProfile,
   ONBOARDING_CHANGED_EVENT
 } from '../lib/learner-onboarding';
@@ -75,10 +76,14 @@ function profileId() {
 }
 
 function levelLabel(module: ModuleMastery) {
+  if (module.routeState === 'current') return 'Текущий goal-priority';
+  if (module.routeState === 'eligible') return 'Prerequisites готовы · позже по цели';
+  if (module.routeState === 'locked') return 'Prerequisites не закрыты';
   if (module.level === 'mastered') return 'Освоено';
+  if (module.routeState === 'completed' && module.recommendedTask) return 'Foundation закрыт · transfer';
+  if (module.routeState === 'completed') return 'Foundation закрыт';
   if (module.level === 'practice') return 'Закрепление';
   if (module.level === 'learning') return 'В работе';
-  if (module.level === 'locked') return 'Закрыто';
   return 'Новый модуль';
 }
 
@@ -193,6 +198,7 @@ export default function LearningPathPortal({
   const passedCheckpoints = evidenceGraph.phases.filter(phase => phase.checkpointPassed).length;
   const nextPhase = evidenceGraph.phases.find(phase => !phase.completed)
     || evidenceGraph.phases[evidenceGraph.phases.length - 1];
+  const currentGoalTitle = goalOptions.find(option => option.id === profile.goal)?.title || 'Полная академия';
 
   useEffect(() => {
     if (externalLauncher) return;
@@ -492,11 +498,19 @@ export default function LearningPathPortal({
       </section>
 
       <section className="roadmap-section">
-        <div className="roadmap-heading"><div><span className="path-eyebrow">Skill graph</span><h2>Карта доказательств</h2><p>Readiness объясняется уроками, практикой, контрольными, assessment и проектами.</p></div><Trophy /></div>
+        <div className="roadmap-heading"><div><span className="path-eyebrow">Skill graph · {currentGoalTitle}</span><h2>Карта доказательств и goal-route</h2><p>Readiness и порядок объясняются тем же frontier: общий foundation, текущий приоритет, eligible позже и обязательная expert-ширина.</p></div><Trophy /></div>
+        <div className="route-state-legend" data-testid="goal-route-legend">
+          <span className="current"><i />текущий приоритет</span>
+          <span className="eligible"><i />prerequisites готовы · позже</span>
+          <span className="completed"><i />completed evidence</span>
+          <span className="locked"><i />locked prerequisite</span>
+        </div>
         <div className="phase-list">
           {legacyPhases.map((phase, phaseIndex) => {
             const phaseEvidence = evidenceGraph.phases.find(item => item.phaseId === phase.id);
-            const phaseModules = mastery.filter(module => phase.moduleIds.includes(module.id));
+            const phaseModules = mastery
+              .filter(module => phase.moduleIds.includes(module.id))
+              .sort((left, right) => left.index - right.index);
             const expanded = expandedPhase === phase.id;
             const passed = Boolean(phaseEvidence?.checkpointPassed);
             const phaseReadiness = phaseEvidence?.readiness ?? phase.mastery;
@@ -514,12 +528,13 @@ export default function LearningPathPortal({
                   const evidence = evidenceGraph.modules.find(item => item.moduleId === module.id);
                   const readinessValue = evidence?.readiness ?? module.mastery;
                   return <button
-                    className={`module-node ${module.level}`}
+                    className={`module-node ${module.level} route-${module.routeState}`}
+                    data-route-state={module.routeState}
                     key={module.id}
                     onClick={() => evidence && openEvidenceAction(evidence, module.recommendedTask)}
-                    disabled={module.level === 'locked'}
+                    disabled={module.routeState === 'locked'}
                   >
-                    <span className="module-state">{readinessValue >= 82 ? <Check /> : module.level === 'locked' ? <LockKeyhole /> : <Circle />}</span>
+                    <span className="module-state">{readinessValue >= 82 ? <Check /> : module.routeState === 'locked' ? <LockKeyhole /> : <Circle />}</span>
                     <span className="module-copy"><strong>{module.title}</strong><small>{levelLabel(module)} · next: {evidence ? evidenceActionLabel(evidence.recommendedAction) : 'practice'}</small></span>
                     <span className="module-mastery"><strong>{readinessValue}%</strong><i><b style={{ width: `${readinessValue}%` }} /></i></span>
                     {evidence?.recommendedTargetId || module.recommendedTask ? <ChevronRight /> : <GraduationCap />}
