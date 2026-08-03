@@ -7,7 +7,7 @@ import CapstoneLauncher from './components/CapstoneLauncher';
 import CapstoneReportSyncAgent from './components/CapstoneReportSyncAgent';
 import CheckpointLauncher from './components/CheckpointLauncher';
 import ChunkErrorBoundary from './components/ChunkErrorBoundary';
-import CommercialIdentityPortal from './components/CommercialIdentityPortal';
+import CommercialIdentityPortalV2 from './components/CommercialIdentityPortalV2';
 import CurriculumSyncAgent from './components/CurriculumSyncAgent';
 import DeferredFeaturePortals from './components/DeferredFeaturePortals';
 import EvidenceSyncAgent from './components/EvidenceSyncAgent';
@@ -44,7 +44,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <OnboardingAgent />
         <LearningAnalyticsAgent />
       </AuthGate>
-      <CommercialIdentityPortal />
+      <CommercialIdentityPortalV2 />
       <PwaStatus />
     </ChunkErrorBoundary>
   </React.StrictMode>
