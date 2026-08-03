@@ -5,6 +5,7 @@ function source(path: string) {
   return readFileSync(new URL(path, import.meta.url), 'utf8');
 }
 
+const attemptPolicy = source('../src/lib/checkpoint-attempt-policy.ts');
 const remediation = source('../src/lib/checkpoint-remediation.ts');
 const evidence = source('../src/lib/journey-evidence.ts');
 const journey = source('../src/lib/learning-journey.ts');
@@ -17,10 +18,23 @@ const browserContract = source('../tests/e2e/checkpoint-remediation.spec.ts');
 const journeyContract = source('../docs/learning-journey-contract.md');
 
 for (const marker of [
-  'normalizedReport',
+  'normalizeCheckpointAttempt',
   "item.status !== 'completed'",
-  'item.userId !== userId',
-  'latest.passed',
+  'item.userId !== expectedUserId',
+  'compareCheckpointAttempts',
+  'checkpointAttemptSnapshotFromReports',
+  'historicalBestScore',
+  'currentAttempt',
+  'attemptedCheckpointIds',
+  'passedCheckpointIds'
+]) {
+  assert.ok(attemptPolicy.includes(marker),
+    `Canonical checkpoint attempt policy is missing ${marker}.`);
+}
+
+for (const marker of [
+  'checkpointRemediationsFromAttemptSnapshot',
+  'attemptState.currentAttempt',
   'moduleScoreMap',
   'weakTaskMap',
   'checkpointRemediationsFromReports',
@@ -30,16 +44,19 @@ for (const marker of [
   assert.ok(remediation.includes(marker),
     `Checkpoint remediation domain ownership is missing ${marker}.`);
 }
+assert.doesNotMatch(remediation, /function normalizedReport|\.sort\(compareCheckpointAttempts\)|item\.status !== 'completed'/,
+  'Remediation must consume the canonical current attempt instead of normalizing or sorting reports again.');
 
 for (const marker of [
-  'latestByCheckpoint',
-  'report.passed !== true',
-  'checkpointRemediationsFromReports',
-  'MAX_CHECKPOINT_REPORTS'
+  'checkpointAttemptSnapshotFromReports',
+  'attemptSnapshot.passedCheckpointIds',
+  'checkpointRemediationsFromAttemptSnapshot'
 ]) {
   assert.ok(evidence.includes(marker),
-    `Lightweight checkpoint evidence is missing ${marker}.`);
+    `Lightweight checkpoint evidence is missing canonical snapshot projection ${marker}.`);
 }
+assert.doesNotMatch(evidence, /latestByCheckpoint|report\.passed !== true|completedAt\.localeCompare|checkpointRemediationsFromReports/,
+  'Journey evidence must not duplicate latest-attempt sorting or remediation normalization.');
 
 for (const marker of [
   "'checkpoint-remediation'",
@@ -60,7 +77,7 @@ assert.doesNotMatch(guidedHome, /checkpointRemediationsFromReports|moduleScores|
   'Today must not interpret raw checkpoint reports.');
 
 assert.match(learningPath, /checkpointRemediationsFromReports/,
-  'Learning Path must delegate raw report normalization to the remediation domain.');
+  'Learning Path must delegate raw report normalization to the evidence domain until it consumes the shared attempt snapshot directly.');
 assert.match(learningPath, /checkpoint-remediation-banner/,
   'Learning Path must expose normalized remediation state.');
 assert.doesNotMatch(learningPath, /moduleScores|taskScores|remediationModules|completedAt\.localeCompare/,
@@ -102,4 +119,4 @@ for (const marker of [
     `Learning journey contract is missing remediation rule ${marker}.`);
 }
 
-console.log('Checkpoint remediation architecture validated: one normalizer, one frontier, raw-report-free UI decisions and executable desktop/mobile contracts.');
+console.log('Checkpoint remediation architecture validated: one attempt normalizer, one remediation projection, one frontier and raw-report-free UI decisions.');
