@@ -117,7 +117,8 @@ Default warning thresholds:
 - bounce rate at or above 5% with at least 20 sends;
 - complaint rate at or above 0.5% with at least 20 sends;
 - five or more provider failures in the 24-hour window;
-- twenty or more rate-limited requests or ten locked confirmations in the 24-hour window.
+- twenty or more rate-limited requests or ten locked confirmations in the 24-hour window;
+- thirty or more contact security events from one daily HMAC actor bucket within 15 minutes.
 
 Alert code mapping:
 
@@ -128,16 +129,18 @@ Alert code mapping:
 | `CONTACT_COMPLAINT_RATE_HIGH` | Complaint rate at or above 0.5% with at least 20 sends | Disable email immediately, inspect template/sender abuse and do not resume until the cause is corrected. |
 | `CONTACT_PROVIDER_FAILURES_HIGH` | At least five provider failures in 24 hours | Check credentials, provider status and adapter logs; rotate secrets if misuse is suspected. |
 | `CONTACT_ABUSE_PRESSURE_HIGH` | At least twenty rate-limited requests or ten locked confirmations in 24 hours | Keep rate limits intact, inspect Cloudflare evidence and apply edge controls where justified. |
+| `CONTACT_ACTOR_BURST_HIGH` | One daily HMAC actor bucket produces at least thirty contact security events in 15 minutes | Investigate concentration using aggregate evidence and Cloudflare request IDs. Do not automatically block or identify a learner from the HMAC bucket alone. |
 
 These are initial safety thresholds, not permanent business SLOs. Recalibrate them only from real traffic while preserving a minimum sample size.
 
 ## 7. Abuse monitoring and response
 
-`contact_security_events` stores a daily HMAC actor bucket, event type, channel, purpose, status and timestamp. It does not store an IP address or user agent.
+`contact_security_events` stores a daily HMAC actor bucket, event type, channel, purpose, status and timestamp. It does not store an IP address or user agent. `activeActorBuckets15m` shows breadth; `maxActorEvents15m` shows the highest concentration in one bucket. The bucket is an investigative signal, not an identity and not an automatic blocking key.
 
 Investigate when:
 
 - rate-limit or locked-confirmation alerts fire;
+- `CONTACT_ACTOR_BURST_HIGH` fires for a concentrated 15-minute bucket;
 - one channel shows a sudden provider failure spike;
 - confirmation-invalid grows without matching challenge-created traffic;
 - complaint or bounce rates exceed thresholds;
@@ -145,12 +148,12 @@ Investigate when:
 
 Response order:
 
-1. disable only the affected channel feature flag;
+1. disable only the affected channel feature flag when delivery or provider reputation is at risk;
 2. keep username/password and recovery-code access available;
 3. preserve aggregate evidence and Cloudflare request IDs;
-4. rotate the affected outbound and event secrets;
+4. rotate the affected outbound and event secrets when credential misuse is plausible;
 5. inspect provider dashboards for delivery, suppression and credential events;
-6. block abusive sources at the edge if justified by Cloudflare evidence;
+6. apply edge controls only after corroborating the HMAC concentration with Cloudflare evidence; do not block solely on a daily pseudonymous bucket;
 7. rerun protected staging acceptance before re-enabling the channel.
 
 Do not weaken challenge cooldown, attempt limits, ticket expiry or Turnstile to restore delivery.
