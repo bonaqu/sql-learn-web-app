@@ -187,9 +187,9 @@ function validReport(value: unknown): value is CoordinatedCheckpointReportPayloa
     && ID_PATTERN.test(report.reservationId);
 }
 
-async function parseBody(request: Request) {
+async function parseBody(request: { json(): Promise<unknown> }) {
   try {
-    return await request.json<unknown>();
+    return await request.json();
   } catch {
     return null;
   }
