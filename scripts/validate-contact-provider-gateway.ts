@@ -1,18 +1,22 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const config = JSON.parse(read('provider-gateway/wrangler.jsonc')) as {
+type GatewayConfig = {
   compatibility_date?: string;
   compatibility_flags?: string[];
   d1_databases?: Array<{ binding?: string; database_id?: string }>;
   vars?: Record<string, string>;
+  triggers?: { crons?: string[] };
   observability?: { enabled?: boolean; head_sampling_rate?: number };
   env?: Record<string, {
     vars?: Record<string, string>;
+    triggers?: { crons?: string[] };
     d1_databases?: Array<{ binding?: string; database_id?: string }>;
     secrets?: { required?: string[] };
   }>;
 };
+
+const config = JSON.parse(read('provider-gateway/wrangler.jsonc')) as GatewayConfig;
 const source = read('provider-gateway/src/index.ts');
 const migration = read('provider-gateway/migrations/0001_delivery_evidence.sql');
 const smoke = read('scripts/contact-provider-staging-smoke.mjs');
@@ -26,6 +30,7 @@ assert.ok(config.compatibility_flags?.includes('nodejs_compat'), 'Provider gatew
 assert.equal(config.d1_databases?.[0]?.binding, 'DELIVERY_DB', 'Default gateway D1 binding is missing.');
 assert.equal(config.vars?.FEATURE_EMAIL_DELIVERY, 'off', 'Email delivery must be off by default.');
 assert.equal(config.vars?.FEATURE_SMS_DELIVERY, 'off', 'SMS delivery must be off by default.');
+assert.deepEqual(config.triggers?.crons, ['17 3 * * *'], 'Default retention Cron Trigger is missing.');
 assert.equal(config.observability?.enabled, true, 'Gateway observability must be enabled.');
 assert.equal(config.observability?.head_sampling_rate, 1, 'Staging gateway must retain complete traces.');
 
@@ -34,6 +39,7 @@ assert.ok(staging, 'Staging environment is missing.');
 assert.equal(staging?.vars?.FEATURE_EMAIL_DELIVERY, 'on', 'Staging email capability is not explicit.');
 assert.equal(staging?.vars?.FEATURE_SMS_DELIVERY, 'on', 'Staging SMS capability is not explicit.');
 assert.equal(staging?.d1_databases?.[0]?.binding, 'DELIVERY_DB', 'Staging D1 binding is missing.');
+assert.deepEqual(staging?.triggers?.crons, ['17 3 * * *'], 'Staging retention Cron Trigger is missing.');
 for (const secret of [
   'DELIVERY_WEBHOOK_SECRET',
   'PII_HMAC_SECRET',
@@ -105,7 +111,7 @@ for (const rule of [
 assert.ok(packageJson.includes('validate:provider-gateway'), 'Provider gateway validator is not wired into package scripts.');
 assert.ok(packageJson.includes('types:provider-gateway'), 'Provider gateway generated types are not wired into package scripts.');
 
-console.log('Contact provider gateway validated: default-off config, generated types, D1 evidence minimization, signed callbacks, abuse controls, protected real-provider acceptance and support boundaries are present.');
+console.log('Contact provider gateway validated: default-off config, generated types, D1 evidence minimization, signed callbacks, abuse controls, scheduled retention, protected real-provider acceptance and support boundaries are present.');
 
 function read(path: string) {
   return readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
