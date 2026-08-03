@@ -197,6 +197,11 @@ async function destinationDigest(
   return bytesToHex(await hmacBytes(secret, `sql-academy/contact-destination/v1:${channel}:${destination}`));
 }
 
+async function sourceKeyForRequest(request: Request, secret: string) {
+  const sourceAddress = (request.headers.get('cf-connecting-ip') || 'unavailable').trim().slice(0, 80);
+  return bytesToHex(await hmacBytes(secret, `sql-academy/contact-source/v1:${sourceAddress || 'unavailable'}`));
+}
+
 export async function contactDestinationDigest(
   channel: VerificationChannel,
   destination: unknown,
@@ -377,6 +382,7 @@ async function createChallenge(request: Request, env: ContactVerificationEnviron
 
   const secret = contactVerificationSigningSecret(env);
   const digest = await destinationDigest(body.channel, destination, secret);
+  const sourceKey = await sourceKeyForRequest(request, secret);
   const now = Date.now();
   const latest = await env.DB.prepare(`SELECT created_at FROM contact_verification_challenges
     WHERE channel = ? AND purpose = ? AND destination_digest = ?
@@ -429,7 +435,8 @@ async function createChallenge(request: Request, env: ContactVerificationEnviron
       destination,
       purpose: body.purpose,
       code,
-      expiresAt
+      expiresAt,
+      sourceKey
     });
     const persistedAt = sqliteTime();
     const [updated] = await env.DB.batch([
