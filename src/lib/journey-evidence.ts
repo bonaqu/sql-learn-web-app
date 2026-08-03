@@ -4,6 +4,10 @@ import {
   curriculumLessons
 } from '../data/complete-curriculum';
 import { lessonChecks, lessonChecksComplete } from '../data/lesson-checks';
+import {
+  checkpointRemediationsFromReports,
+  type CheckpointRemediationState
+} from './checkpoint-remediation';
 import type { CurriculumCheckAnswer, CurriculumProgressV1 } from './curriculum-progress';
 
 export const JOURNEY_CURRICULUM_CHANGED_EVENT = 'sql-academy-curriculum-progress-changed';
@@ -26,6 +30,7 @@ const MAX_ASSESSMENT_REPORTS = 20;
 export type JourneyEvidenceSnapshot = {
   curriculum: CurriculumProgressV1;
   passedCheckpointIds: string[];
+  checkpointRemediations: CheckpointRemediationState[];
   assessmentComplete: boolean;
 };
 
@@ -139,13 +144,14 @@ function loadCurriculum(ownerId: string): CurriculumProgressV1 {
   };
 }
 
-function loadPassedCheckpointIds(userId: string | null) {
-  if (!userId) return [];
+function loadCheckpointEvidence(userId: string | null) {
+  if (!userId) return { passedCheckpointIds: [], checkpointRemediations: [] };
   const raw = readJson(`${CHECKPOINT_REPORTS_PREFIX}:${userId}`);
-  if (!Array.isArray(raw)) return [];
+  if (!Array.isArray(raw)) return { passedCheckpointIds: [], checkpointRemediations: [] };
+  const reports = raw.slice(0, MAX_CHECKPOINT_REPORTS);
   const knownCheckpointIds = new Set(curriculumCheckpoints.map(checkpoint => checkpoint.id));
   const passed = new Set<string>();
-  for (const item of raw.slice(0, MAX_CHECKPOINT_REPORTS)) {
+  for (const item of reports) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
     const report = item as Record<string, unknown>;
     if (report.version !== 1
@@ -156,9 +162,12 @@ function loadPassedCheckpointIds(userId: string | null) {
       || !knownCheckpointIds.has(report.checkpointId)) continue;
     passed.add(report.checkpointId);
   }
-  return curriculumCheckpoints
-    .map(checkpoint => checkpoint.id)
-    .filter(checkpointId => passed.has(checkpointId));
+  return {
+    passedCheckpointIds: curriculumCheckpoints
+      .map(checkpoint => checkpoint.id)
+      .filter(checkpointId => passed.has(checkpointId)),
+    checkpointRemediations: checkpointRemediationsFromReports(reports, userId)
+  };
 }
 
 function loadAssessmentComplete(userId: string | null) {
@@ -177,9 +186,11 @@ function loadAssessmentComplete(userId: string | null) {
 
 export function loadJourneyEvidenceSnapshot(): JourneyEvidenceSnapshot {
   const owner = storedOwner();
+  const checkpointEvidence = loadCheckpointEvidence(owner.userId);
   return {
     curriculum: loadCurriculum(owner.curriculumOwnerId),
-    passedCheckpointIds: loadPassedCheckpointIds(owner.userId),
+    passedCheckpointIds: checkpointEvidence.passedCheckpointIds,
+    checkpointRemediations: checkpointEvidence.checkpointRemediations,
     assessmentComplete: loadAssessmentComplete(owner.userId)
   };
 }
