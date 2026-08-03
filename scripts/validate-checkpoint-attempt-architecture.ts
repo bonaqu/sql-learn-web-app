@@ -12,6 +12,7 @@ const journeyEvidence = source('../src/lib/journey-evidence.ts');
 const skillEvidence = source('../src/lib/skill-evidence.ts');
 const completeReadiness = source('../src/lib/complete-readiness.ts');
 const checkpointCenter = source('../src/components/CheckpointCenterPortal.tsx');
+const checkpointWorker = source('../worker/checkpoints.ts');
 const browserContract = source('../tests/e2e/checkpoint-current-attempt.spec.ts');
 const policyDocument = source('../docs/checkpoint-attempt-policy.md');
 
@@ -101,6 +102,19 @@ assert.doesNotMatch(checkpointCenter, /history\.filter\(item => item\.passed\)|s
   'Checkpoint Center must not infer current pass state from historical passed reports or best-score sorting.');
 
 for (const marker of [
+  'ORDER BY completed_at DESC, attempt_number DESC, id DESC',
+  'LIMIT 50',
+  "body.userId !== userId",
+  'attempt_number = ?',
+  'completed_at = ?'
+]) {
+  assert.ok(checkpointWorker.includes(marker),
+    `Checkpoint Worker deterministic cloud contract is missing ${marker}.`);
+}
+assert.doesNotMatch(checkpointWorker, /ORDER BY completed_at DESC LIMIT 50/,
+  'Cloud checkpoint history must apply canonical tie-breaks before the bounded limit.');
+
+for (const marker of [
   'desktop checkpoint attempt',
   'mobile checkpoint attempt',
   'checkpoint-current-pass-count',
@@ -108,6 +122,10 @@ for (const marker of [
   'исторический максимум 91%',
   'checkpoint-report-current-score',
   'checkpoint-report-historical-best',
+  'saveCloudReports',
+  'loginPage',
+  'secondContext',
+  '/api/checkpoints/reports',
   'AxeBuilder',
   'expectNoOverflow'
 ]) {
@@ -120,10 +138,12 @@ for (const marker of [
   'historical best',
   'latest `completedAt`',
   'Legacy task completion',
-  'certificate eligibility'
+  'certificate eligibility',
+  'ORDER BY completed_at DESC, attempt_number DESC, id DESC',
+  'second authenticated browser'
 ]) {
   assert.ok(policyDocument.includes(marker),
     `Checkpoint attempt policy documentation is missing ${marker}.`);
 }
 
-console.log('Checkpoint attempt architecture validated: one current-state snapshot, historical best reporting only, current eligibility/readiness/certificate gates and explicit desktop/mobile UI contracts.');
+console.log('Checkpoint attempt architecture validated: one current-state snapshot, historical best reporting only, deterministic bounded cloud history, current eligibility/readiness/certificate gates and explicit desktop/mobile/second-device UI contracts.');
