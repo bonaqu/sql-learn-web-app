@@ -184,7 +184,10 @@ function loadCheckpointEvidence(userId: string | null) {
   }
   const passed = new Set(
     [...latestByCheckpoint.values()]
-      .filter(report => report.passed)
+      .filter(report => {
+        if (report.passed !== true) return false;
+        return true;
+      })
       .map(report => report.checkpointId)
   );
   const boundedRawReports = reports.map(report => report.raw);
