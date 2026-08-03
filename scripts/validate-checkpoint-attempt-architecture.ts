@@ -105,14 +105,24 @@ for (const marker of [
   'ORDER BY completed_at DESC, attempt_number DESC, id DESC',
   'LIMIT 50',
   "body.userId !== userId",
-  'attempt_number = ?',
-  'completed_at = ?'
+  'canonicalEvidenceJson',
+  'payload_digest',
+  'persisted_at',
+  "code: 'CHECKPOINT_REPORT_CONFLICT'",
+  'replayed: true',
+  'replayed: false',
+  'INSERT INTO checkpoint_reports'
 ]) {
   assert.ok(checkpointWorker.includes(marker),
-    `Checkpoint Worker deterministic cloud contract is missing ${marker}.`);
+    `Checkpoint Worker deterministic append-only cloud contract is missing ${marker}.`);
 }
 assert.doesNotMatch(checkpointWorker, /ORDER BY completed_at DESC LIMIT 50/,
   'Cloud checkpoint history must apply canonical tie-breaks before the bounded limit.');
+assert.doesNotMatch(
+  checkpointWorker,
+  /UPDATE checkpoint_reports[\s\S]{0,320}\b(?:status|started_at|completed_at|duration_seconds|attempt_number|score|best_score|passed|payload)\s*=/,
+  'An accepted checkpoint report must never update immutable evidence fields; only receipt metadata may be backfilled.'
+);
 
 for (const marker of [
   'desktop checkpoint attempt',
@@ -146,4 +156,4 @@ for (const marker of [
     `Checkpoint attempt policy documentation is missing ${marker}.`);
 }
 
-console.log('Checkpoint attempt architecture validated: one current-state snapshot, historical best reporting only, deterministic bounded cloud history, current eligibility/readiness/certificate gates and explicit desktop/mobile/second-device UI contracts.');
+console.log('Checkpoint attempt architecture validated: one current-state snapshot, historical best reporting only, append-only deterministic cloud history, current eligibility/readiness/certificate gates and explicit desktop/mobile/second-device UI contracts.');
