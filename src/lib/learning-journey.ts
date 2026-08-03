@@ -17,6 +17,7 @@ import {
   safeDiagnosticBypass,
   type GoalRouteReasonCode
 } from './goal-aware-route';
+import { loadJourneyEvidenceSnapshot } from './journey-evidence';
 import { loadOnboardingProfile, type LearnerGoal } from './learner-onboarding';
 import {
   hasIndependentTaskEvidence,
@@ -597,7 +598,14 @@ export function nextJourneyAction(
   curriculum: CurriculumProgressV1,
   options: JourneyOptions = {}
 ): JourneyAction {
-  return buildJourneyFrontier(progress, curriculum, options).action;
+  const resolvedOptions = options.checkpointRemediations === undefined
+    && typeof localStorage !== 'undefined'
+    ? {
+        ...options,
+        checkpointRemediations: loadJourneyEvidenceSnapshot().checkpointRemediations
+      }
+    : options;
+  return buildJourneyFrontier(progress, curriculum, resolvedOptions).action;
 }
 
 export function journeyStageForTask(task: SqlTask): JourneyStage {
