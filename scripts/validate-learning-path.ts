@@ -11,6 +11,7 @@ import {
 } from '../src/lib/learning-path.ts';
 import { nextJourneyAction, type JourneyAction } from '../src/lib/learning-journey.ts';
 import { emptyCurriculumProgress, type CurriculumProgressV1 } from '../src/lib/curriculum-progress.ts';
+import type { LearnerGoal } from '../src/lib/learner-onboarding.ts';
 import type { Progress } from '../src/lib/progress.ts';
 
 const timestamp = '2026-08-01T10:00:00.000Z';
@@ -68,8 +69,12 @@ const completedCurriculum: CurriculumProgressV1 = {
 };
 
 const failures: string[] = [];
-const mastery = moduleMastery(practicedProgress);
-const phases = learningPhases(practicedProgress, mastery);
+const baseEvidence: LearningSessionEvidence = {
+  curriculum: emptyCurriculumProgress(),
+  goal: 'full'
+};
+const mastery = moduleMastery(practicedProgress, baseEvidence);
+const phases = learningPhases(practicedProgress, mastery, baseEvidence);
 const moduleIds = modules.map(([id]) => id);
 const phaseModuleIds = phaseDefinitions.flatMap(phase => [...phase.moduleIds]);
 const phaseModuleCounts = new Map<string, number>();
@@ -85,7 +90,8 @@ function actionIdentity(action: JourneyAction) {
     action.task?.id || '',
     action.lessonId || '',
     action.checkpointId || '',
-    action.projectId || ''
+    action.projectId || '',
+    action.routeReasonCode || ''
   ].join(':');
 }
 
@@ -98,6 +104,7 @@ function validateSession(
   const session = buildDailySession(progress, targetMinutes, evidence);
   const expected = nextJourneyAction(progress, evidence.curriculum, {
     includeReview: false,
+    goal: evidence.goal,
     passedCheckpointIds: evidence.passedCheckpointIds,
     assessmentComplete: evidence.assessmentComplete,
     bypassedModuleIds: evidence.bypassedModuleIds
@@ -117,6 +124,12 @@ function validateSession(
     failures.push(`${name}: session must retain exactly one canonical JourneyAction`);
   } else if (actionIdentity(primaryItems[0].action) !== actionIdentity(expected)) {
     failures.push(`${name}: Adaptive Path diverged from canonical selector: ${actionIdentity(primaryItems[0].action)} != ${actionIdentity(expected)}`);
+  }
+  if (actionIdentity(session.frontier.action) !== actionIdentity(expected)) {
+    failures.push(`${name}: returned frontier does not own the same primary action`);
+  }
+  if (session.frontier.goal !== (evidence.goal || 'full')) {
+    failures.push(`${name}: frontier goal ${session.frontier.goal} differs from requested ${evidence.goal || 'full'}`);
   }
   if (session.totalMinutes <= 0 || session.totalMinutes > Math.max(targetMinutes + 30, 55)) {
     failures.push(`${name}: unexpected session duration ${session.totalMinutes}`);
@@ -145,17 +158,26 @@ if (phaseModuleIds.length !== moduleIds.length) {
   failures.push(`Learning phases reference ${phaseModuleIds.length} module slots for ${moduleIds.length} course modules`);
 }
 if (mastery.some(item => item.mastery < 0 || item.mastery > 100)) failures.push('Mastery must stay inside 0..100');
-if (phases.some(phase => !phase.checkpointTask || !tasks.some(task => task.id === phase.checkpointTask.id))) failures.push('Every legacy phase card needs a real checkpoint preview task');
-if (new Set(phases.map(phase => phase.checkpointTask.id)).size !== phases.length) failures.push('Each legacy phase card must use a distinct checkpoint preview task');
-if (overallReadiness(emptyProgress) !== 0) failures.push('Empty progress readiness must be zero');
-if (overallReadiness(practicedProgress) < 0 || overallReadiness(practicedProgress) > 100) failures.push('Readiness must stay inside 0..100');
+if (mastery.filter(item => item.routeState === 'current').length > 1) failures.push('Mastery graph may expose only one current frontier module');
+if (mastery.some(item => item.level !== 'locked' && item.routeState === 'locked')) failures.push('Locked route modules must not be shown as learnable mastery nodes');
+if (phases.some(phase => !phase.checkpointTask || !tasks.some(task => task.id === phase.checkpointTask.id))) failures.push('Every phase card needs a real checkpoint preview task');
+if (new Set(phases.map(phase => phase.checkpointTask.id)).size !== phases.length) failures.push('Each phase card must use a distinct checkpoint preview task');
+if (overallReadiness(emptyProgress, baseEvidence) !== 0) failures.push('Empty progress readiness must be zero');
+if (overallReadiness(practicedProgress, baseEvidence) < 0 || overallReadiness(practicedProgress, baseEvidence) > 100) failures.push('Readiness must stay inside 0..100');
 
-const emptySession = validateSession('empty learner', emptyProgress, {
-  curriculum: emptyCurriculumProgress()
-});
-const emptyPrimary = emptySession.items.find(item => item.action)?.action;
-if (emptyPrimary?.stage !== 'lesson' || emptyPrimary.lessonId !== curriculumLessons[0].id) {
-  failures.push('A new learner Adaptive Path must start with the first canonical lesson');
+const goals: LearnerGoal[] = ['support', 'analyst', 'backend', 'interview', 'full'];
+for (const goal of goals) {
+  const emptySession = validateSession(`empty ${goal} learner`, emptyProgress, {
+    curriculum: emptyCurriculumProgress(),
+    goal
+  });
+  const emptyPrimary = emptySession.items.find(item => item.action)?.action;
+  if (emptyPrimary?.stage !== 'lesson' || emptyPrimary.lessonId !== curriculumLessons[0].id) {
+    failures.push(`${goal}: new learner Adaptive Path must start with the first shared lesson`);
+  }
+  if (emptyPrimary?.routeReasonCode !== 'shared-foundation') {
+    failures.push(`${goal}: zero-evidence route must explain the shared foundation`);
+  }
 }
 
 const firstLesson = curriculumLessons[0];
@@ -171,7 +193,8 @@ const afterFirstLessonCurriculum: CurriculumProgressV1 = {
   updatedAt: timestamp
 };
 const afterLessonSession = validateSession('after first lesson', emptyProgress, {
-  curriculum: afterFirstLessonCurriculum
+  curriculum: afterFirstLessonCurriculum,
+  goal: 'support'
 });
 const afterLessonPrimary = afterLessonSession.items.find(item => item.action)?.action;
 if (afterLessonPrimary?.stage !== 'guided' && afterLessonPrimary?.stage !== 'practice') {
@@ -194,7 +217,8 @@ if (afterLessonPrimary?.task) {
     }
   };
   const overlapSession = validateSession('review overlaps canonical task', overlappingProgress, {
-    curriculum: afterFirstLessonCurriculum
+    curriculum: afterFirstLessonCurriculum,
+    goal: 'support'
   });
   const matchingItems = overlapSession.items.filter(item => item.task?.id === afterLessonPrimary.task?.id);
   if (matchingItems.length !== 1 || !matchingItems[0].action) {
@@ -203,33 +227,53 @@ if (afterLessonPrimary?.task) {
 }
 
 validateSession('practiced learner', practicedProgress, {
-  curriculum: emptyCurriculumProgress()
+  curriculum: emptyCurriculumProgress(),
+  goal: 'analyst'
 });
 
-const assessmentSession = validateSession('course complete before assessment', completedProgress, {
+const completedEvidence: LearningSessionEvidence = {
   curriculum: completedCurriculum,
+  goal: 'backend',
   passedCheckpointIds: curriculumCheckpoints.map(checkpoint => checkpoint.id),
   assessmentComplete: false
-}, 40);
+};
+const assessmentSession = validateSession('course complete before assessment', completedProgress, completedEvidence, 40);
 if (assessmentSession.items.find(item => item.action)?.action?.stage !== 'assessment') {
   failures.push('A learner with course/checkpoint evidence must receive assessment before projects');
 }
 
-const projectSession = validateSession('course complete after assessment', completedProgress, {
-  curriculum: completedCurriculum,
-  passedCheckpointIds: curriculumCheckpoints.map(checkpoint => checkpoint.id),
+const projectEvidence: LearningSessionEvidence = {
+  ...completedEvidence,
   assessmentComplete: true
-}, 40);
+};
+const projectSession = validateSession('course complete after assessment', completedProgress, projectEvidence, 40);
 if (projectSession.items.find(item => item.action)?.action?.stage !== 'project') {
   failures.push('A learner with final assessment evidence must advance to the first incomplete capstone');
 }
 
-if (overallReadiness(completedProgress) < 90) failures.push('Fully completed course should have high readiness');
-if (!moduleMastery(completedProgress).every(item => item.level === 'mastered')) failures.push('Fully independently completed modules must be mastered');
+if (overallReadiness(completedProgress, projectEvidence) < 90) failures.push('Fully completed course should have high readiness');
+if (!moduleMastery(completedProgress, projectEvidence).every(item => item.level === 'mastered')) {
+  failures.push('Fully independently completed modules with complete curriculum/checkpoint evidence must be mastered');
+}
+
+const learningPathSource = await import('node:fs').then(({ readFileSync }) =>
+  readFileSync(new URL('../src/lib/learning-path.ts', import.meta.url), 'utf8'));
+for (const marker of [
+  'frontierFor(progress, evidence)',
+  'routeState',
+  'frontier: JourneyFrontier',
+  'goal: evidence.goal',
+  'session.frontier.goal'
+]) {
+  if (!learningPathSource.includes(marker)) failures.push(`Adaptive Path is missing unified frontier marker ${marker}`);
+}
+if (/previousModule|previousReady/.test(learningPathSource)) {
+  failures.push('Adaptive Path must not lock mastery by previous physical module position');
+}
 
 if (failures.length) {
   console.error(`Learning path validation failed:\n- ${failures.join('\n- ')}`);
   process.exit(1);
 }
 
-console.log(`Learning path validated: ${mastery.length} modules, ${phases.length} phases and evidence-aware lesson/task/checkpoint/assessment/project sessions.`);
+console.log(`Learning path validated: ${goals.length} goals, ${mastery.length} modules, ${phases.length} phases and one evidence-aware lesson/task/checkpoint/assessment/project frontier.`);
