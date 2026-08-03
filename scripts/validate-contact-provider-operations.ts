@@ -170,8 +170,8 @@ assert.equal(securityRow.purpose, 'register');
 
 const burstTimestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
 const burstInsert = database.prepare(`INSERT INTO contact_security_events(
-  event_id, actor_digest, event_type, channel, purpose, created_at
-) VALUES(?, ?, 'challenge-rejected', 'email', 'register', ?)`);
+  event_id, actor_digest, event_type, channel, purpose, response_status, created_at
+) VALUES(?, ?, 'challenge-rejected', 'email', 'register', 400, ?)`);
 for (let index = 0; index < 29; index += 1) {
   burstInsert.run(`burst-event-${String(index).padStart(2, '0')}`, securityRow.actor_digest, burstTimestamp);
 }
