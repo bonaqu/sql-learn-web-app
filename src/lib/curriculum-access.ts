@@ -81,7 +81,7 @@ export function moduleAccessEvidence(
     legacyCheckpointPassed(checkpoint.id, progress)
   );
 
-  const source = prerequisiteEvidenceSource({
+  const candidateSource = prerequisiteEvidenceSource({
     taskMastery: mastery,
     lessonCompleted: lessons.length > 0 && lessonsCompleted === lessons.length,
     checkpointReportPassed,
@@ -89,6 +89,9 @@ export function moduleAccessEvidence(
     diagnosticModuleScore,
     diagnosticGlobalScore
   });
+  const source: PrerequisiteEvidenceSource = candidateSource === 'diagnostic-global'
+    ? 'missing'
+    : candidateSource;
 
   return {
     moduleId,
@@ -117,9 +120,7 @@ export function lessonAccess(
   return {
     unlocked: evidence.every(item => item.ready),
     missing: evidence.filter(item => !item.ready),
-    bypassed: evidence.filter(item =>
-      item.source === 'diagnostic-module' || item.source === 'diagnostic-global'
-    )
+    bypassed: evidence.filter(item => item.source === 'diagnostic-module')
   };
 }
 
