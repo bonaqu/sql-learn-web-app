@@ -2,6 +2,10 @@ import { curriculumCheckpoints } from '../data/complete-curriculum';
 import { modules, tasks } from '../data/course-catalog';
 import { phaseDefinitions } from '../data/learning-structure';
 import {
+  checkpointAttemptSnapshotFromReports,
+  type CheckpointAttemptSnapshot
+} from './checkpoint-attempt-policy';
+import {
   hasIndependentTaskEvidence,
   type Progress
 } from './progress';
@@ -47,11 +51,6 @@ function boundedScore(value: unknown) {
   return Math.min(100, Math.max(0, Math.round(finiteNumber(value))));
 }
 
-function validCompletedAt(value: unknown) {
-  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) return null;
-  return value;
-}
-
 function phaseForCheckpoint(checkpointId: string) {
   const checkpoint = checkpointMap.get(checkpointId);
   if (!checkpoint) return null;
@@ -95,55 +94,15 @@ function weakTaskMap(value: unknown, checkpointTaskIds: ReadonlySet<string>, all
   return result;
 }
 
-function normalizedReport(value: unknown, userId: string) {
-  const item = record(value);
-  if (!item
-    || item.version !== 1
-    || item.userId !== userId
-    || item.status !== 'completed'
-    || typeof item.id !== 'string'
-    || typeof item.checkpointId !== 'string'
-    || !checkpointMap.has(item.checkpointId)) return null;
-  const completedAt = validCompletedAt(item.completedAt);
-  if (!completedAt) return null;
-  return {
-    raw: item,
-    id: item.id,
-    checkpointId: item.checkpointId,
-    completedAt,
-    passed: item.passed === true,
-    score: boundedScore(item.score),
-    passingScore: boundedScore(item.passingScore),
-    attemptNumber: Math.max(1, Math.round(finiteNumber(item.attemptNumber, 1)))
-  };
-}
-
-export function checkpointRemediationsFromReports(
-  reports: unknown,
-  userId: string | null
+export function checkpointRemediationsFromAttemptSnapshot(
+  snapshot: CheckpointAttemptSnapshot
 ): CheckpointRemediationState[] {
-  if (!userId || !Array.isArray(reports)) return [];
-  const valid = reports
-    .map(report => normalizedReport(report, userId))
-    .filter((report): report is NonNullable<typeof report> => Boolean(report));
-  const byCheckpoint = new Map<string, typeof valid>();
-  for (const report of valid) {
-    byCheckpoint.set(report.checkpointId, [
-      ...(byCheckpoint.get(report.checkpointId) || []),
-      report
-    ]);
-  }
-
   const states: CheckpointRemediationState[] = [];
-  for (const [checkpointId, attempts] of byCheckpoint) {
-    const latest = [...attempts].sort((left, right) =>
-      right.completedAt.localeCompare(left.completedAt)
-      || right.attemptNumber - left.attemptNumber
-      || right.id.localeCompare(left.id)
-    )[0];
-    if (!latest || latest.passed) continue;
-    const checkpoint = checkpointMap.get(checkpointId);
-    const phase = phaseForCheckpoint(checkpointId);
+  for (const attemptState of snapshot.states) {
+    const latest = attemptState.currentAttempt;
+    if (latest.passed) continue;
+    const checkpoint = checkpointMap.get(latest.checkpointId);
+    const phase = phaseForCheckpoint(latest.checkpointId);
     if (!checkpoint || !phase) continue;
 
     const allowedModules = new Set<string>(checkpoint.moduleIds);
@@ -151,10 +110,10 @@ export function checkpointRemediationsFromReports(
       checkpoint.moduleIds.map((moduleId, index) => [moduleId, index])
     );
     const checkpointTaskIds = new Set<string>(checkpoint.taskIds);
-    const scores = moduleScoreMap(latest.raw.moduleScores, allowedModules);
-    const weakTasks = weakTaskMap(latest.raw.taskScores, checkpointTaskIds, allowedModules);
-    const requested = Array.isArray(latest.raw.remediationModules)
-      ? latest.raw.remediationModules.filter((moduleId): moduleId is string =>
+    const scores = moduleScoreMap(latest.source.moduleScores, allowedModules);
+    const weakTasks = weakTaskMap(latest.source.taskScores, checkpointTaskIds, allowedModules);
+    const requested = Array.isArray(latest.source.remediationModules)
+      ? latest.source.remediationModules.filter((moduleId): moduleId is string =>
           typeof moduleId === 'string' && allowedModules.has(moduleId)
         )
       : [];
@@ -187,7 +146,7 @@ export function checkpointRemediationsFromReports(
     if (!remediationModules.length) continue;
 
     states.push({
-      checkpointId,
+      checkpointId: latest.checkpointId,
       checkpointTitle: checkpoint.title,
       phaseId: phase.id,
       phaseTitle: phase.title,
@@ -205,6 +164,15 @@ export function checkpointRemediationsFromReports(
     - phaseDefinitions.findIndex(phase => phase.id === right.phaseId)
     || left.completedAt.localeCompare(right.completedAt)
     || left.checkpointId.localeCompare(right.checkpointId)
+  );
+}
+
+export function checkpointRemediationsFromReports(
+  reports: unknown,
+  userId: string | null
+): CheckpointRemediationState[] {
+  return checkpointRemediationsFromAttemptSnapshot(
+    checkpointAttemptSnapshotFromReports(reports, userId)
   );
 }
 

@@ -1,11 +1,11 @@
 import {
   capstoneProjects,
-  curriculumCheckpoints,
   curriculumLessons
 } from '../data/complete-curriculum';
 import { lessonChecks, lessonChecksComplete } from '../data/lesson-checks';
+import { checkpointAttemptSnapshotFromReports } from './checkpoint-attempt-policy';
 import {
-  checkpointRemediationsFromReports,
+  checkpointRemediationsFromAttemptSnapshot,
   type CheckpointRemediationState
 } from './checkpoint-remediation';
 import type { CurriculumCheckAnswer, CurriculumProgressV1 } from './curriculum-progress';
@@ -24,7 +24,6 @@ const CURRICULUM_STORAGE_PREFIX = 'sql-academy-curriculum-progress-v1';
 const CHECKPOINT_REPORTS_PREFIX = 'sql-academy-checkpoint-reports-v1';
 const ASSESSMENT_REPORTS_PREFIX = 'sql-academy-assessment-reports-v1';
 const MAX_EVIDENCE_BYTES = 1_000_000;
-const MAX_CHECKPOINT_REPORTS = 50;
 const MAX_ASSESSMENT_REPORTS = 20;
 
 export type JourneyEvidenceSnapshot = {
@@ -147,55 +146,10 @@ function loadCurriculum(ownerId: string): CurriculumProgressV1 {
 function loadCheckpointEvidence(userId: string | null) {
   if (!userId) return { passedCheckpointIds: [], checkpointRemediations: [] };
   const raw = readJson(`${CHECKPOINT_REPORTS_PREFIX}:${userId}`);
-  if (!Array.isArray(raw)) return { passedCheckpointIds: [], checkpointRemediations: [] };
-  const knownCheckpointIds = new Set(curriculumCheckpoints.map(checkpoint => checkpoint.id));
-  const reports = raw
-    .flatMap(item => {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
-      const report = item as Record<string, unknown>;
-      if (report.version !== 1
-        || report.userId !== userId
-        || report.status !== 'completed'
-        || typeof report.id !== 'string'
-        || typeof report.checkpointId !== 'string'
-        || !knownCheckpointIds.has(report.checkpointId)
-        || typeof report.completedAt !== 'string'
-        || !Number.isFinite(Date.parse(report.completedAt))) return [];
-      return [{
-        raw: item,
-        id: report.id,
-        checkpointId: report.checkpointId,
-        completedAt: report.completedAt,
-        attemptNumber: Math.max(1, Math.round(Number(report.attemptNumber) || 1)),
-        passed: report.passed === true
-      }];
-    })
-    .sort((left, right) =>
-      right.completedAt.localeCompare(left.completedAt)
-      || right.attemptNumber - left.attemptNumber
-      || right.id.localeCompare(left.id)
-    )
-    .slice(0, MAX_CHECKPOINT_REPORTS);
-  const latestByCheckpoint = new Map<string, typeof reports[number]>();
-  for (const report of reports) {
-    if (!latestByCheckpoint.has(report.checkpointId)) {
-      latestByCheckpoint.set(report.checkpointId, report);
-    }
-  }
-  const passed = new Set(
-    [...latestByCheckpoint.values()]
-      .filter(report => {
-        if (report.passed !== true) return false;
-        return true;
-      })
-      .map(report => report.checkpointId)
-  );
-  const boundedRawReports = reports.map(report => report.raw);
+  const attemptSnapshot = checkpointAttemptSnapshotFromReports(raw, userId);
   return {
-    passedCheckpointIds: curriculumCheckpoints
-      .map(checkpoint => checkpoint.id)
-      .filter(checkpointId => passed.has(checkpointId)),
-    checkpointRemediations: checkpointRemediationsFromReports(boundedRawReports, userId)
+    passedCheckpointIds: attemptSnapshot.passedCheckpointIds,
+    checkpointRemediations: checkpointRemediationsFromAttemptSnapshot(attemptSnapshot)
   };
 }
 

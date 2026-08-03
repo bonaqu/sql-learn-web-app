@@ -3,8 +3,8 @@ import { assessmentModes, type AssessmentMode, type AssessmentReport } from './a
 import type { CapstoneReport } from './capstone-evaluator';
 import { bestCapstoneReport } from './capstone-report-policy';
 import { loadLocalCapstoneReports } from './capstone-reports';
+import { checkpointAttemptSnapshotFromReports } from './checkpoint-attempt-policy';
 import {
-  bestCheckpointReport,
   legacyCheckpointPassed,
   loadLocalCheckpointReports,
   type CheckpointReport
@@ -69,10 +69,13 @@ export function calculateCompleteReadiness(
     lessonMastery.applied / Math.max(1, curriculumLessons.length) * 100
   );
 
+  const checkpointOwnerId = checkpointReports.find(report => report.status === 'completed')?.userId || null;
+  const checkpointSnapshot = checkpointAttemptSnapshotFromReports(checkpointReports, checkpointOwnerId);
+  const checkpointStates = new Map(checkpointSnapshot.states.map(state => [state.checkpointId, state]));
   const checkpointEvidence = curriculumCheckpoints.map(checkpoint => {
-    const direct = bestCheckpointReport(checkpoint.id, checkpointReports);
-    const reported = Boolean(direct?.passed);
-    const legacy = !reported && legacyCheckpointPassed(checkpoint.id, progress);
+    const state = checkpointStates.get(checkpoint.id) || null;
+    const reported = state?.currentAttempt.passed === true;
+    const legacy = !state && legacyCheckpointPassed(checkpoint.id, progress);
     return { reported, legacy, passed: reported || legacy };
   });
   const reportedCheckpoints = checkpointEvidence.filter(item => item.reported).length;
@@ -119,8 +122,8 @@ export function calculateCompleteReadiness(
     {
       id: 'checkpoints',
       title: legacyCheckpoints
-        ? `Checkpoints: ${reportedCheckpoints} reports + ${legacyCheckpoints} migrated`
-        : 'Исполняемые checkpoints',
+        ? `Checkpoints: ${reportedCheckpoints} current reports + ${legacyCheckpoints} migrated`
+        : 'Исполняемые checkpoints · current attempts',
       current: passedCheckpoints,
       target: curriculumCheckpoints.length,
       passed: passedCheckpoints === curriculumCheckpoints.length,

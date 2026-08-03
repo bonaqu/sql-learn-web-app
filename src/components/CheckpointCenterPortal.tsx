@@ -22,6 +22,7 @@ import {
   X
 } from 'lucide-react';
 import { curriculumCheckpoints } from '../data/complete-curriculum';
+import { checkpointAttemptSnapshotFromReports } from '../lib/checkpoint-attempt-policy';
 import {
   advanceCheckpoint,
   CheckpointReport,
@@ -90,6 +91,14 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
   const progress = useMemo(() => loadProgress(), [open, session?.id, report?.id]);
   const activeTask = useMemo(() => session ? currentCheckpointTask(session) : null, [session]);
   const activeAnswer = activeTask && session ? session.answers[activeTask.id] : null;
+  const attemptSnapshot = useMemo(
+    () => checkpointAttemptSnapshotFromReports(history, auth?.userId || null),
+    [auth?.userId, history]
+  );
+  const attemptStates = useMemo(
+    () => new Map(attemptSnapshot.states.map(state => [state.checkpointId, state])),
+    [attemptSnapshot.states]
+  );
 
   const close = useCallback(() => {
     if (!session) setOpen(false);
@@ -315,7 +324,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
         <h1>Checkpoint Center</h1>
         <p>Восемь контрольных сессий связывают практику с этапами курса. SQL выполняется локально, а отчёт хранит точность, попытки, время и самостоятельность.</p>
       </div>
-      <div className="assessment-readiness"><FlagTriangleRight /><strong>{history.filter(item => item.passed).length}</strong><span>из {curriculumCheckpoints.length} пройдено</span></div>
+      <div className="assessment-readiness" data-testid="checkpoint-current-pass-count"><FlagTriangleRight /><strong>{attemptSnapshot.passedCheckpointIds.length}</strong><span>из {curriculumCheckpoints.length} пройдено сейчас</span></div>
     </section>
 
     {loadCheckpointSession() && <section className="assessment-resume-card" data-testid="checkpoint-resume">
@@ -326,17 +335,17 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
     <section className="assessment-mode-grid">
       {curriculumCheckpoints.map((checkpoint, index) => {
         const eligibility = checkpointEligibility(checkpoint.id, progress, history);
-        const best = history
-          .filter(item => item.checkpointId === checkpoint.id)
-          .sort((left, right) => right.bestScore - left.bestScore || right.completedAt.localeCompare(left.completedAt))[0];
+        const state = attemptStates.get(checkpoint.id) || null;
+        const current = state?.currentAttempt || null;
+        const currentPassed = current?.passed === true;
         const requested = requestedCheckpointId === checkpoint.id;
         return <article
-          className={`assessment-mode-card ${best?.passed ? 'interview' : index >= 4 ? 'exam' : ''}`}
+          className={`assessment-mode-card ${currentPassed ? 'interview' : index >= 4 ? 'exam' : ''}`}
           key={checkpoint.id}
           data-testid={`checkpoint-${checkpoint.id}`}
           aria-current={requested ? 'true' : undefined}
         >
-          <div className="assessment-mode-icon">{best?.passed ? <Trophy /> : <FlagTriangleRight />}</div>
+          <div className="assessment-mode-icon">{currentPassed ? <Trophy /> : <FlagTriangleRight />}</div>
           <span className="assessment-duration"><Clock3 />{checkpointDurationMinutes(checkpoint.id)} минут</span>
           <h2>{checkpoint.title}</h2>
           <p>{checkpoint.description}</p>
@@ -344,10 +353,11 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
             <li><ListChecks />{checkpoint.taskIds.length} result-checked задач</li>
             <li><Target />проходной балл {checkpoint.passingScore}%</li>
             <li><Gauge />readiness этапа {eligibility.phaseReadiness}%</li>
-            {best && <li><CheckCircle2 />лучший результат {best.bestScore}%</li>}
+            {current && <li data-testid={`checkpoint-current-score-${checkpoint.id}`}>{currentPassed ? <CheckCircle2 /> : <AlertTriangle />}текущая попытка #{current.attemptNumber}: {current.score}%</li>}
+            {state && <li data-testid={`checkpoint-historical-best-${checkpoint.id}`}><History />исторический максимум {state.historicalBestScore}%</li>}
           </ul>
           {eligibility.eligible
-            ? <button type="button" onClick={() => start(checkpoint.id)} data-testid={`start-${checkpoint.id}`}><Play />{best ? 'Повторить' : 'Начать'}</button>
+            ? <button type="button" onClick={() => start(checkpoint.id)} data-testid={`start-${checkpoint.id}`}><Play />{state ? 'Повторить' : 'Начать'}</button>
             : <div className="assessment-locked"><LockKeyhole /><span>{eligibility.blockers.join(' · ') || 'Checkpoint пока закрыт'}</span></div>}
         </article>;
       })}
@@ -362,7 +372,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
       <div className="assessment-history-list">
         {history.map(item => <button type="button" key={item.id} onClick={() => setReport(item)}>
           <span className={`assessment-score-badge ${item.passed ? 'grade-strong' : 'grade-developing'}`}>{item.score}</span>
-          <span><strong>{checkpointTitle(item.checkpointId)}</strong><small>{new Date(item.completedAt).toLocaleString('ru-RU')} · попытка {item.attemptNumber} · best {item.bestScore}</small></span>
+          <span><strong>{checkpointTitle(item.checkpointId)}</strong><small>{new Date(item.completedAt).toLocaleString('ru-RU')} · попытка {item.attemptNumber} · текущий score {item.score} · historical best {item.bestScore}</small></span>
           <ChevronRight />
         </button>)}
       </div>
@@ -423,15 +433,15 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
   const reportView = report ? <main className="assessment-report" data-testid="checkpoint-report">
     <section className="assessment-report-hero">
       <button type="button" className="assessment-back" onClick={() => setReport(null)}><ArrowLeft />К Checkpoint Center</button>
-      <div className={`assessment-report-score ${report.passed ? 'grade-strong' : 'grade-developing'}`}><strong>{report.score}</strong><span>/100</span></div>
-      <div><span>{checkpointTitle(report.checkpointId)}</span><h1>{report.passed ? 'Checkpoint пройден' : 'Нужно закрепление'}</h1><p>Проходной балл {report.passingScore}%. Лучший результат сохранён отдельно от текущей попытки.</p></div>
+      <div className={`assessment-report-score ${report.passed ? 'grade-strong' : 'grade-developing'}`} data-testid="checkpoint-report-current-score"><small>Текущая попытка #{report.attemptNumber}</small><strong>{report.score}</strong><span>/100</span></div>
+      <div><span>{checkpointTitle(report.checkpointId)}</span><h1>{report.passed ? 'Checkpoint пройден' : 'Нужно закрепление'}</h1><p>Проходной балл {report.passingScore}%. Исторический максимум показан отдельно и не заменяет текущий результат.</p></div>
     </section>
     <section className="assessment-report-metrics">
       <article><CheckCircle2 /><span><small>Точность</small><strong>{report.accuracy}%</strong></span></article>
       <article><Target /><span><small>С первой попытки</small><strong>{report.firstAttemptRate}%</strong></span></article>
       <article><ShieldCheck /><span><small>Самостоятельность</small><strong>{report.independence}%</strong></span></article>
       <article><Clock3 /><span><small>Время</small><strong>{formatDuration(report.durationSeconds)}</strong></span></article>
-      <article><Gauge /><span><small>Лучший балл</small><strong>{report.bestScore}%</strong></span></article>
+      <article data-testid="checkpoint-report-historical-best"><Gauge /><span><small>Исторический максимум</small><strong>{report.bestScore}%</strong></span></article>
     </section>
     <section className="assessment-history-card">
       <div className="assessment-section-heading"><div><span>Module evidence</span><h2>Результат по темам</h2></div><Trophy /></div>
