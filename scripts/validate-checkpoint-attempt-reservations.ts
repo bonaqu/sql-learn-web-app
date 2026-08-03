@@ -132,11 +132,11 @@ assert.equal(durationMinutes, 30);
 assert.equal(CHECKPOINT_ATTEMPT_GRACE_MINUTES, 5);
 
 const first = {
-  reservationId: 'reservation-0000000000000001',
-  reportId: 'report-000000000000000001',
+  reservationId: '00000000-0000-4000-8000-000000000001',
+  reportId: '10000000-0000-4000-8000-000000000001',
   userId,
   checkpointId,
-  clientRequestId: 'request-0000000000000001',
+  clientRequestId: '20000000-0000-4000-8000-000000000001',
   sessionId: 'session-00000001',
   deviceName: 'ПК · Linux',
   now: '2026-08-04T00:00:00.000Z',
@@ -149,9 +149,9 @@ assert.equal(active(userId, checkpointId).length, 1);
 
 const competing = {
   ...first,
-  reservationId: 'reservation-0000000000000002',
-  reportId: 'report-000000000000000002',
-  clientRequestId: 'request-0000000000000002',
+  reservationId: '00000000-0000-4000-8000-000000000002',
+  reportId: '10000000-0000-4000-8000-000000000002',
+  clientRequestId: '20000000-0000-4000-8000-000000000002',
   sessionId: 'session-00000002',
   deviceName: 'Телефон · Android'
 };
@@ -170,11 +170,11 @@ assert.throws(() => database.prepare(`INSERT INTO checkpoint_attempt_reservation
   attempt_number, status, started_at, deadline_at, expires_at, session_id, device_name
 ) VALUES(?, ?, ?, ?, ?, 8, 'completed', ?, ?, ?, ?, ?)`)
   .run(
-    'reservation-0000000000000003',
-    'report-000000000000000003',
+    '00000000-0000-4000-8000-000000000003',
+    '10000000-0000-4000-8000-000000000003',
     userId,
     checkpointId,
-    'request-0000000000000003',
+    '20000000-0000-4000-8000-000000000003',
     first.now,
     '2026-08-04T00:30:00.000Z',
     '2026-08-04T00:35:00.000Z',
@@ -199,9 +199,9 @@ database.prepare(`UPDATE checkpoint_attempt_reservations
   .run('2026-08-04T00:22:00.000Z', second.reservationId);
 const third = {
   ...first,
-  reservationId: 'reservation-0000000000000004',
-  reportId: 'report-000000000000000004',
-  clientRequestId: 'request-0000000000000004',
+  reservationId: '00000000-0000-4000-8000-000000000004',
+  reportId: '10000000-0000-4000-8000-000000000004',
+  clientRequestId: '20000000-0000-4000-8000-000000000004',
   sessionId: 'session-00000004',
   now: '2026-08-04T00:23:00.000Z'
 };
