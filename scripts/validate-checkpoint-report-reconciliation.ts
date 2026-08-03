@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import type { CheckpointReport } from '../src/lib/checkpoints';
 import {
   checkpointReportsToUpload,
@@ -139,4 +140,39 @@ assert.throws(
   'Two different cloud payloads for one immutable ID must fail closed.'
 );
 
-console.log('Checkpoint report reconciliation validated: exact replay no-op, local-only upload, cloud-authoritative conflicts, bounded quarantine and fail-closed duplicate cloud IDs.');
+const syncSource = readFileSync(new URL('../src/lib/evidence-sync.ts', import.meta.url), 'utf8');
+for (const marker of [
+  'reconcileCheckpointReportHistories',
+  'checkpointReportsToUpload',
+  'quarantineCheckpointReportConflict',
+  'saveCheckpointReportReceipt',
+  'saveCheckpointReportReceipts',
+  "payload.code === 'CHECKPOINT_REPORT_CONFLICT'",
+  'unresolvedIds',
+  'sameImmutableCheckpointReport'
+]) {
+  assert.ok(syncSource.includes(marker), `Checkpoint sync ownership is missing ${marker}.`);
+}
+assert.doesNotMatch(syncSource, /syncAssessmentCollection<CheckpointReport>|preferredReport\([^\n]*CheckpointReport/,
+  'Checkpoint evidence must not re-enter the generic assessment last-write-wins path.');
+
+const centerSource = readFileSync(new URL('../src/components/CheckpointCenterPortal.tsx', import.meta.url), 'utf8');
+for (const marker of [
+  'syncCheckpointEvidence',
+  'checkpoint-report-conflict-banner',
+  'checkpoint-report-receipt',
+  'checkpoint-receipt-count',
+  'checkpoint-sync-message',
+  'loadCheckpointReportConflicts',
+  'loadCheckpointReportReceipts'
+]) {
+  assert.ok(centerSource.includes(marker), `Checkpoint Center immutable evidence UI is missing ${marker}.`);
+}
+assert.doesNotMatch(centerSource, /\/api\/checkpoints\/reports|mergeCheckpointReports|saveLocalCheckpointReport/,
+  'Checkpoint Center must consume the sync domain instead of implementing raw GET/merge/POST logic.');
+
+const quarantineSource = readFileSync(new URL('../src/lib/checkpoint-report-conflicts.ts', import.meta.url), 'utf8');
+assert.doesNotMatch(quarantineSource, /taskScores|moduleScores|remediationModules/,
+  'Conflict quarantine must retain bounded summaries rather than raw report evidence arrays.');
+
+console.log('Checkpoint report reconciliation validated: exact replay no-op, local-only upload, cloud-authoritative conflicts, bounded quarantine, fail-closed duplicate cloud IDs and raw-sync-free UI ownership.');
