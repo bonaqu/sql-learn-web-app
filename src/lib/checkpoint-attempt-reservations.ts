@@ -26,6 +26,13 @@ export class CheckpointAttemptReservationError extends Error {
   }
 }
 
+export class CheckpointAttemptReservationUnavailableError extends Error {
+  constructor(message = 'Cloud coordination checkpoint attempt недоступна.') {
+    super(message);
+    this.name = 'CheckpointAttemptReservationUnavailableError';
+  }
+}
+
 function pendingKey(userId: string, checkpointId: CoordinatedCheckpointId) {
   return `${PENDING_PREFIX}:${userId}:${checkpointId}`;
 }
@@ -72,6 +79,16 @@ async function parsePayload(response: Response) {
   }
 }
 
+async function request(input: RequestInfo | URL, init?: RequestInit) {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    throw new CheckpointAttemptReservationUnavailableError(
+      error instanceof Error ? error.message : undefined
+    );
+  }
+}
+
 function errorCode(value: unknown): CheckpointAttemptReservationErrorCode {
   return value === 'CHECKPOINT_ATTEMPT_ACTIVE'
     || value === 'CHECKPOINT_ATTEMPT_INVALID'
@@ -88,7 +105,7 @@ export async function reserveCheckpointAttempt(
   const auth = loadAuthSession();
   if (!auth) throw new Error('Необходим вход в аккаунт');
   const clientRequestId = checkpointReservationClientRequestId(auth.userId, checkpointId);
-  const response = await fetch('/api/checkpoints/reservations', {
+  const response = await request('/api/checkpoints/reservations', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ checkpointId, clientRequestId })
@@ -114,7 +131,7 @@ export async function reserveCheckpointAttempt(
 export async function loadActiveCheckpointAttempt(
   checkpointId: CoordinatedCheckpointId
 ): Promise<CheckpointAttemptReservation | null> {
-  const response = await fetch(`/api/checkpoints/reservations?checkpointId=${encodeURIComponent(checkpointId)}`);
+  const response = await request(`/api/checkpoints/reservations?checkpointId=${encodeURIComponent(checkpointId)}`);
   const payload = await parsePayload(response);
   if (!response.ok) {
     throw new CheckpointAttemptReservationError(
