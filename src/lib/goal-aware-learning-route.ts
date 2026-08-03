@@ -189,6 +189,22 @@ export function routePriority(moduleId: string | null, policy: LearningRoutePoli
   return index >= 0 ? index : Number.MAX_SAFE_INTEGER;
 }
 
+export function prioritizeRouteReviews<T extends { module: string }>(
+  queue: readonly T[],
+  policy: LearningRoutePolicy | undefined,
+  limit = 2,
+  priorityWindow = 5
+) {
+  if (!policy) return queue.slice(0, limit);
+  const shortlist = queue.slice(0, Math.max(limit, priorityWindow));
+  return [...shortlist]
+    .sort((left, right) =>
+      routePriority(left.module, policy) - routePriority(right.module, policy)
+      || shortlist.indexOf(left) - shortlist.indexOf(right)
+    )
+    .slice(0, limit);
+}
+
 export function routeFocus(stage: RouteStage, policy: LearningRoutePolicy) {
   return policy.stageFocus[stage];
 }
