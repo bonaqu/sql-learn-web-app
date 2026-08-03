@@ -1,0 +1,64 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "sql-academy-contact-provider-gateway",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-03",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DELIVERY_DB",
+      "database_name": "sql-academy-contact-delivery",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "ENVIRONMENT": "disabled",
+    "FEATURE_EMAIL_DELIVERY": "off",
+    "FEATURE_SMS_DELIVERY": "off",
+    "PUBLIC_BASE_URL": "",
+    "RESEND_FROM": "",
+    "TWILIO_MESSAGING_SERVICE_SID": "",
+    "DESTINATION_LIMIT_PER_HOUR": "5",
+    "SOURCE_LIMIT_PER_HOUR": "20",
+    "STATUS_RETENTION_DAYS": "30"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "env": {
+    "staging": {
+      "name": "sql-academy-contact-provider-gateway-staging",
+      "d1_databases": [
+        {
+          "binding": "DELIVERY_DB",
+          "database_name": "sql-academy-contact-delivery-staging",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+          "migrations_dir": "migrations"
+        }
+      ],
+      "vars": {
+        "ENVIRONMENT": "staging",
+        "FEATURE_EMAIL_DELIVERY": "on",
+        "FEATURE_SMS_DELIVERY": "on",
+        "PUBLIC_BASE_URL": "https://contact-provider-staging.example.com",
+        "RESEND_FROM": "SQL Academy <verify@example.com>",
+        "TWILIO_MESSAGING_SERVICE_SID": "MG00000000000000000000000000000000",
+        "DESTINATION_LIMIT_PER_HOUR": "5",
+        "SOURCE_LIMIT_PER_HOUR": "20",
+        "STATUS_RETENTION_DAYS": "30"
+      },
+      "secrets": {
+        "required": [
+          "DELIVERY_WEBHOOK_SECRET",
+          "PII_HMAC_SECRET",
+          "RESEND_API_KEY",
+          "RESEND_WEBHOOK_SECRET",
+          "TWILIO_ACCOUNT_SID",
+          "TWILIO_AUTH_TOKEN"
+        ]
+      }
+    }
+  }
+}
