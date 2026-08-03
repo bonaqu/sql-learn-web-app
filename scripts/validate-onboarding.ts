@@ -20,6 +20,14 @@ const failures: string[] = [];
 const assert = (condition: unknown, message: string) => { if (!condition) failures.push(message); };
 const now = '2026-07-25T18:00:00.000Z';
 
+function firstRouteDifference(left: readonly string[], right: readonly string[]) {
+  const length = Math.min(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    if (left[index] !== right[index]) return index;
+  }
+  return left.length === right.length ? -1 : length;
+}
+
 function diagnosticReport(
   id: string,
   score: number,
@@ -149,40 +157,42 @@ assert(onboardingReady(deferred), 'Learner may explicitly defer placement and st
 assert(deferred.placement.recommendedTrack === 'fundamentals', 'Deferred placement must never infer an advanced track');
 assert(firstWeekRouteModuleIds(deferred)[0] === 'sql-thinking', 'Deferred placement must start from zero.');
 
-function advancedProfile(goal: LearnerGoal) {
+function advancedProfile(goal: LearnerGoal, prefixLength: number) {
   const route = goalModuleRoute(goal);
-  const prefixLength = Math.min(14, route.length - 1);
+  const safePrefixLength = Math.max(SHARED_FOUNDATION_MODULE_IDS.length, Math.min(prefixLength, route.length - 1));
+  const placement = {
+    ...supportProfile.placement,
+    status: 'completed' as const,
+    score: 95,
+    level: 'advanced' as const,
+    recommendedTrack: goal === 'analyst' ? 'analytics' as const : goal === 'backend' ? 'performance' as const : 'fundamentals' as const,
+    strongModuleIds: route.slice(0, safePrefixLength),
+    focusModuleIds: [],
+    completedAt: now
+  };
   return completeOnboarding({
     ...supportProfile,
     goal,
-    placement: {
-      ...supportProfile.placement,
-      status: 'completed',
-      score: 95,
-      level: 'advanced',
-      recommendedTrack: goal === 'analyst' ? 'analytics' : goal === 'backend' ? 'performance' : 'fundamentals',
-      strongModuleIds: route.slice(0, prefixLength),
-      focusModuleIds: [],
-      completedAt: now
-    }
-  }, {
-    ...supportProfile.placement,
-    status: 'completed',
-    score: 95,
-    level: 'advanced',
-    recommendedTrack: goal === 'analyst' ? 'analytics' : goal === 'backend' ? 'performance' : 'fundamentals',
-    strongModuleIds: route.slice(0, prefixLength),
-    focusModuleIds: [],
-    completedAt: now
-  }, now);
+    placement
+  }, placement, now);
 }
 
-const analystAdvanced = advancedProfile('analyst');
-const backendAdvanced = advancedProfile('backend');
-assert(firstWeekRouteModuleIds(analystAdvanced)[0] === goalModuleRoute('analyst')[14],
-  'Analyst week must resume immediately after its safe diagnostic prefix.');
-assert(firstWeekRouteModuleIds(backendAdvanced)[0] === goalModuleRoute('backend')[14],
-  'Backend week must resume immediately after its safe diagnostic prefix.');
+const analystRoute = goalModuleRoute('analyst');
+const backendRoute = goalModuleRoute('backend');
+const analystBackendDivergence = firstRouteDifference(analystRoute, backendRoute);
+assert(analystBackendDivergence >= SHARED_FOUNDATION_MODULE_IDS.length,
+  'Analyst/backend advanced fixture must branch only after the shared beginner foundation.');
+assert(analystBackendDivergence >= 0 && analystBackendDivergence < analystRoute.length - 1,
+  'Analyst/backend routes need a usable prerequisite-safe divergence point.');
+
+const analystAdvanced = advancedProfile('analyst', analystBackendDivergence);
+const backendAdvanced = advancedProfile('backend', analystBackendDivergence);
+assert(firstWeekRouteModuleIds(analystAdvanced)[0] === analystRoute[analystBackendDivergence],
+  'Analyst week must resume at its first real goal-specific branch.');
+assert(firstWeekRouteModuleIds(backendAdvanced)[0] === backendRoute[analystBackendDivergence],
+  'Backend week must resume at its first real goal-specific branch.');
+assert(analystRoute[analystBackendDivergence] !== backendRoute[analystBackendDivergence],
+  'Analyst and backend must select different eligible modules at their first branch.');
 assert(firstWeekRouteModuleIds(analystAdvanced).join(',') !== firstWeekRouteModuleIds(backendAdvanced).join(','),
   'Advanced analyst and backend first-week routes must differ meaningfully after the shared prefix.');
 
@@ -201,4 +211,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Onboarding validated: goal contract, safe placement prefix, prerequisite-aware ${completed.firstWeekPlan.length}-session plan, defer path and conflict resolution.`);
+console.log(`Onboarding validated: goal contract, safe placement prefix, dynamic analyst/backend divergence at ${analystBackendDivergence}, prerequisite-aware ${completed.firstWeekPlan.length}-session plan, defer path and conflict resolution.`);
