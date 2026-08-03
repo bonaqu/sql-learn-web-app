@@ -198,7 +198,7 @@ export function goalModuleRoute(goalInput: LearnerGoal | null | undefined): stri
 export function safeDiagnosticBypass(
   goalInput: LearnerGoal | null | undefined,
   strongModuleIds: readonly string[] = []
-) {
+): string[] {
   const requested = new Set<ModuleId>(strongModuleIds.filter(isModuleId));
   const safe: ModuleId[] = [];
   for (const candidate of goalModuleRoute(goalInput)) {
