@@ -4,6 +4,7 @@ import { handleAssessmentRequest } from './assessment';
 import { handleAssessmentReportV2Request } from './assessment-report-v2-route';
 import { authenticateSession, handleAuthRequest } from './auth';
 import { handleCapstoneRequest } from './capstones';
+import { handleCheckpointAttemptReservationRequest } from './checkpoint-attempt-reservations';
 import { handleCheckpointRequest } from './checkpoints';
 import { handleCommercialCapabilitiesRequest } from './commercial-capabilities';
 import { handleContactAccountRequest } from './contact-account';
@@ -240,6 +241,18 @@ export default {
         return finalize(pipelineFailure(error, url.pathname, 'assessment'), request, origin);
       }
       if (assessmentResponse) return finalize(assessmentResponse, request, origin);
+
+      let checkpointReservationResponse: Response | null;
+      try {
+        checkpointReservationResponse = await handleCheckpointAttemptReservationRequest(request, env, {
+          userId: auth.userId,
+          sessionId: auth.sessionId,
+          deviceName: auth.deviceName
+        });
+      } catch (error) {
+        return finalize(pipelineFailure(error, url.pathname, 'checkpoint'), request, origin);
+      }
+      if (checkpointReservationResponse) return finalize(checkpointReservationResponse, request, origin);
 
       let checkpointResponse: Response | null;
       try {
