@@ -35,8 +35,8 @@ async function scalarTimestamp(env: Cloudflare.Env, sql: string) {
 type DeliveryAggregateRow = { channel: 'email' | 'sms'; status: string; count: number };
 type SecurityAggregateRow = { channel: 'email' | 'sms'; event_type: string; count: number };
 
-function countBy(rows: Array<{ count: number }>, predicate: (row: never) => boolean) {
-  return rows.reduce((total, row) => total + (predicate(row as never) ? Math.max(0, Number(row.count) || 0) : 0), 0);
+function countBy<T extends { count: number }>(rows: T[], predicate: (row: T) => boolean) {
+  return rows.reduce((total, row) => total + (predicate(row) ? Math.max(0, Number(row.count) || 0) : 0), 0);
 }
 
 function ratio(numerator: number, denominator: number) {
