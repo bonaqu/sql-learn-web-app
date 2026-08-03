@@ -42,7 +42,7 @@ jobs:
       CONTACT_STAGING_DESTINATION: ${{ inputs.channel == 'email' && secrets.CONTACT_STAGING_EMAIL_DESTINATION || secrets.CONTACT_STAGING_SMS_DESTINATION }}
       CONTACT_STAGING_RECEIPT_URL: ${{ secrets.CONTACT_STAGING_RECEIPT_URL }}
       CONTACT_STAGING_RECEIPT_SECRET: ${{ secrets.CONTACT_STAGING_RECEIPT_SECRET }}
-      CONTACT_STAGING_TIMEOUT_MS: ${{ fromJSON(inputs.timeout_seconds) * 1000 }}
+      CONTACT_STAGING_TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
       CONTACT_STAGING_ARTIFACT: contact-provider-staging-result.json
       CONTACT_STAGING_STAGE: contact-provider-staging-stage.txt
     steps:
@@ -56,7 +56,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Validate acceptance harness
+      - name: Validate acceptance harness and staging secrets
         shell: bash
         run: |
           node --check scripts/contact-provider-staging-acceptance.mjs
