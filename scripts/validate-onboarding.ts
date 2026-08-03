@@ -1,15 +1,18 @@
 import type { AssessmentReport } from '../src/lib/assessment.ts';
+import { goalModuleRoute, SHARED_FOUNDATION_MODULE_IDS } from '../src/lib/goal-aware-route.ts';
 import {
   buildFirstWeekPlan,
   calculatePlacement,
   completeOnboarding,
   deferredPlacement,
   emptyOnboardingProfile,
+  firstWeekRouteModuleIds,
   latestCompletedDiagnostic,
   onboardingReady,
   placementLevel,
   preferredOnboardingProfile,
   sanitizeOnboardingProfile,
+  type LearnerGoal,
   type LearnerOnboardingProfile
 } from '../src/lib/learner-onboarding.ts';
 
@@ -102,7 +105,7 @@ const weakPlacement = calculatePlacement(supportProfile, weakReport);
 assert(weakPlacement.level === 'developing', '52 score must produce developing placement');
 assert(weakPlacement.recommendedTrack === 'fundamentals', 'Weak placement must not skip foundation for a support self-report');
 assert(weakPlacement.strongModuleIds.length === 0, 'Score below 80 must not become strong module evidence');
-assert(weakPlacement.focusModuleIds[0] === 'joins', 'Lowest module must lead the focus list');
+assert(weakPlacement.focusModuleIds[0] === 'joins', 'Lowest module must lead the remediation focus list');
 
 const strongReport = diagnosticReport('strong', 86, '2026-07-25T18:00:00.000Z', [
   { module: 'select', score: 95 },
@@ -128,14 +131,60 @@ assert(completed.firstWeekPlan.every(item => item.minutes === 25), 'Week plan mu
 assert(completed.firstWeekPlan.map(item => item.day).join(',') === 'MO,WE,FR', 'Week plan must preserve selected day order');
 assert(completed.firstWeekPlan.some(item => item.kind === 'review'), 'A sustainable week needs retrieval review');
 assert(completed.firstWeekPlan.some(item => item.kind === 'practice'), 'A sustainable week needs independent practice');
+assert(firstWeekRouteModuleIds(completed)[0] === 'sql-thinking',
+  'Non-contiguous strong modules must not skip the missing first shared prerequisite.');
+assert(completed.firstWeekPlan.filter(item => item.moduleId).every(item =>
+  firstWeekRouteModuleIds(completed).includes(item.moduleId || '')
+), 'Every lesson/practice session must come from the same safe goal route.');
 
 const pending = { ...supportProfile, placement: { ...supportProfile.placement, status: 'pending' as const } };
 const pendingPlan = buildFirstWeekPlan(pending);
 assert(pendingPlan[0]?.kind === 'placement', 'Pending onboarding must put executable placement first');
+assert(firstWeekRouteModuleIds(pending).slice(0, SHARED_FOUNDATION_MODULE_IDS.length)
+  .every((moduleId, index) => moduleId === SHARED_FOUNDATION_MODULE_IDS[index]),
+  'Pending placement must preview the shared beginner foundation, not an advanced self-report route.');
 
 const deferred = completeOnboarding(supportProfile, deferredPlacement(supportProfile), now);
 assert(onboardingReady(deferred), 'Learner may explicitly defer placement and start from foundation');
 assert(deferred.placement.recommendedTrack === 'fundamentals', 'Deferred placement must never infer an advanced track');
+assert(firstWeekRouteModuleIds(deferred)[0] === 'sql-thinking', 'Deferred placement must start from zero.');
+
+function advancedProfile(goal: LearnerGoal) {
+  const route = goalModuleRoute(goal);
+  const prefixLength = Math.min(14, route.length - 1);
+  return completeOnboarding({
+    ...supportProfile,
+    goal,
+    placement: {
+      ...supportProfile.placement,
+      status: 'completed',
+      score: 95,
+      level: 'advanced',
+      recommendedTrack: goal === 'analyst' ? 'analytics' : goal === 'backend' ? 'performance' : 'fundamentals',
+      strongModuleIds: route.slice(0, prefixLength),
+      focusModuleIds: [],
+      completedAt: now
+    }
+  }, {
+    ...supportProfile.placement,
+    status: 'completed',
+    score: 95,
+    level: 'advanced',
+    recommendedTrack: goal === 'analyst' ? 'analytics' : goal === 'backend' ? 'performance' : 'fundamentals',
+    strongModuleIds: route.slice(0, prefixLength),
+    focusModuleIds: [],
+    completedAt: now
+  }, now);
+}
+
+const analystAdvanced = advancedProfile('analyst');
+const backendAdvanced = advancedProfile('backend');
+assert(firstWeekRouteModuleIds(analystAdvanced)[0] === goalModuleRoute('analyst')[14],
+  'Analyst week must resume immediately after its safe diagnostic prefix.');
+assert(firstWeekRouteModuleIds(backendAdvanced)[0] === goalModuleRoute('backend')[14],
+  'Backend week must resume immediately after its safe diagnostic prefix.');
+assert(firstWeekRouteModuleIds(analystAdvanced).join(',') !== firstWeekRouteModuleIds(backendAdvanced).join(','),
+  'Advanced analyst and backend first-week routes must differ meaningfully after the shared prefix.');
 
 const local = { ...completed, updatedAt: '2026-07-25T18:00:00.000Z' };
 const cloud = { ...completed, goal: 'analyst' as const, updatedAt: '2026-07-25T17:00:00.000Z' };
@@ -152,4 +201,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Onboarding validated: goal contract, placement thresholds, ${completed.firstWeekPlan.length}-session week plan, defer path and conflict resolution.`);
+console.log(`Onboarding validated: goal contract, safe placement prefix, prerequisite-aware ${completed.firstWeekPlan.length}-session plan, defer path and conflict resolution.`);
