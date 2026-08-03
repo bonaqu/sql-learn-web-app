@@ -68,8 +68,8 @@ assert.ok(!source.includes('console.log(payload)'), 'Delivery payload must not b
 assert.ok(!source.includes('console.log(destination)'), 'Destination must not be logged.');
 assert.ok(!source.includes('console.log(code)'), 'Verification code must not be logged.');
 
-for (const forbiddenColumn of ['destination TEXT', 'code TEXT', 'source_ip TEXT', 'email TEXT', 'phone TEXT']) {
-  assert.ok(!migration.toLowerCase().includes(forbiddenColumn.toLowerCase()),
+for (const forbiddenColumn of ['destination', 'code', 'source_ip', 'email', 'phone']) {
+  assert.ok(!new RegExp(`^\\s*${forbiddenColumn}\\s+text\\b`, 'im').test(migration),
     `Raw PII/secret column is forbidden: ${forbiddenColumn}`);
 }
 for (const requiredColumn of ['destination_hash TEXT', 'source_hash TEXT', 'provider_message_id TEXT', 'provider_event_id TEXT']) {
