@@ -175,4 +175,28 @@ const quarantineSource = readFileSync(new URL('../src/lib/checkpoint-report-conf
 assert.doesNotMatch(quarantineSource, /taskScores|moduleScores|remediationModules/,
   'Conflict quarantine must retain bounded summaries rather than raw report evidence arrays.');
 
-console.log('Checkpoint report reconciliation validated: exact replay no-op, local-only upload, cloud-authoritative conflicts, bounded quarantine, fail-closed duplicate cloud IDs and raw-sync-free UI ownership.');
+const browserSource = readFileSync(new URL('../tests/e2e/checkpoint-report-integrity.spec.ts', import.meta.url), 'utf8');
+for (const marker of [
+  'desktop checkpoint immutable report race',
+  'mobile checkpoint immutable conflict',
+  'Promise.all',
+  "expect([left.replayed, right.replayed].sort()).toEqual([false, true])",
+  "code: 'CHECKPOINT_REPORT_CONFLICT'",
+  'persisted).toEqual(original)',
+  'secondContext',
+  'seedConflictingLocalReport',
+  'checkpoint-report-conflict-banner',
+  'checkpoint-report-receipt',
+  'checkpoint-receipt-count',
+  'AxeBuilder',
+  'expectNoOverflow'
+]) {
+  assert.ok(browserSource.includes(marker), `Checkpoint immutable browser contract is missing ${marker}.`);
+}
+const playwrightSource = readFileSync(new URL('../playwright.config.ts', import.meta.url), 'utf8');
+assert.match(playwrightSource, /desktop checkpoint/,
+  'Desktop immutable checkpoint contract must be selected by a Playwright project.');
+assert.match(playwrightSource, /mobile checkpoint/,
+  'Mobile immutable checkpoint contract must be selected by a Playwright project.');
+
+console.log('Checkpoint report reconciliation validated: exact replay no-op, local-only upload, cloud-authoritative conflicts, bounded quarantine, fail-closed duplicate cloud IDs, raw-sync-free UI ownership and real desktop/mobile D1 contracts.');
