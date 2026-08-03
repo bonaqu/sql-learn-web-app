@@ -1,4 +1,4 @@
-import { randomInt, randomUUID } from 'node:crypto';
+import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 
 const gatewayUrl = required('CONTACT_PROVIDER_STAGING_URL').replace(/\/$/, '');
@@ -12,6 +12,7 @@ if (!['email', 'sms'].includes(channel)) throw new Error('CONTACT_PROVIDER_STAGI
 
 const challengeId = randomUUID();
 const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+const sourceKey = randomBytes(32).toString('hex');
 const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString();
 
 const accepted = await requestJson(`${gatewayUrl}/v1/deliver`, {
@@ -27,6 +28,7 @@ const accepted = await requestJson(`${gatewayUrl}/v1/deliver`, {
     destination,
     purpose: 'sensitive-action',
     code,
+    sourceKey,
     expiresAt
   })
 });
@@ -55,7 +57,8 @@ const evidence = {
   deliveredAt: typeof latest.deliveredAt === 'string' ? latest.deliveredAt : null,
   checkedAt: new Date().toISOString(),
   destinationIncluded: false,
-  verificationCodeIncluded: false
+  verificationCodeIncluded: false,
+  sourceKeyIncluded: false
 };
 
 await writeFile(evidencePath, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
