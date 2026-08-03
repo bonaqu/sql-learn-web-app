@@ -15,6 +15,7 @@ import LearningAnalyticsLauncher from './components/LearningAnalyticsLauncher';
 import OnboardingAgent from './components/OnboardingAgent';
 import OnboardingLauncher from './components/OnboardingLauncher';
 import PwaStatus from './components/PwaStatus';
+import VerifiedContactPortal from './components/VerifiedContactPortal';
 import './styles.css';
 import './enhancements.css';
 import './auth.css';
@@ -25,6 +26,7 @@ import './accessibility.css';
 import './guided-home.css';
 import './mobile-navigation.css';
 import './workspace-readiness.css';
+import './verified-contact.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -42,6 +44,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <OnboardingAgent />
         <LearningAnalyticsAgent />
       </AuthGate>
+      <VerifiedContactPortal />
       <PwaStatus />
     </ChunkErrorBoundary>
   </React.StrictMode>
