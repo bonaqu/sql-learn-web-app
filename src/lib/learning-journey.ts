@@ -350,10 +350,11 @@ export function buildJourneyFrontier(
   const goal = options.goal || loadOnboardingProfile().goal || 'full';
   const safeBypassedModuleIds = safeDiagnosticBypass(goal, options.bypassedModuleIds || []);
   const bypassed = new Set<string>(safeBypassedModuleIds);
-  const completedModuleIds: string[] = canonicalModuleIds.filter(moduleId =>
+  const foundationCompleteModuleIds: string[] = canonicalModuleIds.filter(moduleId =>
     nextFoundationAction(moduleId, progress, curriculum, bypassed) === null
   );
-  const moduleFrontier = goalModuleFrontier(goal, completedModuleIds);
+  const moduleFrontier = goalModuleFrontier(goal, foundationCompleteModuleIds);
+  const completedModuleIds = moduleFrontier.completedModuleIds;
   const routePositions = new Map<string, number>(moduleFrontier.routeModuleIds.map((moduleId, index) => [moduleId, index]));
   const passedCheckpointIds = new Set(options.passedCheckpointIds || []);
   const passedPhaseIds: string[] = phaseDefinitions
