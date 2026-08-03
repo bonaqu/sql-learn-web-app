@@ -136,13 +136,12 @@ export function checkpointRemediationsFromReports(
 
   const states: CheckpointRemediationState[] = [];
   for (const [checkpointId, attempts] of byCheckpoint) {
-    if (attempts.some(attempt => attempt.passed)) continue;
     const latest = [...attempts].sort((left, right) =>
       right.completedAt.localeCompare(left.completedAt)
       || right.attemptNumber - left.attemptNumber
       || right.id.localeCompare(left.id)
     )[0];
-    if (!latest) continue;
+    if (!latest || latest.passed) continue;
     const checkpoint = checkpointMap.get(checkpointId);
     const phase = phaseForCheckpoint(checkpointId);
     if (!checkpoint || !phase) continue;
