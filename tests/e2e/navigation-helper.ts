@@ -2,6 +2,10 @@ import type { Page } from '@playwright/test';
 import { curriculumLessons } from '../../src/data/complete-curriculum';
 import { lessonChecks } from '../../src/data/lesson-checks';
 
+const advancedToolNames: Record<string, RegExp> = {
+  'syllabus-open': /Диалекты и карта курса/i
+};
+
 export async function openAllTools(page: Page) {
   const sidebar = page.locator('.sidebar');
   const sidebarOpen = await sidebar.evaluate(element => element.classList.contains('open'));
@@ -29,11 +33,41 @@ export async function openAllTools(page: Page) {
 
 export async function openAdvancedTool(page: Page, testId: string) {
   await openAllTools(page);
-  await page.getByTestId(testId).click();
+  const testIdTarget = page.getByTestId(testId);
+  if (await testIdTarget.count()) {
+    await testIdTarget.click();
+    return;
+  }
+  const accessibleName = advancedToolNames[testId];
+  if (!accessibleName) throw new Error(`No accessible navigation fallback is registered for ${testId}`);
+  await page.getByRole('button', { name: accessibleName }).click();
 }
 
 export function guidedHome(page: Page) {
   return page.locator('[data-testid="guided-first-run"], [data-testid="guided-today"]');
+}
+
+async function waitForCurriculumSyncCycle(page: Page) {
+  await page.evaluate(() => new Promise<void>((resolve, reject) => {
+    const eventName = 'sql-academy-curriculum-sync-status';
+    const timeout = window.setTimeout(() => {
+      window.removeEventListener(eventName, onStatus as EventListener);
+      reject(new Error('Curriculum sync did not settle before fixture seeding'));
+    }, 15_000);
+    const finish = (error?: Error) => {
+      window.clearTimeout(timeout);
+      window.removeEventListener(eventName, onStatus as EventListener);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onStatus = (event: Event) => {
+      const detail = (event as CustomEvent<{ status?: string; message?: string }>).detail;
+      if (detail?.status === 'synced' || detail?.status === 'offline') finish();
+      if (detail?.status === 'error') finish(new Error(detail.message || 'Curriculum sync failed'));
+    };
+    window.addEventListener(eventName, onStatus as EventListener);
+    window.dispatchEvent(new Event('online'));
+  }));
 }
 
 export async function seedFirstLessonEvidence(page: Page) {
@@ -50,6 +84,7 @@ export async function seedFirstLessonEvidence(page: Page) {
     updatedAt: answeredAt
   };
 
+  await waitForCurriculumSyncCycle(page);
   await page.evaluate(payload => {
     const session = JSON.parse(localStorage.getItem('sql-academy-auth-session-v2') || 'null') as {
       userId?: string;

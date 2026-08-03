@@ -39,7 +39,7 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop-foundation',
-      grep: /desktop academy|desktop accessibility|desktop password|desktop assessment|desktop diagnostic exam|desktop capstone|desktop checkpoint|desktop commercial runtime/,
+      grep: /desktop academy|desktop accessibility|desktop password|desktop assessment|desktop diagnostic exam|desktop capstone|desktop checkpoint|desktop commercial runtime|desktop verified contact/,
       use: desktop
     },
     {
@@ -49,7 +49,7 @@ export default defineConfig({
     },
     {
       name: 'mobile-foundation',
-      grep: /mobile task flow|mobile guided journey|mobile password|mobile assessment|mobile checkpoint|mobile accessibility|mobile capstone/,
+      grep: /mobile task flow|mobile guided journey|mobile password|mobile assessment|mobile checkpoint|mobile accessibility|mobile capstone|mobile verified contact/,
       use: mobile
     },
     {
