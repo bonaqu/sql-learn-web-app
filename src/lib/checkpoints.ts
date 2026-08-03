@@ -9,6 +9,10 @@ import {
   checkpointAttemptState,
   compareCheckpointAttempts
 } from './checkpoint-attempt-policy';
+import {
+  CheckpointReportConflictError,
+  sameImmutableCheckpointReport
+} from './checkpoint-report-integrity';
 import { moduleMastery } from './learning-path';
 import type { Progress } from './progress';
 
@@ -474,7 +478,14 @@ export function loadLocalCheckpointReports(userId = loadAuthSession()?.userId): 
 }
 
 export function saveLocalCheckpointReport(report: CheckpointReport) {
-  const previous = loadLocalCheckpointReports(report.userId).filter(item => item.id !== report.id);
+  const previous = loadLocalCheckpointReports(report.userId);
+  const existing = previous.find(item => item.id === report.id);
+  if (existing) {
+    if (!sameImmutableCheckpointReport(existing, report)) {
+      throw new CheckpointReportConflictError(report.id, 'local-storage');
+    }
+    return previous;
+  }
   const next = [report, ...previous]
     .sort(compareCheckpointAttempts)
     .slice(0, 50);
@@ -498,7 +509,13 @@ export function mergeCheckpointReports(local: CheckpointReport[], remote: Checkp
   for (const report of [...remote, ...local]) {
     if (!validReport(report)) continue;
     const existing = byId.get(report.id);
-    if (!existing || compareCheckpointAttempts(report, existing) <= 0) byId.set(report.id, report);
+    if (!existing) {
+      byId.set(report.id, report);
+      continue;
+    }
+    if (!sameImmutableCheckpointReport(existing, report)) {
+      throw new CheckpointReportConflictError(report.id, 'local-cloud-merge');
+    }
   }
   return Array.from(byId.values())
     .sort(compareCheckpointAttempts)

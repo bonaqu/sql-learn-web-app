@@ -1,5 +1,23 @@
 import type { AssessmentReport } from './assessment';
 import type { CheckpointReport } from './checkpoints';
+import {
+  CheckpointReportConflictError,
+  sameImmutableCheckpointReport,
+  type CheckpointReportReceipt,
+  validCheckpointReportReceipt
+} from './checkpoint-report-integrity';
+import {
+  loadCheckpointReportReceipts,
+  saveCheckpointReportReceipt,
+  saveCheckpointReportReceipts
+} from './checkpoint-report-receipts';
+import {
+  quarantineCheckpointReportConflict
+} from './checkpoint-report-conflicts';
+import {
+  checkpointReportsToUpload,
+  reconcileCheckpointReportHistories
+} from './checkpoint-report-reconciliation';
 
 export type SyncableEvidenceReport = {
   version?: number;
@@ -10,10 +28,21 @@ export type SyncableEvidenceReport = {
 
 export type EvidenceSyncResult = {
   assessment: { local: number; remote: number; uploaded: number };
-  checkpoint: { local: number; remote: number; uploaded: number };
+  checkpoint: {
+    local: number;
+    remote: number;
+    uploaded: number;
+    replayed: number;
+    receipts: number;
+    conflicts: number;
+  };
 };
 
-type SyncError = Error & { status?: number };
+type SyncError = Error & {
+  status?: number;
+  code?: string;
+  reportId?: string;
+};
 type EvidenceKind = 'assessment' | 'checkpoint';
 
 const AUTH_SESSION_KEY = 'sql-academy-auth-session-v2';
@@ -121,16 +150,33 @@ function writeLocalReports<T extends SyncableEvidenceReport>(
   return true;
 }
 
-async function responseJson<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    const error = new Error(`Evidence sync failed with ${response.status}`) as SyncError;
-    error.status = response.status;
-    throw error;
+async function parseResponsePayload(response: Response) {
+  try {
+    return await response.json() as Record<string, unknown>;
+  } catch {
+    return {};
   }
-  return response.json() as Promise<T>;
 }
 
-async function postReports<T extends SyncableEvidenceReport>(endpoint: string, reports: T[]) {
+function syncError(response: Response, payload: Record<string, unknown>) {
+  const error = new Error(
+    typeof payload.error === 'string'
+      ? payload.error
+      : `Evidence sync failed with ${response.status}`
+  ) as SyncError;
+  error.status = response.status;
+  if (typeof payload.code === 'string') error.code = payload.code;
+  if (typeof payload.reportId === 'string') error.reportId = payload.reportId;
+  return error;
+}
+
+async function responseJson<T>(response: Response): Promise<T> {
+  const payload = await parseResponsePayload(response);
+  if (!response.ok) throw syncError(response, payload);
+  return payload as T;
+}
+
+async function postAssessmentReports<T extends SyncableEvidenceReport>(endpoint: string, reports: T[]) {
   let uploaded = 0;
   for (const report of reports) {
     const response = await fetch(endpoint, {
@@ -138,38 +184,134 @@ async function postReports<T extends SyncableEvidenceReport>(endpoint: string, r
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(report)
     });
-    if (response.status === 401) {
-      const error = new Error('Evidence sync session expired') as SyncError;
-      error.status = 401;
-      throw error;
-    }
-    if (response.ok) uploaded += 1;
+    const payload = await parseResponsePayload(response);
+    if (!response.ok) throw syncError(response, payload);
+    uploaded += 1;
   }
   return uploaded;
 }
 
-async function syncCollection<T extends SyncableEvidenceReport>(kind: EvidenceKind, userId: string) {
-  const config = COLLECTIONS[kind];
-  const local = readLocalReports<T>(kind, userId);
+async function fetchCheckpointCloud(userId: string) {
+  const response = await fetch(COLLECTIONS.checkpoint.endpoint);
+  const payload = await responseJson<{
+    reports?: CheckpointReport[];
+    receipts?: CheckpointReportReceipt[];
+  }>(response);
+  const reports = Array.isArray(payload.reports)
+    ? payload.reports.filter(report => validLocalReport<CheckpointReport>(report, userId))
+    : [];
+  const receipts = Array.isArray(payload.receipts)
+    ? payload.receipts.filter(validCheckpointReportReceipt)
+    : [];
+  saveCheckpointReportReceipts(userId, receipts);
+  return { reports, receipts };
+}
+
+async function postCheckpointReports(userId: string, reports: CheckpointReport[]) {
+  let uploaded = 0;
+  let replayed = 0;
+  const conflicts: CheckpointReport[] = [];
+  for (const report of reports) {
+    const response = await fetch(COLLECTIONS.checkpoint.endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(report)
+    });
+    const payload = await parseResponsePayload(response);
+    if (response.status === 409 && payload.code === 'CHECKPOINT_REPORT_CONFLICT') {
+      conflicts.push(report);
+      continue;
+    }
+    if (!response.ok) throw syncError(response, payload);
+    if (!validCheckpointReportReceipt(payload.receipt)) {
+      throw new TypeError(`Checkpoint report ${report.id} was accepted without a valid receipt.`);
+    }
+    saveCheckpointReportReceipt(userId, payload.receipt);
+    if (payload.replayed === true) replayed += 1;
+    else uploaded += 1;
+  }
+  return { uploaded, replayed, conflicts };
+}
+
+async function syncAssessmentCollection<T extends SyncableEvidenceReport>(userId: string) {
+  const config = COLLECTIONS.assessment;
+  const local = readLocalReports<T>('assessment', userId);
   const response = await fetch(config.endpoint);
   const payload = await responseJson<{ reports?: T[] }>(response);
   const remote = Array.isArray(payload.reports)
     ? payload.reports.filter(report => validLocalReport<T>(report, userId))
     : [];
   const merged = mergeEvidenceReports(local, remote, config.limit);
-  writeLocalReports(kind, userId, merged);
-  const uploaded = await postReports(config.endpoint, reportsToUpload(local, remote));
+  writeLocalReports('assessment', userId, merged);
+  const uploaded = await postAssessmentReports(config.endpoint, reportsToUpload(local, remote));
   return { local: merged.length, remote: remote.length, uploaded };
 }
 
 export async function syncAssessmentEvidence(userId = currentUserId()) {
   if (!userId) return { local: 0, remote: 0, uploaded: 0 };
-  return syncCollection<AssessmentReport>('assessment', userId);
+  return syncAssessmentCollection<AssessmentReport>(userId);
 }
 
 export async function syncCheckpointEvidence(userId = currentUserId()) {
-  if (!userId) return { local: 0, remote: 0, uploaded: 0 };
-  return syncCollection<CheckpointReport>('checkpoint', userId);
+  if (!userId) return { local: 0, remote: 0, uploaded: 0, replayed: 0, receipts: 0, conflicts: 0 };
+
+  const local = readLocalReports<CheckpointReport>('checkpoint', userId);
+  const cloud = await fetchCheckpointCloud(userId);
+  const remoteById = new Map(cloud.reports.map(report => [report.id, report]));
+  const confirmed = local.filter(report => {
+    const remote = remoteById.get(report.id);
+    return remote ? sameImmutableCheckpointReport(report, remote) : false;
+  }).length;
+  const initial = reconcileCheckpointReportHistories(local, cloud.reports, COLLECTIONS.checkpoint.limit);
+  for (const conflict of initial.conflicts) {
+    quarantineCheckpointReportConflict(
+      userId,
+      conflict.localReport,
+      conflict.remoteReport,
+      'local-cloud-merge'
+    );
+  }
+  writeLocalReports('checkpoint', userId, initial.reports);
+
+  const uploadCandidates = checkpointReportsToUpload(local, cloud.reports);
+  const posted = await postCheckpointReports(userId, uploadCandidates);
+  let reports = initial.reports;
+  let remoteCount = cloud.reports.length;
+  let conflictCount = initial.conflicts.length;
+
+  if (posted.conflicts.length > 0) {
+    const refreshed = await fetchCheckpointCloud(userId);
+    const afterRace = reconcileCheckpointReportHistories(local, refreshed.reports, COLLECTIONS.checkpoint.limit);
+    const refreshedById = new Map(refreshed.reports.map(report => [report.id, report]));
+    for (const localReport of posted.conflicts) {
+      const remoteReport = refreshedById.get(localReport.id) || null;
+      quarantineCheckpointReportConflict(userId, localReport, remoteReport, 'cloud-upload');
+    }
+    for (const conflict of afterRace.conflicts) {
+      quarantineCheckpointReportConflict(
+        userId,
+        conflict.localReport,
+        conflict.remoteReport,
+        'cloud-upload'
+      );
+    }
+    const unresolvedIds = new Set(posted.conflicts
+      .filter(report => !refreshedById.has(report.id))
+      .map(report => report.id));
+    reports = afterRace.reports.filter(report => !unresolvedIds.has(report.id));
+    writeLocalReports('checkpoint', userId, reports);
+    remoteCount = refreshed.reports.length;
+    conflictCount += posted.conflicts.length + afterRace.conflicts.length;
+  }
+
+  return {
+    local: reports.length,
+    remote: remoteCount,
+    uploaded: posted.uploaded,
+    replayed: confirmed + posted.replayed,
+    receipts: loadCheckpointReportReceipts(userId).length,
+    conflicts: conflictCount
+  };
 }
 
 export async function reconcileEvidenceReports(): Promise<EvidenceSyncResult> {
@@ -177,7 +319,7 @@ export async function reconcileEvidenceReports(): Promise<EvidenceSyncResult> {
   if (!userId) {
     return {
       assessment: { local: 0, remote: 0, uploaded: 0 },
-      checkpoint: { local: 0, remote: 0, uploaded: 0 }
+      checkpoint: { local: 0, remote: 0, uploaded: 0, replayed: 0, receipts: 0, conflicts: 0 }
     };
   }
 
@@ -191,12 +333,23 @@ export async function reconcileEvidenceReports(): Promise<EvidenceSyncResult> {
   );
   if (rejected?.status === 'rejected') throw rejected.reason;
 
+  if (checkpoint.status === 'rejected' && checkpoint.reason instanceof CheckpointReportConflictError) {
+    throw checkpoint.reason;
+  }
+
   return {
     assessment: assessment.status === 'fulfilled'
       ? assessment.value
       : { local: readLocalReports<AssessmentReport>('assessment', userId).length, remote: 0, uploaded: 0 },
     checkpoint: checkpoint.status === 'fulfilled'
       ? checkpoint.value
-      : { local: readLocalReports<CheckpointReport>('checkpoint', userId).length, remote: 0, uploaded: 0 }
+      : {
+          local: readLocalReports<CheckpointReport>('checkpoint', userId).length,
+          remote: 0,
+          uploaded: 0,
+          replayed: 0,
+          receipts: loadCheckpointReportReceipts(userId).length,
+          conflicts: 0
+        }
   };
 }

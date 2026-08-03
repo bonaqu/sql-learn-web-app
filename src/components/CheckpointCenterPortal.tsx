@@ -25,6 +25,7 @@ import { curriculumCheckpoints } from '../data/complete-curriculum';
 import { checkpointAttemptSnapshotFromReports } from '../lib/checkpoint-attempt-policy';
 import {
   advanceCheckpoint,
+  CHECKPOINT_REPORTS_CHANGED_EVENT,
   CheckpointReport,
   CheckpointSession,
   checkpointDurationMinutes,
@@ -35,14 +36,23 @@ import {
   goToCheckpointTask,
   loadCheckpointSession,
   loadLocalCheckpointReports,
-  mergeCheckpointReports,
   remainingCheckpointSeconds,
-  saveLocalCheckpointReport,
   updateCheckpointAnswer
 } from '../lib/checkpoints';
 import { AssessmentSqlEngine, AssessmentSqlTable, evaluateAssessmentSql } from '../lib/assessment-runtime';
 import { loadAuthSession } from '../lib/auth';
 import { useDialogFocus } from '../lib/dialog-focus';
+import { syncCheckpointEvidence } from '../lib/evidence-sync';
+import {
+  CHECKPOINT_REPORT_CONFLICTS_CHANGED_EVENT,
+  loadCheckpointReportConflicts
+} from '../lib/checkpoint-report-conflicts';
+import { checkpointConflictMessage } from '../lib/checkpoint-report-integrity';
+import {
+  CHECKPOINT_RECEIPTS_CHANGED_EVENT,
+  checkpointReceiptForReport,
+  loadCheckpointReportReceipts
+} from '../lib/checkpoint-report-receipts';
 import { loadProgress } from '../lib/progress';
 import { CHECKPOINT_REQUEST_KEY } from './CheckpointLauncher';
 
@@ -65,6 +75,10 @@ function checkpointTitle(checkpointId: string) {
   return curriculumCheckpoints.find(item => item.id === checkpointId)?.title || checkpointId;
 }
 
+function receiptLabel(persistedAt: string) {
+  return new Date(persistedAt).toLocaleString('ru-RU');
+}
+
 export default function CheckpointCenterPortal({ openRequest = 0 }: { openRequest?: number }) {
   const auth = loadAuthSession();
   const [session, setSession] = useState<CheckpointSession | null>(() => loadCheckpointSession());
@@ -72,6 +86,8 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
   const [requestedCheckpointId, setRequestedCheckpointId] = useState(() => sessionStorage.getItem(CHECKPOINT_REQUEST_KEY) || '');
   const [report, setReport] = useState<CheckpointReport | null>(null);
   const [history, setHistory] = useState<CheckpointReport[]>(() => loadLocalCheckpointReports());
+  const [receipts, setReceipts] = useState(() => loadCheckpointReportReceipts(auth?.userId));
+  const [conflicts, setConflicts] = useState(() => loadCheckpointReportConflicts(auth?.userId));
   const [historyLoading, setHistoryLoading] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
   const [engine, setEngine] = useState<AssessmentSqlEngine | null>(null);
@@ -99,6 +115,15 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
     () => new Map(attemptSnapshot.states.map(state => [state.checkpointId, state])),
     [attemptSnapshot.states]
   );
+  const latestConflict = conflicts[0] || null;
+  const reportReceipt = report ? checkpointReceiptForReport(report.id, receipts) : null;
+
+  const reloadEvidenceState = useCallback(() => {
+    if (!auth) return;
+    setHistory(loadLocalCheckpointReports(auth.userId));
+    setReceipts(loadCheckpointReportReceipts(auth.userId));
+    setConflicts(loadCheckpointReportConflicts(auth.userId));
+  }, [auth?.userId]);
 
   const close = useCallback(() => {
     if (!session) setOpen(false);
@@ -115,6 +140,19 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
     }
     setOpen(true);
   }, [openRequest]);
+
+  useEffect(() => {
+    if (!auth) return;
+    const reload = () => reloadEvidenceState();
+    window.addEventListener(CHECKPOINT_REPORTS_CHANGED_EVENT, reload);
+    window.addEventListener(CHECKPOINT_RECEIPTS_CHANGED_EVENT, reload);
+    window.addEventListener(CHECKPOINT_REPORT_CONFLICTS_CHANGED_EVENT, reload);
+    return () => {
+      window.removeEventListener(CHECKPOINT_REPORTS_CHANGED_EVENT, reload);
+      window.removeEventListener(CHECKPOINT_RECEIPTS_CHANGED_EVENT, reload);
+      window.removeEventListener(CHECKPOINT_REPORT_CONFLICTS_CHANGED_EVENT, reload);
+    };
+  }, [auth?.userId, reloadEvidenceState]);
 
   useEffect(() => {
     if (!open) return;
@@ -142,20 +180,23 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
     if (!auth) return;
     setHistoryLoading(true);
     try {
-      const response = await fetch('/api/checkpoints/reports');
-      if (!response.ok) throw new Error('history');
-      const payload = await response.json() as { reports?: CheckpointReport[] };
-      const merged = mergeCheckpointReports(loadLocalCheckpointReports(auth.userId), payload.reports || []);
-      for (const item of merged) saveLocalCheckpointReport(item);
-      setHistory(merged);
-      setSyncMessage('История checkpoints синхронизирована.');
-    } catch {
-      setHistory(loadLocalCheckpointReports(auth.userId));
-      setSyncMessage('Показана локальная история. Облачная синхронизация сейчас недоступна.');
+      const sync = await syncCheckpointEvidence(auth.userId);
+      reloadEvidenceState();
+      setSyncMessage(sync.conflicts > 0
+        ? 'Immutable conflict изолирован: облачная копия оставлена активной, локальная сохранена в quarantine.'
+        : sync.uploaded > 0
+          ? `Загружено новых checkpoint reports: ${sync.uploaded}. Cloud receipts сохранены.`
+          : sync.replayed > 0
+            ? `Cloud receipt подтверждён для ${sync.replayed} неизменяемых reports.`
+            : 'История checkpoints и cloud receipts синхронизированы.');
+    } catch (reason) {
+      reloadEvidenceState();
+      setSyncMessage(checkpointConflictMessage(reason)
+        || 'Показана локальная история. Облачная синхронизация сейчас недоступна.');
     } finally {
       setHistoryLoading(false);
     }
-  }, [auth?.userId]);
+  }, [auth?.userId, reloadEvidenceState]);
 
   useEffect(() => {
     if (open && !session && !report) void refreshHistory();
@@ -176,27 +217,32 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
       completedReport = finishCheckpointSession(source, status);
     } catch (reason) {
       finishingRef.current = false;
-      setSyncMessage(reason instanceof Error ? reason.message : 'Не удалось завершить checkpoint.');
+      setSyncMessage(checkpointConflictMessage(reason)
+        || (reason instanceof Error ? reason.message : 'Не удалось завершить checkpoint.'));
       return;
     }
     setSession(null);
     setReport(completedReport);
-    setHistory(loadLocalCheckpointReports(completedReport.userId));
+    reloadEvidenceState();
     setResult([]);
     setRunState('idle');
-    setSyncMessage('Сохраняю checkpoint report…');
+    setSyncMessage('Сохраняю immutable checkpoint report…');
     try {
-      const response = await fetch('/api/checkpoints/reports', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(completedReport)
-      });
-      if (!response.ok) throw new Error('sync');
-      setSyncMessage('Checkpoint report синхронизирован с аккаунтом.');
-    } catch {
-      setSyncMessage('Отчёт сохранён локально. Облачная синхронизация повторится при следующем открытии.');
+      const sync = await syncCheckpointEvidence(completedReport.userId);
+      reloadEvidenceState();
+      setSyncMessage(sync.conflicts > 0
+        ? 'Report ID конфликтовал с облачной записью. Cloud evidence оставлен активным, локальная версия изолирована.'
+        : sync.uploaded > 0
+          ? 'Checkpoint report принят как новая immutable cloud запись; receipt сохранён.'
+          : sync.replayed > 0
+            ? 'Checkpoint report уже существовал без изменений; исходный cloud receipt подтверждён.'
+            : 'Checkpoint report и cloud receipt синхронизированы.');
+    } catch (reason) {
+      reloadEvidenceState();
+      setSyncMessage(checkpointConflictMessage(reason)
+        || 'Отчёт сохранён локально. Облачная синхронизация повторится автоматически.');
     }
-  }, []);
+  }, [reloadEvidenceState]);
 
   useEffect(() => {
     if (!session || finishingRef.current) return;
@@ -327,6 +373,14 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
       <div className="assessment-readiness" data-testid="checkpoint-current-pass-count"><FlagTriangleRight /><strong>{attemptSnapshot.passedCheckpointIds.length}</strong><span>из {curriculumCheckpoints.length} пройдено сейчас</span></div>
     </section>
 
+    {latestConflict && <section className="assessment-notice" role="alert" data-testid="checkpoint-report-conflict-banner">
+      <AlertTriangle />
+      <span>
+        <strong>Immutable report conflict изолирован</strong><br />
+        {checkpointTitle(latestConflict.checkpointId)} · report {latestConflict.reportId.slice(-8)}. Cloud attempt #{latestConflict.remote?.attemptNumber ?? '—'} ({latestConflict.remote?.score ?? '—'}%) оставлен активным; local attempt #{latestConflict.local.attemptNumber} ({latestConflict.local.score}%) сохранён только в quarantine.
+      </span>
+    </section>}
+
     {loadCheckpointSession() && <section className="assessment-resume-card" data-testid="checkpoint-resume">
       <div><TimerReset /><span><strong>Есть незавершённый checkpoint</strong><small>{checkpointTitle(loadCheckpointSession()!.checkpointId)} · осталось {formatTimer(remainingCheckpointSeconds(loadCheckpointSession()!))}</small></span></div>
       <button type="button" onClick={resume}><Play />Продолжить</button>
@@ -365,7 +419,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
 
     <section className="assessment-history-card">
       <div className="assessment-section-heading">
-        <div><span>Evidence history</span><h2>Checkpoint reports</h2></div>
+        <div><span>Evidence history</span><h2>Checkpoint reports</h2><small data-testid="checkpoint-receipt-count">Cloud receipts: {receipts.length}</small></div>
         <button type="button" onClick={() => void refreshHistory()} disabled={historyLoading} aria-label="Обновить историю checkpoints"><RefreshCw className={historyLoading ? 'spin' : ''} /></button>
       </div>
       {!history.length && <div className="assessment-empty"><History /><p>После первой контрольной здесь появится измеримый evidence по модулям.</p></div>}
@@ -377,7 +431,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
         </button>)}
       </div>
     </section>
-    {syncMessage && <div className="assessment-notice" role="status" aria-live="polite">{syncMessage}</div>}
+    {syncMessage && <div className="assessment-notice" role="status" aria-live="polite" data-testid="checkpoint-sync-message">{syncMessage}</div>}
   </main>;
 
   const sessionView = session && activeTask && activeAnswer ? <main className="assessment-session" data-testid="checkpoint-session">
@@ -442,6 +496,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
       <article><ShieldCheck /><span><small>Самостоятельность</small><strong>{report.independence}%</strong></span></article>
       <article><Clock3 /><span><small>Время</small><strong>{formatDuration(report.durationSeconds)}</strong></span></article>
       <article data-testid="checkpoint-report-historical-best"><Gauge /><span><small>Исторический максимум</small><strong>{report.bestScore}%</strong></span></article>
+      <article data-testid="checkpoint-report-receipt"><ShieldCheck /><span><small>Cloud receipt</small><strong>{reportReceipt ? receiptLabel(reportReceipt.persistedAt) : 'Только локально'}</strong>{reportReceipt && <small>{reportReceipt.payloadDigest.slice(0, 12)}…</small>}</span></article>
     </section>
     <section className="assessment-history-card">
       <div className="assessment-section-heading"><div><span>Module evidence</span><h2>Результат по темам</h2></div><Trophy /></div>
