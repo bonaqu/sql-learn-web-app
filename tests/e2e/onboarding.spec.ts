@@ -181,6 +181,7 @@ function advancedFrontierFixture(userId: string, goal: LearnerGoal, prefixLength
 
 async function seedAdvancedFrontier(page: Page, userId: string, goal: LearnerGoal, prefixLength: number) {
   const fixture = advancedFrontierFixture(userId, goal, prefixLength);
+  await page.goto('./');
   await page.evaluate(({ id, value }) => {
     localStorage.setItem(`sql-academy-onboarding-v1:${id}`, JSON.stringify(value.profile));
     localStorage.setItem('sql-academy-progress-v4', JSON.stringify(value.progress));
