@@ -92,6 +92,17 @@ function findCount(value) {
   return null;
 }
 
+function validReceipt(value, expectedReportId) {
+  return value
+    && value.version === 1
+    && value.reportId === expectedReportId
+    && value.checkpointId === 'checkpoint-foundation'
+    && typeof value.persistedAt === 'string'
+    && Number.isFinite(Date.parse(value.persistedAt))
+    && typeof value.payloadDigest === 'string'
+    && /^[a-f0-9]{64}$/i.test(value.payloadDigest);
+}
+
 async function deleteSmokeAccount() {
   if (!authToken || !smokePassword || !recoveryCode || accountDeleted) return;
   try {
@@ -209,6 +220,9 @@ try {
   if (!Array.isArray(initialPayload.reports) || initialPayload.reports.length !== 0) {
     throw new Error('New checkpoint account must have empty report history');
   }
+  if (!Array.isArray(initialPayload.receipts) || initialPayload.receipts.length !== 0) {
+    throw new Error('New checkpoint account must have empty receipt history');
+  }
   endStage();
 
   stage('checkpoint-report-post');
@@ -261,14 +275,64 @@ try {
     attempts: 3
   });
   const savedPayload = parseJson(saved.text, 'Checkpoint report POST');
-  if (!savedPayload.ok) throw new Error('Checkpoint report POST contract failed');
+  if (!savedPayload.ok || savedPayload.replayed !== false || !validReceipt(savedPayload.receipt, reportId)) {
+    throw new Error('Checkpoint report first-write receipt contract failed');
+  }
+  const originalReceipt = savedPayload.receipt;
   writeJson('cloudflare-checkpoint-report-redacted.json', {
     id: report.id,
     checkpointId: report.checkpointId,
     score: report.score,
     passed: report.passed,
+    replayed: savedPayload.replayed,
+    receiptDigestPrefix: originalReceipt.payloadDigest.slice(0, 12),
     taskScoreCount: report.taskScores.length,
     moduleScoreCount: report.moduleScores.length
+  });
+  endStage();
+
+  stage('checkpoint-report-exact-replay');
+  const replay = await request('/api/checkpoints/reports', {
+    method: 'POST',
+    headers: authorizedHeaders,
+    body: JSON.stringify(report),
+    expected: [200],
+    attempts: 3
+  });
+  const replayPayload = parseJson(replay.text, 'Checkpoint exact replay');
+  if (!replayPayload.ok
+    || replayPayload.replayed !== true
+    || JSON.stringify(replayPayload.receipt) !== JSON.stringify(originalReceipt)) {
+    throw new Error('Checkpoint exact replay must return the original immutable receipt');
+  }
+  writeJson('cloudflare-checkpoint-replay-redacted.json', {
+    reportId,
+    replayed: replayPayload.replayed,
+    receiptStable: true,
+    receiptDigestPrefix: replayPayload.receipt.payloadDigest.slice(0, 12)
+  });
+  endStage();
+
+  stage('checkpoint-report-mutation-conflict');
+  const conflict = await request('/api/checkpoints/reports', {
+    method: 'POST',
+    headers: authorizedHeaders,
+    body: JSON.stringify({ ...report, score: 91 }),
+    expected: [409],
+    attempts: 1
+  });
+  const conflictPayload = parseJson(conflict.text, 'Checkpoint mutation conflict');
+  if (conflictPayload.code !== 'CHECKPOINT_REPORT_CONFLICT'
+    || conflictPayload.reportId !== reportId
+    || Object.hasOwn(conflictPayload, 'payload')
+    || Object.hasOwn(conflictPayload, 'taskScores')
+    || Object.hasOwn(conflictPayload, 'moduleScores')) {
+    throw new Error('Checkpoint mutation conflict response is not typed or redacted');
+  }
+  writeJson('cloudflare-checkpoint-conflict-redacted.json', {
+    reportId: conflictPayload.reportId,
+    code: conflictPayload.code,
+    payloadFieldsExposed: false
   });
   endStage();
 
@@ -282,19 +346,25 @@ try {
   const stored = Array.isArray(historyPayload.reports)
     ? historyPayload.reports.find(item => item.id === reportId)
     : null;
+  const storedReceipt = Array.isArray(historyPayload.receipts)
+    ? historyPayload.receipts.find(item => item.reportId === reportId)
+    : null;
   if (!stored
     || stored.userId !== smokeUserId
     || stored.checkpointId !== 'checkpoint-foundation'
     || stored.score !== 92
     || stored.passed !== true
-    || stored.taskScores?.length !== 5) {
-    throw new Error('Checkpoint report GET round-trip failed');
+    || stored.taskScores?.length !== 5
+    || JSON.stringify(storedReceipt) !== JSON.stringify(originalReceipt)) {
+    throw new Error('Checkpoint immutable report and receipt GET round-trip failed');
   }
   writeJson('cloudflare-checkpoint-history-redacted.json', {
     reportCount: historyPayload.reports.length,
+    receiptCount: historyPayload.receipts.length,
     matchedReport: reportId,
     score: stored.score,
-    passed: stored.passed
+    passed: stored.passed,
+    receiptStable: true
   });
   endStage();
 
@@ -329,6 +399,9 @@ try {
     ok: true,
     deployment: deployUrl,
     checkpointRoundTripVerified: true,
+    immutableReceiptVerified: true,
+    exactReplayVerified: true,
+    mutationConflictVerified: true,
     ownerValidationVerified: true,
     revokedSessionVerified: true,
     cascadeVerified: true
