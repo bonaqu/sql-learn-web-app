@@ -28,6 +28,16 @@ type ChallengeDeliveryRow = {
   created_at: string;
 };
 
+type ExistingDeliveryEventRow = {
+  challenge_id: string;
+  channel: VerificationChannel;
+  provider: string;
+  provider_message_id: string;
+  status: DeliveryStatus;
+  reason_code: string | null;
+  occurred_at: string;
+};
+
 const DELIVERY_PATH = '/api/provider/contact-delivery/events';
 const MAX_BODY_BYTES = 8_192;
 const EVENT_TOLERANCE_MS = 5 * 60_000;
@@ -144,6 +154,16 @@ async function pruneOperationalEvents(env: ContactDeliveryEnvironment) {
   ]);
 }
 
+function sameDeliveryEvent(existing: ExistingDeliveryEventRow, body: DeliveryEventBody, occurredAt: string) {
+  return existing.challenge_id === body.challengeId
+    && existing.channel === body.channel
+    && existing.provider === body.provider
+    && existing.provider_message_id === body.providerMessageId
+    && existing.status === body.status
+    && existing.reason_code === (body.reasonCode || null)
+    && existing.occurred_at === occurredAt;
+}
+
 export async function handleContactDeliveryEventRequest(
   request: Request,
   env: ContactDeliveryEnvironment
@@ -197,6 +217,7 @@ export async function handleContactDeliveryEventRequest(
     || occurredAtMs - challengeCreatedAtMs > 7 * 86_400_000) {
     return json({ error: 'Invalid delivery event time' }, 400);
   }
+  const occurredAt = sqliteTime(new Date(occurredAtMs));
   const latencyMs = Math.max(0, occurredAtMs - challengeCreatedAtMs);
   const inserted = await env.DB.prepare(`INSERT OR IGNORE INTO contact_delivery_events(
     event_id, challenge_id, channel, provider, provider_message_id, status,
@@ -209,15 +230,25 @@ export async function handleContactDeliveryEventRequest(
     body.providerMessageId,
     body.status,
     body.reasonCode || null,
-    sqliteTime(new Date(occurredAtMs)),
+    occurredAt,
     sqliteTime(),
     latencyMs
   ).run();
 
+  const duplicate = (inserted.meta.changes || 0) === 0;
+  if (duplicate) {
+    const existing = await env.DB.prepare(`SELECT challenge_id, channel, provider, provider_message_id,
+      status, reason_code, occurred_at FROM contact_delivery_events WHERE event_id = ?`)
+      .bind(body.eventId).first<ExistingDeliveryEventRow>();
+    if (!existing || !sameDeliveryEvent(existing, body, occurredAt)) {
+      return json({ error: 'Delivery event ID collision' }, 409);
+    }
+  }
+
   await pruneOperationalEvents(env);
   return json({
     ok: true,
-    duplicate: (inserted.meta.changes || 0) === 0,
+    duplicate,
     eventId: body.eventId,
     status: body.status
   });
