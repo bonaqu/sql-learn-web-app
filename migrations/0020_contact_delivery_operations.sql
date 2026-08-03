@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS contact_security_events (
   purpose TEXT NOT NULL CHECK(purpose IN ('register', 'password-reset', 'sensitive-action')),
   event_type TEXT NOT NULL CHECK(event_type IN (
     'challenge-created', 'resend-cooldown', 'challenge-rate-limit', 'provider-failure',
-    'invalid-code', 'code-locked', 'confirmed'
+    'invalid-code', 'code-locked', 'confirmed', 'ticket-consumed'
   )),
   occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
