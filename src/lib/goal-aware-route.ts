@@ -24,7 +24,7 @@ export type GoalModuleFrontier = {
   nextReason: string | null;
 };
 
-export const SHARED_FOUNDATION_MODULE_IDS: readonly ModuleId[] = [...phaseDefinitions[0].moduleIds];
+export const SHARED_FOUNDATION_MODULE_IDS: readonly string[] = [...phaseDefinitions[0].moduleIds];
 
 const goalPriority: Record<LearnerGoal, readonly string[]> = {
   support: [
@@ -137,7 +137,7 @@ const goalPriority: Record<LearnerGoal, readonly string[]> = {
 };
 
 const knownModuleIds = new Set<ModuleId>(canonicalModuleIds);
-const sharedFoundation = new Set<ModuleId>(SHARED_FOUNDATION_MODULE_IDS);
+const sharedFoundation = new Set<ModuleId>(phaseDefinitions[0].moduleIds);
 
 function isModuleId(value: string): value is ModuleId {
   return knownModuleIds.has(value as ModuleId);
