@@ -1,3 +1,4 @@
+import { advancedConditionalAggregationTaskOverride } from './advanced-authored-conditional-aggregation';
 import { advancedSchemaEvolutionTaskOverride } from './advanced-authored-schema-evolution';
 import type { SqlTask } from './course';
 import type { CurriculumLesson } from './curriculum';
@@ -9,26 +10,14 @@ if (!schemaEvolutionFoundation) {
   throw new Error('Canonical schema-evolution foundation task is missing');
 }
 
+const conditionalAggregationFoundation = advancedConditionalAggregationTaskOverride('task-151');
+if (!conditionalAggregationFoundation) {
+  throw new Error('Canonical conditional-aggregation foundation task is missing');
+}
+
 const taskOverrides: Readonly<Record<string, TaskLearningOverride>> = {
   'task-131': schemaEvolutionFoundation,
-  'task-151': {
-    title: 'Условные counts через FILTER',
-    description: 'По каждому сервису посчитай все обращения, Critical-обращения и закрытые обращения через aggregate FILTER, сохранив один общий набор строк.',
-    starter: `SELECT
-  service,
-  COUNT(*) AS total_count,
-  COUNT(*) FILTER (WHERE ) AS critical_count,
-  COUNT(*) FILTER (WHERE ) AS closed_count
-FROM tickets
-GROUP BY service
-ORDER BY service;`,
-    solution: `SELECT service, COUNT(*) AS total_count, COUNT(*) FILTER (WHERE priority = 'Critical') AS critical_count, COUNT(*) FILTER (WHERE status = 'Closed') AS closed_count FROM tickets GROUP BY service ORDER BY service;`,
-    hints: [
-      "Первый FILTER проверяет priority = 'Critical'.",
-      "Второй FILTER проверяет status = 'Closed'.",
-      'COUNT(*) без FILTER остаётся общим denominator для контрольной сверки.'
-    ]
-  }
+  'task-151': conditionalAggregationFoundation
 };
 
 const lessonExampleTaskIds: Readonly<Record<string, string>> = {
