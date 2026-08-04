@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import {
+  advancedSchemaEvolutionTaskOverride,
   schemaEvolutionAuthoredTaskEvidence,
   schemaEvolutionAuthoredTaskIds
 } from '../src/data/advanced-authored-schema-evolution';
 import { advancedLessonTaskModePattern } from '../src/data/advanced-task-progression';
 import { tasks } from '../src/data/course-catalog';
+import { syntaxFrontierTaskOverride } from '../src/data/syntax-frontier-content';
 
 function taskNumber(taskId: string) {
   return Number(taskId.replace(/^task-/, ''));
@@ -57,6 +59,25 @@ assert.equal(
   'Schema-evolution tasks collapsed to repeated SQL skeletons after literal normalization'
 );
 
+const authoredFoundation = advancedSchemaEvolutionTaskOverride('task-131');
+const syntaxFoundation = syntaxFrontierTaskOverride('task-131');
+const finalFoundation = moduleTasks.find(task => task.id === 'task-131');
+assert.ok(authoredFoundation, 'Canonical authored schema foundation is missing');
+assert.ok(syntaxFoundation, 'Syntax frontier no longer owns the schema foundation boundary');
+assert.ok(finalFoundation, 'Final schema foundation task is missing from the catalog');
+assert.deepEqual(syntaxFoundation, authoredFoundation, 'Syntax frontier duplicated or mutated the authored schema foundation');
+assert.deepEqual(
+  {
+    title: finalFoundation.title,
+    description: finalFoundation.description,
+    starter: finalFoundation.starter,
+    solution: finalFoundation.solution,
+    hints: finalFoundation.hints
+  },
+  authoredFoundation,
+  'Final task-131 drifted from the single canonical authored/syntax-frontier contract'
+);
+
 const evidence = new Set(Object.values(schemaEvolutionAuthoredTaskEvidence).flat());
 for (const required of [
   'preflight-validation',
@@ -85,7 +106,12 @@ for (const task of moduleTasks) {
 }
 
 const requiredSqlMarkers: Readonly<Record<string, readonly string[]>> = {
-  'task-131': ['IS NULL', 'NOT BETWEEN', 'violation'],
+  'task-131': [
+    'preflight_violations',
+    'ALTER TABLE service_contracts ADD COLUMN support_channel',
+    "CHECK (support_channel IN ('portal','email','phone'))",
+    'remaining_nulls'
+  ],
   'task-132': ['ALTER TABLE', 'lifecycle_state', 'remaining_nulls'],
   'task-133': ['CHECK (sla_minutes BETWEEN 1 AND 1440)', 'source_rows', 'migrated_rows', 'invariant_violations'],
   'task-134': ['CREATE TEMP VIEW tickets_legacy', 'service_code AS service'],
@@ -110,4 +136,4 @@ for (const task of transferTasks) {
   assert.ok(!/\b(?:CREATE|ALTER|INSERT|UPDATE|DELETE|SELECT)\b(?![^\n]*--)/i.test(task.starter.replace(/^--.*$/gm, '')), `${task.id}: transfer starter exposes executable SQL`);
 }
 
-console.log('Authored schema evolution validated: ten distinct migration decisions, preserved IDs/modes, explicit evidence, verification SQL and blank-editor transfer contracts.');
+console.log('Authored schema evolution validated: ten distinct migration decisions, one canonical foundation across syntax/content layers, preserved IDs/modes, explicit evidence, verification SQL and blank-editor transfer contracts.');
