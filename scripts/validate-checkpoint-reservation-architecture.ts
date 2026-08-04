@@ -12,6 +12,7 @@ const reservationWorker = source('../worker/checkpoint-attempt-reservations.ts')
 const reportWorker = source('../worker/coordinated-checkpoint-reports.ts');
 const workerIndex = source('../worker/index.ts');
 const center = source('../src/components/CheckpointCenterPortal.tsx');
+const launcher = source('../src/components/CheckpointLauncher.tsx');
 const browserContract = source('../tests/e2e/checkpoint-attempt-reservations.spec.ts');
 const playwright = source('../playwright.config.ts');
 const migration = source('../migrations/0022_checkpoint_attempt_reservations.sql');
@@ -120,6 +121,19 @@ assert.doesNotMatch(center, /\/api\/checkpoints\/reservations|MAX\(attempt_numbe
   'React must consume the reservation domain instead of calling or calculating reservation state directly.');
 
 for (const marker of [
+  'MutationObserver',
+  'observer.observe(document.body, { childList: true, subtree: true })',
+  'createdSlots',
+  'slot?.isConnected',
+  'checkpoint-trigger',
+  "onClick={() => openDeferredFeature('checkpoints')}"
+]) {
+  assert.ok(launcher.includes(marker), `Checkpoint launcher stability boundary is missing ${marker}.`);
+}
+assert.doesNotMatch(launcher, /preloadDeferredFeature|onMouseEnter|onFocus/,
+  'An imperatively hosted checkpoint launcher must not preload on hover/focus because an App rerender can detach the button before click.');
+
+for (const marker of [
   'desktop checkpoint reservation race',
   'mobile checkpoint reservation outage',
   'Promise.all',
@@ -153,4 +167,4 @@ for (const marker of [
 assert.doesNotMatch(migration, /DELETE FROM checkpoint_reports|UPDATE checkpoint_reports\s+SET attempt_number/i,
   'Reservation migration must not delete or renumber immutable report history.');
 
-console.log('Checkpoint reservation architecture validated: persisted retry identity, D1-owned monotonic allocation, one active attempt, atomic digest-bound completion, explicit provisional mode and raw-API-free React UI.');
+console.log('Checkpoint reservation architecture validated: persisted retry identity, D1-owned monotonic allocation, one active attempt, atomic digest-bound completion, stable launcher interaction, explicit provisional mode and raw-API-free React UI.');
