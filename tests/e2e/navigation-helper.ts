@@ -3,44 +3,90 @@ import { curriculumLessons } from '../../src/data/complete-curriculum';
 import { lessonChecks } from '../../src/data/lesson-checks';
 
 const advancedToolNames: Record<string, RegExp> = {
-  'syllabus-open': /Диалекты и карта курса/i
+  'assessment-trigger': /Экзамены/i,
+  'checkpoint-trigger': /Контрольные этапы/i,
+  'curriculum-trigger': /Учиться/i,
+  'learning-path-trigger': /Мой план/i,
+  'onboarding-trigger': /Настроить маршрут/i,
+  'syllabus-open': /Диалекты и карта курса/i,
+  'syllabus-trigger': /Диалекты и карта курса/i
 };
 
+const NAVIGATION_ATTEMPTS = 6;
+const NAVIGATION_STEP_TIMEOUT_MS = 2_500;
+
+function navigationError(error: unknown) {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
 export async function openAllTools(page: Page) {
-  const sidebar = page.locator('.sidebar');
-  const sidebarOpen = await sidebar.evaluate(element => element.classList.contains('open'));
-  const mobileMore = page.getByRole('button', { name: 'Ещё', exact: true });
-  const mobileMenu = page.getByRole('button', { name: 'Открыть меню' });
-  const mobileMoreVisible = await mobileMore.isVisible();
-  const mobileMenuVisible = await mobileMenu.isVisible();
+  let lastError = new Error('All tools navigation did not become stable');
 
-  if (!sidebarOpen && (mobileMoreVisible || mobileMenuVisible)) {
-    if (mobileMoreVisible) {
-      await mobileMore.click();
-    } else {
-      await mobileMenu.click();
+  for (let attempt = 0; attempt < NAVIGATION_ATTEMPTS; attempt += 1) {
+    if (page.isClosed()) throw new Error('Page closed while opening all tools');
+    try {
+      const sidebar = page.locator('.sidebar');
+      await sidebar.waitFor({ state: 'attached', timeout: NAVIGATION_STEP_TIMEOUT_MS });
+      const sidebarOpen = await sidebar.evaluate(element => element.classList.contains('open'));
+      const mobileMore = page.getByRole('button', { name: 'Ещё', exact: true });
+      const mobileMenu = page.getByRole('button', { name: 'Открыть меню' });
+      const mobileMoreVisible = await mobileMore.isVisible().catch(() => false);
+      const mobileMenuVisible = await mobileMenu.isVisible().catch(() => false);
+
+      if (!sidebarOpen && (mobileMoreVisible || mobileMenuVisible)) {
+        const opener = mobileMoreVisible ? mobileMore : mobileMenu;
+        await opener.click({ timeout: NAVIGATION_STEP_TIMEOUT_MS });
+        await page.waitForFunction(
+          () => document.querySelector('.sidebar')?.classList.contains('open') === true,
+          undefined,
+          { timeout: NAVIGATION_STEP_TIMEOUT_MS }
+        );
+      }
+
+      const tools = page.locator('.sidebar .nav-more');
+      await tools.waitFor({ state: 'visible', timeout: NAVIGATION_STEP_TIMEOUT_MS });
+      const open = await tools.evaluate(element => (element as HTMLDetailsElement).open);
+      if (!open) {
+        await tools.locator('summary').click({ timeout: NAVIGATION_STEP_TIMEOUT_MS });
+      }
+      await page.waitForFunction(
+        () => document.querySelector<HTMLDetailsElement>('.sidebar .nav-more')?.open === true,
+        undefined,
+        { timeout: NAVIGATION_STEP_TIMEOUT_MS }
+      );
+      return;
+    } catch (error) {
+      lastError = navigationError(error);
+      if (attempt + 1 < NAVIGATION_ATTEMPTS) await page.waitForTimeout(75);
     }
-
-    await page.waitForFunction(() => document.querySelector('.sidebar')?.classList.contains('open'));
   }
 
-  const tools = sidebar.locator('.nav-more');
-  await tools.scrollIntoViewIfNeeded();
-  if (!(await tools.evaluate(element => (element as HTMLDetailsElement).open))) {
-    await tools.locator('summary').click();
-  }
+  throw lastError;
 }
 
 export async function openAdvancedTool(page: Page, testId: string) {
-  await openAllTools(page);
-  const testIdTarget = page.getByTestId(testId);
-  if (await testIdTarget.count()) {
-    await testIdTarget.click();
-    return;
+  let lastError = new Error(`Navigation target ${testId} did not become stable`);
+
+  for (let attempt = 0; attempt < NAVIGATION_ATTEMPTS; attempt += 1) {
+    if (page.isClosed()) throw new Error(`Page closed while opening ${testId}`);
+    try {
+      await openAllTools(page);
+      const testIdTarget = page.getByTestId(testId);
+      await testIdTarget.waitFor({ state: 'visible', timeout: NAVIGATION_STEP_TIMEOUT_MS });
+      await testIdTarget.click({ timeout: NAVIGATION_STEP_TIMEOUT_MS });
+      return;
+    } catch (error) {
+      lastError = navigationError(error);
+      if (attempt + 1 < NAVIGATION_ATTEMPTS) await page.waitForTimeout(75);
+    }
   }
+
   const accessibleName = advancedToolNames[testId];
-  if (!accessibleName) throw new Error(`No accessible navigation fallback is registered for ${testId}`);
-  await page.getByRole('button', { name: accessibleName }).click();
+  if (!accessibleName) throw lastError;
+  await openAllTools(page);
+  const fallback = page.getByRole('button', { name: accessibleName });
+  await fallback.waitFor({ state: 'visible', timeout: NAVIGATION_STEP_TIMEOUT_MS });
+  await fallback.click({ timeout: NAVIGATION_STEP_TIMEOUT_MS });
 }
 
 export function guidedHome(page: Page) {

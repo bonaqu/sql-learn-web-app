@@ -23,6 +23,11 @@ import {
 } from 'lucide-react';
 import { curriculumCheckpoints } from '../data/complete-curriculum';
 import { checkpointAttemptSnapshotFromReports } from '../lib/checkpoint-attempt-policy';
+import type {
+  CheckpointAttemptReservation,
+  CoordinatedCheckpointId
+} from '../lib/checkpoint-attempt-reservation-contract';
+import { activeCheckpointAttemptMessage } from '../lib/checkpoint-attempt-reservations';
 import {
   advanceCheckpoint,
   CHECKPOINT_REPORTS_CHANGED_EVENT,
@@ -30,15 +35,18 @@ import {
   CheckpointSession,
   checkpointDurationMinutes,
   checkpointEligibility,
-  createCheckpointSession,
   currentCheckpointTask,
-  finishCheckpointSession,
   goToCheckpointTask,
   loadCheckpointSession,
   loadLocalCheckpointReports,
   remainingCheckpointSeconds,
   updateCheckpointAnswer
 } from '../lib/checkpoints';
+import {
+  checkpointSessionCoordination,
+  createCheckpointSessionWithCoordination,
+  finishCheckpointSessionWithCoordination
+} from '../lib/coordinated-checkpoints';
 import { AssessmentSqlEngine, AssessmentSqlTable, evaluateAssessmentSql } from '../lib/assessment-runtime';
 import { loadAuthSession } from '../lib/auth';
 import { useDialogFocus } from '../lib/dialog-focus';
@@ -88,6 +96,8 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
   const [history, setHistory] = useState<CheckpointReport[]>(() => loadLocalCheckpointReports());
   const [receipts, setReceipts] = useState(() => loadCheckpointReportReceipts(auth?.userId));
   const [conflicts, setConflicts] = useState(() => loadCheckpointReportConflicts(auth?.userId));
+  const [activeReservation, setActiveReservation] = useState<CheckpointAttemptReservation | null>(null);
+  const [startingCheckpointId, setStartingCheckpointId] = useState('');
   const [historyLoading, setHistoryLoading] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
   const [engine, setEngine] = useState<AssessmentSqlEngine | null>(null);
@@ -117,6 +127,10 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
   );
   const latestConflict = conflicts[0] || null;
   const reportReceipt = report ? checkpointReceiptForReport(report.id, receipts) : null;
+  const sessionCoordination = checkpointSessionCoordination(session);
+  const reportCoordination = report
+    ? (report as CheckpointReport & { coordination?: 'cloud' | 'provisional' }).coordination || 'legacy'
+    : 'legacy';
 
   const reloadEvidenceState = useCallback(() => {
     if (!auth) return;
@@ -214,7 +228,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
     }
     let completedReport: CheckpointReport;
     try {
-      completedReport = finishCheckpointSession(source, status);
+      completedReport = finishCheckpointSessionWithCoordination(source, status);
     } catch (reason) {
       finishingRef.current = false;
       setSyncMessage(checkpointConflictMessage(reason)
@@ -223,6 +237,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
     }
     setSession(null);
     setReport(completedReport);
+    setActiveReservation(null);
     reloadEvidenceState();
     setResult([]);
     setRunState('idle');
@@ -285,19 +300,31 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
     };
   }, [activeTask?.id, editorSql, session?.id]);
 
-  const start = (checkpointId: string) => {
+  const start = async (checkpointId: CoordinatedCheckpointId) => {
+    if (startingCheckpointId) return;
+    setStartingCheckpointId(checkpointId);
     try {
       finishingRef.current = false;
       elapsedTicks.current = 0;
-      const next = createCheckpointSession(checkpointId, progress, history);
-      setSession(next);
+      const result = await createCheckpointSessionWithCoordination(checkpointId, progress, history);
+      setSyncMessage(result.message);
+      if (result.activeReservation) {
+        setActiveReservation(result.activeReservation);
+        setSession(null);
+        setReport(null);
+        return;
+      }
+      if (!result.session) throw new Error('Checkpoint session не была создана.');
+      setActiveReservation(null);
+      setSession(result.session);
       setReport(null);
-      setSecondsLeft(remainingCheckpointSeconds(next));
+      setSecondsLeft(remainingCheckpointSeconds(result.session));
       setEngineError('');
-      setSyncMessage('');
       setOpen(true);
     } catch (reason) {
       setSyncMessage(reason instanceof Error ? reason.message : 'Checkpoint пока недоступен.');
+    } finally {
+      setStartingCheckpointId('');
     }
   };
 
@@ -306,9 +333,15 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
     if (!stored) return;
     finishingRef.current = false;
     elapsedTicks.current = 0;
+    setActiveReservation(null);
     setSession(stored);
     setReport(null);
     setSecondsLeft(remainingCheckpointSeconds(stored));
+    setSyncMessage(checkpointSessionCoordination(stored) === 'cloud'
+      ? 'Продолжена cloud-coordinated попытка.'
+      : checkpointSessionCoordination(stored) === 'provisional'
+        ? 'Продолжена provisional попытка без cloud reservation.'
+        : 'Продолжена legacy локальная попытка.');
     setOpen(true);
   };
 
@@ -373,6 +406,11 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
       <div className="assessment-readiness" data-testid="checkpoint-current-pass-count"><FlagTriangleRight /><strong>{attemptSnapshot.passedCheckpointIds.length}</strong><span>из {curriculumCheckpoints.length} пройдено сейчас</span></div>
     </section>
 
+    {activeReservation && <section className="assessment-notice" role="alert" data-testid="checkpoint-active-reservation-banner">
+      <Clock3 />
+      <span><strong>Checkpoint attempt уже активна</strong><br />{activeCheckpointAttemptMessage(activeReservation)}</span>
+    </section>}
+
     {latestConflict && <section className="assessment-notice" role="alert" data-testid="checkpoint-report-conflict-banner">
       <AlertTriangle />
       <span>
@@ -382,7 +420,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
     </section>}
 
     {loadCheckpointSession() && <section className="assessment-resume-card" data-testid="checkpoint-resume">
-      <div><TimerReset /><span><strong>Есть незавершённый checkpoint</strong><small>{checkpointTitle(loadCheckpointSession()!.checkpointId)} · осталось {formatTimer(remainingCheckpointSeconds(loadCheckpointSession()!))}</small></span></div>
+      <div><TimerReset /><span><strong>Есть незавершённый checkpoint</strong><small>{checkpointTitle(loadCheckpointSession()!.checkpointId)} · {checkpointSessionCoordination(loadCheckpointSession())} · осталось {formatTimer(remainingCheckpointSeconds(loadCheckpointSession()!))}</small></span></div>
       <button type="button" onClick={resume}><Play />Продолжить</button>
     </section>}
 
@@ -393,6 +431,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
         const current = state?.currentAttempt || null;
         const currentPassed = current?.passed === true;
         const requested = requestedCheckpointId === checkpoint.id;
+        const starting = startingCheckpointId === checkpoint.id;
         return <article
           className={`assessment-mode-card ${currentPassed ? 'interview' : index >= 4 ? 'exam' : ''}`}
           key={checkpoint.id}
@@ -411,7 +450,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
             {state && <li data-testid={`checkpoint-historical-best-${checkpoint.id}`}><History />исторический максимум {state.historicalBestScore}%</li>}
           </ul>
           {eligibility.eligible
-            ? <button type="button" onClick={() => start(checkpoint.id)} data-testid={`start-${checkpoint.id}`}><Play />{state ? 'Повторить' : 'Начать'}</button>
+            ? <button type="button" onClick={() => void start(checkpoint.id as CoordinatedCheckpointId)} disabled={Boolean(startingCheckpointId)} data-testid={`start-${checkpoint.id}`}><Play />{starting ? 'Резервирую…' : state ? 'Повторить' : 'Начать'}</button>
             : <div className="assessment-locked"><LockKeyhole /><span>{eligibility.blockers.join(' · ') || 'Checkpoint пока закрыт'}</span></div>}
         </article>;
       })}
@@ -436,10 +475,12 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
 
   const sessionView = session && activeTask && activeAnswer ? <main className="assessment-session" data-testid="checkpoint-session">
     <header className="assessment-session-header">
-      <div><span className="assessment-mode-pill">Checkpoint</span><strong>{session.currentIndex + 1}/{session.taskIds.length}</strong></div>
+      <div><span className="assessment-mode-pill" data-testid="checkpoint-session-coordination">{sessionCoordination === 'cloud' ? 'Cloud-coordinated' : sessionCoordination === 'provisional' ? 'Provisional offline' : 'Legacy checkpoint'}</span><strong>{session.currentIndex + 1}/{session.taskIds.length}</strong></div>
       <div className={`assessment-timer ${secondsLeft <= 300 ? 'urgent' : ''}`} role="timer" aria-label={`Осталось ${formatTimer(secondsLeft)}`}><Clock3 />{formatTimer(secondsLeft)}</div>
       <button type="button" className="assessment-finish" onClick={() => void complete(session, 'completed')}>Завершить досрочно</button>
     </header>
+
+    {syncMessage && <div className="assessment-notice" role="status" aria-live="polite" data-testid="checkpoint-sync-message">{syncMessage}</div>}
 
     <div className="assessment-progress-strip">{session.taskIds.map((taskId, index) => {
       const answer = session.answers[taskId];
@@ -496,6 +537,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
       <article><ShieldCheck /><span><small>Самостоятельность</small><strong>{report.independence}%</strong></span></article>
       <article><Clock3 /><span><small>Время</small><strong>{formatDuration(report.durationSeconds)}</strong></span></article>
       <article data-testid="checkpoint-report-historical-best"><Gauge /><span><small>Исторический максимум</small><strong>{report.bestScore}%</strong></span></article>
+      <article data-testid="checkpoint-report-coordination"><ShieldCheck /><span><small>Attempt coordination</small><strong>{reportCoordination === 'cloud' ? 'Cloud reservation' : reportCoordination === 'provisional' ? 'Provisional offline' : 'Legacy'}</strong></span></article>
       <article data-testid="checkpoint-report-receipt"><ShieldCheck /><span><small>Cloud receipt</small><strong>{reportReceipt ? receiptLabel(reportReceipt.persistedAt) : 'Только локально'}</strong>{reportReceipt && <small>{reportReceipt.payloadDigest.slice(0, 12)}…</small>}</span></article>
     </section>
     <section className="assessment-history-card">
