@@ -213,13 +213,22 @@ assert.equal(database.prepare('SELECT COUNT(*) AS count FROM checkpoint_attempt_
 const collision = {
   ...first,
   reservationId: '50000000-0000-4000-8000-000000000002',
+  reportId: '60000000-0000-4000-8000-000000000002',
   attemptNumber: 2,
   digest: 'b'.repeat(64),
   payload: '{"report":2}'
 };
+database.prepare(`INSERT INTO checkpoint_reports(
+    id, user_id, checkpoint_id, status, started_at, completed_at, duration_seconds,
+    attempt_number, score, best_score, passed, payload, payload_digest, persisted_at
+  )
+  SELECT ?, user_id, checkpoint_id, status, started_at, completed_at, duration_seconds,
+    ?, score, best_score, passed, payload, payload_digest, persisted_at
+  FROM checkpoint_reports WHERE id = ?`)
+  .run(collision.reportId, collision.attemptNumber, first.reportId);
 reserve(collision);
 assert.throws(() => bindReport(collision), /NOT NULL constraint failed.*reservation_id/,
-  'A report-ID collision with a different digest must make the guard statement fail and roll back the full batch.');
+  'A pre-existing immutable report with a different digest must make the guard fail and roll back reservation changes.');
 assert.deepEqual(plainRow(database.prepare(`SELECT status, completed_report_id FROM checkpoint_attempt_reservations
   WHERE reservation_id = ?`).get(collision.reservationId)), {
   status: 'active',
@@ -227,8 +236,11 @@ assert.deepEqual(plainRow(database.prepare(`SELECT status, completed_report_id F
 });
 assert.equal(database.prepare(`SELECT COUNT(*) AS count FROM checkpoint_attempt_completion_receipts
   WHERE reservation_id = ?`).get(collision.reservationId)?.count, 0);
-assert.equal(database.prepare('SELECT COUNT(*) AS count FROM checkpoint_reports').get()?.count, 1,
+assert.equal(database.prepare('SELECT COUNT(*) AS count FROM checkpoint_reports').get()?.count, 2,
   'The failed collision batch must not add or mutate report evidence.');
+assert.equal(database.prepare('SELECT payload_digest FROM checkpoint_reports WHERE id = ?')
+  .get(collision.reportId)?.payload_digest, first.digest,
+  'The pre-existing immutable report digest must remain unchanged after rollback.');
 
 database.prepare(`UPDATE checkpoint_attempt_reservations SET status = 'abandoned'
   WHERE reservation_id = ?`).run(collision.reservationId);
