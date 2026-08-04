@@ -17,7 +17,7 @@ function normalizedSolutionFingerprint(solution: string) {
 
 const expectedIds = Array.from({ length: 10 }, (_, index) => `task-${221 + index}`);
 assert.deepEqual(Object.keys(paginationAuthoredTaskEvidence).sort((a,b) => taskNumber(a)-taskNumber(b)), expectedIds, 'Every Pagination task needs evidence tags');
-const moduleTasks = tasks.filter(task => task.module === 'pagination').sort((a,b) => taskNumber(a.id)-taskNumber(b.id));
+const moduleTasks = tasks.filter(task => task.module === 'pagination-patterns').sort((a,b) => taskNumber(a.id)-taskNumber(b.id));
 assert.deepEqual(moduleTasks.map(task => task.id), expectedIds, 'Pagination persisted task identity drifted');
 assert.deepEqual(moduleTasks.map(task => task.mode), [...advancedLessonTaskModePattern, ...advancedLessonTaskModePattern], 'Pagination mode pattern drifted');
 assert.equal(new Set(moduleTasks.map(task => baseTransferTitle(task.title))).size, 10, 'Pagination needs ten distinct titles');
