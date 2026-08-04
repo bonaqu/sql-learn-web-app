@@ -10,6 +10,15 @@ async function expectNoHorizontalOverflow(page: import('@playwright/test').Page)
   expect(overflow).toBe(false);
 }
 
+function lessonReaderHeading(
+  studio: import('@playwright/test').Locator,
+  title: string
+) {
+  return studio
+    .getByTestId('curriculum-reader')
+    .getByRole('heading', { level: 1, name: title, exact: true });
+}
+
 async function seedLessonsThrough(page: import('@playwright/test').Page, lessonId: string) {
   const finalIndex = curriculumLessons.findIndex(lesson => lesson.id === lessonId);
   const lessons = curriculumLessons.slice(0, finalIndex + 1);
@@ -68,7 +77,7 @@ test('desktop curriculum explains why each lesson follows and routes phase bound
   const secondLesson = curriculumLessons[1];
   const studio = page.getByTestId('curriculum-studio');
   await expect(studio).toBeVisible();
-  await expect(studio.getByRole('heading', { name: firstLesson.title, exact: true })).toBeVisible();
+  await expect(lessonReaderHeading(studio, firstLesson.title)).toBeVisible();
 
   const companion = studio.getByTestId('curriculum-continuity-companion');
   await expect(companion).toBeVisible();
@@ -79,7 +88,7 @@ test('desktop curriculum explains why each lesson follows and routes phase bound
   await expect(companion.getByTestId('lesson-continuity-outgoing')).toContainText(secondLesson.title);
 
   await companion.getByRole('button', { name: /Перейти к уроку/i }).click();
-  await expect(studio.getByRole('heading', { name: secondLesson.title, exact: true })).toBeVisible();
+  await expect(lessonReaderHeading(studio, secondLesson.title)).toBeVisible();
   await expect(companion.getByTestId('lesson-continuity-incoming')).toContainText(firstLesson.title);
   await expect(companion.getByTestId('lesson-continuity-incoming')).toContainText(/Что сохраняем/i);
   await expect(companion.getByTestId('lesson-continuity-incoming')).toContainText(/Почему идём дальше/i);
@@ -90,7 +99,7 @@ test('desktop curriculum explains why each lesson follows and routes phase bound
   await seedLessonsThrough(page, phaseTransition!.fromLessonId);
   await openCurriculumLesson(page, phaseTransition!.fromLessonId);
   const phaseLesson = curriculumLessons.find(lesson => lesson.id === phaseTransition!.fromLessonId)!;
-  await expect(studio.getByRole('heading', { name: phaseLesson.title, exact: true })).toBeVisible();
+  await expect(lessonReaderHeading(studio, phaseLesson.title)).toBeVisible();
   const phaseOutgoing = companion.getByTestId('lesson-continuity-outgoing');
   await expect(phaseOutgoing).toContainText(/Сначала checkpoint фазы/i);
   await expect(phaseOutgoing).toContainText(phaseTransition!.evidencePrompt);
