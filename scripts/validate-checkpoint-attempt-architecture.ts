@@ -102,7 +102,6 @@ assert.doesNotMatch(checkpointCenter, /history\.filter\(item => item\.passed\)|s
   'Checkpoint Center must not infer current pass state from historical passed reports or best-score sorting.');
 
 for (const marker of [
-  'ORDER BY completed_at DESC, attempt_number DESC, id DESC',
   'LIMIT 50',
   "body.userId !== userId",
   'canonicalEvidenceJson',
@@ -116,7 +115,12 @@ for (const marker of [
   assert.ok(checkpointWorker.includes(marker),
     `Checkpoint Worker deterministic append-only cloud contract is missing ${marker}.`);
 }
-assert.doesNotMatch(checkpointWorker, /ORDER BY completed_at DESC LIMIT 50/,
+assert.match(
+  checkpointWorker,
+  /ORDER BY (?:r\.)?completed_at DESC, (?:r\.)?attempt_number DESC, (?:r\.)?id DESC/,
+  'Cloud checkpoint history must apply deterministic completed-at, attempt-number and ID tie-breaks before the bounded limit.'
+);
+assert.doesNotMatch(checkpointWorker, /ORDER BY (?:r\.)?completed_at DESC LIMIT 50/,
   'Cloud checkpoint history must apply canonical tie-breaks before the bounded limit.');
 assert.doesNotMatch(
   checkpointWorker,

@@ -1,4 +1,11 @@
 import {
+  canonicalProvisionalCheckpointEvidenceJson,
+  isProvisionalCheckpointReport,
+  projectAdoptedCheckpointReport,
+  type AdoptedCheckpointReport,
+  type CheckpointProvisionalAdoptionReceipt
+} from '../src/lib/checkpoint-provisional-reconciliation-contract';
+import {
   canonicalEvidenceJson,
   type CheckpointReportReceipt
 } from '../src/lib/checkpoint-report-integrity';
@@ -62,6 +69,11 @@ type ListedCheckpointReport = {
   persisted_at: string | null;
   created_at: string | null;
   updated_at: string | null;
+  stored_attempt_number: number;
+  provisional_attempt_number: number | null;
+  canonical_attempt_number: number | null;
+  evidence_digest: string | null;
+  adopted_at: string | null;
 };
 
 const CHECKPOINT_IDS = new Set([
@@ -219,7 +231,7 @@ async function reportDigest(report: CheckpointReportPayload) {
 }
 
 function receipt(
-  report: CheckpointReportPayload,
+  report: CheckpointReportPayload | AdoptedCheckpointReport,
   payloadDigest: string,
   receiptTime: string
 ): CheckpointReportReceipt {
@@ -289,36 +301,89 @@ async function storedReport(env: Cloudflare.Env, reportId: string) {
 }
 
 async function listReports(env: Cloudflare.Env, userId: string) {
-  const rows = await env.DB.prepare(`SELECT payload, payload_digest, persisted_at, created_at, updated_at
-    FROM checkpoint_reports
-    WHERE user_id = ?
-    ORDER BY completed_at DESC, attempt_number DESC, id DESC
+  const rows = await env.DB.prepare(`SELECT
+      r.payload, r.payload_digest, r.persisted_at, r.created_at, r.updated_at,
+      r.attempt_number AS stored_attempt_number,
+      a.provisional_attempt_number, a.canonical_attempt_number,
+      a.evidence_digest, a.adopted_at
+    FROM checkpoint_reports r
+    LEFT JOIN checkpoint_provisional_adoptions a ON a.report_id = r.id
+    WHERE r.user_id = ?
+    ORDER BY r.completed_at DESC, r.attempt_number DESC, r.id DESC
     LIMIT 50`)
     .bind(userId)
     .all<ListedCheckpointReport>();
-  const reports: CheckpointReportPayload[] = [];
+  const reports: Array<CheckpointReportPayload | AdoptedCheckpointReport> = [];
   const receipts: CheckpointReportReceipt[] = [];
+  const adoptions: CheckpointProvisionalAdoptionReceipt[] = [];
+
   for (const row of rows.results) {
     try {
-      const parsed = JSON.parse(row.payload) as CheckpointReportPayload;
-      if (!validReport(parsed)) continue;
+      const raw = JSON.parse(row.payload) as unknown;
       const payloadDigest = row.payload_digest && DIGEST_PATTERN.test(row.payload_digest)
         ? row.payload_digest.toLowerCase()
-        : await reportDigest(parsed);
-      const receiptTime = persistedAt(row.persisted_at, row.created_at, row.updated_at, parsed.completedAt);
-      reports.push(parsed);
-      receipts.push(receipt(parsed, payloadDigest, receiptTime));
+        : validReport(raw)
+          ? await reportDigest(raw)
+          : null;
+      if (!payloadDigest) continue;
+      const receiptTime = persistedAt(row.persisted_at, row.created_at, row.updated_at,
+        validReport(raw) ? raw.completedAt : null);
+
+      if (row.provisional_attempt_number !== null
+        || row.canonical_attempt_number !== null
+        || row.evidence_digest !== null
+        || row.adopted_at !== null) {
+        if (!isProvisionalCheckpointReport(raw)
+          || row.provisional_attempt_number === null
+          || row.canonical_attempt_number === null
+          || row.stored_attempt_number !== row.canonical_attempt_number
+          || raw.attemptNumber !== row.provisional_attempt_number
+          || !row.evidence_digest
+          || !DIGEST_PATTERN.test(row.evidence_digest)
+          || !row.adopted_at
+          || !Number.isFinite(Date.parse(row.adopted_at))) continue;
+        const computedEvidenceDigest = await digestHex(canonicalProvisionalCheckpointEvidenceJson(raw));
+        if (computedEvidenceDigest !== row.evidence_digest.toLowerCase()) continue;
+        const adoption: CheckpointProvisionalAdoptionReceipt = {
+          version: 1,
+          reportId: raw.id,
+          checkpointId: raw.checkpointId,
+          provisionalAttemptNumber: row.provisional_attempt_number,
+          canonicalAttemptNumber: row.canonical_attempt_number,
+          adoptedAt: new Date(row.adopted_at).toISOString(),
+          evidenceDigest: row.evidence_digest.toLowerCase()
+        };
+        const projected = projectAdoptedCheckpointReport(raw, adoption);
+        reports.push(projected);
+        receipts.push(receipt(projected, payloadDigest, receiptTime));
+        adoptions.push(adoption);
+        continue;
+      }
+
+      if (!validReport(raw)) continue;
+      const coordination = (raw as { coordination?: unknown }).coordination;
+      if (coordination === 'provisional' || coordination === 'adopted') continue;
+      reports.push(raw);
+      receipts.push(receipt(raw, payloadDigest, receiptTime));
     } catch {
-      // Ignore malformed legacy rows rather than exposing stored payload details.
+      // Ignore malformed or internally inconsistent rows without exposing payload details.
     }
   }
-  return json({ reports, receipts });
+  return json({ reports, receipts, adoptions });
 }
 
 async function saveReport(request: Request, env: Cloudflare.Env, userId: string) {
   if (bodyTooLarge(request, MAX_REPORT_BYTES)) return json({ error: 'Checkpoint report is too large' }, 413);
   const body = await readJson(request);
   if (!validReport(body)) return json({ error: 'Invalid checkpoint report' }, 400);
+  const coordination = (body as { coordination?: unknown }).coordination;
+  if (coordination === 'provisional' || coordination === 'adopted') {
+    return json({
+      error: 'Provisional checkpoint reports require explicit adoption',
+      code: 'CHECKPOINT_PROVISIONAL_INVALID',
+      reportId: body.id
+    }, 409);
+  }
   if (body.userId !== userId) return json({ error: 'Checkpoint owner mismatch' }, 403);
   const serialized = JSON.stringify(body);
   if (new TextEncoder().encode(serialized).byteLength > MAX_REPORT_BYTES) return json({ error: 'Checkpoint report is too large' }, 413);

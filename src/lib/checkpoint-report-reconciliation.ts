@@ -1,5 +1,12 @@
 import { compareCheckpointAttempts } from './checkpoint-attempt-policy';
 import type { CheckpointReport } from './checkpoints';
+import {
+  isAdoptedCheckpointReport,
+  isProvisionalCheckpointReport,
+  sameCheckpointEvidenceAcrossAdoption,
+  type AdoptedCheckpointReport,
+  type ProvisionalCheckpointReport
+} from './checkpoint-provisional-reconciliation-contract';
 import { sameImmutableCheckpointReport } from './checkpoint-report-integrity';
 
 export type CheckpointReportPairConflict = {
@@ -23,6 +30,31 @@ function validIdentity(report: CheckpointReport) {
     && report.checkpointId.length > 0
     && typeof report.completedAt === 'string'
     && Number.isFinite(Date.parse(report.completedAt));
+}
+
+function asProvisional(report: CheckpointReport) {
+  return isProvisionalCheckpointReport(report)
+    ? report as ProvisionalCheckpointReport
+    : null;
+}
+
+function asAdopted(report: CheckpointReport) {
+  return isAdoptedCheckpointReport(report)
+    ? report as AdoptedCheckpointReport
+    : null;
+}
+
+function sameReconciledCheckpointEvidence(local: CheckpointReport, remote: CheckpointReport) {
+  const provisional = asProvisional(local);
+  const adopted = asAdopted(remote);
+  if (provisional && adopted) {
+    return sameCheckpointEvidenceAcrossAdoption(provisional, adopted);
+  }
+  return sameImmutableCheckpointReport(local, remote);
+}
+
+function allocationManagedReport(report: CheckpointReport) {
+  return Boolean(asProvisional(report) || asAdopted(report));
 }
 
 export function reconcileCheckpointReportHistories(
@@ -52,7 +84,7 @@ export function reconcileCheckpointReportHistories(
       byId.set(report.id, report);
       continue;
     }
-    if (!sameImmutableCheckpointReport(existing, report)) {
+    if (!sameReconciledCheckpointEvidence(report, existing)) {
       conflicts.push({ reportId: report.id, localReport: report, remoteReport: existing });
     }
   }
@@ -72,6 +104,7 @@ export function checkpointReportsToUpload(
   const remoteById = new Map(remote.map(report => [report.id, report]));
   const upload: CheckpointReport[] = [];
   for (const report of local) {
+    if (allocationManagedReport(report)) continue;
     const existing = remoteById.get(report.id);
     if (!existing) {
       upload.push(report);
@@ -82,4 +115,24 @@ export function checkpointReportsToUpload(
     }
   }
   return upload;
+}
+
+export function provisionalCheckpointReportsToAdopt(
+  local: CheckpointReport[],
+  remote: CheckpointReport[]
+) {
+  const remoteById = new Map(remote.map(report => [report.id, report]));
+  const adoption: ProvisionalCheckpointReport[] = [];
+  for (const report of local) {
+    const provisional = asProvisional(report);
+    if (!provisional) continue;
+    const existing = remoteById.get(report.id);
+    if (!existing) {
+      adoption.push(provisional);
+      continue;
+    }
+    const adopted = asAdopted(existing);
+    if (adopted && sameCheckpointEvidenceAcrossAdoption(provisional, adopted)) continue;
+  }
+  return adoption;
 }

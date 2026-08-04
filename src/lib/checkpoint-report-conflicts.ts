@@ -1,6 +1,9 @@
 import type { CheckpointReport } from './checkpoints';
 
-export type CheckpointReportConflictLocation = 'local-cloud-merge' | 'cloud-upload';
+export type CheckpointReportConflictLocation =
+  | 'local-cloud-merge'
+  | 'cloud-upload'
+  | 'provisional-adoption';
 
 export type CheckpointReportConflictSummary = {
   completedAt: string;
@@ -51,6 +54,12 @@ function validSummary(value: unknown): value is CheckpointReportConflictSummary 
     && typeof item.passed === 'boolean';
 }
 
+function validLocation(value: unknown): value is CheckpointReportConflictLocation {
+  return value === 'local-cloud-merge'
+    || value === 'cloud-upload'
+    || value === 'provisional-adoption';
+}
+
 function validConflict(value: unknown): value is CheckpointReportConflictRecord {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const item = value as Partial<CheckpointReportConflictRecord>;
@@ -63,7 +72,7 @@ function validConflict(value: unknown): value is CheckpointReportConflictRecord 
     && item.checkpointId.length > 0
     && typeof item.detectedAt === 'string'
     && Number.isFinite(Date.parse(item.detectedAt))
-    && (item.location === 'local-cloud-merge' || item.location === 'cloud-upload')
+    && validLocation(item.location)
     && item.activeSource === 'cloud'
     && validSummary(item.local)
     && (item.remote === null || validSummary(item.remote));

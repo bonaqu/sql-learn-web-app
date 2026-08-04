@@ -8,6 +8,7 @@ import {
   type CheckpointAttemptReservationStatus,
   type CoordinatedCheckpointId
 } from '../src/lib/checkpoint-attempt-reservation-contract';
+import { handleCheckpointProvisionalAdoptionRequest } from './checkpoint-provisional-adoptions';
 
 export type CheckpointReservationAuth = {
   userId: string;
@@ -250,6 +251,9 @@ export async function handleCheckpointAttemptReservationRequest(
   env: Cloudflare.Env,
   auth: CheckpointReservationAuth
 ): Promise<Response | null> {
+  const provisionalAdoptionResponse = await handleCheckpointProvisionalAdoptionRequest(request, env, auth);
+  if (provisionalAdoptionResponse) return provisionalAdoptionResponse;
+
   const url = new URL(request.url);
   if (url.pathname !== '/api/checkpoints/reservations') return null;
   if (!env.DB) return json({ error: 'D1 binding is not configured' }, 503);

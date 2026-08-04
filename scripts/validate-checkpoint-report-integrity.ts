@@ -64,7 +64,6 @@ for (const marker of [
   'payload_digest',
   'persisted_at',
   'receipts',
-  'ORDER BY completed_at DESC, attempt_number DESC, id DESC',
   'INSERT OR IGNORE INTO checkpoint_reports',
   'inserted.meta.changes !== 1',
   'storedReportResponse',
@@ -72,6 +71,11 @@ for (const marker of [
 ]) {
   assert.ok(worker.includes(marker), `Checkpoint Worker immutable report contract is missing ${marker}.`);
 }
+assert.match(
+  worker,
+  /ORDER BY (?:r\.)?completed_at DESC, (?:r\.)?attempt_number DESC, (?:r\.)?id DESC/,
+  'Checkpoint Worker immutable report contract must preserve deterministic canonical history ordering.'
+);
 assert.doesNotMatch(worker, /UPDATE checkpoint_reports SET\s*checkpoint_id|SET\s+checkpoint_id = \?/,
   'Completed checkpoint evidence columns must never be updated after the first accepted report ID.');
 assert.match(worker, /SET payload_digest = \?, persisted_at = COALESCE\(persisted_at, \?\)/,
