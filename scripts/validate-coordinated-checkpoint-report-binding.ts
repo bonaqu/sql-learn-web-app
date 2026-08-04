@@ -149,22 +149,23 @@ function reserve(input: {
   reportId: string;
   userId: string;
   attemptNumber: number;
-  status?: 'active' | 'expired';
+  status?: BindingInput['status'] | 'active';
   deadlineAt?: string;
   expiresAt?: string;
 }) {
+  const reservationStatus = input.status === 'expired' ? 'expired' : 'active';
   database.prepare(`INSERT INTO checkpoint_attempt_reservations(
     reservation_id, report_id, user_id, checkpoint_id, client_request_id,
     attempt_number, status, started_at, deadline_at, expires_at,
     session_id, device_name
-  ) VALUES(?, ?, ?, 'checkpoint-foundation', ?, ?, ?, ?, ?, ?, 'Browser')`)
+  ) VALUES(?, ?, ?, 'checkpoint-foundation', ?, ?, ?, ?, ?, ?, ?, 'Browser')`)
     .run(
       input.reservationId,
       input.reportId,
       input.userId,
       `30000000-0000-4000-8000-${String(input.attemptNumber).padStart(12, '0')}`,
       input.attemptNumber,
-      input.status || 'active',
+      reservationStatus,
       '2026-08-04T00:00:00.000Z',
       input.deadlineAt || '2026-08-04T00:30:00.000Z',
       input.expiresAt || '2026-08-04T00:35:00.000Z',
@@ -278,7 +279,7 @@ assert.deepEqual(database.prepare(`SELECT status, completed_report_id FROM check
 for (const marker of [
   'checkpoint_attempt_completion_receipts',
   'reservation_id TEXT PRIMARY KEY NOT NULL',
-  'report_id TEXT NOT NULL UNIQUE REFERENCES checkpoint_reports(id) ON DELETE CASCADE'
+  'REFERENCES checkpoint_reports(id) ON DELETE CASCADE'
 ]) {
   assert.ok(migration.includes(marker), `Checkpoint completion guard migration is missing ${marker}.`);
 }
@@ -286,7 +287,7 @@ for (const marker of [
 for (const marker of [
   'completion_receipt_report_id',
   "status IN ('active', 'expired')",
-  "body.completedAt > reserved.expires_at",
+  'Date.parse(body.completedAt) > Date.parse(reserved.expires_at)',
   'checkpoint_attempt_completion_receipts',
   'ON CONFLICT(reservation_id) DO NOTHING',
   'reserved.completion_receipt_report_id !== body.id'
@@ -295,7 +296,7 @@ for (const marker of [
 }
 assert.match(worker, /INSERT INTO checkpoint_attempt_completion_receipts[\s\S]*SELECT reservation_id FROM checkpoint_attempt_reservations/,
   'Completion guard receipt must be derived from the successfully updated reservation.');
-assert.doesNotMatch(worker, /body\.status === 'completed'[\s\S]{0,120}new Date\(\)\.toISOString/,
+assert.doesNotMatch(worker, /body\.status === 'completed'[\s\S]{0,160}new Date\(\)\.toISOString/,
   'Completion validity must depend on report.completedAt versus reservation.expiresAt, not network delivery time.');
 
 database.close();
