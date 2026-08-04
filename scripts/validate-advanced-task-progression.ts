@@ -199,9 +199,13 @@ for (const moduleId of advancedModuleIds) {
   const lessons = curriculumLessons.filter(lesson => lesson.module === moduleId);
   assert.equal(lessons.length, 2, `${moduleId}: expected foundation and applied lessons`);
   for (let lessonIndex = 0; lessonIndex < lessons.length; lessonIndex += 1) {
+    const lesson = lessons[lessonIndex];
     const block = moduleTasks.slice(lessonIndex * 5, lessonIndex * 5 + 5);
-    assert.deepEqual(lessons[lessonIndex].practiceTaskIds, block.map(task => task.id), `${lessons[lessonIndex].id}: linked task block drifted`);
-    assert.deepEqual(block.map(task => task.mode), advancedLessonTaskModePattern, `${lessons[lessonIndex].id}: lesson block lost guided/practice/transfer progression`);
+    const exampleTask = block[0];
+    assert.deepEqual(lesson.practiceTaskIds, block.map(task => task.id), `${lesson.id}: linked task block drifted`);
+    assert.deepEqual(block.map(task => task.mode), advancedLessonTaskModePattern, `${lesson.id}: lesson block lost guided/practice/transfer progression`);
+    assert.equal(lesson.example.sql, exampleTask.solution, `${lesson.id}: runnable example drifted from the canonical first task of its block`);
+    assert.equal(lesson.example.description, exampleTask.description, `${lesson.id}: runnable example copy drifted from its linked authored task`);
   }
 
   const foundation = foundationTasksForModule(moduleId);
@@ -294,4 +298,4 @@ assert.deepEqual(totalModes, {
   puzzle: advancedModuleIds.length * 2
 }, 'Advanced track aggregate stage distribution drifted');
 
-console.log(`Advanced task progression validated: ${advancedModuleIds.length} modules, first authored DML ladder, phase-wide checkpoints, ${totalModes.lesson} guided, ${totalModes.practice} practice, ${totalModes.interview} interview and ${totalModes.puzzle} puzzle tasks.`);
+console.log(`Advanced task progression validated: ${advancedModuleIds.length} modules, canonical lesson examples, first authored DML ladder, phase-wide checkpoints, ${totalModes.lesson} guided, ${totalModes.practice} practice, ${totalModes.interview} interview and ${totalModes.puzzle} puzzle tasks.`);
