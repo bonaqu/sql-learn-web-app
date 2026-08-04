@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import initSqlJs from 'sql.js';
 import {
   nullLogicAuthoredTaskEvidence,
   nullLogicAuthoredTaskIds
@@ -113,4 +116,99 @@ for (const task of transferTasks) {
   assert.ok(task.starter.includes('--'), `${task.id}: transfer task lost its blank-editor reasoning contract`);
 }
 
-console.log('Authored NULL logic validated: ten distinct TRUE/FALSE/UNKNOWN, filtering, anti-join, comparison, fallback, aggregate, ordering, join-presence and schema-contract decisions.');
+const expectedResults: Readonly<Record<string, {
+  columns: readonly string[];
+  values: readonly (readonly (string | number | null)[])[];
+}>> = {
+  'task-141': {
+    columns: ['label', 'truth_value'],
+    values: [
+      ['null_equals_null', 'UNKNOWN'],
+      ['one_equals_null', 'UNKNOWN'],
+      ['one_equals_one', 'TRUE'],
+      ['one_equals_two', 'FALSE']
+    ]
+  },
+  'task-142': {
+    columns: ['ticket_id', 'status', 'inclusion_reason'],
+    values: [
+      [201, 'Open', 'not-closed'],
+      [203, null, 'unknown-status'],
+      [204, 'Pending', 'not-closed']
+    ]
+  },
+  'task-143': {
+    columns: ['customer_id', 'region', 'safe_customer_count'],
+    values: [[2, 'LV', 2], [3, 'EE', 2]]
+  },
+  'task-144': {
+    columns: ['pair_id', 'expected_value', 'actual_value', 'match_state'],
+    values: [
+      [1, 'email', 'email', 'match'],
+      [2, null, null, 'match'],
+      [3, null, 'sms', 'different'],
+      [4, 'chat', null, 'different'],
+      [5, 'vpn', 'lms', 'different']
+    ]
+  },
+  'task-145': {
+    columns: ['customer_id', 'raw_email', 'normalized_email', 'email_state', 'display_email'],
+    values: [
+      [1, null, null, 'missing', 'not-provided'],
+      [2, '   ', null, 'blank', 'not-provided'],
+      [3, ' Alice@Example.com ', 'Alice@Example.com', 'present', 'Alice@Example.com']
+    ]
+  },
+  'task-146': {
+    columns: ['team', 'resolved_ratio', 'ratio_state'],
+    values: [['A', 0.8, 'calculated'], ['B', null, 'no-denominator'], ['C', 0, 'calculated']]
+  },
+  'task-147': {
+    columns: ['service', 'total_rows', 'known_rows', 'missing_rows', 'known_average'],
+    values: [['LMS', 3, 1, 2, 60], ['VPN', 3, 2, 1, 60]]
+  },
+  'task-148': {
+    columns: ['task_id', 'title', 'due_at'],
+    values: [
+      [4, 'D', '2026-08-03'],
+      [2, 'B', '2026-08-05'],
+      [3, 'C', '2026-08-05'],
+      [1, 'A', null],
+      [5, 'E', null]
+    ]
+  },
+  'task-149': {
+    columns: ['customer_id', 'name', 'channel', 'preference_state'],
+    values: [
+      [1, 'Ann', 'email', 'channel-selected'],
+      [2, 'Bob', null, 'preference-without-channel'],
+      [3, 'Cara', null, 'no-preference-row']
+    ]
+  },
+  'task-150': {
+    columns: ['stored_null_rows', 'not_null_enforced', 'contract_evidence'],
+    values: [[1, 0, 'check-accepted-unknown']]
+  }
+};
+
+const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = path.resolve(currentDirectory, '..');
+const SQL = await initSqlJs({
+  locateFile: file => path.join(projectRoot, 'node_modules', 'sql.js', 'dist', file)
+});
+
+for (const task of moduleTasks) {
+  const database = new SQL.Database();
+  try {
+    const result = database.exec(task.solution);
+    assert.equal(result.length, 1, `${task.id}: expected exactly one observable result set`);
+    const expectation = expectedResults[task.id];
+    assert.ok(expectation, `${task.id}: missing exact semantic expectation`);
+    assert.deepEqual(result[0].columns, [...expectation.columns], `${task.id}: result columns drifted`);
+    assert.deepEqual(result[0].values, expectation.values.map(row => [...row]), `${task.id}: NULL semantics drifted`);
+  } finally {
+    database.close();
+  }
+}
+
+console.log('Authored NULL logic validated: ten distinct contracts with exact TRUE/FALSE/UNKNOWN, filtering, anti-join, comparison, fallback, aggregate, ordering, join-presence and schema result evidence.');
