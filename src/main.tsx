@@ -20,6 +20,7 @@ import './styles.css';
 import './enhancements.css';
 import './auth.css';
 import './commercial-identity.css';
+import './commercial-identity-v2.css';
 import './learning-path.css';
 import './assessment.css';
 import './mastery-loop.css';
