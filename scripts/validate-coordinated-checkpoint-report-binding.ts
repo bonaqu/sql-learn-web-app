@@ -144,6 +144,10 @@ function bindReport(input: BindingInput) {
   }
 }
 
+function plainRow(value: unknown) {
+  return value && typeof value === 'object' ? { ...value } : value;
+}
+
 function reserve(input: {
   reservationId: string;
   reportId: string;
@@ -192,8 +196,8 @@ const first = {
 };
 reserve(first);
 assert.deepEqual(bindReport(first), { inserted: 1, updated: 1, receipt: 1 });
-assert.deepEqual(database.prepare(`SELECT status, completed_report_id FROM checkpoint_attempt_reservations
-  WHERE reservation_id = ?`).get(first.reservationId), {
+assert.deepEqual(plainRow(database.prepare(`SELECT status, completed_report_id FROM checkpoint_attempt_reservations
+  WHERE reservation_id = ?`).get(first.reservationId)), {
   status: 'completed',
   completed_report_id: first.reportId
 });
@@ -216,8 +220,8 @@ const collision = {
 reserve(collision);
 assert.throws(() => bindReport(collision), /NOT NULL constraint failed.*reservation_id/,
   'A report-ID collision with a different digest must make the guard statement fail and roll back the full batch.');
-assert.deepEqual(database.prepare(`SELECT status, completed_report_id FROM checkpoint_attempt_reservations
-  WHERE reservation_id = ?`).get(collision.reservationId), {
+assert.deepEqual(plainRow(database.prepare(`SELECT status, completed_report_id FROM checkpoint_attempt_reservations
+  WHERE reservation_id = ?`).get(collision.reservationId)), {
   status: 'active',
   completed_report_id: null
 });
@@ -270,8 +274,8 @@ assert.throws(() => bindReport(tooLate), /NOT NULL constraint failed.*reservatio
   'A completed report claiming a time after expiresAt must fail the transactional guard.');
 assert.equal(database.prepare(`SELECT COUNT(*) AS count FROM checkpoint_reports WHERE id = ?`)
   .get(tooLate.reportId)?.count, 0);
-assert.deepEqual(database.prepare(`SELECT status, completed_report_id FROM checkpoint_attempt_reservations
-  WHERE reservation_id = ?`).get(tooLate.reservationId), {
+assert.deepEqual(plainRow(database.prepare(`SELECT status, completed_report_id FROM checkpoint_attempt_reservations
+  WHERE reservation_id = ?`).get(tooLate.reservationId)), {
   status: 'expired',
   completed_report_id: null
 });
