@@ -21,6 +21,14 @@ CREATE TABLE IF NOT EXISTS checkpoint_attempt_reservations (
   CHECK(completed_report_id IS NULL OR completed_report_id = report_id)
 );
 
+CREATE TABLE IF NOT EXISTS checkpoint_attempt_completion_receipts (
+  reservation_id TEXT PRIMARY KEY NOT NULL
+    REFERENCES checkpoint_attempt_reservations(reservation_id) ON DELETE CASCADE,
+  report_id TEXT NOT NULL UNIQUE
+    REFERENCES checkpoint_reports(id) ON DELETE CASCADE,
+  completed_at TEXT NOT NULL
+);
+
 CREATE UNIQUE INDEX IF NOT EXISTS idx_checkpoint_attempt_one_active
   ON checkpoint_attempt_reservations(user_id, checkpoint_id)
   WHERE status = 'active';
