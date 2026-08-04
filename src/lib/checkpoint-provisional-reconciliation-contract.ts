@@ -1,6 +1,4 @@
-import type { CheckpointReport } from './checkpoints';
 import { canonicalEvidenceJson } from './checkpoint-report-integrity';
-import type { CoordinatedCheckpointReport } from './coordinated-checkpoints';
 
 export const CHECKPOINT_PROVISIONAL_ADOPTION_ENDPOINT = '/api/checkpoints/provisional-adoptions';
 
@@ -15,11 +13,50 @@ export const CHECKPOINT_PROVISIONAL_ADOPTION_CODES = {
 export type CheckpointProvisionalAdoptionCode =
   typeof CHECKPOINT_PROVISIONAL_ADOPTION_CODES[keyof typeof CHECKPOINT_PROVISIONAL_ADOPTION_CODES];
 
-export type ProvisionalCheckpointReport = CoordinatedCheckpointReport & {
-  coordination: 'provisional';
+export type CheckpointProvisionalTaskScore = {
+  taskId: string;
+  title: string;
+  module: string;
+  correct: boolean;
+  skipped: boolean;
+  attempts: number;
+  elapsedSeconds: number;
+  score: number;
 };
 
-export type AdoptedCheckpointReport = CheckpointReport & {
+export type CheckpointProvisionalModuleScore = {
+  module: string;
+  title: string;
+  score: number;
+  correct: number;
+  total: number;
+};
+
+export type ProvisionalCheckpointReport = {
+  version: 1;
+  id: string;
+  userId: string;
+  checkpointId: string;
+  status: 'completed' | 'expired' | 'abandoned';
+  startedAt: string;
+  completedAt: string;
+  durationSeconds: number;
+  attemptNumber: number;
+  score: number;
+  bestScore: number;
+  passingScore: number;
+  passed: boolean;
+  accuracy: number;
+  firstAttemptRate: number;
+  independence: number;
+  taskScores: CheckpointProvisionalTaskScore[];
+  moduleScores: CheckpointProvisionalModuleScore[];
+  remediationModules: string[];
+  coordination: 'provisional';
+  reservationId?: never;
+};
+
+export type AdoptedCheckpointReport = Omit<ProvisionalCheckpointReport, 'coordination' | 'reservationId'> & {
   coordination: 'adopted';
   provisionalAttemptNumber: number;
   canonicalAttemptNumber: number;
@@ -50,7 +87,7 @@ export type CheckpointProvisionalAdoptionConflict = {
   activeReservationId?: string;
 };
 
-type AllocationProjectedCheckpointReport = CheckpointReport & {
+type AllocationProjectedCheckpointReport = Omit<ProvisionalCheckpointReport, 'coordination' | 'reservationId'> & {
   coordination: 'provisional' | 'adopted';
   reservationId?: string;
   provisionalAttemptNumber?: number;
