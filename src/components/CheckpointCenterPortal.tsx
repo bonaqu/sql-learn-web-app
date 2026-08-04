@@ -480,6 +480,8 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
       <button type="button" className="assessment-finish" onClick={() => void complete(session, 'completed')}>Завершить досрочно</button>
     </header>
 
+    {syncMessage && <div className="assessment-notice" role="status" aria-live="polite" data-testid="checkpoint-sync-message">{syncMessage}</div>}
+
     <div className="assessment-progress-strip">{session.taskIds.map((taskId, index) => {
       const answer = session.answers[taskId];
       return <button
