@@ -71,6 +71,7 @@ type ReservationRow = {
   deadline_at: string;
   expires_at: string;
   completed_report_id: string | null;
+  completion_receipt_report_id: string | null;
 };
 
 const ID_PATTERN = /^[a-f0-9-]{16,80}$/i;
@@ -230,9 +231,13 @@ async function storedReport(env: Cloudflare.Env, reportId: string) {
 }
 
 async function reservation(env: Cloudflare.Env, reservationId: string) {
-  return env.DB.prepare(`SELECT reservation_id, report_id, user_id, checkpoint_id,
-      attempt_number, status, deadline_at, expires_at, completed_report_id
-    FROM checkpoint_attempt_reservations WHERE reservation_id = ?`)
+  return env.DB.prepare(`SELECT r.reservation_id, r.report_id, r.user_id, r.checkpoint_id,
+      r.attempt_number, r.status, r.deadline_at, r.expires_at, r.completed_report_id,
+      completion.report_id AS completion_receipt_report_id
+    FROM checkpoint_attempt_reservations r
+    LEFT JOIN checkpoint_attempt_completion_receipts completion
+      ON completion.reservation_id = r.reservation_id
+    WHERE r.reservation_id = ?`)
     .bind(reservationId)
     .first<ReservationRow>();
 }
@@ -278,6 +283,7 @@ async function immutableResponse(
     || reserved.checkpoint_id !== body.checkpointId
     || reserved.attempt_number !== body.attemptNumber
     || reserved.completed_report_id !== body.id
+    || reserved.completion_receipt_report_id !== body.id
     || reserved.status !== body.status) {
     return json({
       error: 'Checkpoint reservation does not match the completed report',
@@ -336,18 +342,22 @@ export async function handleCoordinatedCheckpointReportRequest(
       reportId: body.id
     }, 409);
   }
-  const now = new Date().toISOString();
-  if (reserved.status !== 'active' || reserved.completed_report_id) {
+  if (reserved.completed_report_id) {
     return immutableResponse(env, body, incomingDigest, auth, true);
   }
-  if (body.status === 'completed' && reserved.expires_at <= now) {
+  if (reserved.status !== 'active' && reserved.status !== 'expired') {
+    return immutableResponse(env, body, incomingDigest, auth, true);
+  }
+  if (body.status === 'completed'
+    && Date.parse(body.completedAt) > Date.parse(reserved.expires_at)) {
     return json({
       error: 'Checkpoint reservation expired before completion',
       code: 'CHECKPOINT_ATTEMPT_EXPIRED',
       reportId: body.id
     }, 409);
   }
-  if (body.status === 'expired' && reserved.deadline_at > body.completedAt) {
+  if (body.status === 'expired'
+    && Date.parse(body.completedAt) < Date.parse(reserved.deadline_at)) {
     return json({
       error: 'Checkpoint cannot expire before its reserved deadline',
       code: 'CHECKPOINT_ATTEMPT_BINDING_MISMATCH',
@@ -355,7 +365,7 @@ export async function handleCoordinatedCheckpointReportRequest(
     }, 409);
   }
 
-  const receiptTime = now;
+  const receiptTime = new Date().toISOString();
   const [inserted] = await env.DB.batch([
     env.DB.prepare(`INSERT OR IGNORE INTO checkpoint_reports(
       id, user_id, checkpoint_id, status, started_at, completed_at, duration_seconds,
@@ -364,9 +374,9 @@ export async function handleCoordinatedCheckpointReportRequest(
     SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
     FROM checkpoint_attempt_reservations
     WHERE reservation_id = ? AND user_id = ? AND checkpoint_id = ?
-      AND report_id = ? AND attempt_number = ? AND status = 'active'
+      AND report_id = ? AND attempt_number = ? AND status IN ('active', 'expired')
       AND completed_report_id IS NULL
-      AND (? <> 'completed' OR expires_at > ?)
+      AND (? <> 'completed' OR expires_at >= ?)
       AND (? <> 'expired' OR deadline_at <= ?)`)
       .bind(
         body.id,
@@ -389,14 +399,14 @@ export async function handleCoordinatedCheckpointReportRequest(
         body.id,
         body.attemptNumber,
         body.status,
-        now,
+        body.completedAt,
         body.status,
         body.completedAt
       ),
     env.DB.prepare(`UPDATE checkpoint_attempt_reservations
       SET status = ?, completed_report_id = ?, updated_at = ?
       WHERE reservation_id = ? AND user_id = ? AND checkpoint_id = ?
-        AND report_id = ? AND attempt_number = ? AND status = 'active'
+        AND report_id = ? AND attempt_number = ? AND status IN ('active', 'expired')
         AND completed_report_id IS NULL
         AND EXISTS (
           SELECT 1 FROM checkpoint_reports
@@ -406,7 +416,7 @@ export async function handleCoordinatedCheckpointReportRequest(
       .bind(
         body.status,
         body.id,
-        now,
+        receiptTime,
         body.reservationId,
         auth.userId,
         body.checkpointId,
@@ -417,6 +427,26 @@ export async function handleCoordinatedCheckpointReportRequest(
         body.checkpointId,
         body.attemptNumber,
         incomingDigest
+      ),
+    env.DB.prepare(`INSERT INTO checkpoint_attempt_completion_receipts(
+      reservation_id, report_id, completed_at
+    ) VALUES(
+      (SELECT reservation_id FROM checkpoint_attempt_reservations
+        WHERE reservation_id = ? AND user_id = ? AND checkpoint_id = ?
+          AND report_id = ? AND attempt_number = ? AND status = ?
+          AND completed_report_id = ?),
+      ?, ?
+    ) ON CONFLICT(reservation_id) DO NOTHING`)
+      .bind(
+        body.reservationId,
+        auth.userId,
+        body.checkpointId,
+        body.id,
+        body.attemptNumber,
+        body.status,
+        body.id,
+        body.id,
+        receiptTime
       )
   ]);
 
