@@ -1,4 +1,9 @@
 import assert from 'node:assert/strict';
+import {
+  advancedAuthoredTaskEvidence,
+  advancedAuthoredTaskIds,
+  applyAdvancedAuthoredTaskOverrides
+} from '../src/data/advanced-authored-content';
 import { advancedModules, advancedTasks } from '../src/data/advanced-syllabus';
 import { advancedLessonTaskModePattern } from '../src/data/advanced-task-progression';
 import { applySyntaxFrontierTaskOverrides } from '../src/data/syntax-frontier-content';
@@ -35,6 +40,19 @@ function invariantTaskContract(task: SqlTask) {
     solution: task.solution,
     guide: task.guide
   };
+}
+
+function normalizedSolutionFingerprint(solution: string) {
+  return solution
+    .toLowerCase()
+    .replace(/'(?:''|[^'])*'/g, '?')
+    .replace(/\b\d+(?:\.\d+)?\b/g, '#')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function baseTransferTitle(title: string) {
+  return title.replace(/^(?:Interview|Puzzle)\s*[·:]\s*/i, '').trim();
 }
 
 function emptyProgress(): Progress {
@@ -89,9 +107,64 @@ function checkpointForPhase(phaseId: string) {
 }
 
 const expectedContent = new Map(
-  applySyntaxFrontierTaskOverrides(advancedTasks).map(task => [task.id, task])
+  applySyntaxFrontierTaskOverrides(
+    applyAdvancedAuthoredTaskOverrides(advancedTasks)
+  ).map(task => [task.id, task])
 );
 const totalModes: Record<TaskMode, number> = { lesson: 0, practice: 0, interview: 0, puzzle: 0 };
+
+const expectedAuthoredDmlIds = Array.from({ length: 10 }, (_, index) => `task-${121 + index}`);
+assert.deepEqual(
+  [...advancedAuthoredTaskIds].sort((left, right) => taskNumber(left) - taskNumber(right)),
+  expectedAuthoredDmlIds,
+  'The first authored slice must preserve task-121 through task-130 exactly'
+);
+assert.deepEqual(
+  Object.keys(advancedAuthoredTaskEvidence).sort((left, right) => taskNumber(left) - taskNumber(right)),
+  expectedAuthoredDmlIds,
+  'Every authored DML task needs an explicit evidence contract'
+);
+
+const authoredDmlTasks = tasks
+  .filter(task => task.module === 'dml')
+  .sort((left, right) => taskNumber(left.id) - taskNumber(right.id));
+assert.deepEqual(authoredDmlTasks.map(task => task.id), expectedAuthoredDmlIds, 'DML persisted task identity drifted');
+assert.equal(new Set(authoredDmlTasks.map(task => baseTransferTitle(task.title))).size, 10, 'DML titles must describe ten distinct decisions');
+assert.ok(
+  authoredDmlTasks.every(task => !/[·#]\s*\d+$/u.test(baseTransferTitle(task.title))),
+  'Authored DML titles cannot use a numeric suffix as their primary distinction'
+);
+assert.equal(
+  new Set(authoredDmlTasks.map(task => normalizedSolutionFingerprint(task.solution))).size,
+  10,
+  'Authored DML tasks collapsed to repeated query skeletons after literal normalization'
+);
+
+const dmlEvidence = new Set(Object.values(advancedAuthoredTaskEvidence).flat());
+for (const required of [
+  'target-set',
+  'insert-select',
+  'bounded-delete',
+  'idempotency',
+  'savepoint',
+  'version-guard',
+  'staging-sync',
+  'deduplication',
+  'audit-before-mutation',
+  'cardinality-guard'
+]) {
+  assert.ok(dmlEvidence.has(required as never), `DML authored ladder lost competency evidence: ${required}`);
+}
+for (const task of authoredDmlTasks) {
+  const evidence = advancedAuthoredTaskEvidence[task.id];
+  assert.ok(evidence && evidence.length >= 3, `${task.id}: expected at least three authored evidence dimensions`);
+  assert.ok(task.description.length >= 140, `${task.id}: description is too thin for an authored production contract`);
+}
+assert.deepEqual(
+  authoredDmlTasks.map(task => task.mode),
+  [...advancedLessonTaskModePattern, ...advancedLessonTaskModePattern],
+  'Authored DML content must preserve two complete lesson/practice/transfer blocks'
+);
 
 for (const moduleId of advancedModuleIds) {
   const moduleTasks = tasks
@@ -221,4 +294,4 @@ assert.deepEqual(totalModes, {
   puzzle: advancedModuleIds.length * 2
 }, 'Advanced track aggregate stage distribution drifted');
 
-console.log(`Advanced task progression validated: ${advancedModuleIds.length} modules, phase-wide checkpoints, ${totalModes.lesson} guided, ${totalModes.practice} practice, ${totalModes.interview} interview and ${totalModes.puzzle} puzzle tasks.`);
+console.log(`Advanced task progression validated: ${advancedModuleIds.length} modules, first authored DML ladder, phase-wide checkpoints, ${totalModes.lesson} guided, ${totalModes.practice} practice, ${totalModes.interview} interview and ${totalModes.puzzle} puzzle tasks.`);
