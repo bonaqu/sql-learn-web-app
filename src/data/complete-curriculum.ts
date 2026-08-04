@@ -53,9 +53,22 @@ function diversifyAdvancedLesson(lesson: CurriculumLesson): CurriculumLesson {
   };
 }
 
+function alignAdvancedLessonExample(lesson: CurriculumLesson): CurriculumLesson {
+  const exampleTask = tasks.find(task => task.id === lesson.practiceTaskIds[0]);
+  if (!exampleTask) return lesson;
+  return {
+    ...lesson,
+    example: {
+      ...lesson.example,
+      description: exampleTask.description,
+      sql: exampleTask.solution
+    }
+  };
+}
+
 const normalizedAdvancedLessons = applySyntaxFrontierLessonOverrides(
   advancedCurriculumLessons.map(diversifyAdvancedLesson)
-);
+).map(alignAdvancedLessonExample);
 const sourceLessons = [...normalizedCoreLessons, ...normalizedAdvancedLessons];
 const lessonSourceOrder = new Map<string, number>(sourceLessons.map((lesson, index) => [lesson.id, index]));
 const checkpointOrder = new Map<string, number>(phaseDefinitions.map((phase, index) => [phase.id, index]));
