@@ -19,7 +19,7 @@
     "validate:checkpoint-report-receipts": "tsx scripts/validate-checkpoint-report-receipts.ts",
     "validate:checkpoint-report-reconciliation": "tsx scripts/validate-checkpoint-report-reconciliation.ts",
     "validate:checkpoint-reservations": "tsx scripts/validate-checkpoint-attempt-reservations.ts && tsx scripts/validate-checkpoint-reservation-architecture.ts && tsx scripts/validate-coordinated-checkpoint-report-binding.ts",
-    "validate:checkpoint-provisional-reconciliation": "tsx scripts/validate-checkpoint-provisional-reconciliation.ts && tsx scripts/validate-checkpoint-provisional-adoption-storage.ts",
+    "validate:checkpoint-provisional-reconciliation": "tsx scripts/validate-checkpoint-provisional-reconciliation.ts && tsx scripts/validate-checkpoint-provisional-adoption-storage.ts && tsx scripts/validate-checkpoint-provisional-reconciliation-ui.ts",
     "validate:checkpoint-remediation": "tsx scripts/validate-checkpoint-remediation.ts",
     "validate:checkpoint-remediation-architecture": "tsx scripts/validate-checkpoint-remediation-architecture.ts",
     "validate:core-progression": "tsx scripts/validate-core-task-progression.ts",
