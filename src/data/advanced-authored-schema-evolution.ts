@@ -30,32 +30,31 @@ export type SchemaEvolutionEvidenceTag =
 
 const taskOverrides: Readonly<Record<string, TaskLearningOverride>> = {
   'task-131': {
-    title: 'Проведи preflight перед CHECK constraint',
-    description: 'Перед усилением схемы найди все строки legacy_service_levels, которые нарушат будущий invariant `sla_minutes BETWEEN 1 AND 1440`: NULL, ноль, отрицательные и слишком большие значения. Верни только проблемные строки с явной причиной, чтобы миграция не упала вслепую.',
-    starter: `CREATE TEMP TABLE legacy_service_levels(
+    title: 'Проведи preflight и additive migration',
+    description: 'Перед добавлением обязательного support_channel проверь существующие timeout_minutes на будущий допустимый диапазон, затем выполни совместимый ALTER TABLE ADD COLUMN с безопасным DEFAULT и CHECK. Итоговый отчёт должен доказать ноль preflight-нарушений и ноль NULL после расширения старых строк.',
+    starter: `CREATE TEMP TABLE service_contracts(
   service TEXT PRIMARY KEY,
-  sla_minutes INTEGER
+  timeout_minutes INTEGER NOT NULL
 );
-INSERT INTO legacy_service_levels VALUES
-  ('VPN', 60),
-  ('LMS', NULL),
-  ('VDI', 0),
-  ('Email', 2880),
-  ('Access', 120);
+INSERT INTO service_contracts VALUES ('VPN', 30), ('LMS', 45);
 
-SELECT service, sla_minutes,
-       CASE
-         WHEN  THEN 'missing'
-         WHEN  THEN 'out-of-range'
-       END AS violation
-FROM legacy_service_levels
-WHERE
+SELECT COUNT(*) AS preflight_violations
+FROM service_contracts
+WHERE ;
+
+ALTER TABLE service_contracts
+ADD COLUMN support_channel TEXT NOT NULL DEFAULT 'portal'
+CHECK ( );
+
+SELECT service, timeout_minutes, support_channel,
+       (SELECT COUNT(*) FROM service_contracts WHERE support_channel IS NULL) AS remaining_nulls
+FROM service_contracts
 ORDER BY service;`,
-    solution: `CREATE TEMP TABLE legacy_service_levels(service TEXT PRIMARY KEY, sla_minutes INTEGER); INSERT INTO legacy_service_levels VALUES ('VPN', 60), ('LMS', NULL), ('VDI', 0), ('Email', 2880), ('Access', 120); SELECT service, sla_minutes, CASE WHEN sla_minutes IS NULL THEN 'missing' WHEN sla_minutes NOT BETWEEN 1 AND 1440 THEN 'out-of-range' END AS violation FROM legacy_service_levels WHERE sla_minutes IS NULL OR sla_minutes NOT BETWEEN 1 AND 1440 ORDER BY service;`,
+    solution: `CREATE TEMP TABLE service_contracts(service TEXT PRIMARY KEY, timeout_minutes INTEGER NOT NULL); INSERT INTO service_contracts VALUES ('VPN', 30), ('LMS', 45); SELECT COUNT(*) AS preflight_violations FROM service_contracts WHERE timeout_minutes NOT BETWEEN 1 AND 1440; ALTER TABLE service_contracts ADD COLUMN support_channel TEXT NOT NULL DEFAULT 'portal' CHECK (support_channel IN ('portal','email','phone')); SELECT service, timeout_minutes, support_channel, (SELECT COUNT(*) FROM service_contracts WHERE support_channel IS NULL) AS remaining_nulls FROM service_contracts ORDER BY service;`,
     hints: [
-      'NULL проверяется отдельно через IS NULL: BETWEEN не превращает UNKNOWN в нарушение автоматически.',
-      'Диапазон будущего CHECK — от 1 до 1440 включительно.',
-      'WHERE должен повторять обе причины, чтобы итог содержал только нарушителей.'
+      'Preflight проверяет timeout_minutes NOT BETWEEN 1 AND 1440 до изменения схемы.',
+      "Добавь support_channel с DEFAULT 'portal' и CHECK по portal/email/phone.",
+      'После ALTER старые строки получают portal, а remaining_nulls должен быть равен нулю.'
     ]
   },
   'task-132': {
@@ -274,7 +273,7 @@ ORDER BY customer_id;`,
 };
 
 export const schemaEvolutionAuthoredTaskEvidence: Readonly<Record<string, readonly SchemaEvolutionEvidenceTag[]>> = {
-  'task-131': ['preflight-validation', 'invalid-row-report', 'check-constraint'],
+  'task-131': ['preflight-validation', 'expand-migration', 'check-constraint', 'null-proof'],
   'task-132': ['expand-migration', 'backfill', 'null-proof'],
   'task-133': ['copy-and-swap', 'check-constraint', 'row-count-reconciliation'],
   'task-134': ['compatibility-view', 'explicit-projection', 'rename-compatibility'],
