@@ -3,14 +3,17 @@ import { applyAdvancedConditionalAggregationTaskOverrides } from './advanced-aut
 import { applyAdvancedAuthoredTaskOverrides } from './advanced-authored-content';
 import { applyAdvancedJoinsTaskOverrides } from './advanced-authored-joins';
 import { applyAdvancedNullLogicTaskOverrides } from './advanced-authored-null-logic';
+import { applyAdvancedRecursiveCteTaskOverrides } from './advanced-authored-recursive-cte';
 import { applyAdvancedSchemaEvolutionTaskOverrides } from './advanced-authored-schema-evolution';
 
 export function applyAdvancedAuthoredCatalogOverrides(source: readonly SqlTask[]): SqlTask[] {
-  return applyAdvancedJoinsTaskOverrides(
-    applyAdvancedConditionalAggregationTaskOverrides(
-      applyAdvancedNullLogicTaskOverrides(
-        applyAdvancedSchemaEvolutionTaskOverrides(
-          applyAdvancedAuthoredTaskOverrides(source)
+  return applyAdvancedRecursiveCteTaskOverrides(
+    applyAdvancedJoinsTaskOverrides(
+      applyAdvancedConditionalAggregationTaskOverrides(
+        applyAdvancedNullLogicTaskOverrides(
+          applyAdvancedSchemaEvolutionTaskOverrides(
+            applyAdvancedAuthoredTaskOverrides(source)
+          )
         )
       )
     )
