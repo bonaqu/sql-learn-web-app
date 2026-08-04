@@ -30,12 +30,14 @@ for (const marker of [
   'checkpointReservationClientRequestId',
   'clearCheckpointReservationClientRequest',
   'crypto.randomUUID()',
-  "fetch('/api/checkpoints/reservations'",
+  "request('/api/checkpoints/reservations'",
   'CheckpointAttemptReservationUnavailableError',
   'validCheckpointAttemptReservationResponse'
 ]) {
   assert.ok(client.includes(marker), `Checkpoint reservation client is missing ${marker}.`);
 }
+assert.match(client, /async function request\([\s\S]*throw new CheckpointAttemptReservationUnavailableError/,
+  'Reservation network failures must become an explicit unavailable signal for provisional fallback.');
 assert.doesNotMatch(client, /attemptNumber\s*=|Math\.max\([^\n]*attempt/i,
   'Client reservation code must not allocate attempt numbers.');
 assert.match(client, /localStorage\.setItem\(pendingKey/,
