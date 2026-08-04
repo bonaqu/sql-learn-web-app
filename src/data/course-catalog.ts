@@ -3,6 +3,7 @@ import {
   modules as coreModules,
   tasks as coreTasks
 } from './course';
+import { applyAdvancedAuthoredTaskOverrides } from './advanced-authored-content';
 import { advancedModules, advancedTasks } from './advanced-syllabus';
 import { applyAdvancedTaskProgression } from './advanced-task-progression';
 import { applyAdvancedTransferContracts } from './advanced-transfer-contracts';
@@ -30,7 +31,9 @@ const sourceTasks = applyAdvancedTransferContracts(
   applyCoreTransferContracts(
     applyAdvancedTaskProgression(
       applyCoreTaskProgression(
-        applySyntaxFrontierTaskOverrides([...coreTasks, ...advancedTasks])
+        applySyntaxFrontierTaskOverrides(
+          applyAdvancedAuthoredTaskOverrides([...coreTasks, ...advancedTasks])
+        )
       )
     )
   )
