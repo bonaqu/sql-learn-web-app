@@ -50,6 +50,13 @@ export type CheckpointProvisionalAdoptionConflict = {
   activeReservationId?: string;
 };
 
+type AllocationProjectedCheckpointReport = CheckpointReport & {
+  coordination: 'provisional' | 'adopted';
+  reservationId?: string;
+  provisionalAttemptNumber?: number;
+  canonicalAttemptNumber?: number;
+};
+
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/i;
 const ID_PATTERN = /^[a-f0-9-]{16,80}$/i;
 
@@ -152,18 +159,16 @@ export function validCheckpointProvisionalAdoptionResponse(
 export function provisionalCheckpointEvidenceValue(
   report: ProvisionalCheckpointReport | AdoptedCheckpointReport
 ) {
+  const source = report as AllocationProjectedCheckpointReport;
   const {
     attemptNumber: _attemptNumber,
     bestScore: _bestScore,
     coordination: _coordination,
     reservationId: _reservationId,
-    ...evidence
-  } = report as ProvisionalCheckpointReport & Partial<AdoptedCheckpointReport>;
-  const {
     provisionalAttemptNumber: _provisionalAttemptNumber,
     canonicalAttemptNumber: _canonicalAttemptNumber,
     ...immutableEvidence
-  } = evidence;
+  } = source;
   return immutableEvidence;
 }
 
