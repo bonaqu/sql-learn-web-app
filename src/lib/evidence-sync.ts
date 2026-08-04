@@ -1,6 +1,20 @@
 import type { AssessmentReport } from './assessment';
 import type { CheckpointReport } from './checkpoints';
 import {
+  CHECKPOINT_PROVISIONAL_ADOPTION_CODES,
+  isAdoptedCheckpointReport,
+  isProvisionalCheckpointReport,
+  sameCheckpointEvidenceAcrossAdoption,
+  validCheckpointProvisionalAdoptionReceipt,
+  type CheckpointProvisionalAdoptionReceipt
+} from './checkpoint-provisional-reconciliation-contract';
+import {
+  adoptProvisionalCheckpointReport,
+  CheckpointProvisionalAdoptionError,
+  loadCheckpointProvisionalAdoptionReceipts,
+  saveCheckpointProvisionalAdoptionReceipts
+} from './checkpoint-provisional-adoptions';
+import {
   CheckpointReportConflictError,
   sameImmutableCheckpointReport,
   type CheckpointReportReceipt,
@@ -16,6 +30,7 @@ import {
 } from './checkpoint-report-conflicts';
 import {
   checkpointReportsToUpload,
+  provisionalCheckpointReportsToAdopt,
   reconcileCheckpointReportHistories
 } from './checkpoint-report-reconciliation';
 
@@ -32,8 +47,12 @@ export type EvidenceSyncResult = {
     local: number;
     remote: number;
     uploaded: number;
+    adopted: number;
+    adoptionBlocked: number;
+    provisionalPending: number;
     replayed: number;
     receipts: number;
+    adoptionReceipts: number;
     conflicts: number;
   };
 };
@@ -196,6 +215,7 @@ async function fetchCheckpointCloud(userId: string) {
   const payload = await responseJson<{
     reports?: CheckpointReport[];
     receipts?: CheckpointReportReceipt[];
+    adoptions?: CheckpointProvisionalAdoptionReceipt[];
   }>(response);
   const reports = Array.isArray(payload.reports)
     ? payload.reports.filter(report => validLocalReport<CheckpointReport>(report, userId))
@@ -203,8 +223,12 @@ async function fetchCheckpointCloud(userId: string) {
   const receipts = Array.isArray(payload.receipts)
     ? payload.receipts.filter(validCheckpointReportReceipt)
     : [];
+  const adoptions = Array.isArray(payload.adoptions)
+    ? payload.adoptions.filter(validCheckpointProvisionalAdoptionReceipt)
+    : [];
   saveCheckpointReportReceipts(userId, receipts);
-  return { reports, receipts };
+  saveCheckpointProvisionalAdoptionReceipts(userId, adoptions);
+  return { reports, receipts, adoptions };
 }
 
 async function postCheckpointReports(userId: string, reports: CheckpointReport[]) {
@@ -233,6 +257,42 @@ async function postCheckpointReports(userId: string, reports: CheckpointReport[]
   return { uploaded, replayed, conflicts };
 }
 
+async function postProvisionalCheckpointReports(reports: CheckpointReport[]) {
+  let adopted = 0;
+  let replayed = 0;
+  const blocked: CheckpointReport[] = [];
+  const conflicts: CheckpointReport[] = [];
+  for (const candidate of reports) {
+    if (!isProvisionalCheckpointReport(candidate)) continue;
+    try {
+      const result = await adoptProvisionalCheckpointReport(candidate);
+      if (result.replayed) replayed += 1;
+      else adopted += 1;
+    } catch (error) {
+      if (error instanceof CheckpointProvisionalAdoptionError) {
+        if (error.code === CHECKPOINT_PROVISIONAL_ADOPTION_CODES.activeAttempt) {
+          blocked.push(candidate);
+          continue;
+        }
+        if (error.code === CHECKPOINT_PROVISIONAL_ADOPTION_CODES.conflict
+          || error.code === CHECKPOINT_PROVISIONAL_ADOPTION_CODES.storedInvalid) {
+          conflicts.push(candidate);
+          continue;
+        }
+      }
+      throw error;
+    }
+  }
+  return { adopted, replayed, blocked, conflicts };
+}
+
+function confirmedCheckpointReport(local: CheckpointReport, remote: CheckpointReport) {
+  if (isProvisionalCheckpointReport(local) && isAdoptedCheckpointReport(remote)) {
+    return sameCheckpointEvidenceAcrossAdoption(local, remote);
+  }
+  return sameImmutableCheckpointReport(local, remote);
+}
+
 async function syncAssessmentCollection<T extends SyncableEvidenceReport>(userId: string) {
   const config = COLLECTIONS.assessment;
   const local = readLocalReports<T>('assessment', userId);
@@ -253,14 +313,27 @@ export async function syncAssessmentEvidence(userId = currentUserId()) {
 }
 
 export async function syncCheckpointEvidence(userId = currentUserId()) {
-  if (!userId) return { local: 0, remote: 0, uploaded: 0, replayed: 0, receipts: 0, conflicts: 0 };
+  if (!userId) {
+    return {
+      local: 0,
+      remote: 0,
+      uploaded: 0,
+      adopted: 0,
+      adoptionBlocked: 0,
+      provisionalPending: 0,
+      replayed: 0,
+      receipts: 0,
+      adoptionReceipts: 0,
+      conflicts: 0
+    };
+  }
 
   const local = readLocalReports<CheckpointReport>('checkpoint', userId);
   const cloud = await fetchCheckpointCloud(userId);
   const remoteById = new Map(cloud.reports.map(report => [report.id, report]));
   const confirmed = local.filter(report => {
     const remote = remoteById.get(report.id);
-    return remote ? sameImmutableCheckpointReport(report, remote) : false;
+    return remote ? confirmedCheckpointReport(report, remote) : false;
   }).length;
   const initial = reconcileCheckpointReportHistories(local, cloud.reports, COLLECTIONS.checkpoint.limit);
   for (const conflict of initial.conflicts) {
@@ -275,17 +348,29 @@ export async function syncCheckpointEvidence(userId = currentUserId()) {
 
   const uploadCandidates = checkpointReportsToUpload(local, cloud.reports);
   const posted = await postCheckpointReports(userId, uploadCandidates);
+  const adoptionCandidates = provisionalCheckpointReportsToAdopt(local, cloud.reports);
+  const adoption = await postProvisionalCheckpointReports(adoptionCandidates);
+
   let reports = initial.reports;
   let remoteCount = cloud.reports.length;
   let conflictCount = initial.conflicts.length;
+  const requiresRefresh = posted.conflicts.length > 0
+    || adoption.conflicts.length > 0
+    || adoption.adopted > 0
+    || adoption.replayed > 0;
 
-  if (posted.conflicts.length > 0) {
+  if (requiresRefresh) {
     const refreshed = await fetchCheckpointCloud(userId);
     const afterRace = reconcileCheckpointReportHistories(local, refreshed.reports, COLLECTIONS.checkpoint.limit);
     const refreshedById = new Map(refreshed.reports.map(report => [report.id, report]));
+
     for (const localReport of posted.conflicts) {
       const remoteReport = refreshedById.get(localReport.id) || null;
       quarantineCheckpointReportConflict(userId, localReport, remoteReport, 'cloud-upload');
+    }
+    for (const localReport of adoption.conflicts) {
+      const remoteReport = refreshedById.get(localReport.id) || null;
+      quarantineCheckpointReportConflict(userId, localReport, remoteReport, 'provisional-adoption');
     }
     for (const conflict of afterRace.conflicts) {
       quarantineCheckpointReportConflict(
@@ -295,21 +380,28 @@ export async function syncCheckpointEvidence(userId = currentUserId()) {
         'cloud-upload'
       );
     }
-    const unresolvedIds = new Set(posted.conflicts
-      .filter(report => !refreshedById.has(report.id))
-      .map(report => report.id));
+
+    const unresolvedIds = new Set([
+      ...posted.conflicts,
+      ...adoption.conflicts
+    ].filter(report => !refreshedById.has(report.id)).map(report => report.id));
     reports = afterRace.reports.filter(report => !unresolvedIds.has(report.id));
     writeLocalReports('checkpoint', userId, reports);
     remoteCount = refreshed.reports.length;
-    conflictCount += posted.conflicts.length + afterRace.conflicts.length;
+    conflictCount += posted.conflicts.length + adoption.conflicts.length + afterRace.conflicts.length;
   }
 
+  const provisionalPending = reports.filter(isProvisionalCheckpointReport).length;
   return {
     local: reports.length,
     remote: remoteCount,
-    uploaded: posted.uploaded,
-    replayed: confirmed + posted.replayed,
+    uploaded: posted.uploaded + adoption.adopted,
+    adopted: adoption.adopted,
+    adoptionBlocked: adoption.blocked.length,
+    provisionalPending,
+    replayed: confirmed + posted.replayed + adoption.replayed,
     receipts: loadCheckpointReportReceipts(userId).length,
+    adoptionReceipts: loadCheckpointProvisionalAdoptionReceipts(userId).length,
     conflicts: conflictCount
   };
 }
@@ -319,7 +411,18 @@ export async function reconcileEvidenceReports(): Promise<EvidenceSyncResult> {
   if (!userId) {
     return {
       assessment: { local: 0, remote: 0, uploaded: 0 },
-      checkpoint: { local: 0, remote: 0, uploaded: 0, replayed: 0, receipts: 0, conflicts: 0 }
+      checkpoint: {
+        local: 0,
+        remote: 0,
+        uploaded: 0,
+        adopted: 0,
+        adoptionBlocked: 0,
+        provisionalPending: 0,
+        replayed: 0,
+        receipts: 0,
+        adoptionReceipts: 0,
+        conflicts: 0
+      }
     };
   }
 
@@ -347,8 +450,13 @@ export async function reconcileEvidenceReports(): Promise<EvidenceSyncResult> {
           local: readLocalReports<CheckpointReport>('checkpoint', userId).length,
           remote: 0,
           uploaded: 0,
+          adopted: 0,
+          adoptionBlocked: 0,
+          provisionalPending: readLocalReports<CheckpointReport>('checkpoint', userId)
+            .filter(isProvisionalCheckpointReport).length,
           replayed: 0,
           receipts: loadCheckpointReportReceipts(userId).length,
+          adoptionReceipts: loadCheckpointProvisionalAdoptionReceipts(userId).length,
           conflicts: 0
         }
   };
