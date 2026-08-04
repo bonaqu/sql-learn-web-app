@@ -70,6 +70,7 @@ test('desktop verified contact UI stays absent when provider capabilities are di
   await page.goto('./');
   await expect(page.getByTestId('auth-submit')).toBeVisible();
   await expect(page.getByTestId('commercial-contact-entry')).toHaveCount(0);
+  await expect(page.getByTestId('verified-contact-launcher')).toHaveCount(0);
   await expect(page.locator('script[data-sql-academy-turnstile]')).toHaveCount(0);
 });
 
@@ -111,9 +112,8 @@ test('desktop verified contact registration enters the mandatory recovery-code g
   });
 
   await page.goto('./');
-  await page.getByRole('button', { name: 'Регистрация' }).click();
   await expect(page.getByTestId('commercial-contact-entry')).toBeVisible();
-  await page.getByRole('button', { name: 'Регистрация с контактом' }).click();
+  await page.getByRole('button', { name: 'Регистрация с контактом', exact: true }).click();
   await enterVerifiedEmail(page);
   const modal = page.getByTestId('contact-register-modal');
   await modal.getByTestId('contact-register-username').fill('verified_user');
@@ -142,8 +142,8 @@ test('desktop verified contact recovery revokes sessions through the bound desti
   });
 
   await page.goto('./');
-  await expect(page.getByRole('button', { name: 'Восстановить через контакт' })).toBeVisible();
-  await page.getByRole('button', { name: 'Восстановить через контакт' }).click();
+  await expect(page.getByRole('button', { name: 'Восстановить через контакт', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Восстановить через контакт', exact: true }).click();
   await enterVerifiedEmail(page);
   await page.getByTestId('contact-new-password').fill(TEST_PASSWORD);
   await page.getByTestId('contact-new-password-confirm').fill(TEST_PASSWORD);
@@ -181,15 +181,17 @@ test('desktop verified contact binding lists only a masked destination', async (
   });
 
   await page.goto('./');
-  await page.getByTestId('profile-trigger').click();
-  await page.getByRole('button', { name: 'Безопасность' }).click();
+  await expect(page.getByTestId('verified-contact-launcher')).toBeVisible();
+  await page.getByTestId('verified-contact-launcher').click();
+  await expect(page.getByTestId('verified-contact-drawer')).toBeVisible();
   await expect(page.getByTestId('verified-contact-card')).toBeVisible();
-  await page.getByRole('button', { name: 'Привязать email' }).click();
+  await page.getByRole('button', { name: 'Привязать email', exact: true }).click();
   await enterVerifiedEmail(page);
   await page.getByTestId('contact-current-password').fill(TEST_PASSWORD);
   await page.getByTestId('contact-finish').click();
   await expect(page.getByRole('heading', { name: 'Контакт привязан' })).toBeVisible();
-  await page.getByRole('button', { name: 'Готово' }).click();
+  await page.getByRole('button', { name: 'Готово', exact: true }).click();
+  await page.getByTestId('verified-contact-launcher').click();
   await expect(page.getByText('j***@example.com')).toBeVisible();
   await expect(page.getByText('jane@example.com')).toHaveCount(0);
 });
@@ -197,8 +199,7 @@ test('desktop verified contact binding lists only a masked destination', async (
 test('mobile verified contact registration remains inside the Pixel 7 viewport', async ({ page }) => {
   await mockEmailCapability(page);
   await page.goto('./');
-  await page.getByRole('button', { name: 'Регистрация' }).click();
-  await page.getByRole('button', { name: 'Регистрация с контактом' }).click();
+  await page.getByRole('button', { name: 'Регистрация с контактом', exact: true }).click();
   await expect(page.getByTestId('contact-register-modal')).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
   expect(overflow).toBe(false);
