@@ -18,7 +18,7 @@
     "validate:checkpoint-report-integrity": "tsx scripts/validate-checkpoint-report-integrity.ts",
     "validate:checkpoint-report-receipts": "tsx scripts/validate-checkpoint-report-receipts.ts",
     "validate:checkpoint-report-reconciliation": "tsx scripts/validate-checkpoint-report-reconciliation.ts",
-    "validate:checkpoint-reservations": "tsx scripts/validate-checkpoint-attempt-reservations.ts && tsx scripts/validate-checkpoint-reservation-architecture.ts",
+    "validate:checkpoint-reservations": "tsx scripts/validate-checkpoint-attempt-reservations.ts && tsx scripts/validate-checkpoint-reservation-architecture.ts && tsx scripts/validate-coordinated-checkpoint-report-binding.ts",
     "validate:checkpoint-remediation": "tsx scripts/validate-checkpoint-remediation.ts",
     "validate:checkpoint-remediation-architecture": "tsx scripts/validate-checkpoint-remediation-architecture.ts",
     "validate:core-progression": "tsx scripts/validate-core-task-progression.ts",
@@ -86,6 +86,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
+    "@playwright/test": "^1.59.1",
     "@types/node": "^26.1.1",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
