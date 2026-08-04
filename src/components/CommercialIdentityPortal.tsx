@@ -15,7 +15,7 @@ import type { AuthResponse } from '../lib/auth';
 import { AUTH_CHANGED_EVENT, loadAuthSession } from '../lib/auth';
 import {
   attachVerifiedContact,
-  CommercialCapabilities,
+  type CommercialCapabilities,
   confirmContactChallenge,
   contactUiReady,
   enabledContactChannels,
@@ -24,16 +24,15 @@ import {
   registerWithVerifiedContact,
   requestContactChallenge,
   resetPasswordWithVerifiedContact,
-  VerificationChannel,
-  VerificationChallenge,
-  VerificationConfirmation,
-  VerificationPurpose,
-  VerifiedContact
+  type VerificationChannel,
+  type VerificationChallenge,
+  type VerificationConfirmation,
+  type VerificationPurpose,
+  type VerifiedContact
 } from '../lib/commercial-identity';
 import { useDialogFocus } from '../lib/dialog-focus';
 
 const PENDING_REGISTRATION_KEY = 'sql-academy-pending-registration-v1';
-type GuestMode = 'login' | 'register' | 'reset';
 type Flow = 'register' | 'reset' | 'attach';
 type WizardStep = 'destination' | 'code' | 'account' | 'success';
 
@@ -200,10 +199,7 @@ function ContactWizard({
   }}>
     <section ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="commercial-identity-title" className="commercial-identity-modal" data-testid={`contact-${flow}-modal`}>
       <header>
-        <div>
-          <span className="auth-kicker">Опциональная защита аккаунта</span>
-          <h2 id="commercial-identity-title">{title}</h2>
-        </div>
+        <div><span className="auth-kicker">Опциональная защита аккаунта</span><h2 id="commercial-identity-title">{title}</h2></div>
         <button type="button" className="icon" data-autofocus onClick={onClose} disabled={busy} aria-label="Закрыть"><X /></button>
       </header>
 
@@ -274,18 +270,14 @@ function ContactWizard({
   </div>;
 }
 
-function GuestContactEntry({ mode, onOpen }: { mode: GuestMode; onOpen: (flow: Flow) => void }) {
-  const flow: Flow = mode === 'register' ? 'register' : 'reset';
-  return <section className="commercial-auth-entry" data-testid="commercial-contact-entry">
-    <div>{mode === 'register' ? <UserPlus /> : <KeyRound />}</div>
-    <span>
-      <strong>{mode === 'register' ? 'Подтвердить контакт при регистрации' : 'Нет recovery-кода?'}</strong>
-      <small>{mode === 'register'
-        ? 'Опционально: email или телефон добавит ещё один путь восстановления.'
-        : 'Используй ранее привязанный email или телефон, если канал доступен.'}</small>
-    </span>
-    <button type="button" onClick={() => onOpen(flow)}>{mode === 'register' ? 'Регистрация с контактом' : 'Восстановить через контакт'}</button>
-  </section>;
+function GuestContactLauncher({ onOpen }: { onOpen: (flow: Flow) => void }) {
+  return <aside className="commercial-auth-launcher" data-testid="commercial-contact-entry" aria-label="Дополнительные способы входа">
+    <div className="commercial-auth-launcher-copy"><ShieldCheck /><span><strong>Контакт необязателен</strong><small>Логин и recovery-коды работают без него. Email или телефон добавляют ещё один защищённый путь.</small></span></div>
+    <div className="commercial-auth-launcher-actions">
+      <button type="button" onClick={() => onOpen('register')}><UserPlus />Регистрация с контактом</button>
+      <button type="button" onClick={() => onOpen('reset')}><KeyRound />Восстановить через контакт</button>
+    </div>
+  </aside>;
 }
 
 function ContactSecurityCard({
@@ -320,18 +312,43 @@ function ContactSecurityCard({
   </article>;
 }
 
+function ContactSecurityDrawer({
+  open,
+  onClose,
+  children
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const drawerRef = useRef<HTMLElement>(null);
+  useDialogFocus(open, drawerRef, onClose);
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, [open]);
+  if (!open) return null;
+  return <div className="commercial-identity-backdrop" onMouseDown={event => {
+    if (event.currentTarget === event.target) onClose();
+  }}>
+    <section ref={drawerRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="contact-security-title" className="commercial-identity-modal commercial-contact-drawer" data-testid="verified-contact-drawer">
+      <header><div><span className="auth-kicker">Безопасность аккаунта</span><h2 id="contact-security-title">Контакты аккаунта</h2></div><button type="button" className="icon" data-autofocus onClick={onClose} aria-label="Закрыть"><X /></button></header>
+      <div className="commercial-identity-body">{children}</div>
+    </section>
+  </div>;
+}
+
 export default function CommercialIdentityPortal() {
   const [capabilities, setCapabilities] = useState<CommercialCapabilities | null>(null);
-  const [guestSlot, setGuestSlot] = useState<HTMLElement | null>(null);
-  const [securitySlot, setSecuritySlot] = useState<HTMLElement | null>(null);
-  const [guestMode, setGuestMode] = useState<GuestMode>('login');
   const [flow, setFlow] = useState<Flow | null>(null);
   const [initialChannel, setInitialChannel] = useState<VerificationChannel | undefined>();
   const [contacts, setContacts] = useState<VerifiedContact[]>([]);
   const [contactsLoading, setContactsLoading] = useState(false);
   const [contactsError, setContactsError] = useState('');
   const [authenticated, setAuthenticated] = useState(() => Boolean(loadAuthSession()));
-  const createdSlots = useRef(new Set<HTMLElement>());
+  const [securityOpen, setSecurityOpen] = useState(false);
 
   useEffect(() => {
     void loadCommercialCapabilities().then(setCapabilities);
@@ -353,59 +370,18 @@ export default function CommercialIdentityPortal() {
   }, [authenticated, ready]);
 
   useEffect(() => {
-    const handler = () => setAuthenticated(Boolean(loadAuthSession()));
+    const handler = () => {
+      const next = Boolean(loadAuthSession());
+      setAuthenticated(next);
+      if (!next) setSecurityOpen(false);
+    };
     window.addEventListener(AUTH_CHANGED_EVENT, handler);
     return () => window.removeEventListener(AUTH_CHANGED_EVENT, handler);
   }, []);
 
   useEffect(() => {
-    if (!ready) return;
-    const mount = () => {
-      const form = document.querySelector<HTMLFormElement>('.auth-form');
-      if (form) {
-        let slot = form.querySelector<HTMLElement>('[data-commercial-auth-slot]');
-        if (!slot) {
-          slot = document.createElement('div');
-          slot.dataset.commercialAuthSlot = 'true';
-          form.append(slot);
-          createdSlots.current.add(slot);
-        }
-        setGuestSlot(slot);
-        const reset = Boolean(form.querySelector('[data-testid="auth-recovery"]'));
-        const selected = document.querySelector<HTMLButtonElement>('.auth-tabs button[aria-pressed="true"]');
-        setGuestMode(reset ? 'reset' : selected?.textContent?.includes('Регистрация') ? 'register' : 'login');
-      } else {
-        setGuestSlot(null);
-      }
-
-      const stack = document.querySelector<HTMLElement>('.profile-body.security-stack');
-      if (stack) {
-        let slot = stack.querySelector<HTMLElement>('[data-commercial-security-slot]');
-        if (!slot) {
-          slot = document.createElement('div');
-          slot.dataset.commercialSecuritySlot = 'true';
-          const danger = stack.querySelector('.danger-card');
-          stack.insertBefore(slot, danger || null);
-          createdSlots.current.add(slot);
-        }
-        setSecuritySlot(slot);
-      } else {
-        setSecuritySlot(null);
-      }
-    };
-    mount();
-    const observer = new MutationObserver(mount);
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-pressed'] });
-    return () => {
-      observer.disconnect();
-      for (const slot of createdSlots.current) slot.remove();
-      createdSlots.current.clear();
-    };
-  }, [ready]);
-
-  useEffect(() => {
-    if (securitySlot && authenticated) void refreshContacts();
-  }, [authenticated, refreshContacts, securitySlot]);
+    if (securityOpen && authenticated && ready) void refreshContacts();
+  }, [authenticated, ready, refreshContacts, securityOpen]);
 
   if (!capabilities || !ready) return null;
 
@@ -413,27 +389,30 @@ export default function CommercialIdentityPortal() {
     setInitialChannel(channel);
     setFlow(nextFlow);
   };
-  const close = () => {
+  const closeWizard = () => {
     setFlow(null);
     setInitialChannel(undefined);
   };
 
   return <>
-    {guestSlot && createPortal(<GuestContactEntry mode={guestMode} onOpen={open} />, guestSlot)}
-    {securitySlot && authenticated && createPortal(<ContactSecurityCard
-      channels={channels}
-      contacts={contacts}
-      loading={contactsLoading}
-      error={contactsError}
-      onAttach={channel => open('attach', channel)}
-      onRefresh={() => void refreshContacts()}
-    />, securitySlot)}
+    {!authenticated && <GuestContactLauncher onOpen={open} />}
+    {authenticated && <button type="button" className="commercial-contact-launcher" data-testid="verified-contact-launcher" onClick={() => setSecurityOpen(true)}><ShieldCheck />Контакты аккаунта</button>}
+    {authenticated && createPortal(<ContactSecurityDrawer open={securityOpen} onClose={() => setSecurityOpen(false)}>
+      <ContactSecurityCard
+        channels={channels}
+        contacts={contacts}
+        loading={contactsLoading}
+        error={contactsError}
+        onAttach={channel => { setSecurityOpen(false); open('attach', channel); }}
+        onRefresh={() => void refreshContacts()}
+      />
+    </ContactSecurityDrawer>, document.body)}
     {flow && createPortal(<ContactWizard
       flow={flow}
       capabilities={capabilities}
       channels={initialChannel ? [initialChannel] : channels}
       initialChannel={initialChannel}
-      onClose={close}
+      onClose={closeWizard}
       onAttached={next => { setContacts(next); setContactsError(''); }}
     />, document.body)}
   </>;
