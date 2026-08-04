@@ -26,6 +26,7 @@ export function prepareCheckpointSession(
   const checkpoint = checkpointById(checkpointId);
   if (!checkpoint) throw new Error(`Unknown checkpoint ${checkpointId}`);
 
+  const checkpointModules = new Set<string>(checkpoint.moduleIds);
   const selected = checkpoint.taskIds.flatMap(taskId => {
     const task = tasks.find(item => item.id === taskId);
     return task ? [task] : [];
@@ -36,7 +37,7 @@ export function prepareCheckpointSession(
   if (new Set(selected.map(task => task.id)).size !== selected.length) {
     throw new Error('Checkpoint содержит повторяющиеся задачи');
   }
-  if (selected.some(task => !checkpoint.moduleIds.includes(task.module as never))) {
+  if (selected.some(task => !checkpointModules.has(task.module))) {
     throw new Error('Checkpoint содержит задачу из чужого модуля');
   }
 
