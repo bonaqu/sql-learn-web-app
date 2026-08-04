@@ -8,7 +8,6 @@ const WORKER_URL = 'http://127.0.0.1:8787';
 const checkpoint = curriculumCheckpoints[0];
 if (!checkpoint) throw new Error('Provisional adoption browser contract requires one checkpoint.');
 
-type ProvisionalReport = ReturnType<typeof provisionalReport>;
 type AdoptionReceipt = {
   version: 1;
   reportId: string;
@@ -17,11 +16,6 @@ type AdoptionReceipt = {
   canonicalAttemptNumber: number;
   adoptedAt: string;
   evidenceDigest: string;
-};
-type AdoptedReport = ProvisionalReport & {
-  coordination: 'adopted';
-  provisionalAttemptNumber: number;
-  canonicalAttemptNumber: number;
 };
 type Reservation = {
   reservationId: string;
@@ -84,16 +78,26 @@ function scoredReport(
   };
 }
 
+type ScoredReport = ReturnType<typeof scoredReport>;
+type ProvisionalReport = Omit<ScoredReport, 'coordination' | 'reservationId'> & {
+  coordination: 'provisional';
+};
+type AdoptedReport = Omit<ProvisionalReport, 'coordination'> & {
+  coordination: 'adopted';
+  provisionalAttemptNumber: number;
+  canonicalAttemptNumber: number;
+};
+
 function provisionalReport(
   userId: string,
   id: string,
   completedAt: string,
   attemptNumber: number,
   score: number
-) {
-  return scoredReport(userId, id, completedAt, attemptNumber, score, 'provisional') as ReturnType<typeof scoredReport> & {
-    coordination: 'provisional';
-  };
+): ProvisionalReport {
+  const report = scoredReport(userId, id, completedAt, attemptNumber, score, 'provisional');
+  const { reservationId: _reservationId, ...provisional } = report;
+  return { ...provisional, coordination: 'provisional' };
 }
 
 async function postAdoption(page: Page, token: string, report: ProvisionalReport): Promise<APIResponse> {
