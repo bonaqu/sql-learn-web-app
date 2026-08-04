@@ -1,30 +1,16 @@
+import { advancedSchemaEvolutionTaskOverride } from './advanced-authored-schema-evolution';
 import type { SqlTask } from './course';
 import type { CurriculumLesson } from './curriculum';
 
 type TaskLearningOverride = Pick<SqlTask, 'title' | 'description' | 'starter' | 'solution' | 'hints'>;
 
+const schemaEvolutionFoundation = advancedSchemaEvolutionTaskOverride('task-131');
+if (!schemaEvolutionFoundation) {
+  throw new Error('Canonical schema-evolution foundation task is missing');
+}
+
 const taskOverrides: Readonly<Record<string, TaskLearningOverride>> = {
-  'task-131': {
-    title: 'Additive migration: support_channel',
-    description: 'Создай временную таблицу service_contracts, добавь совместимый NOT NULL столбец support_channel с DEFAULT через ALTER TABLE и верни данные после миграции.',
-    starter: `CREATE TEMP TABLE service_contracts(
-  service TEXT PRIMARY KEY,
-  timeout_minutes INTEGER NOT NULL
-);
-INSERT INTO service_contracts VALUES ('VPN', 30), ('LMS', 45);
-
--- Добавь support_channel TEXT NOT NULL DEFAULT 'portal'
-
-SELECT service, timeout_minutes, support_channel
-FROM service_contracts
-ORDER BY service;`,
-    solution: `CREATE TEMP TABLE service_contracts(service TEXT PRIMARY KEY, timeout_minutes INTEGER NOT NULL); INSERT INTO service_contracts VALUES ('VPN', 30), ('LMS', 45); ALTER TABLE service_contracts ADD COLUMN support_channel TEXT NOT NULL DEFAULT 'portal'; SELECT service, timeout_minutes, support_channel FROM service_contracts ORDER BY service;`,
-    hints: [
-      'Additive migration сохраняет существующие столбцы и строки.',
-      "Используй ALTER TABLE service_contracts ADD COLUMN support_channel TEXT NOT NULL DEFAULT 'portal'.",
-      'Контрольный SELECT должен доказать, что старые строки получили безопасный DEFAULT.'
-    ]
-  },
+  'task-131': schemaEvolutionFoundation,
   'task-151': {
     title: 'Условные counts через FILTER',
     description: 'По каждому сервису посчитай все обращения, Critical-обращения и закрытые обращения через aggregate FILTER, сохранив один общий набор строк.',
