@@ -2,6 +2,7 @@ import type { CoordinatedCheckpointId } from './checkpoint-attempt-reservation-c
 import {
   CheckpointAttemptReservationError,
   CheckpointAttemptReservationUnavailableError,
+  activeCheckpointAttemptMessage,
   clearCheckpointReservationClientRequest,
   reserveCheckpointAttempt
 } from './checkpoint-attempt-reservations';
@@ -9,7 +10,6 @@ import { loadAuthSession } from './auth';
 import {
   buildCheckpointReport,
   clearCheckpointSession,
-  createCheckpointSession,
   loadLocalCheckpointReports,
   saveCheckpointSession,
   saveLocalCheckpointReport,
@@ -17,6 +17,7 @@ import {
   type CheckpointSession,
   type CheckpointStatus
 } from './checkpoints';
+import { prepareCheckpointSession } from './checkpoint-session-preparation';
 import type { Progress } from './progress';
 
 export type CheckpointCoordinationMode = 'cloud' | 'provisional';
@@ -77,11 +78,11 @@ export async function createCheckpointSessionWithCoordination(
         session: null,
         activeReservation: reservation,
         provisional: false,
-        message: `Попытка #${reservation.attemptNumber} уже активна на другом устройстве.`
+        message: activeCheckpointAttemptMessage(reservation)
       };
     }
 
-    const base = createCheckpointSession(checkpointId, progress, reports);
+    const base = prepareCheckpointSession(checkpointId, progress, reports);
     const coordinatedSession: CoordinatedCheckpointSession = {
       ...base,
       id: reservation.reportId,
@@ -114,7 +115,7 @@ export async function createCheckpointSessionWithCoordination(
           session: null,
           activeReservation: error.reservation,
           provisional: false,
-          message: `Попытка #${error.reservation.attemptNumber} уже активна на другом устройстве.`
+          message: activeCheckpointAttemptMessage(error.reservation)
         };
       }
       if (error.status < 500) throw error;
@@ -122,7 +123,7 @@ export async function createCheckpointSessionWithCoordination(
       throw error;
     }
 
-    const base = createCheckpointSession(checkpointId, progress, reports);
+    const base = prepareCheckpointSession(checkpointId, progress, reports);
     const provisionalSession: CoordinatedCheckpointSession = {
       ...base,
       coordination: 'provisional'
