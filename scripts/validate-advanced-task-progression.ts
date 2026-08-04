@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
+import { applyAdvancedAuthoredCatalogOverrides } from '../src/data/advanced-authored-catalog';
 import {
   advancedAuthoredTaskEvidence,
-  advancedAuthoredTaskIds,
-  applyAdvancedAuthoredTaskOverrides
+  advancedAuthoredTaskIds
 } from '../src/data/advanced-authored-content';
 import { advancedModules, advancedTasks } from '../src/data/advanced-syllabus';
 import { advancedLessonTaskModePattern } from '../src/data/advanced-task-progression';
@@ -108,7 +108,7 @@ function checkpointForPhase(phaseId: string) {
 
 const expectedContent = new Map(
   applySyntaxFrontierTaskOverrides(
-    applyAdvancedAuthoredTaskOverrides(advancedTasks)
+    applyAdvancedAuthoredCatalogOverrides(advancedTasks)
   ).map(task => [task.id, task])
 );
 const totalModes: Record<TaskMode, number> = { lesson: 0, practice: 0, interview: 0, puzzle: 0 };
@@ -298,4 +298,4 @@ assert.deepEqual(totalModes, {
   puzzle: advancedModuleIds.length * 2
 }, 'Advanced track aggregate stage distribution drifted');
 
-console.log(`Advanced task progression validated: ${advancedModuleIds.length} modules, canonical lesson examples, first authored DML ladder, phase-wide checkpoints, ${totalModes.lesson} guided, ${totalModes.practice} practice, ${totalModes.interview} interview and ${totalModes.puzzle} puzzle tasks.`);
+console.log(`Advanced task progression validated: ${advancedModuleIds.length} modules, canonical lesson examples, authored catalog baseline, phase-wide checkpoints, ${totalModes.lesson} guided, ${totalModes.practice} practice, ${totalModes.interview} interview and ${totalModes.puzzle} puzzle tasks.`);
