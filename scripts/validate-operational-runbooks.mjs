@@ -139,7 +139,12 @@ const forbiddenPatterns = [
   { pattern: /paste\s+(?:the\s+)?(?:contents\s+of\s+)?localStorage/i, message: 'Runbooks must not request raw browser storage' },
   { pattern: /manually\s+(?:set|mark)\s+.*(?:passed|mastery)/i, message: 'Runbooks must not permit manual learning evidence fabrication' }
 ];
-for (const { pattern, message } of forbiddenPatterns) assert.ok(!pattern.test(docs), message);
+const warningLanguage = /\b(?:do not|don't|never|must not|cannot|can't|refus(?:e|es|ed|ing)|prohibit(?:ed|s)|no operator override|no safe self-service|no repository command)\b/i;
+const docLines = docs.split('\n');
+for (const { pattern, message } of forbiddenPatterns) {
+  const offendingLine = docLines.find(line => pattern.test(line) && !warningLanguage.test(line));
+  assert.ok(!offendingLine, `${message}: ${offendingLine || ''}`);
+}
 
 for (const [sourcePath, source] of Object.entries({
   [paths.index]: index,
