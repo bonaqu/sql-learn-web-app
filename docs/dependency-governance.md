@@ -4,7 +4,7 @@ SQL Academy uses npm's committed lockfile as the only supported dependency resol
 
 ## Supported toolchain boundary
 
-The production and CI dependency inventory is generated on Node.js 24, npm 11, Linux x64—the buyer-owned Cloudflare deployment toolchain. npm also pins optional native binaries for other operating systems and CPU architectures. Those entries remain in `package-lock.json` and are listed explicitly in the machine-readable inventory, but their license files cannot be claimed as installed evidence from the Linux tree. A buyer activating another build platform must regenerate and review notices on that platform.
+The production and CI dependency inventory is generated on Node.js 22, npm 10, Linux x64—the same major toolchain used by Pull Request Quality. npm also pins optional native binaries for other operating systems and CPU architectures. Those entries remain in `package-lock.json` and are listed explicitly in the machine-readable inventory, but their license files cannot be claimed as installed evidence from the Linux tree. A buyer activating another build platform must regenerate and review notices on that platform.
 
 ## Required repository artifacts
 
