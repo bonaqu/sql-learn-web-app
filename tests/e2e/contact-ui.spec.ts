@@ -3,7 +3,20 @@ import { authenticatePage, TEST_PASSWORD } from './auth-helper';
 
 const capabilities = {
   contract: 'commercial-capabilities-v1',
-  authentication: { usernamePassword: true, recoveryCodes: true },
+  authentication: {
+    usernamePassword: true,
+    recoveryCodes: true,
+    contactLogin: {
+      passwordRequired: true,
+      email: { enabled: true },
+      sms: { enabled: false }
+    }
+  },
+  registration: {
+    contactPolicy: 'optional',
+    policyReady: true,
+    contactlessAllowed: true
+  },
   integrations: {
     emailVerification: { enabled: true },
     smsVerification: { enabled: false },
@@ -12,12 +25,30 @@ const capabilities = {
   }
 };
 
-async function mockEmailCapability(page: Page) {
+async function mockEmailCapability(page: Page, override: Partial<typeof capabilities['registration']> = {}) {
   await page.route('**/api/capabilities', route => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify(capabilities)
+    body: JSON.stringify({ ...capabilities, registration: { ...capabilities.registration, ...override } })
   }));
+}
+
+async function mockProgressSync(page: Page) {
+  await page.route('**/api/user/progress', async route => {
+    if (route.request().method() === 'PUT') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, revision: 1, updatedAt: '2026-08-05T00:00:00.000Z' })
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ progress: null, revision: 0, updatedAt: null })
+    });
+  });
 }
 
 async function mockVerification(page: Page, purpose: 'register' | 'password-reset' | 'sensitive-action') {
@@ -71,7 +102,73 @@ test('desktop verified contact UI stays absent when provider capabilities are di
   await expect(page.getByTestId('auth-submit')).toBeVisible();
   await expect(page.getByTestId('commercial-contact-entry')).toHaveCount(0);
   await expect(page.getByTestId('verified-contact-launcher')).toHaveCount(0);
+  await expect(page.getByTestId('contact-login-launcher')).toHaveCount(0);
   await expect(page.locator('script[data-sql-academy-turnstile]')).toHaveCount(0);
+});
+
+test('desktop verified contact login sends an explicit identifier type and no verification code', async ({ page }) => {
+  await mockEmailCapability(page);
+  await mockProgressSync(page);
+  let challengeRequests = 0;
+  await page.route('**/api/auth/contact/challenge', async route => {
+    challengeRequests += 1;
+    await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'must not be called' }) });
+  });
+  await page.route('**/api/auth/login', async route => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    expect(body).toMatchObject({
+      identifierType: 'email',
+      identifier: 'jane@example.com',
+      password: TEST_PASSWORD
+    });
+    expect(body).not.toHaveProperty('username');
+    expect(body).not.toHaveProperty('code');
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        session: {
+          token: 'verified-contact-login-token',
+          id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          expiresAt: '2026-09-05 00:00:00',
+          deviceName: 'ПК · Playwright',
+          revision: 0
+        },
+        user: {
+          id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          username: 'verified_user',
+          displayName: 'Verified User',
+          dailyMinutes: 25,
+          locale: 'ru-RU',
+          theme: 'dark'
+        },
+        recovery: { remaining: 8, generatedAt: '2026-08-05 00:00:00', canRegenerateAt: '2026-08-06 00:00:00' }
+      })
+    });
+  });
+
+  await page.goto('./');
+  await page.getByTestId('contact-login-launcher').click();
+  await expect(page.getByTestId('contact-login-modal')).toBeVisible();
+  await page.getByTestId('contact-login-identifier').fill('jane@example.com');
+  await page.getByTestId('contact-login-password').fill(TEST_PASSWORD);
+  await page.getByTestId('contact-login-submit').click();
+  await expect(page.getByTestId('contact-login-modal')).toHaveCount(0);
+  await expect(page.getByTestId('auth-submit')).toHaveCount(0);
+  expect(challengeRequests).toBe(0);
+});
+
+test('required registration policy is explicit without locking out existing users', async ({ page }) => {
+  await mockEmailCapability(page, {
+    contactPolicy: 'required-for-new-registration',
+    policyReady: true,
+    contactlessAllowed: false
+  });
+  await page.goto('./');
+  await expect(page.getByText('Контакт обязателен для новых аккаунтов')).toBeVisible();
+  await expect(page.getByText(/Существующие пользователи сохраняют вход по логину/)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Подтвердить контакт и зарегистрироваться', exact: true })).toBeVisible();
+  await expect(page.getByTestId('auth-submit')).toBeVisible();
 });
 
 test('desktop verified contact registration enters the mandatory recovery-code gate', async ({ page }) => {
