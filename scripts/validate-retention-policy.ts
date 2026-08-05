@@ -248,7 +248,8 @@ for (const variable of [
   'RETENTION_EXPIRED_SESSION_HOURS',
   'RETENTION_CLEANUP_BATCH_SIZE'
 ]) {
-  assert.ok(cloudflareWorkflow.includes(`${variable}: ${{ vars.${variable}`), `Production workflow does not expose ${variable}`);
+  const repositoryVariablePrefix = `${variable}: ` + '${{ vars.' + variable;
+  assert.ok(cloudflareWorkflow.includes(repositoryVariablePrefix), `Production workflow does not expose ${variable}`);
   assert.ok(cloudflareWorkflow.includes(`${variable}: process.env.${variable}`), `Generated production config omits ${variable}`);
 }
 
