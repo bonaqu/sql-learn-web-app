@@ -163,7 +163,7 @@ function parseCapabilities(value: unknown): CommercialCapabilities | null {
       usernamePassword: true,
       recoveryCodes: true,
       contactLogin: {
-        passwordRequired: passwordRequired || (!emailLogin && !smsLogin),
+        passwordRequired: true,
         email: { enabled: passwordRequired && emailLogin },
         sms: { enabled: passwordRequired && smsLogin }
       }
