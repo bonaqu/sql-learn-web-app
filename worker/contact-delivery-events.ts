@@ -4,6 +4,7 @@ import {
   type VerificationChannel,
   type VerificationProviderEnvironment
 } from './integrations/verification';
+import { runRetentionCleanup } from './retention-policy';
 
 export type ContactDeliveryEnvironment = ContactVerificationEnvironment & VerificationProviderEnvironment;
 
@@ -41,7 +42,6 @@ type ExistingDeliveryEventRow = {
 const DELIVERY_PATH = '/api/provider/contact-delivery/events';
 const MAX_BODY_BYTES = 8_192;
 const EVENT_TOLERANCE_MS = 5 * 60_000;
-const RETENTION_MS = 30 * 86_400_000;
 const EVENT_ID_PATTERN = /^[A-Za-z0-9._:/-]{8,160}$/;
 const CHALLENGE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PROVIDER_PATTERN = /^[A-Za-z0-9._-]{1,80}$/;
@@ -142,18 +142,6 @@ function signatureBytes(request: Request) {
   return hexToBytes(value);
 }
 
-async function pruneOperationalEvents(env: ContactDeliveryEnvironment) {
-  const cutoff = sqliteTime(new Date(Date.now() - RETENTION_MS));
-  await env.DB.batch([
-    env.DB.prepare(`DELETE FROM contact_delivery_events WHERE event_id IN (
-      SELECT event_id FROM contact_delivery_events WHERE received_at < ? ORDER BY received_at ASC LIMIT 250
-    )`).bind(cutoff),
-    env.DB.prepare(`DELETE FROM contact_security_events WHERE event_id IN (
-      SELECT event_id FROM contact_security_events WHERE created_at < ? ORDER BY created_at ASC LIMIT 250
-    )`).bind(cutoff)
-  ]);
-}
-
 function sameDeliveryEvent(existing: ExistingDeliveryEventRow, body: DeliveryEventBody, occurredAt: string) {
   return existing.challenge_id === body.challengeId
     && existing.channel === body.channel
@@ -245,7 +233,10 @@ export async function handleContactDeliveryEventRequest(
     }
   }
 
-  await pruneOperationalEvents(env);
+  await runRetentionCleanup(env, {
+    execute: true,
+    scopes: ['contactDeliveryEvents', 'contactSecurityEvents']
+  });
   return json({
     ok: true,
     duplicate,
