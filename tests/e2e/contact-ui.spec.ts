@@ -34,7 +34,7 @@ async function mockEmailCapability(page: Page, override: Partial<typeof capabili
 }
 
 async function mockProgressSync(page: Page) {
-  await page.route('**/api/mastery/progress', async route => {
+  await page.route('**/api/user/progress', async route => {
     if (route.request().method() === 'PUT') {
       await route.fulfill({
         status: 200,
