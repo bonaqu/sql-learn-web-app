@@ -5,6 +5,7 @@ type CommercialEnvKey =
   | 'FEATURE_SMS_VERIFICATION'
   | 'FEATURE_TURNSTILE'
   | 'FEATURE_ADMIN_CONSOLE'
+  | 'CONTACT_REGISTRATION_POLICY'
   | 'CONTACT_VERIFICATION_SIGNING_SECRET'
   | 'EMAIL_VERIFICATION_WEBHOOK_URL'
   | 'EMAIL_VERIFICATION_WEBHOOK_SECRET'
@@ -17,6 +18,7 @@ type CommercialEnvKey =
   | 'ADMIN_ALLOWED_USER_IDS';
 
 export type CommercialEnvironment = Cloudflare.Env & Partial<Record<CommercialEnvKey, string>>;
+export type ContactRegistrationPolicy = 'optional' | 'required-for-new-registration';
 
 type CommercialCapabilityName =
   | 'emailVerification'
@@ -29,6 +31,16 @@ export type CommercialCapabilities = {
   authentication: {
     usernamePassword: true;
     recoveryCodes: true;
+    contactLogin: {
+      passwordRequired: true;
+      email: { enabled: boolean };
+      sms: { enabled: boolean };
+    };
+  };
+  registration: {
+    contactPolicy: ContactRegistrationPolicy;
+    policyReady: boolean;
+    contactlessAllowed: boolean;
   };
   integrations: Record<CommercialCapabilityName, { enabled: boolean }>;
 };
@@ -68,6 +80,26 @@ export function adminConsoleReady(env: CommercialEnvironment) {
   return enabledFlag(env.FEATURE_ADMIN_CONSOLE) && adminAllowedUserIds(env).size > 0;
 }
 
+export function configuredContactRegistrationPolicy(env: CommercialEnvironment): ContactRegistrationPolicy {
+  return env.CONTACT_REGISTRATION_POLICY?.trim().toLowerCase() === 'required-for-new-registration'
+    ? 'required-for-new-registration'
+    : 'optional';
+}
+
+export function contactLoginReady(channel: 'email' | 'sms', env: CommercialEnvironment) {
+  return contactVerificationReady(channel, env);
+}
+
+export function contactRegistrationPolicyReady(env: CommercialEnvironment) {
+  const policy = configuredContactRegistrationPolicy(env);
+  if (policy === 'optional') return true;
+  return turnstileReady(env) && (contactLoginReady('email', env) || contactLoginReady('sms', env));
+}
+
+export function contactlessRegistrationAllowed(env: CommercialEnvironment) {
+  return configuredContactRegistrationPolicy(env) === 'optional';
+}
+
 export function commercialConfigurationErrors(env: CommercialEnvironment) {
   const errors: string[] = [];
   if (enabledFlag(env.FEATURE_EMAIL_VERIFICATION) && !contactVerificationReady('email', env)) {
@@ -78,19 +110,38 @@ export function commercialConfigurationErrors(env: CommercialEnvironment) {
   }
   if (enabledFlag(env.FEATURE_TURNSTILE) && !turnstileReady(env)) errors.push('TURNSTILE_INCOMPLETE');
   if (enabledFlag(env.FEATURE_ADMIN_CONSOLE) && !adminConsoleReady(env)) errors.push('ADMIN_ALLOWLIST_EMPTY');
+  const configuredPolicy = (env.CONTACT_REGISTRATION_POLICY || '').trim().toLowerCase();
+  if (configuredPolicy && configuredPolicy !== 'optional' && configuredPolicy !== 'required-for-new-registration') {
+    errors.push('CONTACT_REGISTRATION_POLICY_INVALID');
+  }
+  if (configuredContactRegistrationPolicy(env) === 'required-for-new-registration'
+    && !contactRegistrationPolicyReady(env)) errors.push('CONTACT_REGISTRATION_POLICY_INCOMPLETE');
   return errors;
 }
 
 export function commercialCapabilities(env: CommercialEnvironment): CommercialCapabilities {
+  const emailLogin = contactLoginReady('email', env);
+  const smsLogin = contactLoginReady('sms', env);
+  const contactPolicy = configuredContactRegistrationPolicy(env);
   return {
     contract: 'commercial-capabilities-v1',
     authentication: {
       usernamePassword: true,
-      recoveryCodes: true
+      recoveryCodes: true,
+      contactLogin: {
+        passwordRequired: true,
+        email: { enabled: emailLogin },
+        sms: { enabled: smsLogin }
+      }
+    },
+    registration: {
+      contactPolicy,
+      policyReady: contactRegistrationPolicyReady(env),
+      contactlessAllowed: contactlessRegistrationAllowed(env)
     },
     integrations: {
-      emailVerification: { enabled: contactVerificationReady('email', env) },
-      smsVerification: { enabled: contactVerificationReady('sms', env) },
+      emailVerification: { enabled: emailLogin },
+      smsVerification: { enabled: smsLogin },
       turnstile: { enabled: turnstileReady(env) },
       adminConsole: { enabled: adminConsoleReady(env) }
     }

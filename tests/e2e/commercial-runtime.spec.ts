@@ -16,7 +16,20 @@ test('desktop commercial runtime stays default-off, hidden and fail-closed', asy
   expect(response.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
   expect(await response.json()).toEqual({
     contract: 'commercial-capabilities-v1',
-    authentication: { usernamePassword: true, recoveryCodes: true },
+    authentication: {
+      usernamePassword: true,
+      recoveryCodes: true,
+      contactLogin: {
+        passwordRequired: true,
+        email: { enabled: false },
+        sms: { enabled: false }
+      }
+    },
+    registration: {
+      contactPolicy: 'optional',
+      policyReady: true,
+      contactlessAllowed: true
+    },
     integrations: {
       emailVerification: { enabled: false },
       smsVerification: { enabled: false },
