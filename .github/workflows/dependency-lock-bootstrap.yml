@@ -1,0 +1,51 @@
+name: Dependency Lock Bootstrap
+
+on:
+  pull_request:
+    branches:
+      - bonaqu_projects
+    paths:
+      - package.json
+      - scripts/generate-third-party-notices.mjs
+      - .github/workflows/dependency-lock-bootstrap.yml
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    if: github.head_ref == 'agent/dependency-lock-notices'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Generate deterministic lockfile
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Install locked dependency tree
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Generate dependency inventory and notices
+        run: node scripts/generate-third-party-notices.mjs
+
+      - name: Verify generated outputs are stable
+        run: node scripts/generate-third-party-notices.mjs --check
+
+      - name: Upload bootstrap outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-lock-bootstrap-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            package-lock.json
+            docs/third-party-dependencies.json
+            THIRD_PARTY_NOTICES.md
