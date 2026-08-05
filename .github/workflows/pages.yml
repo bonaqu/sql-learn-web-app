@@ -45,13 +45,14 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
 
       - name: Install dependencies
         shell: bash
         run: |
           echo 'dependencies' > pages-deployment-stage.txt
           for attempt in 1 2 3; do
-            npm install --no-audit --no-fund && break
+            npm ci --no-audit --no-fund && break
             if [ "$attempt" -eq 3 ]; then exit 1; fi
             sleep $((attempt * 10))
           done
