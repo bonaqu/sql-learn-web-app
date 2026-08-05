@@ -18,7 +18,7 @@ SQL Academy retention is intentionally limited to short-lived authentication and
 
 Configuration can shorten existing privacy windows but cannot silently extend them beyond the repository-reviewed 30-day/24-hour maxima.
 
-Provider delivery acknowledgements remain independent from opportunistic cleanup. Once a signed event is stored and validated, a cleanup failure is logged as `contact_delivery_retention_failed` but does not turn the provider acknowledgement into a `500` response or create artificial webhook retries. Operators can clear any resulting bounded backlog through the protected retention API.
+Provider and contact-security event validation plus D1 persistence remain synchronous. Only the bounded opportunistic cleanup is submitted through the Worker execution context after persistence. A cleanup failure is logged as `contact_delivery_retention_failed` or `contact_security_retention_failed`, but it does not turn a successfully stored provider acknowledgement into `500`, create artificial webhook retries or misreport the event insert itself as failed. Operators can clear any resulting bounded backlog through the protected retention API.
 
 ## Preserved records
 
