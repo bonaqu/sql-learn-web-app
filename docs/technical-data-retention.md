@@ -18,6 +18,8 @@ SQL Academy retention is intentionally limited to short-lived authentication and
 
 Configuration can shorten existing privacy windows but cannot silently extend them beyond the repository-reviewed 30-day/24-hour maxima.
 
+Provider delivery acknowledgements remain independent from opportunistic cleanup. Once a signed event is stored and validated, a cleanup failure is logged as `contact_delivery_retention_failed` but does not turn the provider acknowledgement into a `500` response or create artificial webhook retries. Operators can clear any resulting bounded backlog through the protected retention API.
+
 ## Preserved records
 
 Automated retention never deletes:
@@ -44,6 +46,8 @@ RETENTION_CLEANUP_BATCH_SIZE=250
 ```
 
 Accepted integer ranges are encoded in `worker/retention-policy.ts`. Missing values use the defaults above. Invalid, fractional or out-of-range values do not get clamped to a surprising boundary: the safe default is used and an exact `*_INVALID` code appears in protected admin health and retention responses.
+
+The Cloudflare production workflow exposes the same five GitHub repository variables, applies the safe defaults above and writes them into the generated `wrangler.deploy.jsonc`. CI and deployment install the committed dependency graph with `npm ci`; a retention change is therefore tested against the same locked tree used for production assembly.
 
 ## Protected operator API
 
