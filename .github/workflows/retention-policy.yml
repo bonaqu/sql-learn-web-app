@@ -13,6 +13,7 @@ on:
       - docs/technical-data-retention.md
       - wrangler.jsonc
       - wrangler.typegen.jsonc
+      - .github/workflows/cloudflare.yml
       - .github/workflows/retention-policy.yml
   push:
     branches:
@@ -26,6 +27,7 @@ on:
       - docs/technical-data-retention.md
       - wrangler.jsonc
       - wrangler.typegen.jsonc
+      - .github/workflows/cloudflare.yml
       - .github/workflows/retention-policy.yml
 
 permissions:
@@ -47,9 +49,10 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 22
+          cache: npm
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Validate retention policy
         run: npx tsx scripts/validate-retention-policy.ts
