@@ -120,7 +120,7 @@ function pipelineFailure(error: unknown, pathname: string, pipeline: Pipeline) {
 }
 
 export default {
-  async fetch(request: Request, env: Cloudflare.Env): Promise<Response> {
+  async fetch(request: Request, env: Cloudflare.Env, context: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) return withSecurityHeaders(await core.fetch(request, env), request);
 
@@ -160,7 +160,7 @@ export default {
 
     let contactDeliveryEventResponse: Response | null;
     try {
-      contactDeliveryEventResponse = await handleContactDeliveryEventRequest(request, env);
+      contactDeliveryEventResponse = await handleContactDeliveryEventRequest(request, env, context);
     } catch (error) {
       return finalize(pipelineFailure(error, url.pathname, 'commercial'), request, origin);
     }
@@ -190,7 +190,7 @@ export default {
       return finalize(pipelineFailure(error, url.pathname, 'commercial'), request, origin);
     }
     if (contactVerificationResponse) {
-      await recordContactSecurityOutcome(contactSecurityRequest, contactVerificationResponse, env);
+      await recordContactSecurityOutcome(contactSecurityRequest, contactVerificationResponse, env, context);
       return finalize(contactVerificationResponse, request, origin);
     }
 
