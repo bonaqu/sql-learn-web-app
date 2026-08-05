@@ -46,15 +46,32 @@ function packageKind(location, name, manifest) {
   return 'transitive';
 }
 
+function lockedName(location) {
+  return location.split('node_modules/').at(-1) || location;
+}
+
 function packageMetadata(location, lockEntry, manifest) {
   const directory = join(root, location);
   const metadataPath = join(directory, 'package.json');
   if (!existsSync(metadataPath)) {
-    throw new Error(`Installed package metadata is missing for ${location}. Run npm install before generating notices.`);
+    if (!lockEntry.optional && !lockEntry.os && !lockEntry.cpu) {
+      throw new Error(`Installed package metadata is missing for required entry ${location}`);
+    }
+    return {
+      installed: false,
+      name: lockedName(location),
+      version: lockEntry.version || '',
+      packagePath: location,
+      optional: Boolean(lockEntry.optional),
+      os: Array.isArray(lockEntry.os) ? lockEntry.os : [],
+      cpu: Array.isArray(lockEntry.cpu) ? lockEntry.cpu : [],
+      resolved: lockEntry.resolved || '',
+      integrity: lockEntry.integrity || ''
+    };
   }
 
   const metadata = readJson(metadataPath);
-  const name = metadata.name || location.split('node_modules/').at(-1);
+  const name = metadata.name || lockedName(location);
   const version = metadata.version || lockEntry.version;
   const license = normalizeLicense(metadata.license || metadata.licenses);
   if (!name || !version) throw new Error(`Package identity is incomplete for ${location}`);
@@ -68,6 +85,7 @@ function packageMetadata(location, lockEntry, manifest) {
   })).filter(item => item.text);
 
   return {
+    installed: true,
     name,
     version,
     kind: packageKind(location, name, manifest),
@@ -79,6 +97,12 @@ function packageMetadata(location, lockEntry, manifest) {
   };
 }
 
+function sortIdentity(left, right) {
+  return left.name.localeCompare(right.name)
+    || left.version.localeCompare(right.version)
+    || left.packagePath.localeCompare(right.packagePath);
+}
+
 function buildOutputs() {
   if (!existsSync(lockPath)) throw new Error('package-lock.json is required. Generate it with npm install first.');
   const manifest = readJson(packagePath);
@@ -87,27 +111,31 @@ function buildOutputs() {
     throw new Error('package-lock.json must contain the npm packages map');
   }
 
-  const packages = Object.entries(lock.packages)
-    .filter(([location, entry]) => location && location.includes('node_modules/') && entry && !entry.link)
-    .map(([location, entry]) => packageMetadata(location, entry, manifest))
-    .sort((left, right) => left.name.localeCompare(right.name) || left.version.localeCompare(right.version) || left.packagePath.localeCompare(right.packagePath));
+  const lockedEntries = Object.entries(lock.packages)
+    .filter(([location, entry]) => location && location.includes('node_modules/') && entry && !entry.link);
+  const resolvedEntries = lockedEntries.map(([location, entry]) => packageMetadata(location, entry, manifest));
+  const packages = resolvedEntries.filter(item => item.installed).sort(sortIdentity);
+  const uninstalledPlatformOptional = resolvedEntries.filter(item => !item.installed).sort(sortIdentity);
 
   if (!packages.length) throw new Error('No installed third-party packages were discovered');
-
-  const duplicateIdentity = packages.find((item, index) => index > 0
-    && item.name === packages[index - 1].name
-    && item.version === packages[index - 1].version
-    && item.packagePath === packages[index - 1].packagePath);
-  if (duplicateIdentity) throw new Error(`Duplicate package identity: ${duplicateIdentity.packagePath}`);
+  for (const item of uninstalledPlatformOptional) {
+    if (!item.name || !item.version || !item.integrity) {
+      throw new Error(`Platform-optional lock entry is incomplete: ${item.packagePath}`);
+    }
+  }
 
   const inventory = {
     schemaVersion: 1,
+    supportedInventoryPlatform: `${process.platform}-${process.arch}`,
     lockfileVersion: lock.lockfileVersion,
-    packageCount: packages.length,
-    packages: packages.map(({ noticeFiles, ...item }) => ({
+    lockedPackageCount: lockedEntries.length,
+    installedPackageCount: packages.length,
+    uninstalledPlatformOptionalCount: uninstalledPlatformOptional.length,
+    packages: packages.map(({ installed, noticeFiles, ...item }) => ({
       ...item,
       noticeFiles: noticeFiles.map(entry => entry.file)
-    }))
+    })),
+    uninstalledPlatformOptional: uninstalledPlatformOptional.map(({ installed, ...item }) => item)
   };
 
   const licenseGroups = new Map();
@@ -127,10 +155,13 @@ function buildOutputs() {
     'This file is generated from `package-lock.json` and the installed package metadata by `scripts/generate-third-party-notices.mjs`.',
     'SQL Academy source code is governed by the repository `LICENSE`; the packages below remain governed by their own licenses.',
     '',
-    `Locked package entries: **${packages.length}**`,
+    `Supported inventory platform: **${process.platform}-${process.arch}**`,
+    `Locked package entries: **${lockedEntries.length}**`,
+    `Installed package entries covered below: **${packages.length}**`,
+    `Uninstalled platform-optional lock entries recorded separately: **${uninstalledPlatformOptional.length}**`,
     `Unique bundled notice/license texts: **${licenseGroups.size}**`,
     '',
-    '## Dependency inventory',
+    '## Installed dependency inventory',
     ''
   ];
 
@@ -139,7 +170,18 @@ function buildOutputs() {
     lines.push(`- \`${item.name}@${item.version}\` — ${item.license} — ${item.kind}${source ? ` — ${source}` : ''}`);
   }
 
-  lines.push('', '## Packages without a bundled notice file', '');
+  lines.push('', '## Uninstalled platform-optional lock entries', '');
+  if (uninstalledPlatformOptional.length) {
+    lines.push('These binaries are pinned by npm for other operating-system or CPU targets but are not installed in the supported Linux x64 CI/deployment tree. Their exact lock identity is retained in `docs/third-party-dependencies.json`; activating another platform requires regenerating and reviewing notices on that platform.', '');
+    for (const item of uninstalledPlatformOptional) {
+      const constraints = [...item.os.map(value => `os:${value}`), ...item.cpu.map(value => `cpu:${value}`)].join(', ');
+      lines.push(`- \`${item.name}@${item.version}\`${constraints ? ` — ${constraints}` : ''}`);
+    }
+  } else {
+    lines.push('None.');
+  }
+
+  lines.push('', '## Installed packages without a bundled notice file', '');
   if (withoutBundledText.length) {
     lines.push('These installed packages expose license metadata in `package.json` but do not bundle a matching LICENSE/COPYING/NOTICE file. They remain listed explicitly rather than being silently omitted.', '');
     for (const item of withoutBundledText) lines.push(`- \`${item.name}@${item.version}\` — ${item.license}`);
@@ -173,5 +215,6 @@ if (checkOnly) {
 } else {
   writeFileSync(inventoryPath, outputs.inventory);
   writeFileSync(noticesPath, outputs.notices);
-  console.log(`Generated notices for ${JSON.parse(outputs.inventory).packageCount} locked package entries.`);
+  const inventory = JSON.parse(outputs.inventory);
+  console.log(`Generated notices for ${inventory.installedPackageCount} installed entries and recorded ${inventory.uninstalledPlatformOptionalCount} platform-optional entries.`);
 }
