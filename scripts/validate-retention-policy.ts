@@ -231,5 +231,10 @@ assert.ok(securityEvents.includes("from './retention-policy'"));
 assert.ok(deliveryEvents.includes("from './retention-policy'"));
 assert.ok(!securityEvents.includes('const RETENTION_MS'));
 assert.ok(!deliveryEvents.includes('const RETENTION_MS'));
+assert.ok(deliveryEvents.includes("console.error('contact_delivery_retention_failed'"));
+const retentionCall = deliveryEvents.indexOf('await runRetentionCleanup(env');
+const acknowledgement = deliveryEvents.indexOf('return json({\n    ok: true');
+assert.ok(retentionCall >= 0 && acknowledgement > retentionCall);
+assert.ok(deliveryEvents.slice(retentionCall, acknowledgement).includes('} catch (error) {'));
 
-console.log('Configurable technical retention validated: bounded privacy windows, protected admin dry-run/execute, six technical scopes, deterministic batches and zero learning-evidence deletion.');
+console.log('Configurable technical retention validated: bounded privacy windows, protected admin dry-run/execute, isolated delivery acknowledgements, six technical scopes, deterministic batches and zero learning-evidence deletion.');
