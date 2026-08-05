@@ -227,23 +227,38 @@ assert.ok(adminHealth.includes('retentionConfigurationErrors(env)'));
 
 const securityEvents = readFileSync(new URL('../worker/contact-security-events.ts', import.meta.url), 'utf8');
 const deliveryEvents = readFileSync(new URL('../worker/contact-delivery-events.ts', import.meta.url), 'utf8');
+const workerIndex = readFileSync(new URL('../worker/index.ts', import.meta.url), 'utf8');
 assert.ok(securityEvents.includes("from './retention-policy'"));
 assert.ok(deliveryEvents.includes("from './retention-policy'"));
 assert.ok(!securityEvents.includes('const RETENTION_MS'));
 assert.ok(!deliveryEvents.includes('const RETENTION_MS'));
-assert.ok(deliveryEvents.includes("console.error('contact_delivery_retention_failed'"));
-const retentionCall = deliveryEvents.indexOf('await runRetentionCleanup(env');
-const acknowledgement = deliveryEvents.indexOf('return json({\n    ok: true');
-assert.ok(retentionCall >= 0 && acknowledgement > retentionCall);
-assert.ok(deliveryEvents.slice(retentionCall, acknowledgement).includes('} catch (error) {'));
 
-const securityEventFailure = securityEvents.indexOf("console.error('contact_security_event_failed'");
-const securityRetentionCall = securityEvents.indexOf('await runRetentionCleanup(env');
-const securityRetentionFailure = securityEvents.indexOf("console.error('contact_security_retention_failed'");
-assert.ok(securityEventFailure >= 0);
-assert.ok(securityRetentionCall > securityEventFailure);
-assert.ok(securityRetentionFailure > securityRetentionCall);
-assert.ok(securityEvents.slice(securityEventFailure, securityRetentionCall).includes('return;'));
+const deliveryRetentionHelper = deliveryEvents.indexOf('async function pruneDeliveryRetention');
+const deliveryHandler = deliveryEvents.indexOf('export async function handleContactDeliveryEventRequest');
+const deliveryAcknowledgement = deliveryEvents.indexOf('return json({\n    ok: true');
+assert.ok(deliveryRetentionHelper >= 0 && deliveryHandler > deliveryRetentionHelper);
+assert.ok(deliveryAcknowledgement > deliveryHandler);
+assert.ok(deliveryEvents.slice(deliveryRetentionHelper, deliveryHandler).includes('await runRetentionCleanup(env'));
+assert.ok(deliveryEvents.slice(deliveryRetentionHelper, deliveryHandler).includes("console.error('contact_delivery_retention_failed'"));
+assert.ok(deliveryEvents.includes('context?: ExecutionContext'));
+assert.ok(deliveryEvents.includes('if (context) context.waitUntil(retention);'));
+assert.ok(deliveryEvents.includes('else await retention;'));
+
+const securityRetentionHelper = securityEvents.indexOf('async function pruneSecurityRetention');
+const securityHandler = securityEvents.indexOf('export async function recordContactSecurityOutcome');
+assert.ok(securityRetentionHelper >= 0 && securityHandler > securityRetentionHelper);
+assert.ok(securityEvents.slice(securityRetentionHelper, securityHandler).includes('await runRetentionCleanup(env'));
+assert.ok(securityEvents.slice(securityRetentionHelper, securityHandler).includes("console.error('contact_security_retention_failed'"));
+assert.ok(securityEvents.slice(securityHandler).includes("console.error('contact_security_event_failed'"));
+assert.ok(securityEvents.slice(securityHandler).includes('return;'));
+assert.ok(securityEvents.includes('context?: ExecutionContext'));
+assert.ok(securityEvents.includes('if (context) context.waitUntil(retention);'));
+assert.ok(securityEvents.includes('else await retention;'));
+
+assert.ok(workerIndex.includes('async fetch(request: Request, env: Cloudflare.Env, context: ExecutionContext)'));
+assert.ok(workerIndex.includes('handleContactDeliveryEventRequest(request, env, context)'));
+assert.ok(workerIndex.includes('recordContactSecurityOutcome(contactSecurityRequest, contactVerificationResponse, env, context)'));
+assert.ok(!workerIndex.includes('const { waitUntil } = context'));
 
 const cloudflareWorkflow = readFileSync(new URL('../.github/workflows/cloudflare.yml', import.meta.url), 'utf8');
 assert.ok(cloudflareWorkflow.includes('npm ci --no-audit --no-fund'));
@@ -261,4 +276,4 @@ for (const variable of [
   assert.ok(cloudflareWorkflow.includes(`${variable}: process.env.${variable}`), `Generated production config omits ${variable}`);
 }
 
-console.log('Configurable technical retention validated: bounded privacy windows, protected admin dry-run/execute, isolated event persistence and cleanup errors, production deploy wiring, six technical scopes, deterministic batches and zero learning-evidence deletion.');
+console.log('Configurable technical retention validated: bounded privacy windows, protected admin dry-run/execute, synchronous event persistence with waitUntil cleanup, production deploy wiring, six technical scopes, deterministic batches and zero learning-evidence deletion.');
