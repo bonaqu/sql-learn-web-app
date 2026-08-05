@@ -14,12 +14,13 @@ Advanced tools remain available, but they do not compete with the primary learni
 
 ## Phase 1 — guided learner experience
 
-Completed in the guided learner journey delivered by PR #83.
+Completed through the guided learner journey delivered by PR #83 and the product-navigation refinement in PR #172.
 
 - [x] Automatically open the goal / schedule / placement setup for a new account.
 - [x] Replace the feature-directory home screen with a “Today” screen and one primary action.
-- [x] Reduce permanent navigation to Today, My plan, Learn, Practice and Review.
-- [x] Move catalog, interview, exams, checkpoints, projects, dialects, achievements, mentor and analytics under one “All tools” disclosure.
+- [x] Reduce desktop primary navigation to Today, Route, Practice, Review and Assessment.
+- [x] Reduce the persistent mobile bar to Today, Route, Practice and More.
+- [x] Move lessons, catalog, interview, dialect map, puzzles, achievements, mentor and other deep features under one “All sections” disclosure.
 - [x] Keep all existing deep features accessible and preserve keyboard/mobile accessibility.
 - [x] Add regression tests for first-run and returning-user journeys.
 
@@ -53,15 +54,16 @@ All integrations are default-off and fail closed on the current Cloudflare Free 
 - [x] Atomically bind a verified email or phone ticket to account creation.
 - [x] Atomically attach one verified contact per channel to an authenticated account using the current password.
 - [x] Reset a password through an already bound verified contact and revoke every active session.
+- [x] Add password-based login by a confirmed email or phone while preserving username login, lockout and recovery codes.
+- [x] Add capability-gated learner UI for verified-contact login, registration, attachment and recovery while keeping it absent when disabled.
 - [ ] Add passwordless contact login. This is not implied by verification or password reset and requires a separate threat model.
 - [ ] Add buyer-specific provider deliverability, bounce/failure monitoring and acceptance tests.
-- [ ] Add learner UI for enabled verified-contact registration, attachment and recovery while keeping it absent when disabled.
 
 ## Current verified-contact boundary
 
-CR2B supplies challenge delivery and confirmation. CR2C adds backend account binding with durable one-time consumption receipts and transactional registration, attachment and password reset.
+The repository now contains the provider-neutral challenge core, transactional account binding, password-based contact login and capability-gated learner UI. Username/password and recovery-code authentication remain available and unchanged. Contact login uses the confirmed destination only as an identifier and still requires the account password; it never sends a verification code during sign-in.
 
-The existing username/password/recovery-code contract remains available and unchanged. Verified-contact routes stay hidden while their server capability is disabled or incomplete. No passwordless login or learner-facing verified-contact UI is claimed yet.
+Verified-contact routes and UI stay hidden while their server capability is disabled or incomplete. Current production remains provider-disabled with optional contact policy. Real email/SMS deliverability, sender reputation, bounce monitoring and required-contact activation remain buyer/operator acceptance work under #133. No passwordless login is claimed.
 
 ## Completion rule
 
