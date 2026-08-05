@@ -237,4 +237,19 @@ const acknowledgement = deliveryEvents.indexOf('return json({\n    ok: true');
 assert.ok(retentionCall >= 0 && acknowledgement > retentionCall);
 assert.ok(deliveryEvents.slice(retentionCall, acknowledgement).includes('} catch (error) {'));
 
-console.log('Configurable technical retention validated: bounded privacy windows, protected admin dry-run/execute, isolated delivery acknowledgements, six technical scopes, deterministic batches and zero learning-evidence deletion.');
+const cloudflareWorkflow = readFileSync(new URL('../.github/workflows/cloudflare.yml', import.meta.url), 'utf8');
+assert.ok(cloudflareWorkflow.includes('npm ci --no-audit --no-fund'));
+assert.ok(cloudflareWorkflow.includes("CONTACT_REGISTRATION_POLICY: ${{ vars.CONTACT_REGISTRATION_POLICY || 'optional' }}"));
+assert.ok(cloudflareWorkflow.includes('CONTACT_REGISTRATION_POLICY: process.env.CONTACT_REGISTRATION_POLICY'));
+for (const variable of [
+  'RETENTION_CONTACT_EVENTS_DAYS',
+  'RETENTION_UNCONSUMED_CONTACT_HOURS',
+  'RETENTION_CONSUMED_CHALLENGE_HOURS',
+  'RETENTION_EXPIRED_SESSION_HOURS',
+  'RETENTION_CLEANUP_BATCH_SIZE'
+]) {
+  assert.ok(cloudflareWorkflow.includes(`${variable}: ${{ vars.${variable}`), `Production workflow does not expose ${variable}`);
+  assert.ok(cloudflareWorkflow.includes(`${variable}: process.env.${variable}`), `Generated production config omits ${variable}`);
+}
+
+console.log('Configurable technical retention validated: bounded privacy windows, protected admin dry-run/execute, isolated delivery acknowledgements, production deploy wiring, six technical scopes, deterministic batches and zero learning-evidence deletion.');
