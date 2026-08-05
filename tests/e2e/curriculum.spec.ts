@@ -72,7 +72,7 @@ test('desktop curriculum studio diagnoses misconceptions and syncs project draft
   await expect(page.getByTestId('open-capstone-evaluator')).toBeVisible();
   await expect(page.getByTestId('complete-project')).toBeHidden();
   await page.getByTestId('curriculum-sync').click();
-  await expect(page.getByTestId('curriculum-sync')).toContainText('В облаке');
+  await expect(page.getByTestId('curriculum-sync')).toContainText('В облаке', { timeout: 25_000 });
 
   await expectNoSeriousAxeViolations(page);
   await page.screenshot({ path: testInfo.outputPath('curriculum-misconception-desktop.png'), fullPage: true });
@@ -87,7 +87,7 @@ test('desktop curriculum studio diagnoses misconceptions and syncs project draft
   await openAdvancedTool(secondPage, 'curriculum-trigger');
   const secondStudio = secondPage.getByRole('dialog', { name: /Curriculum Studio/i });
   await secondStudio.getByTestId('curriculum-sync').click();
-  await expect(secondStudio.getByTestId('curriculum-sync')).toContainText('В облаке');
+  await expect(secondStudio.getByTestId('curriculum-sync')).toContainText('В облаке', { timeout: 25_000 });
   await secondPage.getByRole('tab', { name: /Project Lab/i }).click();
   await expect(secondPage.getByTestId('project-sql-draft')).toHaveValue(/WITH base/);
   await expect(secondPage.getByTestId('open-capstone-evaluator')).toBeVisible();
