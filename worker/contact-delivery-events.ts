@@ -233,10 +233,19 @@ export async function handleContactDeliveryEventRequest(
     }
   }
 
-  await runRetentionCleanup(env, {
-    execute: true,
-    scopes: ['contactDeliveryEvents', 'contactSecurityEvents']
-  });
+  try {
+    await runRetentionCleanup(env, {
+      execute: true,
+      scopes: ['contactDeliveryEvents', 'contactSecurityEvents']
+    });
+  } catch (error) {
+    const name = error instanceof Error ? error.name.slice(0, 80) : 'UnknownError';
+    console.error('contact_delivery_retention_failed', {
+      eventId: body.eventId,
+      deliveryStatus: body.status,
+      name
+    });
+  }
   return json({
     ok: true,
     duplicate,
