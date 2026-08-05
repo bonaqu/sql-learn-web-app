@@ -2,7 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './lib/api-fetch';
 import App from './App';
-import AuthGate from './components/AuthGate';
+import IntegratedAuthGate from './components/IntegratedAuthGate';
 import CapstoneLauncher from './components/CapstoneLauncher';
 import CapstoneReportSyncAgent from './components/CapstoneReportSyncAgent';
 import CheckpointLauncher from './components/CheckpointLauncher';
@@ -19,6 +19,7 @@ import PwaStatus from './components/PwaStatus';
 import './styles.css';
 import './enhancements.css';
 import './auth.css';
+import './auth-contact-integration.css';
 import './commercial-identity.css';
 import './commercial-identity-v2.css';
 import './learning-path.css';
@@ -32,7 +33,7 @@ import './workspace-readiness.css';
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ChunkErrorBoundary>
-      <AuthGate>
+      <IntegratedAuthGate>
         <App />
         <CheckpointLauncher />
         <OnboardingLauncher />
@@ -44,7 +45,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <CapstoneReportSyncAgent />
         <OnboardingAgent />
         <LearningAnalyticsAgent />
-      </AuthGate>
+      </IntegratedAuthGate>
       <CommercialIdentityPortal />
       <PwaStatus />
     </ChunkErrorBoundary>
