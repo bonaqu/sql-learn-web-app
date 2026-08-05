@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { authenticatePage } from './auth-helper';
+import { openAllTools } from './navigation-helper';
 
 async function completeDeferredOnboarding(page: import('@playwright/test').Page) {
   const dialog = page.getByTestId('onboarding-portal');
@@ -32,7 +33,14 @@ test('desktop guided journey turns a first goal into one canonical primary actio
   await expect(journeyAction.getByRole('button', { name: /Открыть урок/ })).toHaveCount(1);
   await expect(journeyAction).toContainText(/Надёжная база/i);
   await expect(journeyAction).toContainText(/SQL-мышление/i);
-  await expect(page.locator('.sidebar nav > button, .sidebar nav > .onboarding-nav-slot')).toHaveCount(5);
+
+  const primaryNavigation = page.locator('.sidebar nav');
+  await expect(primaryNavigation.locator(':scope > button, :scope > .onboarding-nav-slot')).toHaveCount(5);
+  await expect(primaryNavigation.getByRole('button', { name: 'Сегодня' })).toBeVisible();
+  await expect(primaryNavigation.getByRole('button', { name: 'Маршрут' })).toBeVisible();
+  await expect(primaryNavigation.getByRole('button', { name: 'Практика' })).toBeVisible();
+  await expect(primaryNavigation.getByRole('button', { name: /Повторение/ })).toBeVisible();
+  await expect(primaryNavigation.getByRole('button', { name: 'Проверка' })).toBeVisible();
   await expect(page.locator('.nav-more')).not.toHaveAttribute('open', '');
 
   await journeyAction.getByRole('button', { name: /Открыть урок/ }).click();
@@ -43,17 +51,27 @@ test('desktop guided journey turns a first goal into one canonical primary actio
   await expect(curriculum).toContainText(/Как читать схему и превращать вопрос в запрос/i);
   await page.getByRole('button', { name: 'Закрыть Curriculum Studio' }).click();
 
-  await page.locator('.nav-more > summary').click();
+  await openAllTools(page);
+  await expect(page.getByTestId('curriculum-trigger')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Каталог задач' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Интервью' })).toBeVisible();
   await expect(page.getByTestId('checkpoint-trigger')).toBeVisible();
   await expect(page.getByTestId('learning-analytics-trigger')).toBeVisible();
 });
 
-test('mobile guided journey presents one clear first-run choice without overflow', async ({ page }) => {
+test('mobile guided journey presents one clear first-run choice and exactly four persistent actions', async ({ page }) => {
   await authenticatePage(page, 'mobileguided');
   await page.goto('./');
   await expect(page.getByTestId('guided-first-run')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Настроить мой маршрут' })).toBeVisible();
+
+  const mobileNavigation = page.locator('.mobile-bottom-nav');
+  await expect(mobileNavigation.locator(':scope > button')).toHaveCount(4);
+  await expect(mobileNavigation.getByRole('button', { name: 'Сегодня' })).toBeVisible();
+  await expect(mobileNavigation.getByRole('button', { name: 'Маршрут' })).toBeVisible();
+  await expect(mobileNavigation.getByRole('button', { name: 'Практика' })).toBeVisible();
+  await expect(mobileNavigation.getByRole('button', { name: 'Ещё' })).toBeVisible();
+
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(overflow).toBe(false);
   await page.getByRole('button', { name: 'Настроить мой маршрут' }).click();

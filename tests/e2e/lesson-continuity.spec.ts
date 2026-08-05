@@ -4,6 +4,7 @@ import { lessonChecks } from '../../src/data/lesson-checks';
 import { lessonTransitions } from '../../src/data/lesson-bridges';
 import { OPEN_DEFERRED_FEATURE_EVENT } from '../../src/lib/deferred-features';
 import { authenticatePage } from './auth-helper';
+import { openAdvancedTool } from './navigation-helper';
 
 async function expectNoHorizontalOverflow(page: import('@playwright/test').Page) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
@@ -71,7 +72,7 @@ async function openCurriculumLesson(page: import('@playwright/test').Page, lesso
 test('desktop curriculum explains why each lesson follows and routes phase boundaries through checkpoints', async ({ page }, testInfo) => {
   await authenticatePage(page, 'lesson-continuity');
   await page.goto('./');
-  await page.getByTestId('curriculum-trigger').click();
+  await openAdvancedTool(page, 'curriculum-trigger');
 
   const firstLesson = curriculumLessons[0];
   const secondLesson = curriculumLessons[1];
@@ -115,7 +116,7 @@ test('desktop curriculum explains why each lesson follows and routes phase bound
 test('mobile curriculum keeps the continuity companion compact and readable', async ({ page }, testInfo) => {
   await authenticatePage(page, 'mobile-lesson-continuity');
   await page.goto('./');
-  await page.getByTestId('curriculum-mobile-trigger').click();
+  await openAdvancedTool(page, 'curriculum-trigger');
 
   const studio = page.getByTestId('curriculum-studio');
   const companion = studio.getByTestId('curriculum-continuity-companion');

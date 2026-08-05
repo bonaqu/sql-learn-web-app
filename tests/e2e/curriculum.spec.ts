@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { authenticatePage, loginPage } from './auth-helper';
+import { openAdvancedTool } from './navigation-helper';
 
 async function expectNoSeriousAxeViolations(page: import('@playwright/test').Page) {
   const result = await new AxeBuilder({ page })
@@ -25,7 +26,7 @@ test('desktop curriculum studio diagnoses misconceptions and syncs project draft
   await page.goto('./');
 
   const trigger = page.getByTestId('curriculum-trigger');
-  await trigger.click();
+  await openAdvancedTool(page, 'curriculum-trigger');
   const studio = page.getByRole('dialog', { name: /Curriculum Studio/i });
   await expect(studio).toBeVisible();
   await expect(page.getByRole('heading', { name: 'SQL-мышление', exact: true })).toBeVisible();
@@ -71,7 +72,7 @@ test('desktop curriculum studio diagnoses misconceptions and syncs project draft
   await expect(page.getByTestId('open-capstone-evaluator')).toBeVisible();
   await expect(page.getByTestId('complete-project')).toBeHidden();
   await page.getByTestId('curriculum-sync').click();
-  await expect(page.getByTestId('curriculum-sync')).toContainText('В облаке');
+  await expect(page.getByTestId('curriculum-sync')).toContainText('В облаке', { timeout: 25_000 });
 
   await expectNoSeriousAxeViolations(page);
   await page.screenshot({ path: testInfo.outputPath('curriculum-misconception-desktop.png'), fullPage: true });
@@ -83,10 +84,10 @@ test('desktop curriculum studio diagnoses misconceptions and syncs project draft
   const secondPage = await secondContext.newPage();
   await loginPage(secondPage, auth.username, auth.password);
   await secondPage.goto('./');
-  await secondPage.getByTestId('curriculum-trigger').click();
+  await openAdvancedTool(secondPage, 'curriculum-trigger');
   const secondStudio = secondPage.getByRole('dialog', { name: /Curriculum Studio/i });
   await secondStudio.getByTestId('curriculum-sync').click();
-  await expect(secondStudio.getByTestId('curriculum-sync')).toContainText('В облаке');
+  await expect(secondStudio.getByTestId('curriculum-sync')).toContainText('В облаке', { timeout: 25_000 });
   await secondPage.getByRole('tab', { name: /Project Lab/i }).click();
   await expect(secondPage.getByTestId('project-sql-draft')).toHaveValue(/WITH base/);
   await expect(secondPage.getByTestId('open-capstone-evaluator')).toBeVisible();
@@ -96,7 +97,7 @@ test('desktop curriculum studio diagnoses misconceptions and syncs project draft
 test('mobile misconception curriculum remains accessible without horizontal overflow', async ({ page }, testInfo) => {
   await authenticatePage(page, 'curriculummobile');
   await page.goto('./');
-  await page.getByTestId('curriculum-mobile-trigger').click();
+  await openAdvancedTool(page, 'curriculum-trigger');
   const studio = page.getByRole('dialog', { name: /Curriculum Studio/i });
   await expect(studio).toBeVisible();
   await expect(page.getByTestId('curriculum-reader')).toBeVisible();

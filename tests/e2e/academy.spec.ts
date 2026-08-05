@@ -62,8 +62,8 @@ test('desktop academy workflow is usable and shares the authenticated Cloudflare
   expect(cloudProgress.status).toBe(200);
   expect(cloudProgress.body).toHaveProperty('progress');
 
-  await page.locator('.sidebar nav').getByRole('button', { name: 'Practice' }).click();
-  await expect(page.getByRole('heading', { name: 'Practice Mode' })).toBeVisible();
+  await page.locator('.sidebar nav').getByRole('button', { name: 'Практика' }).click();
+  await expect(page.getByRole('heading', { name: 'Практика' })).toBeVisible();
   await seedFirstLessonEvidence(page);
   const firstTask = page.locator('.task-row').first();
   await expect(firstTask).toContainText('Текущий шаг маршрута');
@@ -87,17 +87,23 @@ test('desktop academy workflow is usable and shares the authenticated Cloudflare
   expect(pageErrors).toEqual([]);
 });
 
-test('mobile task flow uses list-to-editor navigation after login', async ({ page }, testInfo) => {
+test('mobile task flow uses four product actions and list-to-editor navigation after login', async ({ page }, testInfo) => {
   const pageErrors: string[] = [];
   page.on('pageerror', error => pageErrors.push(error.message));
   await authenticatePage(page, 'mobile-academy');
 
   await page.goto('./');
-  await expect(page.locator('.mobile-bottom-nav')).toBeVisible();
+  const mobileNavigation = page.locator('.mobile-bottom-nav');
+  await expect(mobileNavigation).toBeVisible();
+  await expect(mobileNavigation.locator(':scope > button')).toHaveCount(4);
+  await expect(mobileNavigation.getByRole('button', { name: 'Сегодня' })).toBeVisible();
+  await expect(mobileNavigation.getByRole('button', { name: 'Маршрут' })).toBeVisible();
+  await expect(mobileNavigation.getByRole('button', { name: 'Практика' })).toBeVisible();
+  await expect(mobileNavigation.getByRole('button', { name: 'Ещё' })).toBeVisible();
   await expectNoHorizontalOverflow(page);
 
-  await page.locator('.mobile-bottom-nav').getByRole('button', { name: 'Практика' }).click();
-  await expect(page.getByRole('heading', { name: 'Practice Mode' })).toBeVisible();
+  await mobileNavigation.getByRole('button', { name: 'Практика' }).click();
+  await expect(page.getByRole('heading', { name: 'Практика' })).toBeVisible();
   await seedFirstLessonEvidence(page);
   const firstTask = page.locator('.task-row').first();
   await expect(firstTask).toContainText('Текущий шаг маршрута');

@@ -507,12 +507,12 @@ function App() {
   const workspaceTitle = view === 'catalog'
     ? 'Каталог академии'
     : view === 'practice'
-      ? 'Practice Mode'
+      ? 'Практика'
       : view === 'review'
         ? 'Повторение'
         : view === 'interview'
-          ? 'Interview Mode'
-          : 'SQL Puzzle';
+          ? 'Интервью'
+          : 'SQL-головоломки';
 
   return <><a className="skip-link" href="#main-content">Перейти к содержимому</a><div className="app">
     <aside className={`sidebar ${mobileNav ? 'open' : ''}`} aria-label="Основная навигация">
@@ -522,22 +522,22 @@ function App() {
       </button>
       <button className="close-mobile" onClick={() => setMobileNav(false)} aria-label="Закрыть меню"><X /></button>
       <nav aria-label="Разделы академии">
-        <span className="primary-nav-label">Твой маршрут</span>
+        <span className="primary-nav-label">Обучение</span>
         <Nav icon={<Home />} label="Сегодня" active={view === 'home'} onClick={() => navigate('home')} />
-        <button type="button" data-testid="learning-path-trigger" onMouseEnter={() => preloadDeferredFeature('learning-path')} onFocus={() => preloadDeferredFeature('learning-path')} onClick={() => openDeferredFeature('learning-path')}><Route /><span>Мой план</span></button>
-        <button type="button" data-testid="curriculum-trigger" onMouseEnter={() => preloadDeferredFeature('curriculum')} onFocus={() => preloadDeferredFeature('curriculum')} onClick={() => openDeferredFeature('curriculum')}><GraduationCap /><span>Учиться</span></button>
-        <Nav icon={<BrainCircuit />} label="Practice" active={view === 'practice'} onClick={() => navigate('practice')} />
+        <button type="button" data-testid="learning-path-trigger" onMouseEnter={() => preloadDeferredFeature('learning-path')} onFocus={() => preloadDeferredFeature('learning-path')} onClick={() => openDeferredFeature('learning-path')}><Route /><span>Маршрут</span></button>
+        <Nav icon={<BrainCircuit />} label="Практика" active={view === 'practice'} onClick={() => navigate('practice')} />
         <Nav icon={<Repeat2 />} label={`Повторение${queue.length ? ` · ${queue.length}` : ''}`} active={view === 'review'} onClick={() => navigate('review')} />
+        <button type="button" data-testid="assessment-trigger" onMouseEnter={() => preloadDeferredFeature('assessment')} onFocus={() => preloadDeferredFeature('assessment')} onClick={() => openDeferredFeature('assessment')}><ClipboardCheck /><span>Проверка</span></button>
         <details className="nav-more">
-          <summary><ListChecks /><span>Все инструменты</span><ChevronDown /></summary>
+          <summary><ListChecks /><span>Все разделы</span><ChevronDown /></summary>
           <div className="nav-secondary-tools">
+            <button type="button" data-testid="curriculum-trigger" onMouseEnter={() => preloadDeferredFeature('curriculum')} onFocus={() => preloadDeferredFeature('curriculum')} onClick={() => openDeferredFeature('curriculum')}><GraduationCap /><span>Уроки</span></button>
             <Nav icon={<BookOpen />} label="Каталог задач" active={view === 'catalog'} onClick={() => navigate('catalog')} />
-            <Nav icon={<BriefcaseBusiness />} label="Interview" active={view === 'interview'} onClick={() => navigate('interview')} />
-            <button type="button" data-testid="assessment-trigger" onMouseEnter={() => preloadDeferredFeature('assessment')} onFocus={() => preloadDeferredFeature('assessment')} onClick={() => openDeferredFeature('assessment')}><ClipboardCheck /><span>Экзамены</span></button>
+            <Nav icon={<BriefcaseBusiness />} label="Интервью" active={view === 'interview'} onClick={() => navigate('interview')} />
             <button type="button" data-testid="syllabus-trigger" onMouseEnter={() => preloadDeferredFeature('syllabus')} onFocus={() => preloadDeferredFeature('syllabus')} onClick={() => openDeferredFeature('syllabus')}><ListChecks /><span>Диалекты и карта курса</span></button>
-            <Nav icon={<Puzzle />} label="SQL Puzzle" active={view === 'puzzle'} onClick={() => navigate('puzzle')} />
+            <Nav icon={<Puzzle />} label="SQL-головоломки" active={view === 'puzzle'} onClick={() => navigate('puzzle')} />
             <Nav icon={<Trophy />} label="Достижения" active={view === 'achievements'} onClick={() => navigate('achievements')} />
-            <Nav icon={<Sparkles />} label="AI Mentor" active={view === 'mentor'} onClick={() => navigate('mentor')} />
+            <Nav icon={<Sparkles />} label="SQL-наставник" active={view === 'mentor'} onClick={() => navigate('mentor')} />
           </div>
         </details>
       </nav>
@@ -743,10 +743,9 @@ function App() {
 
     <nav className="mobile-bottom-nav" aria-label="Мобильная навигация">
       <MobileNav icon={<Home />} label="Сегодня" active={view === 'home'} onClick={() => navigate('home')} />
-      <button type="button" data-testid="learning-path-mobile-trigger" onTouchStart={() => preloadDeferredFeature('learning-path')} onFocus={() => preloadDeferredFeature('learning-path')} onClick={() => openDeferredFeature('learning-path')}><span className="mobile-nav-icon"><Route /></span><small>План</small></button>
-      <button type="button" data-testid="curriculum-mobile-trigger" onTouchStart={() => preloadDeferredFeature('curriculum')} onFocus={() => preloadDeferredFeature('curriculum')} onClick={() => openDeferredFeature('curriculum')}><span className="mobile-nav-icon"><GraduationCap /></span><small>Учиться</small></button>
+      <button type="button" data-testid="learning-path-mobile-trigger" onTouchStart={() => preloadDeferredFeature('learning-path')} onFocus={() => preloadDeferredFeature('learning-path')} onClick={() => openDeferredFeature('learning-path')}><span className="mobile-nav-icon"><Route /></span><small>Маршрут</small></button>
       <MobileNav icon={<BrainCircuit />} label="Практика" active={view === 'practice'} onClick={() => navigate('practice')} />
-      <button type="button" onClick={() => setMobileNav(true)}><span className="mobile-nav-icon"><Menu /></span><small>Ещё</small></button>
+      <button type="button" data-testid="mobile-more-trigger" onClick={() => setMobileNav(true)}><span className="mobile-nav-icon"><Menu /></span><small>Ещё</small></button>
     </nav>
   </div></>;
 }
