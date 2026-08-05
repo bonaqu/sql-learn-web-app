@@ -52,7 +52,7 @@ test('desktop guided journey turns a first goal into one canonical primary actio
   await page.getByRole('button', { name: 'Закрыть Curriculum Studio' }).click();
 
   await openAllTools(page);
-  await expect(page.getByRole('button', { name: 'Уроки' })).toBeVisible();
+  await expect(page.getByTestId('curriculum-trigger')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Каталог задач' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Интервью' })).toBeVisible();
   await expect(page.getByTestId('checkpoint-trigger')).toBeVisible();
