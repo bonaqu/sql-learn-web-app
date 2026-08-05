@@ -118,17 +118,28 @@ const lookup = database.prepare(`SELECT u.user_id, u.username FROM verified_cont
   JOIN users u ON u.user_id = c.user_id
   WHERE c.channel = ? AND c.destination_digest = ?
   LIMIT 1`);
-assert.deepEqual(lookup.get('email', emailDigest), { user_id: 'user-00000001', username: 'alpha' });
-assert.deepEqual(lookup.get('sms', smsDigest), { user_id: 'user-00000002', username: 'beta' });
+const emailOwner = lookup.get('email', emailDigest) as { user_id?: unknown; username?: unknown } | undefined;
+assert.equal(emailOwner?.user_id, 'user-00000001');
+assert.equal(emailOwner?.username, 'alpha');
+const smsOwner = lookup.get('sms', smsDigest) as { user_id?: unknown; username?: unknown } | undefined;
+assert.equal(smsOwner?.user_id, 'user-00000002');
+assert.equal(smsOwner?.username, 'beta');
 assert.equal(lookup.get('sms', emailDigest), undefined, 'Channel must be part of contact identity.');
 assert.equal(lookup.get('email', 'f'.repeat(64)), undefined, 'Unknown digest must not resolve an account.');
 database.prepare('DELETE FROM users WHERE user_id = ?').run('user-00000001');
 assert.equal(lookup.get('email', emailDigest), undefined, 'Deleted-account contacts must cascade and stop resolving.');
 database.close();
 
+const capabilitiesSource = readFileSync(new URL('../worker/commercial-capabilities.ts', import.meta.url), 'utf8');
+for (const marker of [
+  'passwordRequired: true',
+  "'required-for-new-registration'",
+  'contactRegistrationPolicyReady',
+  'contactlessRegistrationAllowed'
+]) assert.ok(capabilitiesSource.includes(marker), `Capability policy is missing: ${marker}`);
+
 const policySource = readFileSync(new URL('../worker/contact-login-policy.ts', import.meta.url), 'utf8');
 for (const marker of [
-  "passwordRequired: true",
   'contactDestinationDigest',
   'contactVerificationReady(channel, env)',
   'JOIN users u ON u.user_id = c.user_id',
