@@ -237,6 +237,14 @@ const acknowledgement = deliveryEvents.indexOf('return json({\n    ok: true');
 assert.ok(retentionCall >= 0 && acknowledgement > retentionCall);
 assert.ok(deliveryEvents.slice(retentionCall, acknowledgement).includes('} catch (error) {'));
 
+const securityEventFailure = securityEvents.indexOf("console.error('contact_security_event_failed'");
+const securityRetentionCall = securityEvents.indexOf('await runRetentionCleanup(env');
+const securityRetentionFailure = securityEvents.indexOf("console.error('contact_security_retention_failed'");
+assert.ok(securityEventFailure >= 0);
+assert.ok(securityRetentionCall > securityEventFailure);
+assert.ok(securityRetentionFailure > securityRetentionCall);
+assert.ok(securityEvents.slice(securityEventFailure, securityRetentionCall).includes('return;'));
+
 const cloudflareWorkflow = readFileSync(new URL('../.github/workflows/cloudflare.yml', import.meta.url), 'utf8');
 assert.ok(cloudflareWorkflow.includes('npm ci --no-audit --no-fund'));
 assert.ok(cloudflareWorkflow.includes("CONTACT_REGISTRATION_POLICY: ${{ vars.CONTACT_REGISTRATION_POLICY || 'optional' }}"));
@@ -253,4 +261,4 @@ for (const variable of [
   assert.ok(cloudflareWorkflow.includes(`${variable}: process.env.${variable}`), `Generated production config omits ${variable}`);
 }
 
-console.log('Configurable technical retention validated: bounded privacy windows, protected admin dry-run/execute, isolated delivery acknowledgements, production deploy wiring, six technical scopes, deterministic batches and zero learning-evidence deletion.');
+console.log('Configurable technical retention validated: bounded privacy windows, protected admin dry-run/execute, isolated event persistence and cleanup errors, production deploy wiring, six technical scopes, deterministic batches and zero learning-evidence deletion.');
