@@ -84,7 +84,9 @@ test('desktop mastery loop distinguishes guided success, independent retry and r
 test('mobile mastery diagnostics remain readable without horizontal overflow', async ({ page }, testInfo) => {
   await authenticatePage(page, 'mobilemastery');
   await page.goto('./');
-  await page.getByRole('button', { name: 'Практика', exact: true }).click();
+  await page.getByLabel('Мобильная навигация')
+    .getByRole('button', { name: 'Практика', exact: true })
+    .click();
   await expect(page.getByRole('heading', { name: 'Практика' })).toBeVisible();
   await seedFirstLessonEvidence(page);
   const firstTask = page.getByRole('button', { name: /001 Контракт результата: VPN/ });
