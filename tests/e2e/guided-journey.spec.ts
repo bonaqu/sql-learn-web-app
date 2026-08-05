@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { authenticatePage } from './auth-helper';
+import { openAllTools } from './navigation-helper';
 
 async function completeDeferredOnboarding(page: import('@playwright/test').Page) {
   const dialog = page.getByTestId('onboarding-portal');
@@ -50,7 +51,7 @@ test('desktop guided journey turns a first goal into one canonical primary actio
   await expect(curriculum).toContainText(/Как читать схему и превращать вопрос в запрос/i);
   await page.getByRole('button', { name: 'Закрыть Curriculum Studio' }).click();
 
-  await page.getByRole('button', { name: 'Все разделы' }).click();
+  await openAllTools(page);
   await expect(page.getByRole('button', { name: 'Уроки' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Каталог задач' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Интервью' })).toBeVisible();
