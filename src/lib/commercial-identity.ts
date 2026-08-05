@@ -2,13 +2,24 @@ import type { AuthResponse } from './auth';
 
 export type VerificationChannel = 'email' | 'sms';
 export type VerificationPurpose = 'register' | 'password-reset' | 'sensitive-action';
-export type TurnstileAction = 'contact-challenge' | 'contact-register' | 'contact-password-reset';
+export type TurnstileAction = 'login' | 'contact-challenge' | 'contact-register' | 'contact-password-reset';
+export type ContactRegistrationPolicy = 'optional' | 'required-for-new-registration';
 
 export type CommercialCapabilities = {
   contract: 'commercial-capabilities-v1';
   authentication: {
     usernamePassword: true;
     recoveryCodes: true;
+    contactLogin: {
+      passwordRequired: true;
+      email: { enabled: boolean };
+      sms: { enabled: boolean };
+    };
+  };
+  registration: {
+    contactPolicy: ContactRegistrationPolicy;
+    policyReady: boolean;
+    contactlessAllowed: boolean;
   };
   integrations: {
     emailVerification: { enabled: boolean };
@@ -81,7 +92,20 @@ let turnstileScriptPromise: Promise<TurnstileApi> | null = null;
 function disabledCapabilities(): CommercialCapabilities {
   return {
     contract: 'commercial-capabilities-v1',
-    authentication: { usernamePassword: true, recoveryCodes: true },
+    authentication: {
+      usernamePassword: true,
+      recoveryCodes: true,
+      contactLogin: {
+        passwordRequired: true,
+        email: { enabled: false },
+        sms: { enabled: false }
+      }
+    },
+    registration: {
+      contactPolicy: 'optional',
+      policyReady: true,
+      contactlessAllowed: true
+    },
     integrations: {
       emailVerification: { enabled: false },
       smsVerification: { enabled: false },
@@ -91,18 +115,67 @@ function disabledCapabilities(): CommercialCapabilities {
   };
 }
 
+function booleanCapability(value: unknown) {
+  return typeof value === 'object'
+    && value !== null
+    && !Array.isArray(value)
+    && typeof (value as { enabled?: unknown }).enabled === 'boolean'
+    ? Boolean((value as { enabled: boolean }).enabled)
+    : null;
+}
+
 function parseCapabilities(value: unknown): CommercialCapabilities | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const candidate = value as Partial<CommercialCapabilities>;
-  const integrations = candidate.integrations;
+  const candidate = value as Record<string, unknown>;
+  const authentication = candidate.authentication as Record<string, unknown> | undefined;
+  const integrations = candidate.integrations as Record<string, unknown> | undefined;
   if (candidate.contract !== 'commercial-capabilities-v1'
-    || candidate.authentication?.usernamePassword !== true
-    || candidate.authentication?.recoveryCodes !== true
+    || authentication?.usernamePassword !== true
+    || authentication?.recoveryCodes !== true
     || !integrations) return null;
-  for (const key of ['emailVerification', 'smsVerification', 'turnstile', 'adminConsole'] as const) {
-    if (typeof integrations[key]?.enabled !== 'boolean') return null;
-  }
-  return candidate as CommercialCapabilities;
+
+  const parsedIntegrations = {
+    emailVerification: booleanCapability(integrations.emailVerification),
+    smsVerification: booleanCapability(integrations.smsVerification),
+    turnstile: booleanCapability(integrations.turnstile),
+    adminConsole: booleanCapability(integrations.adminConsole)
+  };
+  if (Object.values(parsedIntegrations).some(item => item === null)) return null;
+
+  const rawContactLogin = authentication.contactLogin as Record<string, unknown> | undefined;
+  const emailLogin = booleanCapability(rawContactLogin?.email) === true;
+  const smsLogin = booleanCapability(rawContactLogin?.sms) === true;
+  const passwordRequired = rawContactLogin?.passwordRequired === true;
+  const rawRegistration = candidate.registration as Record<string, unknown> | undefined;
+  const contactPolicy: ContactRegistrationPolicy = rawRegistration?.contactPolicy === 'required-for-new-registration'
+    ? 'required-for-new-registration'
+    : 'optional';
+  const policyReady = typeof rawRegistration?.policyReady === 'boolean'
+    ? rawRegistration.policyReady
+    : contactPolicy === 'optional';
+  const contactlessAllowed = typeof rawRegistration?.contactlessAllowed === 'boolean'
+    ? rawRegistration.contactlessAllowed
+    : contactPolicy === 'optional';
+
+  return {
+    contract: 'commercial-capabilities-v1',
+    authentication: {
+      usernamePassword: true,
+      recoveryCodes: true,
+      contactLogin: {
+        passwordRequired: passwordRequired || (!emailLogin && !smsLogin),
+        email: { enabled: passwordRequired && emailLogin },
+        sms: { enabled: passwordRequired && smsLogin }
+      }
+    },
+    registration: { contactPolicy, policyReady, contactlessAllowed },
+    integrations: {
+      emailVerification: { enabled: parsedIntegrations.emailVerification === true },
+      smsVerification: { enabled: parsedIntegrations.smsVerification === true },
+      turnstile: { enabled: parsedIntegrations.turnstile === true },
+      adminConsole: { enabled: parsedIntegrations.adminConsole === true }
+    }
+  };
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -144,9 +217,23 @@ export function enabledContactChannels(capabilities: CommercialCapabilities) {
   return channels;
 }
 
+export function enabledContactLoginChannels(capabilities: CommercialCapabilities) {
+  const channels: VerificationChannel[] = [];
+  if (capabilities.authentication.contactLogin.email.enabled) channels.push('email');
+  if (capabilities.authentication.contactLogin.sms.enabled) channels.push('sms');
+  return channels;
+}
+
 export function contactUiReady(capabilities: CommercialCapabilities) {
   const channels = enabledContactChannels(capabilities);
   return channels.length > 0
+    && (!capabilities.integrations.turnstile.enabled || TURNSTILE_SITE_KEY.length >= 8);
+}
+
+export function contactLoginUiReady(capabilities: CommercialCapabilities) {
+  const channels = enabledContactLoginChannels(capabilities);
+  return capabilities.authentication.contactLogin.passwordRequired
+    && channels.length > 0
     && (!capabilities.integrations.turnstile.enabled || TURNSTILE_SITE_KEY.length >= 8);
 }
 
@@ -225,6 +312,26 @@ function protectedHeaders(token: string) {
     'content-type': 'application/json',
     ...(token ? { 'cf-turnstile-response': token } : {})
   };
+}
+
+export async function loginWithVerifiedContact(
+  capabilities: CommercialCapabilities,
+  input: { channel: VerificationChannel; identifier: string; password: string; deviceName: string }
+) {
+  if (!enabledContactLoginChannels(capabilities).includes(input.channel)) {
+    throw new Error('Вход через этот контакт сейчас недоступен.');
+  }
+  const token = await turnstileToken(capabilities, 'login');
+  return parseResponse<AuthResponse>(await fetch('/api/auth/login', {
+    method: 'POST',
+    headers: protectedHeaders(token),
+    body: JSON.stringify({
+      identifierType: input.channel,
+      identifier: input.identifier,
+      password: input.password,
+      deviceName: input.deviceName
+    })
+  }));
 }
 
 export async function requestContactChallenge(
