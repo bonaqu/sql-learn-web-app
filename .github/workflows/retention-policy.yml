@@ -1,0 +1,55 @@
+name: Technical Retention Contract
+
+on:
+  pull_request:
+    branches:
+      - bonaqu_projects
+    paths:
+      - worker/retention-policy.ts
+      - worker/admin-health.ts
+      - worker/contact-security-events.ts
+      - worker/contact-delivery-events.ts
+      - scripts/validate-retention-policy.ts
+      - docs/technical-data-retention.md
+      - wrangler.jsonc
+      - wrangler.typegen.jsonc
+      - .github/workflows/retention-policy.yml
+  push:
+    branches:
+      - bonaqu_projects
+    paths:
+      - worker/retention-policy.ts
+      - worker/admin-health.ts
+      - worker/contact-security-events.ts
+      - worker/contact-delivery-events.ts
+      - scripts/validate-retention-policy.ts
+      - docs/technical-data-retention.md
+      - wrangler.jsonc
+      - wrangler.typegen.jsonc
+      - .github/workflows/retention-policy.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: technical-retention-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Validate retention policy
+        run: npx tsx scripts/validate-retention-policy.ts
