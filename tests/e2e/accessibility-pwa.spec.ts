@@ -56,7 +56,7 @@ test('desktop accessibility and PWA resilience preserve keyboard work', async ({
   await page.keyboard.press('Escape');
   await expect(assessmentTrigger).toBeFocused();
 
-  await page.getByRole('button', { name: 'Practice' }).click();
+  await page.getByRole('button', { name: 'Практика' }).click();
   await expect(page.getByText('SQLite готов. Выполни запрос.')).toBeVisible();
   await expect.poll(async () => (await resourceNames(page)).some(name => /sqlite-/i.test(name))).toBe(true);
   await expect.poll(async () => (await resourceNames(page)).some(name => /SqlEditor-/i.test(name))).toBe(true);
