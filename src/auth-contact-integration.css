@@ -1,0 +1,113 @@
+.primary-contact-auth-active .commercial-auth-launcher {
+  display: none;
+}
+
+.auth-identifier-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 7px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-2) 84%, transparent);
+}
+
+.auth-identifier-tabs button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 750;
+}
+
+.auth-identifier-tabs button:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.auth-identifier-tabs button.active {
+  border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--text);
+}
+
+.auth-identifier-tabs svg,
+.auth-contact-option svg,
+.auth-policy-card > svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.auth-policy-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  background: color-mix(in srgb, var(--surface-2) 88%, transparent);
+}
+
+.auth-policy-card.ready {
+  border-color: color-mix(in srgb, var(--accent) 36%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-2));
+}
+
+.auth-policy-card.blocked {
+  border-color: color-mix(in srgb, var(--danger, #ef6a76) 34%, transparent);
+  background: color-mix(in srgb, var(--danger, #ef6a76) 7%, var(--surface-2));
+}
+
+.auth-policy-card > svg {
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+.auth-policy-card span,
+.auth-policy-card strong,
+.auth-policy-card small {
+  display: block;
+}
+
+.auth-policy-card small {
+  margin-top: 4px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.auth-policy-card .auth-primary {
+  grid-column: 1 / -1;
+  width: 100%;
+  margin-top: 2px;
+}
+
+.auth-contact-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+
+.primary-contact-auth-screen .commercial-identity-backdrop {
+  z-index: 11000;
+}
+
+@media (max-width: 700px) {
+  .auth-identifier-tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-policy-card {
+    padding: 12px;
+  }
+}

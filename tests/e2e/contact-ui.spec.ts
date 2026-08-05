@@ -97,16 +97,17 @@ async function enterVerifiedEmail(page: Page) {
   await expect(page.getByText(/Email подтверждён/)).toBeVisible();
 }
 
-test('desktop verified contact UI stays absent when provider capabilities are disabled', async ({ page }) => {
+test('desktop primary auth stays username-only when provider capabilities are disabled', async ({ page }) => {
   await page.goto('./');
   await expect(page.getByTestId('auth-submit')).toBeVisible();
+  await expect(page.getByTestId('auth-username')).toBeVisible();
+  await expect(page.getByTestId('auth-identifier-email')).toHaveCount(0);
   await expect(page.getByTestId('commercial-contact-entry')).toHaveCount(0);
   await expect(page.getByTestId('verified-contact-launcher')).toHaveCount(0);
-  await expect(page.getByTestId('contact-login-launcher')).toHaveCount(0);
   await expect(page.locator('script[data-sql-academy-turnstile]')).toHaveCount(0);
 });
 
-test('desktop verified contact login sends an explicit identifier type and no verification code', async ({ page }) => {
+test('desktop primary auth logs in by verified email without a verification code', async ({ page }) => {
   await mockEmailCapability(page);
   await mockProgressSync(page);
   let challengeRequests = 0;
@@ -148,30 +149,33 @@ test('desktop verified contact login sends an explicit identifier type and no ve
   });
 
   await page.goto('./');
-  await page.getByTestId('contact-login-launcher').click();
-  await expect(page.getByTestId('contact-login-modal')).toBeVisible();
-  await page.getByTestId('contact-login-identifier').fill('jane@example.com');
-  await page.getByTestId('contact-login-password').fill(TEST_PASSWORD);
-  await page.getByTestId('contact-login-submit').click();
-  await expect(page.getByTestId('contact-login-modal')).toHaveCount(0);
+  await page.getByTestId('auth-identifier-email').click();
+  await expect(page.getByTestId('auth-username')).toHaveCount(0);
+  await page.getByTestId('auth-contact-identifier').fill('jane@example.com');
+  await page.getByTestId('auth-password').fill(TEST_PASSWORD);
+  await page.getByTestId('auth-submit').click();
   await expect(page.getByTestId('auth-submit')).toHaveCount(0);
   expect(challengeRequests).toBe(0);
 });
 
-test('required registration policy is explicit without locking out existing users', async ({ page }) => {
+test('required registration policy replaces the contactless registration form', async ({ page }) => {
   await mockEmailCapability(page, {
     contactPolicy: 'required-for-new-registration',
     policyReady: true,
     contactlessAllowed: false
   });
   await page.goto('./');
-  await expect(page.getByText('Контакт обязателен для новых аккаунтов')).toBeVisible();
-  await expect(page.getByText(/Существующие пользователи сохраняют вход по логину/)).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Подтвердить контакт и зарегистрироваться', exact: true })).toBeVisible();
-  await expect(page.getByTestId('auth-submit')).toBeVisible();
+  await page.getByRole('button', { name: 'Регистрация', exact: true }).click();
+  await expect(page.getByTestId('required-contact-registration')).toBeVisible();
+  await expect(page.getByText(/Существующие пользователи продолжают входить по логину/)).toBeVisible();
+  await expect(page.getByTestId('primary-contact-register')).toBeVisible();
+  await expect(page.getByTestId('auth-username')).toHaveCount(0);
+  await expect(page.getByTestId('auth-submit')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Вход', exact: true }).click();
+  await expect(page.getByTestId('auth-username')).toBeVisible();
 });
 
-test('desktop verified contact registration enters the mandatory recovery-code gate', async ({ page }) => {
+test('desktop optional registration opens the verified contact recovery-code flow from the primary form', async ({ page }) => {
   await mockEmailCapability(page);
   await mockVerification(page, 'register');
   await page.route('**/api/auth/contact/register', async route => {
@@ -209,8 +213,8 @@ test('desktop verified contact registration enters the mandatory recovery-code g
   });
 
   await page.goto('./');
-  await expect(page.getByTestId('commercial-contact-entry')).toBeVisible();
-  await page.getByRole('button', { name: 'Регистрация с контактом', exact: true }).click();
+  await page.getByRole('button', { name: 'Регистрация', exact: true }).click();
+  await page.getByRole('button', { name: 'Создать аккаунт с подтверждённым контактом', exact: true }).click();
   await enterVerifiedEmail(page);
   const modal = page.getByTestId('contact-register-modal');
   await modal.getByTestId('contact-register-username').fill('verified_user');
@@ -224,7 +228,7 @@ test('desktop verified contact registration enters the mandatory recovery-code g
   await expect(page.locator('script[data-sql-academy-turnstile]')).toHaveCount(0);
 });
 
-test('desktop verified contact recovery revokes sessions through the bound destination', async ({ page }) => {
+test('desktop primary auth recovers through a verified contact', async ({ page }) => {
   await mockEmailCapability(page);
   await mockVerification(page, 'password-reset');
   await page.route('**/api/auth/contact/password/reset', async route => {
@@ -239,14 +243,17 @@ test('desktop verified contact recovery revokes sessions through the bound desti
   });
 
   await page.goto('./');
-  await expect(page.getByRole('button', { name: 'Восстановить через контакт', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Восстановить через контакт', exact: true }).click();
-  await enterVerifiedEmail(page);
-  await page.getByTestId('contact-new-password').fill(TEST_PASSWORD);
-  await page.getByTestId('contact-new-password-confirm').fill(TEST_PASSWORD);
-  await page.getByTestId('contact-finish').click();
+  await page.getByRole('button', { name: 'Забыл пароль или хочу его сменить', exact: true }).click();
+  await page.getByTestId('primary-contact-recovery').click();
+  await expect(page.getByTestId('primary-contact-recovery-modal')).toBeVisible();
+  await page.getByTestId('primary-recovery-destination').fill('jane@example.com');
+  await page.getByTestId('primary-recovery-send').click();
+  await page.getByTestId('primary-recovery-code').fill('123456');
+  await page.getByTestId('primary-recovery-confirm').click();
+  await page.getByTestId('primary-recovery-password').fill(TEST_PASSWORD);
+  await page.getByTestId('primary-recovery-password-confirm').fill(TEST_PASSWORD);
+  await page.getByTestId('primary-recovery-finish').click();
   await expect(page.getByRole('heading', { name: 'Пароль изменён' })).toBeVisible();
-  await expect(page.getByText('Все старые сессии отозваны.')).toBeVisible();
 });
 
 test('desktop verified contact binding lists only a masked destination', async ({ page }) => {
@@ -293,10 +300,11 @@ test('desktop verified contact binding lists only a masked destination', async (
   await expect(page.getByText('jane@example.com')).toHaveCount(0);
 });
 
-test('mobile verified contact registration remains inside the Pixel 7 viewport', async ({ page }) => {
+test('mobile primary contact registration remains inside the Pixel 7 viewport', async ({ page }) => {
   await mockEmailCapability(page);
   await page.goto('./');
-  await page.getByRole('button', { name: 'Регистрация с контактом', exact: true }).click();
+  await page.getByRole('button', { name: 'Регистрация', exact: true }).click();
+  await page.getByRole('button', { name: 'Создать аккаунт с подтверждённым контактом', exact: true }).click();
   await expect(page.getByTestId('contact-register-modal')).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
   expect(overflow).toBe(false);
