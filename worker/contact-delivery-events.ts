@@ -152,9 +152,26 @@ function sameDeliveryEvent(existing: ExistingDeliveryEventRow, body: DeliveryEve
     && existing.occurred_at === occurredAt;
 }
 
+async function pruneDeliveryRetention(env: ContactDeliveryEnvironment, body: DeliveryEventBody) {
+  try {
+    await runRetentionCleanup(env, {
+      execute: true,
+      scopes: ['contactDeliveryEvents', 'contactSecurityEvents']
+    });
+  } catch (error) {
+    const name = error instanceof Error ? error.name.slice(0, 80) : 'UnknownError';
+    console.error('contact_delivery_retention_failed', {
+      eventId: body.eventId,
+      deliveryStatus: body.status,
+      name
+    });
+  }
+}
+
 export async function handleContactDeliveryEventRequest(
   request: Request,
-  env: ContactDeliveryEnvironment
+  env: ContactDeliveryEnvironment,
+  context?: ExecutionContext
 ): Promise<Response | null> {
   const url = new URL(request.url);
   if (url.pathname !== DELIVERY_PATH) return null;
@@ -233,19 +250,10 @@ export async function handleContactDeliveryEventRequest(
     }
   }
 
-  try {
-    await runRetentionCleanup(env, {
-      execute: true,
-      scopes: ['contactDeliveryEvents', 'contactSecurityEvents']
-    });
-  } catch (error) {
-    const name = error instanceof Error ? error.name.slice(0, 80) : 'UnknownError';
-    console.error('contact_delivery_retention_failed', {
-      eventId: body.eventId,
-      deliveryStatus: body.status,
-      name
-    });
-  }
+  const retention = pruneDeliveryRetention(env, body);
+  if (context) context.waitUntil(retention);
+  else await retention;
+
   return json({
     ok: true,
     duplicate,
