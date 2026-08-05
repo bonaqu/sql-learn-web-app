@@ -124,10 +124,38 @@ function sqliteTime(date = new Date()) {
   return date.toISOString().slice(0, 19).replace('T', ' ');
 }
 
+async function pruneSecurityRetention(
+  env: ContactVerificationEnvironment,
+  pathname: string,
+  eventType: SecurityEventType,
+  responseStatus: number
+) {
+  try {
+    await runRetentionCleanup(env, {
+      execute: true,
+      scopes: [
+        'contactSecurityEvents',
+        'expiredUnconfirmedChallenges',
+        'confirmedUnconsumedChallenges',
+        'consumedChallenges'
+      ]
+    });
+  } catch (error) {
+    const name = error instanceof Error ? error.name.slice(0, 80) : 'UnknownError';
+    console.error('contact_security_retention_failed', {
+      pathname,
+      eventType,
+      responseStatus,
+      name
+    });
+  }
+}
+
 export async function recordContactSecurityOutcome(
   request: ContactSecurityRequest,
   response: Response,
-  env: ContactVerificationEnvironment
+  env: ContactVerificationEnvironment,
+  context?: ExecutionContext
 ) {
   const pathname = new URL(request.url).pathname;
   if (pathname !== CHALLENGE_PATH && pathname !== CONFIRM_PATH) return;
@@ -159,23 +187,7 @@ export async function recordContactSecurityOutcome(
     return;
   }
 
-  try {
-    await runRetentionCleanup(env, {
-      execute: true,
-      scopes: [
-        'contactSecurityEvents',
-        'expiredUnconfirmedChallenges',
-        'confirmedUnconsumedChallenges',
-        'consumedChallenges'
-      ]
-    });
-  } catch (error) {
-    const name = error instanceof Error ? error.name.slice(0, 80) : 'UnknownError';
-    console.error('contact_security_retention_failed', {
-      pathname,
-      eventType,
-      responseStatus: response.status,
-      name
-    });
-  }
+  const retention = pruneSecurityRetention(env, pathname, eventType, response.status);
+  if (context) context.waitUntil(retention);
+  else await retention;
 }
