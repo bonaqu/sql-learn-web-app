@@ -3,9 +3,12 @@ import { readFileSync } from 'node:fs';
 
 const client = readFileSync(new URL('../src/lib/commercial-identity.ts', import.meta.url), 'utf8');
 const portal = readFileSync(new URL('../src/components/CommercialIdentityPortal.tsx', import.meta.url), 'utf8');
+const primary = readFileSync(new URL('../src/components/CapabilityAuthScreen.tsx', import.meta.url), 'utf8');
+const boundary = readFileSync(new URL('../src/components/IntegratedAuthGate.tsx', import.meta.url), 'utf8');
 const main = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../src/commercial-identity.css', import.meta.url), 'utf8');
 const launcherCss = readFileSync(new URL('../src/commercial-identity-v2.css', import.meta.url), 'utf8');
+const integrationCss = readFileSync(new URL('../src/auth-contact-integration.css', import.meta.url), 'utf8');
 
 for (const marker of [
   "contract: 'commercial-capabilities-v1'",
@@ -88,10 +91,71 @@ assert.ok(portal.includes('Recovery-коды всё равно останутс�
 assert.ok(portal.includes('Контакт необязателен'), 'Optional-policy copy disappeared');
 assert.ok(portal.includes('Одноразовый код не отправляется'), 'Password login is not clearly distinguished from verification');
 
-const authGateEnd = main.indexOf('</AuthGate>');
+for (const marker of [
+  'loadCommercialCapabilities().then(setCapabilities)',
+  'enabledContactLoginChannels(capabilities)',
+  'enabledContactChannels(capabilities)',
+  'contactLoginUiReady(capabilities)',
+  'contactUiReady(capabilities)',
+  "type IdentifierMode = 'username' | VerificationChannel",
+  "const identifierOptions: IdentifierMode[] = ['username'",
+  'data-testid={`auth-identifier-${item}`}',
+  'loginWithVerifiedContact(capabilities',
+  'identifier: contactIdentifier',
+  'password,',
+  'sessionFromResponse(response)',
+  'saveAuthSession(session)',
+  'onAuthenticated(session)',
+  "capabilities?.registration.contactPolicy === 'required-for-new-registration'",
+  'capabilities?.registration.policyReady',
+  '!capabilities.registration.contactlessAllowed',
+  'data-testid="required-contact-registration"',
+  'data-testid="primary-contact-register"',
+  'Регистрация безопасно отключена',
+  'оператор ещё не завершил настройку подтверждённого контакта',
+  'requestContactChallenge(capabilities',
+  "purpose: 'password-reset'",
+  'confirmContactChallenge(challenge.challengeId, code)',
+  'resetPasswordWithVerifiedContact(capabilities, ticket, password)',
+  'data-testid="primary-contact-recovery"',
+  "sessionStorage.setItem(PENDING_REGISTRATION_KEY",
+  "window.dispatchEvent(new CustomEvent('sql-academy-registration-pending'"
+]) assert.ok(primary.includes(marker), `Primary capability auth screen lost ${marker}`);
+
+assert.ok(primary.includes("identifierMode === 'username'"), 'Primary login no longer preserves username authentication');
+assert.ok(primary.includes('const { session } = await loginUser(username, password)'), 'Username login bypasses the canonical auth client');
+assert.ok(primary.includes('Подтверждённый контакт используется только как идентификатор. Пароль обязателен, код не отправляется.'), 'Primary login no longer explains the password-only contact contract');
+assert.ok(primary.includes("if (mode === 'register' && requiredPolicy)"), 'Required registration policy can fall through to contactless registration');
+assert.ok(primary.includes("if (requiredReady) openVerifiedRegistration()"), 'Ready required policy no longer enters verified registration');
+assert.ok(primary.includes('else throw new Error'), 'Unavailable required policy no longer fails closed');
+assert.ok(!primary.includes('localStorage.setItem'), 'Primary contact destination, challenge or ticket may be persisted in localStorage');
+assert.ok(!primary.includes('code: input.code'), 'Primary password login may have regressed to OTP login');
+assert.ok(primary.includes('maskedDestination'), 'Primary recovery no longer displays only masked destinations');
+
+for (const marker of [
+  "import AuthGate from './AuthGate'",
+  "import CapabilityAuthScreen from './CapabilityAuthScreen'",
+  "const PENDING_REGISTRATION_KEY = 'sql-academy-pending-registration-v1'",
+  'Boolean(loadAuthSession()) || hasPendingRegistration()',
+  'window.addEventListener(AUTH_CHANGED_EVENT, authChanged)',
+  'window.addEventListener(REGISTRATION_PENDING_EVENT, registrationPending)',
+  'document.documentElement.classList.toggle(PRIMARY_CONTACT_AUTH_CLASS, !delegateToExistingGate)',
+  'if (delegateToExistingGate) return <AuthGate>{children}</AuthGate>',
+  '<CapabilityAuthScreen onAuthenticated={session =>',
+  'saveAuthSession(session)',
+  'setDelegateToExistingGate(true)'
+]) assert.ok(boundary.includes(marker), `Integrated auth boundary lost ${marker}`);
+
+assert.ok(!boundary.includes('clearAuthSession('), 'Integrated boundary must not revoke an authenticated session during handoff');
+assert.ok(!boundary.includes('fetch('), 'Integrated boundary must not create a parallel network auth layer');
+
+const gateEnd = main.indexOf('</IntegratedAuthGate>');
 const portalPosition = main.indexOf('<CommercialIdentityPortal />');
-assert.ok(authGateEnd >= 0 && portalPosition > authGateEnd, 'React-owned contact launcher must stay mounted for both guest and authenticated AuthGate states');
+assert.ok(gateEnd >= 0 && portalPosition > gateEnd, 'React-owned contact portal must stay mounted outside the integrated auth boundary');
+assert.ok(main.includes("import IntegratedAuthGate from './components/IntegratedAuthGate'"), 'Application no longer mounts the integrated auth boundary');
+assert.ok(!main.includes("import AuthGate from './components/AuthGate'"), 'Application mounted both old and integrated auth gates at the root');
 assert.ok(main.includes("import CommercialIdentityPortal from './components/CommercialIdentityPortal'"), 'Application no longer mounts the contact portal');
+assert.ok(main.includes("import './auth-contact-integration.css'"), 'Primary auth integration CSS is not loaded');
 assert.ok(main.includes("import './commercial-identity.css'"), 'Commercial contact modal CSS is not loaded');
 assert.ok(main.includes("import './commercial-identity-v2.css'"), 'React-owned launcher CSS is not loaded');
 assert.ok(css.includes('@media (max-width: 700px)'), 'Contact modal has no explicit mobile contract');
@@ -100,5 +164,11 @@ assert.ok(css.includes('commercial-turnstile-host'), 'Turnstile interaction has 
 assert.ok(launcherCss.includes('.commercial-auth-launcher'), 'Guest capability launcher has no owned layout');
 assert.ok(launcherCss.includes('.commercial-contact-launcher'), 'Authenticated contact launcher has no owned layout');
 assert.ok(launcherCss.includes('@media (max-width: 700px)'), 'React-owned launchers have no mobile contract');
+assert.ok(integrationCss.includes('.primary-contact-auth-active .commercial-auth-launcher'), 'Floating guest launcher is not suppressed while the primary screen owns guest auth');
+assert.ok(integrationCss.includes('.auth-identifier-tabs'), 'Primary identifier selector has no owned layout');
+assert.ok(integrationCss.includes('repeat(auto-fit, minmax(110px, 1fr))'), 'Primary identifier selector is not adaptive');
+assert.ok(integrationCss.includes('.auth-policy-card.ready'), 'Ready registration policy has no visual state');
+assert.ok(integrationCss.includes('.auth-policy-card.blocked'), 'Blocked registration policy has no visual state');
+assert.ok(integrationCss.includes('@media (max-width: 700px)'), 'Primary auth integration has no mobile contract');
 
-console.log('Capability-gated contact UI validated: explicit password login, policy-aware registration, React-owned launchers, no DOM scraping and privacy-safe masked state.');
+console.log('Capability-gated auth UI validated: one primary login screen, password-only contact identifiers, fail-closed registration policy, canonical recovery handoff and no parallel auth state.');
