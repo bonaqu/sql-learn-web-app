@@ -5,6 +5,7 @@ import {
   KeyRound,
   Link,
   LoaderCircle,
+  LogIn,
   Mail,
   Phone,
   ShieldCheck,
@@ -12,15 +13,23 @@ import {
   X
 } from 'lucide-react';
 import type { AuthResponse } from '../lib/auth';
-import { AUTH_CHANGED_EVENT, loadAuthSession } from '../lib/auth';
+import {
+  AUTH_CHANGED_EVENT,
+  loadAuthSession,
+  saveAuthSession,
+  sessionFromResponse
+} from '../lib/auth';
 import {
   attachVerifiedContact,
   type CommercialCapabilities,
   confirmContactChallenge,
+  contactLoginUiReady,
   contactUiReady,
   enabledContactChannels,
+  enabledContactLoginChannels,
   fetchVerifiedContacts,
   loadCommercialCapabilities,
+  loginWithVerifiedContact,
   registerWithVerifiedContact,
   requestContactChallenge,
   resetPasswordWithVerifiedContact,
@@ -33,6 +42,7 @@ import {
 import { useDialogFocus } from '../lib/dialog-focus';
 
 const PENDING_REGISTRATION_KEY = 'sql-academy-pending-registration-v1';
+export const OPEN_CONTACT_REGISTRATION_EVENT = 'sql-academy-open-contact-registration';
 type Flow = 'register' | 'reset' | 'attach';
 type WizardStep = 'destination' | 'code' | 'account' | 'success';
 
@@ -50,7 +60,7 @@ function friendlyError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes('Failed to fetch')) return 'Сервис подтверждения сейчас недоступен. Проверь подключение и повтори действие.';
   if (message.includes('recently')) return 'Код уже отправлялся недавно. Подожди минуту перед повтором.';
-  if (message.includes('Too many')) return 'Слишком много запросов кода. Сделай паузу и попробуй позже.';
+  if (message.includes('Too many')) return 'Слишком много запросов. Сделай паузу и попробуй позже.';
   return message || 'Не удалось выполнить действие.';
 }
 
@@ -66,8 +76,99 @@ function channelIcon(channel: VerificationChannel) {
   return channel === 'email' ? <Mail /> : <Phone />;
 }
 
+function clientDeviceName() {
+  const platform = navigator.userAgentData?.platform || navigator.platform || 'Браузер';
+  const mobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+  return `${mobile ? 'Телефон' : 'ПК'} · ${platform}`.slice(0, 64);
+}
+
 function purposeForFlow(flow: Flow): VerificationPurpose {
   return flow === 'register' ? 'register' : flow === 'reset' ? 'password-reset' : 'sensitive-action';
+}
+
+function ContactLoginDialog({
+  capabilities,
+  channels,
+  onClose
+}: {
+  capabilities: CommercialCapabilities;
+  channels: VerificationChannel[];
+  onClose: () => void;
+}) {
+  const [channel, setChannel] = useState<VerificationChannel>(channels[0] || 'email');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const modalRef = useRef<HTMLElement>(null);
+
+  useDialogFocus(true, modalRef, () => { if (!busy) onClose(); });
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, []);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      const response = await loginWithVerifiedContact(capabilities, {
+        channel,
+        identifier,
+        password,
+        deviceName: clientDeviceName()
+      });
+      const session = sessionFromResponse(response);
+      saveAuthSession(session);
+      window.dispatchEvent(new CustomEvent(AUTH_CHANGED_EVENT, { detail: session }));
+      onClose();
+    } catch (reason) {
+      setError(friendlyError(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return <div className="commercial-identity-backdrop" onMouseDown={event => {
+    if (event.currentTarget === event.target && !busy) onClose();
+  }}>
+    <section ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="contact-login-title" className="commercial-identity-modal" data-testid="contact-login-modal">
+      <header>
+        <div><span className="auth-kicker">Пароль обязателен</span><h2 id="contact-login-title">Войти по подтверждённому контакту</h2></div>
+        <button type="button" className="icon" data-autofocus onClick={onClose} disabled={busy} aria-label="Закрыть"><X /></button>
+      </header>
+      <form className="commercial-identity-body" onSubmit={event => void submit(event)}>
+        <p>Это обычный вход с паролем. Одноразовый код не отправляется, а ошибка не сообщает, зарегистрирован ли контакт.</p>
+        {channels.length > 1 && <div className="commercial-channel-tabs" role="group" aria-label="Тип идентификатора">
+          {channels.map(item => <button key={item} type="button" aria-pressed={channel === item} className={channel === item ? 'active' : ''} onClick={() => { setChannel(item); setIdentifier(''); }}>
+            {channelIcon(item)}{channelLabel(item)}
+          </button>)}
+        </div>}
+        <label className="auth-field">
+          <span>{channelLabel(channel)}</span>
+          <input
+            data-testid="contact-login-identifier"
+            type={channel === 'email' ? 'email' : 'tel'}
+            autoComplete={channel === 'email' ? 'email' : 'tel'}
+            value={identifier}
+            onChange={event => setIdentifier(event.target.value)}
+            placeholder={channelPlaceholder(channel)}
+            required
+          />
+        </label>
+        <label className="auth-field">
+          <span>Пароль</span>
+          <input data-testid="contact-login-password" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} required />
+        </label>
+        {error && <div className="auth-notice error" role="alert"><ShieldCheck />{error}</div>}
+        <button type="submit" className="auth-primary" data-testid="contact-login-submit" disabled={busy || identifier.trim().length < 3 || !password}>
+          {busy ? <LoaderCircle className="spin" /> : <LogIn />}Войти с паролем
+        </button>
+      </form>
+    </section>
+  </div>;
 }
 
 function ContactWizard({
@@ -199,7 +300,7 @@ function ContactWizard({
   }}>
     <section ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="commercial-identity-title" className="commercial-identity-modal" data-testid={`contact-${flow}-modal`}>
       <header>
-        <div><span className="auth-kicker">Опциональная защита аккаунта</span><h2 id="commercial-identity-title">{title}</h2></div>
+        <div><span className="auth-kicker">{flow === 'register' && capabilities.registration.contactPolicy === 'required-for-new-registration' ? 'Обязательный контакт' : 'Опциональная защита аккаунта'}</span><h2 id="commercial-identity-title">{title}</h2></div>
         <button type="button" className="icon" data-autofocus onClick={onClose} disabled={busy} aria-label="Закрыть"><X /></button>
       </header>
 
@@ -270,11 +371,25 @@ function ContactWizard({
   </div>;
 }
 
-function GuestContactLauncher({ onOpen }: { onOpen: (flow: Flow) => void }) {
+function GuestContactLauncher({
+  capabilities,
+  loginReady,
+  onOpen,
+  onLogin
+}: {
+  capabilities: CommercialCapabilities;
+  loginReady: boolean;
+  onOpen: (flow: Flow) => void;
+  onLogin: () => void;
+}) {
+  const required = capabilities.registration.contactPolicy === 'required-for-new-registration'
+    && capabilities.registration.policyReady
+    && !capabilities.registration.contactlessAllowed;
   return <aside className="commercial-auth-launcher" data-testid="commercial-contact-entry" aria-label="Дополнительные способы входа">
-    <div className="commercial-auth-launcher-copy"><ShieldCheck /><span><strong>Контакт необязателен</strong><small>Логин и recovery-коды работают без него. Email или телефон добавляют ещё один защищённый путь.</small></span></div>
+    <div className="commercial-auth-launcher-copy"><ShieldCheck /><span><strong>{required ? 'Контакт обязателен для новых аккаунтов' : 'Контакт необязателен'}</strong><small>{required ? 'Существующие пользователи сохраняют вход по логину. Новый аккаунт создаётся только после подтверждения email или телефона.' : 'Логин и recovery-коды работают без него. Email или телефон добавляют ещё один защищённый путь.'}</small></span></div>
     <div className="commercial-auth-launcher-actions">
-      <button type="button" onClick={() => onOpen('register')}><UserPlus />Регистрация с контактом</button>
+      {loginReady && <button type="button" data-testid="contact-login-launcher" onClick={onLogin}><LogIn />Войти по контакту</button>}
+      <button type="button" onClick={() => onOpen('register')}><UserPlus />{required ? 'Подтвердить контакт и зарегистрироваться' : 'Регистрация с контактом'}</button>
       <button type="button" onClick={() => onOpen('reset')}><KeyRound />Восстановить через контакт</button>
     </div>
   </aside>;
@@ -343,6 +458,7 @@ function ContactSecurityDrawer({
 export default function CommercialIdentityPortal() {
   const [capabilities, setCapabilities] = useState<CommercialCapabilities | null>(null);
   const [flow, setFlow] = useState<Flow | null>(null);
+  const [loginOpen, setLoginOpen] = useState(false);
   const [initialChannel, setInitialChannel] = useState<VerificationChannel | undefined>();
   const [contacts, setContacts] = useState<VerifiedContact[]>([]);
   const [contactsLoading, setContactsLoading] = useState(false);
@@ -355,7 +471,9 @@ export default function CommercialIdentityPortal() {
   }, []);
 
   const channels = useMemo(() => capabilities ? enabledContactChannels(capabilities) : [], [capabilities]);
+  const loginChannels = useMemo(() => capabilities ? enabledContactLoginChannels(capabilities) : [], [capabilities]);
   const ready = Boolean(capabilities && contactUiReady(capabilities));
+  const loginReady = Boolean(capabilities && contactLoginUiReady(capabilities));
 
   const refreshContacts = useCallback(async () => {
     if (!authenticated || !ready) return;
@@ -374,16 +492,28 @@ export default function CommercialIdentityPortal() {
       const next = Boolean(loadAuthSession());
       setAuthenticated(next);
       if (!next) setSecurityOpen(false);
+      else setLoginOpen(false);
     };
     window.addEventListener(AUTH_CHANGED_EVENT, handler);
     return () => window.removeEventListener(AUTH_CHANGED_EVENT, handler);
   }, []);
 
   useEffect(() => {
+    const openRegistration = () => {
+      if (!authenticated && ready) {
+        setInitialChannel(undefined);
+        setFlow('register');
+      }
+    };
+    window.addEventListener(OPEN_CONTACT_REGISTRATION_EVENT, openRegistration);
+    return () => window.removeEventListener(OPEN_CONTACT_REGISTRATION_EVENT, openRegistration);
+  }, [authenticated, ready]);
+
+  useEffect(() => {
     if (securityOpen && authenticated && ready) void refreshContacts();
   }, [authenticated, ready, refreshContacts, securityOpen]);
 
-  if (!capabilities || !ready) return null;
+  if (!capabilities || (!ready && !loginReady)) return null;
 
   const open = (nextFlow: Flow, channel?: VerificationChannel) => {
     setInitialChannel(channel);
@@ -395,9 +525,9 @@ export default function CommercialIdentityPortal() {
   };
 
   return <>
-    {!authenticated && <GuestContactLauncher onOpen={open} />}
-    {authenticated && <button type="button" className="commercial-contact-launcher" data-testid="verified-contact-launcher" onClick={() => setSecurityOpen(true)}><ShieldCheck />Контакты аккаунта</button>}
-    {authenticated && createPortal(<ContactSecurityDrawer open={securityOpen} onClose={() => setSecurityOpen(false)}>
+    {!authenticated && <GuestContactLauncher capabilities={capabilities} loginReady={loginReady} onOpen={open} onLogin={() => setLoginOpen(true)} />}
+    {authenticated && ready && <button type="button" className="commercial-contact-launcher" data-testid="verified-contact-launcher" onClick={() => setSecurityOpen(true)}><ShieldCheck />Контакты аккаунта</button>}
+    {authenticated && ready && createPortal(<ContactSecurityDrawer open={securityOpen} onClose={() => setSecurityOpen(false)}>
       <ContactSecurityCard
         channels={channels}
         contacts={contacts}
@@ -407,7 +537,12 @@ export default function CommercialIdentityPortal() {
         onRefresh={() => void refreshContacts()}
       />
     </ContactSecurityDrawer>, document.body)}
-    {flow && createPortal(<ContactWizard
+    {!authenticated && loginOpen && loginReady && createPortal(<ContactLoginDialog
+      capabilities={capabilities}
+      channels={loginChannels}
+      onClose={() => setLoginOpen(false)}
+    />, document.body)}
+    {flow && ready && createPortal(<ContactWizard
       flow={flow}
       capabilities={capabilities}
       channels={initialChannel ? [initialChannel] : channels}
