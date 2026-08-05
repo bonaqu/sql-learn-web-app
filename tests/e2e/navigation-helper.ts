@@ -3,10 +3,10 @@ import { curriculumLessons } from '../../src/data/complete-curriculum';
 import { lessonChecks } from '../../src/data/lesson-checks';
 
 const advancedToolNames: Record<string, RegExp> = {
-  'assessment-trigger': /Экзамены/i,
+  'assessment-trigger': /Проверка/i,
   'checkpoint-trigger': /Контрольные этапы/i,
-  'curriculum-trigger': /Учиться/i,
-  'learning-path-trigger': /Мой план/i,
+  'curriculum-trigger': /Уроки/i,
+  'learning-path-trigger': /Маршрут/i,
   'onboarding-trigger': /Настроить маршрут/i,
   'syllabus-open': /Диалекты и карта курса/i,
   'syllabus-trigger': /Диалекты и карта курса/i
