@@ -1,0 +1,53 @@
+name: Operational Runbook Contract
+
+on:
+  pull_request:
+    branches:
+      - bonaqu_projects
+    paths:
+      - docs/operations/**
+      - scripts/validate-operational-runbooks.mjs
+      - scripts/production-health-probe.mjs
+      - scripts/d1-backup.mjs
+      - scripts/verify-d1-backup.mjs
+      - scripts/d1-restore-rehearsal.mjs
+      - package.json
+      - .github/workflows/operational-runbooks.yml
+  push:
+    branches:
+      - bonaqu_projects
+    paths:
+      - docs/operations/**
+      - scripts/validate-operational-runbooks.mjs
+      - scripts/production-health-probe.mjs
+      - scripts/d1-backup.mjs
+      - scripts/verify-d1-backup.mjs
+      - scripts/d1-restore-rehearsal.mjs
+      - package.json
+      - .github/workflows/operational-runbooks.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: operational-runbooks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Validate syntax
+        run: node --check scripts/validate-operational-runbooks.mjs
+
+      - name: Validate operational contracts
+        run: node scripts/validate-operational-runbooks.mjs
