@@ -49,8 +49,8 @@ test('desktop password account requires login and syncs progress across two devi
 
   await expect(guidedHome(page)).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Войти в академию' })).toBeHidden();
-  await page.locator('.sidebar nav').getByRole('button', { name: 'Practice' }).click();
-  await expect(page.getByRole('heading', { name: 'Practice Mode' })).toBeVisible();
+  await page.locator('.sidebar nav').getByRole('button', { name: 'Практика' }).click();
+  await expect(page.getByRole('heading', { name: 'Практика' })).toBeVisible();
   await seedFirstLessonEvidence(page);
   const firstTask = page.locator('.task-row').first();
   await expect(firstTask).toContainText('Текущий шаг маршрута');
