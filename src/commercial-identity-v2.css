@@ -4,7 +4,7 @@
   right: 18px;
   bottom: 18px;
   display: grid;
-  width: min(590px, calc(100vw - 36px));
+  width: min(690px, calc(100vw - 36px));
   gap: 12px;
   padding: 15px;
   border: 1px solid color-mix(in srgb, var(--accent, #7c83ff) 30%, transparent);
@@ -40,7 +40,7 @@
 
 .commercial-auth-launcher-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 8px;
 }
 
@@ -71,6 +71,7 @@
 .commercial-contact-launcher svg {
   width: 18px;
   height: 18px;
+  flex: 0 0 auto;
 }
 
 .commercial-contact-launcher {
@@ -96,7 +97,7 @@
     right: 10px;
     bottom: 10px;
     width: calc(100vw - 20px);
-    max-height: min(310px, 46dvh);
+    max-height: min(360px, 52dvh);
     overflow: auto;
     padding: 12px;
   }
