@@ -1,0 +1,59 @@
+name: Dependency Governance
+
+on:
+  pull_request:
+    branches:
+      - bonaqu_projects
+    paths:
+      - package.json
+      - package-lock.json
+      - THIRD_PARTY_NOTICES.md
+      - docs/third-party-dependencies.json
+      - docs/dependency-governance.md
+      - scripts/generate-third-party-notices.mjs
+      - scripts/validate-dependency-governance.mjs
+      - .github/workflows/**
+  push:
+    branches:
+      - bonaqu_projects
+    paths:
+      - package.json
+      - package-lock.json
+      - THIRD_PARTY_NOTICES.md
+      - docs/third-party-dependencies.json
+      - scripts/generate-third-party-notices.mjs
+      - scripts/validate-dependency-governance.mjs
+      - .github/workflows/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-governance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact locked dependency tree
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Verify generated third-party artifacts
+        run: node scripts/generate-third-party-notices.mjs --check
+
+      - name: Validate dependency governance contract
+        run: node scripts/validate-dependency-governance.mjs
+
+      - name: Audit production dependency graph
+        run: npm audit --omit=dev --audit-level=high
