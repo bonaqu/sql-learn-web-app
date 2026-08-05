@@ -12,7 +12,7 @@ test('desktop academy keeps Interview browseable but gates execution before the 
   await page.goto('./');
 
   await openAllTools(page);
-  await page.getByRole('button', { name: 'Interview', exact: true }).click();
+  await page.getByRole('button', { name: 'Интервью', exact: true }).click();
 
   const firstTask = page.locator('.task-row').first();
   await expect(firstTask).toBeVisible();
@@ -42,7 +42,7 @@ test('mobile task flow keeps a preview gate readable without horizontal overflow
   await page.goto('./');
 
   await openAllTools(page);
-  await page.locator('.sidebar').getByRole('button', { name: 'Interview', exact: true }).click();
+  await page.locator('.sidebar').getByRole('button', { name: 'Интервью', exact: true }).click();
   const firstTask = page.locator('.task-row').first();
   await expect(firstTask).toHaveAttribute('data-readiness', 'preview');
   await firstTask.click();
