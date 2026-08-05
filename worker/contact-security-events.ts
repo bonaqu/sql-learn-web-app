@@ -3,6 +3,7 @@ import {
   type ContactVerificationEnvironment
 } from './contact-verification';
 import type { VerificationChannel, VerificationPurpose } from './integrations/verification';
+import { runRetentionCleanup } from './retention-policy';
 
 type SecurityEventType =
   | 'challenge-created'
@@ -27,8 +28,6 @@ type ContactSecurityRequest = {
 const CHALLENGE_PATH = '/api/auth/contact/challenge';
 const CONFIRM_PATH = '/api/auth/contact/confirm';
 const MAX_BODY_BYTES = 4_096;
-const RETENTION_MS = 30 * 86_400_000;
-const UNCONSUMED_TICKET_RETENTION_MS = 86_400_000;
 const CHALLENGE_ID_PATTERN = /^[0-9a-f-]{36}$/i;
 
 function ownedBuffer(bytes: Uint8Array) {
@@ -125,21 +124,6 @@ function sqliteTime(date = new Date()) {
   return date.toISOString().slice(0, 19).replace('T', ' ');
 }
 
-async function pruneSecurityEvents(env: ContactVerificationEnvironment) {
-  const eventCutoff = sqliteTime(new Date(Date.now() - RETENTION_MS));
-  const ticketCutoff = sqliteTime(new Date(Date.now() - UNCONSUMED_TICKET_RETENTION_MS));
-  await env.DB.batch([
-    env.DB.prepare(`DELETE FROM contact_security_events WHERE event_id IN (
-      SELECT event_id FROM contact_security_events WHERE created_at < ? ORDER BY created_at ASC LIMIT 250
-    )`).bind(eventCutoff),
-    env.DB.prepare(`DELETE FROM contact_verification_challenges WHERE challenge_id IN (
-      SELECT challenge_id FROM contact_verification_challenges
-      WHERE confirmed_at IS NOT NULL AND consumed_at IS NULL AND confirmed_at < ?
-      ORDER BY confirmed_at ASC LIMIT 250
-    )`).bind(ticketCutoff)
-  ]);
-}
-
 export async function recordContactSecurityOutcome(
   request: ContactSecurityRequest,
   response: Response,
@@ -169,7 +153,15 @@ export async function recordContactSecurityOutcome(
       response.status,
       sqliteTime()
     ).run();
-    await pruneSecurityEvents(env);
+    await runRetentionCleanup(env, {
+      execute: true,
+      scopes: [
+        'contactSecurityEvents',
+        'expiredUnconfirmedChallenges',
+        'confirmedUnconsumedChallenges',
+        'consumedChallenges'
+      ]
+    });
   } catch (error) {
     const name = error instanceof Error ? error.name.slice(0, 80) : 'UnknownError';
     console.error('contact_security_event_failed', { pathname, eventType, responseStatus: response.status, name });
