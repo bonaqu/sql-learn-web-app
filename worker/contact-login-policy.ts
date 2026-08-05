@@ -11,6 +11,7 @@ import {
 
 type ContactLoginEnvironment = CommercialEnvironment & ContactVerificationEnvironment;
 type ContactIdentifierType = 'email' | 'sms';
+type JsonBodyRequest = Pick<Request, 'headers' | 'text'>;
 
 type UserRow = {
   user_id: string;
@@ -78,7 +79,7 @@ function validPassword(password: unknown): password is string {
     && new TextEncoder().encode(password).byteLength <= 512;
 }
 
-async function boundedJson(request: Request) {
+async function boundedJson(request: JsonBodyRequest) {
   const declared = Number(request.headers.get('content-length') || 0);
   if (Number.isFinite(declared) && declared > MAX_JSON_BYTES) return null;
   try {
