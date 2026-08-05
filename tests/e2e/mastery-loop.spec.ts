@@ -23,7 +23,7 @@ async function solveConceptCard(card: Locator) {
 }
 
 async function completeFirstLessonTheory(page: import('@playwright/test').Page) {
-  await page.getByTestId('curriculum-trigger').click();
+  await openAdvancedTool(page, 'curriculum-trigger');
   const studio = page.getByRole('dialog', { name: /Curriculum Studio/i });
   await expect(studio).toBeVisible();
   const sectionButtons = studio.getByRole('button', { name: /Отметить раздел изученным/i });
@@ -43,8 +43,8 @@ test('desktop mastery loop distinguishes guided success, independent retry and r
   await page.goto('./');
   await completeFirstLessonTheory(page);
 
-  await page.getByRole('button', { name: 'Practice', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Practice Mode' })).toBeVisible();
+  await page.getByRole('button', { name: 'Практика', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Практика' })).toBeVisible();
   await replaceEditorSql(page, 'SELECT, FROM tickets;');
   await page.getByRole('button', { name: /Проверить SQL/i }).click();
   await expect(page.getByTestId('attempt-diagnostic')).toContainText('Синтаксис не разобран');
@@ -63,7 +63,7 @@ test('desktop mastery loop distinguishes guided success, independent retry and r
   await expect(page.locator('.feedback.success')).toContainText('Independent mastery подтверждён');
   await expect(page.locator('.feedback.success')).toContainText('Independent: 1');
 
-  await page.getByTestId('curriculum-trigger').click();
+  await openAdvancedTool(page, 'curriculum-trigger');
   const studio = page.getByRole('dialog', { name: /Curriculum Studio/i });
   await expect(studio.getByText('Applied mastery', { exact: true }).first()).toBeVisible();
   await expect(studio.getByTestId('lesson-mastery-loop')).toContainText('independent SQL evidence');
@@ -85,7 +85,7 @@ test('mobile mastery diagnostics remain readable without horizontal overflow', a
   await authenticatePage(page, 'mobilemastery');
   await page.goto('./');
   await page.getByRole('button', { name: 'Практика', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Practice Mode' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Практика' })).toBeVisible();
   await seedFirstLessonEvidence(page);
   const firstTask = page.getByRole('button', { name: /001 Контракт результата: VPN/ });
   await expect(firstTask).toContainText('Текущий шаг маршрута');
