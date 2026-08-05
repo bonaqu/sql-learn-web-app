@@ -5,7 +5,7 @@ import { lessonChecks } from '../../src/data/lesson-checks';
 const advancedToolNames: Record<string, RegExp> = {
   'assessment-trigger': /Проверка/i,
   'checkpoint-trigger': /Контрольные этапы/i,
-  'curriculum-trigger': /Уроки/i,
+  'curriculum-trigger': /^Уроки$/i,
   'learning-path-trigger': /Маршрут/i,
   'onboarding-trigger': /Настроить маршрут/i,
   'syllabus-open': /Диалекты и карта курса/i,
