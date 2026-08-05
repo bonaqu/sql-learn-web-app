@@ -153,6 +153,13 @@ export async function recordContactSecurityOutcome(
       response.status,
       sqliteTime()
     ).run();
+  } catch (error) {
+    const name = error instanceof Error ? error.name.slice(0, 80) : 'UnknownError';
+    console.error('contact_security_event_failed', { pathname, eventType, responseStatus: response.status, name });
+    return;
+  }
+
+  try {
     await runRetentionCleanup(env, {
       execute: true,
       scopes: [
@@ -164,6 +171,11 @@ export async function recordContactSecurityOutcome(
     });
   } catch (error) {
     const name = error instanceof Error ? error.name.slice(0, 80) : 'UnknownError';
-    console.error('contact_security_event_failed', { pathname, eventType, responseStatus: response.status, name });
+    console.error('contact_security_retention_failed', {
+      pathname,
+      eventType,
+      responseStatus: response.status,
+      name
+    });
   }
 }
