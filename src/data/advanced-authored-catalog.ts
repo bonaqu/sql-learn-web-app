@@ -2,6 +2,7 @@ import type { SqlTask } from './course';
 import { applyAdvancedConcurrencyTaskOverrides } from './advanced-authored-concurrency';
 import { applyAdvancedConditionalAggregationTaskOverrides } from './advanced-authored-conditional-aggregation';
 import { applyAdvancedAuthoredTaskOverrides } from './advanced-authored-content';
+import { applyAdvancedIncidentInvestigationTaskOverrides } from './advanced-authored-incident-investigation';
 import { applyAdvancedJoinsTaskOverrides } from './advanced-authored-joins';
 import { applyAdvancedJsonSqlTaskOverrides } from './advanced-authored-json-sql';
 import { applyAdvancedNullLogicTaskOverrides } from './advanced-authored-null-logic';
@@ -12,17 +13,19 @@ import { applyAdvancedSqlSecurityTaskOverrides } from './advanced-authored-sql-s
 import { applyAdvancedWindowFramesTaskOverrides } from './advanced-authored-window-frames';
 
 export function applyAdvancedAuthoredCatalogOverrides(source: readonly SqlTask[]): SqlTask[] {
-  return applyAdvancedPaginationTaskOverrides(
-    applyAdvancedConcurrencyTaskOverrides(
-      applyAdvancedSqlSecurityTaskOverrides(
-        applyAdvancedJsonSqlTaskOverrides(
-          applyAdvancedWindowFramesTaskOverrides(
-            applyAdvancedRecursiveCteTaskOverrides(
-              applyAdvancedJoinsTaskOverrides(
-                applyAdvancedConditionalAggregationTaskOverrides(
-                  applyAdvancedNullLogicTaskOverrides(
-                    applyAdvancedSchemaEvolutionTaskOverrides(
-                      applyAdvancedAuthoredTaskOverrides(source)
+  return applyAdvancedIncidentInvestigationTaskOverrides(
+    applyAdvancedPaginationTaskOverrides(
+      applyAdvancedConcurrencyTaskOverrides(
+        applyAdvancedSqlSecurityTaskOverrides(
+          applyAdvancedJsonSqlTaskOverrides(
+            applyAdvancedWindowFramesTaskOverrides(
+              applyAdvancedRecursiveCteTaskOverrides(
+                applyAdvancedJoinsTaskOverrides(
+                  applyAdvancedConditionalAggregationTaskOverrides(
+                    applyAdvancedNullLogicTaskOverrides(
+                      applyAdvancedSchemaEvolutionTaskOverrides(
+                        applyAdvancedAuthoredTaskOverrides(source)
+                      )
                     )
                   )
                 )
