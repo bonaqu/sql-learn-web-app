@@ -1,5 +1,6 @@
 name: Product Identity Bootstrap
 
+# One-time branch bootstrap; removed after the generated integration commit.
 on:
   push:
     branches:
