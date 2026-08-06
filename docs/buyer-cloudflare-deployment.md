@@ -30,7 +30,7 @@ Never point the staging config at production D1/KV identifiers. The permanent va
 
 ## GitHub Environment `staging`
 
-Create a protected GitHub Environment named exactly `staging`. Configure required reviewers according to the buyer's change-control policy.
+Create a protected GitHub Environment named `staging` (exact name). Configure required reviewers according to the buyer's change-control policy.
 
 ### Required environment secrets
 
