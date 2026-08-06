@@ -162,15 +162,18 @@ jobs:
           echo 'feature-secret-readiness' > staging-deployment-stage.txt
           WORKER_NAME=$(node -e "const m=require('./staging-render-metadata.json'); process.stdout.write(m.workerName)")
           REQUIRED_COUNT=$(node -e "const m=require('./staging-render-metadata.json'); process.stdout.write(String(m.requiredSecretNames.length))")
+          SECRET_LIST_PATH="$RUNNER_TEMP/sql-academy-staging-secret-list.json"
+          trap 'rm -f "$SECRET_LIST_PATH"' EXIT
           if [ "$REQUIRED_COUNT" -gt 0 ]; then
-            npx wrangler secret list --name "$WORKER_NAME" --format json > staging-secret-list.json
+            npx wrangler secret list --name "$WORKER_NAME" --format json > "$SECRET_LIST_PATH"
           else
-            printf '%s\n' '[]' > staging-secret-list.json
+            printf '%s\n' '[]' > "$SECRET_LIST_PATH"
           fi
           node scripts/validate-staging-secret-presence.mjs \
             --metadata staging-render-metadata.json \
-            --secret-list staging-secret-list.json
-          rm -f staging-secret-list.json
+            --secret-list "$SECRET_LIST_PATH"
+          rm -f "$SECRET_LIST_PATH"
+          trap - EXIT
 
       - name: Validate staging Worker bundle
         run: |
