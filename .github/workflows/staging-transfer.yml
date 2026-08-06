@@ -9,6 +9,7 @@ on:
       - wrangler.staging.example.jsonc
       - scripts/render-staging-wrangler.mjs
       - scripts/validate-staging-secret-presence.mjs
+      - scripts/validate-staging-artifact-boundary.mjs
       - scripts/validate-staging-transfer.mjs
       - docs/buyer-cloudflare-deployment.md
       - docs/transfer-acceptance-checklist.md
@@ -23,6 +24,7 @@ on:
       - wrangler.staging.example.jsonc
       - scripts/render-staging-wrangler.mjs
       - scripts/validate-staging-secret-presence.mjs
+      - scripts/validate-staging-artifact-boundary.mjs
       - scripts/validate-staging-transfer.mjs
       - docs/buyer-cloudflare-deployment.md
       - docs/transfer-acceptance-checklist.md
@@ -55,7 +57,7 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Validate staging and transfer contract
-        run: node scripts/validate-staging-transfer.mjs
+        run: node scripts/validate-staging-transfer.mjs && node scripts/validate-staging-artifact-boundary.mjs
 
       - name: Build production-equivalent assets
         run: npm run build
