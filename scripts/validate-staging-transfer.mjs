@@ -238,7 +238,9 @@ assert.ok(workflow.includes('contract.productionResources.kvNamespaceTitle'));
 assert.ok(workflow.includes('resourceIsolation: { d1: true, kv: true }'));
 assert.ok(workflow.includes('wrangler secret list --name "$WORKER_NAME" --format json'));
 assert.ok(workflow.includes('scripts/validate-staging-secret-presence.mjs'));
-assert.ok(workflow.includes('rm -f staging-secret-list.json'));
+assert.ok(workflow.includes('SECRET_LIST_PATH="$RUNNER_TEMP/sql-academy-staging-secret-list.json"'));
+assert.ok(workflow.includes("trap 'rm -f \"$SECRET_LIST_PATH\"' EXIT"));
+assert.ok(!workflow.includes('\n            staging-secret-list.json'));
 assert.ok(contractWorkflow.includes('--metadata-output staging-render-safe.json'));
 assert.ok(contractWorkflow.includes('metadata.requiredSecretNames'));
 for (const smoke of [
@@ -304,4 +306,4 @@ assert.ok(productionHealth.includes("PRODUCTION_HEALTH_URL: ${{ vars.PRODUCTION_
 assert.ok(productionHealth.includes("if: env.PRODUCTION_HEALTH_URL != ''"));
 assert.ok(productionHealth.includes('workflow_dispatch:'));
 
-console.log('Cloudflare staging and buyer transfer validated: isolated names and IDs, fail-closed feature readiness, real Worker secret-name presence, manual protected deployment, full smoke acceptance, redacted evidence, explicit provider boundary and owner-based sign-off.');
+console.log('Cloudflare staging and buyer transfer validated: isolated names and IDs, fail-closed feature readiness, real Worker secret-name presence, temporary secret inventory cleanup, manual protected deployment, full smoke acceptance, redacted evidence, explicit provider boundary and owner-based sign-off.');
