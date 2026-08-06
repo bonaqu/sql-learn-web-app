@@ -235,9 +235,10 @@ assert.doesNotMatch(securitySource, /INSERT INTO contact_security_events[^]*dest
   'Security telemetry must not persist a destination.');
 
 const indexSource = readFileSync(new URL('../worker/index.ts', import.meta.url), 'utf8');
-assert.ok(indexSource.indexOf('handleContactDeliveryEventRequest(request, env)') < indexSource.indexOf('enforceTurnstile(request, env)'),
+assert.ok(indexSource.indexOf('handleContactDeliveryEventRequest(request, env, context)') < indexSource.indexOf('enforceTurnstile(request, env)'),
   'Server-to-server provider events must be routed before browser Turnstile enforcement.');
-assert.match(indexSource, /recordContactSecurityOutcome/);
+assert.ok(indexSource.includes('recordContactSecurityOutcome(contactSecurityRequest, contactVerificationResponse, env, context)'));
+assert.ok(indexSource.includes('async fetch(request: Request, env: Cloudflare.Env, context: ExecutionContext)'));
 
 const adminSource = readFileSync(new URL('../worker/admin-health.ts', import.meta.url), 'utf8');
 for (const marker of [
@@ -252,4 +253,4 @@ for (const marker of [
 ]) assert.ok(adminSource.includes(marker), `Admin health is missing alert: ${marker}`);
 
 database.close();
-console.log('Contact provider operations validated: signed idempotent delivery events, collision rejection, privacy-safe abuse telemetry, concentrated actor alerting, aggregate health and no PII leakage.');
+console.log('Contact provider operations validated: signed idempotent delivery events, collision rejection, privacy-safe abuse telemetry, concentrated actor alerting, aggregate health, Worker-context cleanup routing and no PII leakage.');

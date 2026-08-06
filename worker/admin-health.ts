@@ -5,6 +5,12 @@ import {
   commercialConfigurationErrors,
   CommercialEnvironment
 } from './commercial-capabilities';
+import {
+  handleRetentionAdminRequest,
+  isRetentionAdminPath,
+  retentionConfigurationErrors,
+  retentionPolicy
+} from './retention-policy';
 
 const json = (data: unknown, status = 200, extraHeaders: Record<string, string> = {}) => new Response(JSON.stringify(data), {
   status,
@@ -18,7 +24,8 @@ const json = (data: unknown, status = 200, extraHeaders: Record<string, string> 
 });
 
 export function handleHiddenAdminBoundary(request: Request, env: CommercialEnvironment) {
-  if (new URL(request.url).pathname !== '/api/admin/health') return null;
+  const pathname = new URL(request.url).pathname;
+  if (pathname !== '/api/admin/health' && !isRetentionAdminPath(request)) return null;
   return adminConsoleReady(env) ? null : json({ error: 'Not found' }, 404);
 }
 
@@ -155,6 +162,8 @@ export async function handleAdminHealthRequest(
   env: CommercialEnvironment,
   userId: string
 ): Promise<Response | null> {
+  const retentionResponse = await handleRetentionAdminRequest(request, env, userId);
+  if (retentionResponse) return retentionResponse;
   if (new URL(request.url).pathname !== '/api/admin/health') return null;
   if (!adminConsoleReady(env) || !adminAllowedUserIds(env).has(userId)) return json({ error: 'Not found' }, 404);
   if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405, { allow: 'GET' });
@@ -194,6 +203,10 @@ export async function handleAdminHealthRequest(
       progressRows,
       latestUserUpdate,
       latestProgressUpdate
+    },
+    retention: {
+      policy: retentionPolicy(env),
+      configurationErrors: retentionConfigurationErrors(env)
     },
     contactOperations: {
       delivery: contactDelivery,
