@@ -8,6 +8,7 @@ on:
       - config/staging-environment.json
       - wrangler.staging.example.jsonc
       - scripts/render-staging-wrangler.mjs
+      - scripts/validate-staging-secret-presence.mjs
       - scripts/validate-staging-transfer.mjs
       - docs/buyer-cloudflare-deployment.md
       - docs/transfer-acceptance-checklist.md
@@ -21,6 +22,7 @@ on:
       - config/staging-environment.json
       - wrangler.staging.example.jsonc
       - scripts/render-staging-wrangler.mjs
+      - scripts/validate-staging-secret-presence.mjs
       - scripts/validate-staging-transfer.mjs
       - docs/buyer-cloudflare-deployment.md
       - docs/transfer-acceptance-checklist.md
@@ -114,6 +116,11 @@ jobs:
           if (JSON.stringify(metadata.requiredSecretNames) !== JSON.stringify(expected)) {
             throw new Error(`Feature-on required-secret metadata drifted: ${JSON.stringify(metadata.requiredSecretNames)}`);
           }
+          fs.writeFileSync('staging-secret-list.fixture.json', JSON.stringify(expected.map(name => ({ name, type: 'secret_text' }))));
           NODE
+          node scripts/validate-staging-secret-presence.mjs \
+            --metadata staging-render-features.json \
+            --secret-list staging-secret-list.fixture.json \
+            > staging-secret-presence.fixture.json
           npx wrangler deploy --dry-run --config wrangler.staging.features.contract.jsonc
-          rm -f wrangler.staging.contract.jsonc wrangler.staging.features.contract.jsonc staging-render-safe.json staging-render-features.json
+          rm -f wrangler.staging.contract.jsonc wrangler.staging.features.contract.jsonc staging-render-safe.json staging-render-features.json staging-secret-list.fixture.json staging-secret-presence.fixture.json
