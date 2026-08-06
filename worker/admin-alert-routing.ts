@@ -18,6 +18,7 @@ const TEST_CONFIRMATION = 'SEND_ADMIN_ALERT_TEST';
 const DISPATCH_CONFIRMATION = 'DISPATCH_CURRENT_ADMIN_ALERTS';
 const MAX_BODY_BYTES = 2_048;
 const DELIVERY_TIMEOUT_MS = 8_000;
+const RECOVERY_EVENT = { status: 'resolved' as const, severity: 'info' as const };
 
 type AlertSeverity = 'info' | 'warning' | 'critical';
 type AlertStatus = 'firing' | 'resolved' | 'test';
@@ -108,7 +109,11 @@ function validState(value: unknown): value is AlertDeliveryState {
 async function readState(env: AdminAlertEnvironment) {
   if (!env.SETTINGS) return null;
   const value = await env.SETTINGS.get<unknown>(STATE_KEY, 'json');
-  return validState(value) ? value : null;
+  if (value !== null && !validState(value)) {
+    console.warn(JSON.stringify({ message: 'admin_alert_state_invalid' }));
+    return null;
+  }
+  return value;
 }
 
 async function writeState(env: AdminAlertEnvironment, state: AlertDeliveryState) {
@@ -151,7 +156,7 @@ function alertDescriptors(codes: string[]) {
 }
 
 function overallSeverity(status: AlertStatus, codes: string[]): AlertSeverity {
-  if (status !== 'firing') return 'info';
+  if (status !== 'firing') return RECOVERY_EVENT.severity;
   return codes.some(code => ALERT_SEVERITY[code] === 'critical') ? 'critical' : 'warning';
 }
 
@@ -221,8 +226,8 @@ export async function evaluateAndDispatchAdminAlerts(
     return { status: 'no-alerts' as const, delivered: false, activeCodes: [] as string[] };
   }
 
-  const status: Exclude<AlertStatus, 'test'> = currentCodes.length ? 'firing' : 'resolved';
-  const payloadCodes = status === 'resolved' ? uniqueCodes(previous?.activeCodes || []) : currentCodes;
+  const status: Exclude<AlertStatus, 'test'> = currentCodes.length ? 'firing' : RECOVERY_EVENT.status;
+  const payloadCodes = status === RECOVERY_EVENT.status ? uniqueCodes(previous?.activeCodes || []) : currentCodes;
   const fingerprint = await sha256(JSON.stringify({ status, codes: payloadCodes }));
   const elapsedMs = previous ? now.getTime() - Date.parse(previous.lastDeliveredAt) : Number.POSITIVE_INFINITY;
   const cooldownMs = adminAlertCooldownMinutes(env) * 60_000;
