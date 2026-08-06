@@ -1,0 +1,81 @@
+name: Product Identity Contract
+
+on:
+  pull_request:
+    branches:
+      - bonaqu_projects
+    paths:
+      - config/product-identity.json
+      - src/generated/product-identity.ts
+      - src/App.tsx
+      - src/components/CommercialIdentityPortal.tsx
+      - index.html
+      - public/manifest.webmanifest
+      - vite.config.ts
+      - package.json
+      - package-lock.json
+      - LICENSE
+      - README.md
+      - docs/product-identity-handoff.md
+      - scripts/product-identity.ts
+      - scripts/generate-product-identity.ts
+      - scripts/validate-product-identity.ts
+      - scripts/validate-public-metadata.ts
+      - .github/workflows/product-identity.yml
+  push:
+    branches:
+      - bonaqu_projects
+    paths:
+      - config/product-identity.json
+      - src/generated/product-identity.ts
+      - src/App.tsx
+      - src/components/CommercialIdentityPortal.tsx
+      - index.html
+      - public/manifest.webmanifest
+      - vite.config.ts
+      - package.json
+      - package-lock.json
+      - LICENSE
+      - README.md
+      - docs/product-identity-handoff.md
+      - scripts/product-identity.ts
+      - scripts/generate-product-identity.ts
+      - scripts/validate-product-identity.ts
+      - scripts/validate-public-metadata.ts
+      - .github/workflows/product-identity.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: product-identity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact locked dependency tree
+        run: npm ci --no-audit --no-fund
+
+      - name: Verify generated identity artifacts
+        run: npm run identity:check
+
+      - name: Validate source identity contract
+        run: npm run validate:product-identity
+
+      - name: Build production metadata
+        run: npm run build
+
+      - name: Validate built identity contract
+        run: npm run validate:product-identity -- --dist
