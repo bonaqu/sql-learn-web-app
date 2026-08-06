@@ -84,40 +84,46 @@ jobs:
         run: |
           echo 'resolve-staging-d1' > staging-deployment-stage.txt
           D1_NAME=$(node -e "const c=require('./config/staging-environment.json'); process.stdout.write(c.resources.d1DatabaseName)")
-          npx wrangler d1 list --json > staging-d1-list.json
-          D1_ID=$(node -e "const x=require('./staging-d1-list.json'); const d=x.find(v=>v.name===process.argv[1]); if(d) process.stdout.write(d.uuid||d.id)" "$D1_NAME")
+          D1_LIST_PATH="$RUNNER_TEMP/sql-academy-staging-d1-list.json"
+          npx wrangler d1 list --json > "$D1_LIST_PATH"
+          D1_ID=$(node -e "const x=require(process.argv[1]); const d=x.find(v=>v.name===process.argv[2]); if(d) process.stdout.write(d.uuid||d.id)" "$D1_LIST_PATH" "$D1_NAME")
           if [ -z "$D1_ID" ]; then
             npx wrangler d1 create "$D1_NAME"
-            npx wrangler d1 list --json > staging-d1-list.json
-            D1_ID=$(node -e "const x=require('./staging-d1-list.json'); const d=x.find(v=>v.name===process.argv[1]); if(d) process.stdout.write(d.uuid||d.id)" "$D1_NAME")
+            npx wrangler d1 list --json > "$D1_LIST_PATH"
+            D1_ID=$(node -e "const x=require(process.argv[1]); const d=x.find(v=>v.name===process.argv[2]); if(d) process.stdout.write(d.uuid||d.id)" "$D1_LIST_PATH" "$D1_NAME")
           fi
           test -n "$D1_ID"
           echo "D1_DATABASE_NAME=$D1_NAME" >> "$GITHUB_ENV"
           echo "D1_ID=$D1_ID" >> "$GITHUB_ENV"
+          echo "D1_LIST_PATH=$D1_LIST_PATH" >> "$GITHUB_ENV"
 
       - name: Ensure isolated staging KV namespace
         shell: bash
         run: |
           echo 'resolve-staging-kv' > staging-deployment-stage.txt
           KV_TITLE=$(node -e "const c=require('./config/staging-environment.json'); process.stdout.write(c.resources.kvNamespaceTitle)")
-          npx wrangler kv namespace list > staging-kv-list.json
-          KV_ID=$(node -e "const x=require('./staging-kv-list.json'); const d=x.find(v=>v.title===process.argv[1] || v.name===process.argv[1]); if(d) process.stdout.write(d.id)" "$KV_TITLE")
+          KV_LIST_PATH="$RUNNER_TEMP/sql-academy-staging-kv-list.json"
+          npx wrangler kv namespace list > "$KV_LIST_PATH"
+          KV_ID=$(node -e "const x=require(process.argv[1]); const d=x.find(v=>v.title===process.argv[2] || v.name===process.argv[2]); if(d) process.stdout.write(d.id)" "$KV_LIST_PATH" "$KV_TITLE")
           if [ -z "$KV_ID" ]; then
             npx wrangler kv namespace create "$KV_TITLE"
-            npx wrangler kv namespace list > staging-kv-list.json
-            KV_ID=$(node -e "const x=require('./staging-kv-list.json'); const d=x.find(v=>v.title===process.argv[1] || v.name===process.argv[1]); if(d) process.stdout.write(d.id)" "$KV_TITLE")
+            npx wrangler kv namespace list > "$KV_LIST_PATH"
+            KV_ID=$(node -e "const x=require(process.argv[1]); const d=x.find(v=>v.title===process.argv[2] || v.name===process.argv[2]); if(d) process.stdout.write(d.id)" "$KV_LIST_PATH" "$KV_TITLE")
           fi
           test -n "$KV_ID"
           echo "KV_ID=$KV_ID" >> "$GITHUB_ENV"
+          echo "KV_LIST_PATH=$KV_LIST_PATH" >> "$GITHUB_ENV"
 
       - name: Prove staging resource IDs are not production IDs
         shell: bash
         run: |
           echo 'resource-isolation' > staging-deployment-stage.txt
+          trap 'rm -f "$D1_LIST_PATH" "$KV_LIST_PATH"' EXIT
           node - <<'NODE'
+          const fs = require('fs');
           const contract = require('./config/staging-environment.json');
-          const d1 = require('./staging-d1-list.json');
-          const kv = require('./staging-kv-list.json');
+          const d1 = JSON.parse(fs.readFileSync(process.env.D1_LIST_PATH, 'utf8'));
+          const kv = JSON.parse(fs.readFileSync(process.env.KV_LIST_PATH, 'utf8'));
           const productionD1 = d1.find(item => item.name === contract.productionResources.d1DatabaseName);
           const productionKv = kv.find(item => item.title === contract.productionResources.kvNamespaceTitle
             || item.name === contract.productionResources.kvNamespaceTitle);
@@ -130,6 +136,8 @@ jobs:
             throw new Error('Staging KV resolves to the production KV identifier');
           }
           NODE
+          rm -f "$D1_LIST_PATH" "$KV_LIST_PATH"
+          trap - EXIT
 
       - name: Render fail-closed staging Wrangler config
         run: |
