@@ -41,6 +41,29 @@ jobs:
 
       - name: Apply identity bootstrap
         run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/apply-product-identity-bootstrap.mjs')
+          source = path.read_text()
+          start = source.index('readme += `')
+          end = source.index("`;\nwrite('README.md', readme);", start)
+          replacement = """readme += [
+            '',
+            '',
+            '## Product identity и передача покупателю',
+            '',
+            'Публичное имя, track, описание, homepage, repository/support URL, лицензионная подпись и privacy label находятся в одном файле [`config/product-identity.json`](config/product-identity.json). После изменения выполняются `npm run identity:generate`, `npm run identity:check` и production build.',
+            '',
+            'Полная процедура ребрендинга, URL/security boundary и правило сохранения внутренних storage/API identifiers: [`docs/product-identity-handoff.md`](docs/product-identity-handoff.md).',
+            '',
+            '## Лицензия',
+            '',
+            'Исходный код распространяется по условиям файла [`LICENSE`](LICENSE) и не заявляется как open source. Сторонние зависимости сохраняют собственные лицензии и перечислены в [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).',
+            ''
+          ].join('\\n');
+          write('README.md', readme);"""
+          path.write_text(source[:start] + replacement + source[end + len("`;\nwrite('README.md', readme);"):])
+          PY
           node scripts/apply-product-identity-bootstrap.mjs
           npx tsx scripts/generate-product-identity.ts
 
