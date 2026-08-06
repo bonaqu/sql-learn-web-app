@@ -1,0 +1,72 @@
+name: Staging and Transfer Contract
+
+on:
+  pull_request:
+    branches:
+      - bonaqu_projects
+    paths:
+      - config/staging-environment.json
+      - wrangler.staging.example.jsonc
+      - scripts/render-staging-wrangler.mjs
+      - scripts/validate-staging-transfer.mjs
+      - docs/buyer-cloudflare-deployment.md
+      - docs/transfer-acceptance-checklist.md
+      - .github/workflows/cloudflare-staging.yml
+      - .github/workflows/production-health.yml
+      - .github/workflows/staging-transfer.yml
+  push:
+    branches:
+      - bonaqu_projects
+    paths:
+      - config/staging-environment.json
+      - wrangler.staging.example.jsonc
+      - scripts/render-staging-wrangler.mjs
+      - scripts/validate-staging-transfer.mjs
+      - docs/buyer-cloudflare-deployment.md
+      - docs/transfer-acceptance-checklist.md
+      - .github/workflows/cloudflare-staging.yml
+      - .github/workflows/production-health.yml
+      - .github/workflows/staging-transfer.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-transfer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact locked dependency tree
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate staging and transfer contract
+        run: node scripts/validate-staging-transfer.mjs
+
+      - name: Build production-equivalent assets
+        run: npm run build
+
+      - name: Render and dry-run isolated staging Worker
+        env:
+          D1_ID: 11111111-1111-4111-8111-111111111111
+          KV_ID: 0123456789abcdef0123456789abcdef
+          STAGING_ALLOWED_ORIGINS: https://staging.example.com
+          STAGING_EXPECTED_ORIGIN: https://staging.example.com
+        shell: bash
+        run: |
+          node scripts/render-staging-wrangler.mjs --output wrangler.staging.contract.jsonc
+          ! grep -Eq 'WEBHOOK_SECRET|API_KEY|TURNSTILE_SECRET|SIGNING_SECRET|CLOUDFLARE_API_TOKEN' wrangler.staging.contract.jsonc
+          npx wrangler deploy --dry-run --config wrangler.staging.contract.jsonc
+          rm -f wrangler.staging.contract.jsonc
