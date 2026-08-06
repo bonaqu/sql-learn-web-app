@@ -36,13 +36,13 @@ function preview(label: string, reason: string): WorkspaceTaskReadiness {
 
 function frontierDescription(action: JourneyAction) {
   if (action.stage === 'lesson') return `урок «${action.title}»`;
-  if (action.stage === 'guided') return `guided-задачу «${action.title}»`;
+  if (action.stage === 'guided') return `задачу с пошаговой поддержкой «${action.title}»`;
   if (action.stage === 'practice') return `самостоятельную практику «${action.title}»`;
-  if (action.stage === 'checkpoint') return `checkpoint «${action.title}»`;
-  if (action.stage === 'interview') return `Interview «${action.title}»`;
-  if (action.stage === 'puzzle') return `SQL Puzzle «${action.title}»`;
-  if (action.stage === 'assessment') return 'итоговый Assessment';
-  if (action.stage === 'project') return `capstone «${action.title}»`;
+  if (action.stage === 'checkpoint') return `контрольную точку «${action.title}»`;
+  if (action.stage === 'interview') return `задачу в формате интервью «${action.title}»`;
+  if (action.stage === 'puzzle') return `SQL-головоломку «${action.title}»`;
+  if (action.stage === 'assessment') return 'итоговую проверку';
+  if (action.stage === 'project') return `итоговый проект «${action.title}»`;
   return 'текущий этап маршрута';
 }
 
@@ -53,15 +53,15 @@ export function workspaceTaskReadiness(
   mode: WorkspaceMode
 ): WorkspaceTaskReadiness {
   if (mode === 'review') {
-    return ready('Retrieval review', 'Задача уже находится в адаптивной очереди повторения.');
+    return ready('Повторение по памяти', 'Задача уже находится в адаптивной очереди повторения.');
   }
 
   if (hasIndependentTaskEvidence(progress, task.id)) {
-    return ready('Independent подтверждён', 'Навык уже подтверждён без подсказки; задачу можно повторить в любое время.');
+    return ready('Самостоятельное решение подтверждено', 'Навык уже подтверждён без подсказки; задачу можно повторить в любое время.');
   }
 
   if (progress.completed.includes(task.id)) {
-    return ready('Повтор guided-этапа', 'Задача уже решалась; повторный запуск нужен для independent evidence или закрепления.');
+    return ready('Повтор задачи с поддержкой', 'Задача уже решалась; повторный запуск поможет подтвердить навык самостоятельно или лучше его закрепить.');
   }
 
   if (!journey) {
@@ -69,7 +69,7 @@ export function workspaceTaskReadiness(
       status: 'loading',
       canRun: false,
       label: 'Сверяю маршрут',
-      reason: 'Загружаю lesson, checkpoint, goal и assessment evidence перед запуском.'
+      reason: 'Загружаю данные об уроках, контрольных точках, цели обучения и итоговой проверке перед запуском.'
     };
   }
 
@@ -87,7 +87,7 @@ export function workspaceTaskReadiness(
     || action.frontierRouteModuleIds
     || [];
   if (action.kind === 'complete') {
-    return ready('Свободная expert-практика', 'Обязательный маршрут завершён; все задачи доступны для поддержания навыка.');
+    return ready('Свободная экспертная практика', 'Обязательный маршрут завершён; все задачи доступны для поддержания навыка.');
   }
 
   if (action.task?.id === task.id) {
@@ -102,41 +102,41 @@ export function workspaceTaskReadiness(
       && passedPhaseIds.includes(taskPhase.id)
       && completedModuleIds.includes(task.module)) {
       return ready(
-        task.mode === 'interview' ? 'Interview открыт' : 'Puzzle открыт',
-        'Foundation этого модуля и checkpoint его фазы уже пройдены.'
+        task.mode === 'interview' ? 'Задача-интервью открыта' : 'Головоломка открыта',
+        'Базовые задания этого модуля и контрольная точка его фазы уже пройдены.'
       );
     }
     return preview(
-      task.mode === 'interview' ? 'Interview preview' : 'Puzzle preview',
-      `Сначала заверши foundation модуля и checkpoint его фазы. Единый следующий шаг — ${frontierDescription(action)}.`
+      task.mode === 'interview' ? 'Задача-интервью · предпросмотр' : 'Головоломка · предпросмотр',
+      `Сначала заверши базовые задания модуля и контрольную точку его фазы. Единый следующий шаг — ${frontierDescription(action)}.`
     );
   }
 
   if (completedModuleIds.includes(task.module)) {
-    return ready('Foundation-модуль открыт', 'Уроки и independent practice этого модуля уже закрыты; задачу можно повторить.');
+    return ready('Базовый модуль открыт', 'Уроки и самостоятельная практика этого модуля уже пройдены; задачу можно повторить.');
   }
 
   if (action.stage === 'assessment' || action.stage === 'project') {
-    return ready('Foundation доступен', 'Все обязательные модули уже пройдены; задачу можно повторить.');
+    return ready('Базовые задания доступны', 'Все обязательные модули уже пройдены; задачу можно повторить.');
   }
 
   if (action.moduleId === task.module) {
     if (action.stage === 'lesson') {
       return preview(
-        'Сначала mental model',
-        `Перед запуском задачи заверши ${frontierDescription(action)} и его knowledge checks.`
+        'Сначала разберись в модели',
+        `Перед запуском задачи заверши ${frontierDescription(action)} и ответь на его контрольные вопросы.`
       );
     }
     if (action.task) {
       const taskIndex = taskOrder.get(task.id) ?? Number.MAX_SAFE_INTEGER;
       const frontierTaskIndex = taskOrder.get(action.task.id) ?? Number.MAX_SAFE_INTEGER;
       if (taskIndex <= frontierTaskIndex) {
-        return ready('Открытый этап модуля', 'Задача находится не дальше текущего шага внутри выбранного frontier-модуля.');
+        return ready('Открытый этап модуля', 'Задача находится не дальше текущего шага внутри выбранного модуля.');
       }
     }
     return preview(
-      'Позже в текущем модуле · preview',
-      `Сначала пройди ${frontierDescription(action)}; затем единый frontier откроет следующий task stage.`
+      'Позже в текущем модуле · предпросмотр',
+      `Сначала пройди ${frontierDescription(action)}; после этого маршрут откроет следующий тип задач.`
     );
   }
 
@@ -144,22 +144,22 @@ export function workspaceTaskReadiness(
     const currentPosition = action.moduleId ? routeModuleIds.indexOf(action.moduleId) : -1;
     const taskPosition = routeModuleIds.indexOf(task.module);
     return preview(
-      'Prerequisites готовы · позже по цели',
+      'Предварительные темы пройдены · позже по цели',
       currentPosition >= 0 && taskPosition >= 0
-        ? `Модуль уже доступен, но цель поставила его после текущего frontier. Сначала пройди ${frontierDescription(action)}.`
-        : `Модуль доступен, но единый frontier сначала ведёт через ${frontierDescription(action)}.`
+        ? `Модуль уже доступен, но выбранная цель поставила его после текущего шага. Сначала пройди ${frontierDescription(action)}.`
+        : `Модуль уже доступен, но единый маршрут сначала ведёт через ${frontierDescription(action)}.`
     );
   }
 
   return preview(
-    'Prerequisites не закрыты · preview',
-    `Этот модуль ещё не входит в eligible frontier. Сначала пройди ${frontierDescription(action)}.`
+    'Предварительные темы не пройдены · предпросмотр',
+    `Этот модуль пока недоступен по учебному маршруту. Сначала пройди ${frontierDescription(action)}.`
   );
 }
 
 export function workspaceStageLabel(task: SqlTask) {
-  if (task.mode === 'lesson') return 'Guided';
-  if (task.mode === 'practice') return 'Practice';
-  if (task.mode === 'interview') return 'Interview';
-  return 'Puzzle';
+  if (task.mode === 'lesson') return 'С поддержкой';
+  if (task.mode === 'practice') return 'Практика';
+  if (task.mode === 'interview') return 'Интервью';
+  return 'Головоломка';
 }
