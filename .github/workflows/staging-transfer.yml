@@ -66,16 +66,54 @@ jobs:
           STAGING_EXPECTED_ORIGIN: https://staging.example.com
         shell: bash
         run: |
-          node scripts/render-staging-wrangler.mjs --output wrangler.staging.contract.jsonc
+          node scripts/render-staging-wrangler.mjs \
+            --output wrangler.staging.contract.jsonc \
+            --metadata-output staging-render-safe.json
           node - <<'NODE'
           const fs = require('fs');
           const config = JSON.parse(fs.readFileSync('wrangler.staging.contract.jsonc', 'utf8'));
+          const metadata = JSON.parse(fs.readFileSync('staging-render-safe.json', 'utf8'));
           const unsafeVars = Object.keys(config.vars || {}).filter(name => /(?:SECRET|PASSWORD|RECOVERY_CODE|API_KEY)/.test(name));
           if (unsafeVars.length) throw new Error(`Rendered staging vars contain secret-shaped keys: ${unsafeVars.join(',')}`);
-          const required = config.secrets?.required || [];
-          if (!Array.isArray(required) || required.some(name => typeof name !== 'string' || !/^[A-Z0-9_]+$/.test(name))) {
-            throw new Error('Rendered staging required-secret declaration is invalid');
+          if (Object.hasOwn(config, 'secrets')) throw new Error('Wrangler config must not contain an unsupported top-level secrets declaration');
+          if (!Array.isArray(metadata.requiredSecretNames) || metadata.requiredSecretNames.length !== 0) {
+            throw new Error('Safe-default staging metadata unexpectedly requires secrets');
           }
           NODE
           npx wrangler deploy --dry-run --config wrangler.staging.contract.jsonc
-          rm -f wrangler.staging.contract.jsonc
+
+          STAGING_FEATURE_EMAIL_VERIFICATION=on \
+          STAGING_FEATURE_SMS_VERIFICATION=on \
+          STAGING_FEATURE_TURNSTILE=on \
+          STAGING_FEATURE_ADMIN_CONSOLE=on \
+          STAGING_FEATURE_ADMIN_ALERTS=on \
+          STAGING_ADMIN_ALERT_CRON='0 * * * *' \
+          STAGING_CONTACT_REGISTRATION_POLICY=required-for-new-registration \
+          STAGING_TURNSTILE_EXPECTED_HOSTNAMES=staging.example.com \
+          STAGING_ADMIN_ALLOWED_USER_IDS=staging_admin_01 \
+          node scripts/render-staging-wrangler.mjs \
+            --output wrangler.staging.features.contract.jsonc \
+            --metadata-output staging-render-features.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const config = JSON.parse(fs.readFileSync('wrangler.staging.features.contract.jsonc', 'utf8'));
+          const metadata = JSON.parse(fs.readFileSync('staging-render-features.json', 'utf8'));
+          const expected = [
+            'ADMIN_ALERT_WEBHOOK_SECRET',
+            'ADMIN_ALERT_WEBHOOK_URL',
+            'CONTACT_VERIFICATION_SIGNING_SECRET',
+            'EMAIL_VERIFICATION_EVENT_SECRET',
+            'EMAIL_VERIFICATION_WEBHOOK_SECRET',
+            'EMAIL_VERIFICATION_WEBHOOK_URL',
+            'SMS_VERIFICATION_EVENT_SECRET',
+            'SMS_VERIFICATION_WEBHOOK_SECRET',
+            'SMS_VERIFICATION_WEBHOOK_URL',
+            'TURNSTILE_SECRET_KEY'
+          ];
+          if (Object.hasOwn(config, 'secrets')) throw new Error('Feature-on Wrangler config contains an unsupported top-level secrets declaration');
+          if (JSON.stringify(metadata.requiredSecretNames) !== JSON.stringify(expected)) {
+            throw new Error(`Feature-on required-secret metadata drifted: ${JSON.stringify(metadata.requiredSecretNames)}`);
+          }
+          NODE
+          npx wrangler deploy --dry-run --config wrangler.staging.features.contract.jsonc
+          rm -f wrangler.staging.contract.jsonc wrangler.staging.features.contract.jsonc staging-render-safe.json staging-render-features.json
