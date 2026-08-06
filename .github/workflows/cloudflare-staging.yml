@@ -132,20 +132,25 @@ jobs:
       - name: Render fail-closed staging Wrangler config
         run: |
           echo 'render-staging-config' > staging-deployment-stage.txt
-          node scripts/render-staging-wrangler.mjs --output wrangler.staging.deploy.jsonc
+          node scripts/render-staging-wrangler.mjs \
+            --output wrangler.staging.deploy.jsonc \
+            --metadata-output staging-render-metadata.json
           test -s wrangler.staging.deploy.jsonc
+          test -s staging-render-metadata.json
           node - <<'NODE'
           const fs = require('fs');
           const config = JSON.parse(fs.readFileSync('wrangler.staging.deploy.jsonc', 'utf8'));
+          const metadata = JSON.parse(fs.readFileSync('staging-render-metadata.json', 'utf8'));
           const serialized = JSON.stringify(config);
           for (const forbidden of ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']) {
             if (serialized.includes(forbidden)) throw new Error(`Generated staging config leaked ${forbidden}`);
           }
           const unsafeVars = Object.keys(config.vars || {}).filter(name => /(?:SECRET|PASSWORD|RECOVERY_CODE|API_KEY)/.test(name));
           if (unsafeVars.length) throw new Error(`Generated staging vars contain secret-shaped keys: ${unsafeVars.join(',')}`);
-          const required = config.secrets?.required || [];
+          if (Object.hasOwn(config, 'secrets')) throw new Error('Generated Wrangler config contains an unsupported top-level secrets declaration');
+          const required = metadata.requiredSecretNames;
           if (!Array.isArray(required) || required.some(name => typeof name !== 'string' || !/^[A-Z0-9_]+$/.test(name))) {
-            throw new Error('Generated staging required-secret declaration is invalid');
+            throw new Error('Generated staging required-secret metadata is invalid');
           }
           NODE
 
@@ -238,6 +243,7 @@ jobs:
           path: |
             staging-acceptance.json
             staging-deployment-stage.txt
+            staging-render-metadata.json
             cloudflare-*-evidence.json
             cloudflare-*-stage.txt
             cloudflare-*-summary.json
