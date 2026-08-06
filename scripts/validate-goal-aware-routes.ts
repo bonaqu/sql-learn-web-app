@@ -4,6 +4,7 @@ import { canonicalModuleIds } from '../src/data/learning-structure';
 import {
   goalModuleFrontier,
   goalModuleRoute,
+  learnerGoalTitle,
   modulePrerequisiteIds,
   safeDiagnosticBypass,
   SHARED_FOUNDATION_MODULE_IDS
@@ -13,6 +14,7 @@ import type { LearnerGoal } from '../src/lib/learner-onboarding';
 const goals: LearnerGoal[] = ['support', 'analyst', 'backend', 'interview', 'full'];
 const routes = new Map(goals.map(goal => [goal, goalModuleRoute(goal)]));
 const canonicalSet = new Set(canonicalModuleIds);
+const rawGoalCodes = /«(?:support|analyst|backend|interview|full)»/;
 
 function firstDifference(left: readonly string[], right: readonly string[]) {
   const length = Math.min(left.length, right.length);
@@ -29,6 +31,7 @@ for (const goal of goals) {
   assert.deepEqual(new Set(route), canonicalSet, `${goal}: route coverage differs from the academy catalog.`);
   assert.deepEqual(route.slice(0, SHARED_FOUNDATION_MODULE_IDS.length), SHARED_FOUNDATION_MODULE_IDS,
     `${goal}: every zero-evidence learner must share the same mandatory foundation.`);
+  assert.ok(learnerGoalTitle(goal).length >= 12, `${goal}: learner-facing goal title is missing.`);
 
   const positions = new Map(route.map((moduleId, index) => [moduleId, index]));
   for (const moduleId of route) {
@@ -46,6 +49,12 @@ for (const goal of goals) {
     assert.ok(frontier.eligibleModuleIds.includes(expected), `${goal}: next module must be eligible.`);
     assert.ok(modulePrerequisiteIds(expected).every(prerequisite => completed.includes(prerequisite)),
       `${goal}: frontier selected ${expected} before its prerequisites.`);
+    assert.ok(!rawGoalCodes.test(frontier.nextReason || ''),
+      `${goal}: learner-facing route reason exposed a raw goal code.`);
+    if (frontier.nextReasonCode === 'goal-priority') {
+      assert.ok(frontier.nextReason?.includes(`«${learnerGoalTitle(goal)}»`),
+        `${goal}: priority reason must use the localized goal title.`);
+    }
     completed.push(expected);
   }
   assert.equal(goalModuleFrontier(goal, completed).nextModuleId, null,
@@ -109,10 +118,16 @@ for (const marker of [
   'prerequisitesByModule.get(moduleId)',
   'SHARED_FOUNDATION_MODULE_IDS',
   'safeDiagnosticBypass',
-  'goalModuleFrontier'
+  'goalModuleFrontier',
+  'learnerGoalTitle'
 ]) assert.ok(routeSource.includes(marker), `Goal-aware route safety contract is missing ${marker}.`);
+for (const forbiddenCopy of [
+  'Модуль уже открыт prerequisites',
+  'прежде чем выбранная специализация',
+  'порядок query'
+]) assert.ok(!routeSource.includes(forbiddenCopy), `Goal-aware route retained mixed learner copy: ${forbiddenCopy}`);
 
-console.log(`Goal-aware routes validated: ${goals.length} deterministic prerequisite-safe routes, shared ${sharedLength}-module beginner foundation, ${fullRouteSignatures.size} distinct complete routes, analyst/backend divergence at index ${analystBackendDivergence}, prerequisite-closed evidence and contiguous diagnostic bypass.`);
+console.log(`Goal-aware routes validated: ${goals.length} deterministic prerequisite-safe routes, shared ${sharedLength}-module beginner foundation, ${fullRouteSignatures.size} distinct complete routes, analyst/backend divergence at index ${analystBackendDivergence}, prerequisite-closed evidence, localized route reasons and contiguous diagnostic bypass.`);
 for (const goal of goals) {
   const route = routes.get(goal) || [];
   const divergence = goal === 'full' ? -1 : firstDifference(route, fullRoute);

@@ -265,15 +265,59 @@ for (const marker of [
   'phase-checkpoint',
   'checkpoint-transfer'
 ]) assert.ok(journeySource.includes(marker), `Unified journey frontier is missing ${marker}.`);
+for (const forbiddenCopy of [
+  'mental model',
+  'runnable example',
+  'knowledge check',
+  'guided-задачу',
+  'completion-галочка',
+  'independent evidence',
+  'Пройти checkpoint',
+  'Перейти в Interview',
+  'Puzzle не используется',
+  'Assessment Center',
+  'Project Lab',
+  'expert SQL',
+  'spaced review',
+  'dialect labs',
+  'production-навыков',
+  'Spaced retrieval',
+  'проваленный checkpoint',
+  'foundation-модули',
+  'mixed checkpoint',
+  'без учебного scaffolding',
+  'prerequisite-safe',
+  'недостающий prerequisite',
+  'checkpoints и transfer',
+  'Assessment закрыт',
+  'capstone собирает',
+  'evidence-ступени'
+]) assert.ok(!journeySource.includes(forbiddenCopy), `Canonical journey retained mixed learner copy: ${forbiddenCopy}`);
 
 const workspaceSource = readFileSync(new URL('../src/lib/workspace-readiness.ts', import.meta.url), 'utf8');
 for (const marker of [
   'frontierCompletedModuleIds',
   'frontierEligibleModuleIds',
   'frontierRouteModuleIds',
-  'Prerequisites готовы · позже по цели',
-  'Prerequisites не закрыты · preview'
+  'Предварительные темы пройдены · позже по цели',
+  'Предварительные темы не пройдены · предпросмотр'
 ]) assert.ok(workspaceSource.includes(marker), `Workspace frontier integration is missing ${marker}.`);
+for (const forbiddenCopy of [
+  'Retrieval review',
+  'Independent подтверждён',
+  'Повтор guided-этапа',
+  'lesson, checkpoint, goal и assessment evidence',
+  'Свободная expert-практика',
+  'Interview открыт',
+  'Puzzle открыт',
+  'Foundation этого модуля',
+  'Foundation-модуль открыт',
+  'Сначала mental model',
+  'knowledge checks',
+  'frontier-модуля',
+  'Prerequisites готовы',
+  'Prerequisites не закрыты'
+]) assert.ok(!workspaceSource.includes(forbiddenCopy), `Workspace retained mixed learner copy: ${forbiddenCopy}`);
 assert.doesNotMatch(workspaceSource, /phaseOrder|moduleOrderIndex|earlierPhase|laterPhase/,
   'Workspace must not reintroduce physical phase/module-index locking.');
 
@@ -331,4 +375,4 @@ for (const marker of ['Lesson', 'Independent practice', 'Checkpoint', 'Interview
   assert.ok(journeyContract.includes(marker), `Learning journey contract is missing ${marker}.`);
 }
 
-console.log(`Coherent goal-aware journey validated: ${goals.length} goals, ${canonicalModuleIds.length} modules, ${curriculumLessons.length} lessons, ${tasks.length} tasks and ${phaseDefinitions.length} checkpoint phases.`);
+console.log(`Coherent goal-aware journey validated: ${goals.length} goals, ${canonicalModuleIds.length} modules, ${curriculumLessons.length} lessons, ${tasks.length} tasks, ${phaseDefinitions.length} checkpoint phases and Russian learner-facing route copy.`);

@@ -49,7 +49,7 @@ if (firstInterview) {
   }, 'interview');
   assert.equal(readiness.status, 'preview', 'Interview must not be a beginner entry point.');
   assert.equal(readiness.canRun, false);
-  assert.match(readiness.reason, /checkpoint/i);
+  assert.match(readiness.reason, /контрольн(?:ая|ую) точк/i);
 
   const phase = phaseForModule(firstInterview.module);
   assert.ok(phase, 'Interview task must belong to a checkpoint phase.');
@@ -144,7 +144,7 @@ if (branchFrontier.nextModuleId && branchFrontier.eligibleModuleIds.length >= 2)
       title: `Урок ${currentModule}`,
       stage: 'lesson',
       routeReasonCode: 'goal-priority',
-      routeReason: 'Analyst goal selected this prerequisite-safe module.',
+      routeReason: 'Цель «SQL для аналитики» выбрала этот модуль после прохождения всех обязательных предыдущих тем.',
       frontierCompletedModuleIds: branchFrontier.completedModuleIds,
       frontierEligibleModuleIds: branchFrontier.eligibleModuleIds,
       frontierRouteModuleIds: branchFrontier.routeModuleIds,
@@ -154,28 +154,28 @@ if (branchFrontier.nextModuleId && branchFrontier.eligibleModuleIds.length >= 2)
 
     const current = workspaceTaskReadiness(currentTask, emptyProgress, state, 'practice');
     assert.equal(current.status, 'preview');
-    assert.match(current.label, /mental model/i);
+    assert.match(current.label, /разберись в модели/i);
 
     const deferredEligible = workspaceTaskReadiness(eligibleTask, emptyProgress, state, 'practice');
     assert.equal(deferredEligible.status, 'preview');
-    assert.match(deferredEligible.label, /Prerequisites готовы/i,
+    assert.match(deferredEligible.label, /Предварительные темы пройдены/i,
       'An eligible module deferred by the goal must be visible but not runnable before the chosen frontier.');
 
     const locked = workspaceTaskReadiness(lockedTask, emptyProgress, state, 'practice');
     assert.equal(locked.status, 'preview');
-    assert.match(locked.label, /Prerequisites не закрыты/i,
+    assert.match(locked.label, /Предварительные темы не пройдены/i,
       'A module with missing prerequisites must remain locked regardless of goal preference.');
 
     const completed = workspaceTaskReadiness(completedTask, emptyProgress, state, 'practice');
     assert.equal(completed.status, 'ready');
-    assert.match(completed.label, /Foundation-модуль открыт/i);
+    assert.match(completed.label, /Базовый модуль открыт/i);
   }
 }
 
-assert.equal(workspaceStageLabel(tasks.find(task => task.mode === 'lesson')!), 'Guided');
-assert.equal(workspaceStageLabel(tasks.find(task => task.mode === 'practice')!), 'Practice');
-assert.equal(workspaceStageLabel(tasks.find(task => task.mode === 'interview')!), 'Interview');
-assert.equal(workspaceStageLabel(tasks.find(task => task.mode === 'puzzle')!), 'Puzzle');
+assert.equal(workspaceStageLabel(tasks.find(task => task.mode === 'lesson')!), 'С поддержкой');
+assert.equal(workspaceStageLabel(tasks.find(task => task.mode === 'practice')!), 'Практика');
+assert.equal(workspaceStageLabel(tasks.find(task => task.mode === 'interview')!), 'Интервью');
+assert.equal(workspaceStageLabel(tasks.find(task => task.mode === 'puzzle')!), 'Головоломка');
 
 const readinessSource = readFileSync(new URL('../src/lib/workspace-readiness.ts', import.meta.url), 'utf8');
 for (const marker of [
@@ -184,8 +184,8 @@ for (const marker of [
   'frontierRouteModuleIds',
   'passedPhaseIds.includes(taskPhase.id)',
   'completedModuleIds.includes(task.module)',
-  'Prerequisites готовы · позже по цели',
-  'Prerequisites не закрыты · preview'
+  'Предварительные темы пройдены · позже по цели',
+  'Предварительные темы не пройдены · предпросмотр'
 ]) assert.ok(readinessSource.includes(marker), `Workspace frontier logic is missing ${marker}.`);
 assert.doesNotMatch(readinessSource, /phaseOrder|moduleOrderIndex|earlierPhase|laterPhase/,
   'Workspace readiness must not rebuild a physical phase/module-index route.');

@@ -17,13 +17,13 @@ test('desktop academy keeps Interview browseable but gates execution before the 
   const firstTask = page.locator('.task-row').first();
   await expect(firstTask).toBeVisible();
   await expect(firstTask).toHaveAttribute('data-readiness', 'preview');
-  await expect(firstTask).toContainText(/Interview preview/i);
+  await expect(firstTask).toContainText(/Задача-интервью · предпросмотр/i);
   await firstTask.click();
 
   const gate = page.getByTestId('workspace-preview-gate');
   await expect(gate).toBeVisible();
   await expect(gate).toContainText(/Preview без mastery/i);
-  await expect(gate).toContainText(/checkpoint/i);
+  await expect(gate).toContainText(/контрольн(?:ая|ую) точк/i);
   await expect(page.getByRole('button', { name: /Preview: запуск закрыт/i })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Следующая подсказка' })).toBeDisabled();
   await expect(page.getByRole('button', { name: /Решение заблокировано/i })).toBeDisabled();
@@ -45,11 +45,12 @@ test('mobile task flow keeps a preview gate readable without horizontal overflow
   await page.locator('.sidebar').getByRole('button', { name: 'Интервью', exact: true }).click();
   const firstTask = page.locator('.task-row').first();
   await expect(firstTask).toHaveAttribute('data-readiness', 'preview');
+  await expect(firstTask).toContainText(/Задача-интервью · предпросмотр/i);
   await firstTask.click();
 
   const gate = page.getByTestId('workspace-preview-gate');
   await expect(gate).toBeVisible();
-  await expect(gate).toContainText(/checkpoint/i);
+  await expect(gate).toContainText(/контрольн(?:ая|ую) точк/i);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('mobile-workspace-preview.png'), fullPage: true });
 });
