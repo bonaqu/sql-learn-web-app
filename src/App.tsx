@@ -46,6 +46,7 @@ import { trainingSeedSql } from './data/training-dataset';
 import { openJourneyDestination } from './lib/academy-navigation';
 import { classifySqlAttempt, type AttemptDiagnostic } from './lib/attempt-diagnostics';
 import { localMentor, MentorMode } from './lib/mentor';
+import { productIdentity } from './generated/product-identity';
 import {
   loadProgress,
   Progress,
@@ -516,9 +517,9 @@ function App() {
 
   return <><a className="skip-link" href="#main-content">Перейти к содержимому</a><div className="app">
     <aside className={`sidebar ${mobileNav ? 'open' : ''}`} aria-label="Основная навигация">
-      <button className="logo" onClick={() => navigate('home')} aria-label="SQL Academy — главная">
+      <button className="logo" onClick={() => navigate('home')} aria-label={`${productIdentity.productName} — главная`}>
         <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" />
-        <strong>SQL Academy</strong>
+        <strong>{productIdentity.shortName}</strong>
       </button>
       <button className="close-mobile" onClick={() => setMobileNav(false)} aria-label="Закрыть меню"><X /></button>
       <nav aria-label="Разделы академии">
@@ -542,8 +543,9 @@ function App() {
         </details>
       </nav>
       <div className="sidebar-bottom">
-        <a href="https://github.com/bonaqu/sql-learn-web-app" target="_blank" rel="noreferrer"><Code2 size={17} /> GitHub</a>
-        <span className="privacy">Open-source · privacy-first</span>
+        <a href={productIdentity.repositoryUrl} target="_blank" rel="noreferrer"><Code2 size={17} /> Репозиторий</a>
+        <a href={productIdentity.supportUrl} target="_blank" rel="noreferrer"><MessageSquareText size={17} /> Поддержка</a>
+        <span className="privacy">{productIdentity.licenseLabel} · {productIdentity.privacyLabel}</span>
       </div>
     </aside>
 
@@ -737,7 +739,7 @@ function App() {
 
       <footer>
         <div><button onClick={exportProgress}><Download /> Экспорт</button><label className="button"><Upload /> Импорт<input hidden type="file" accept="application/json" onChange={event => importProgress(event.target.files?.[0])} /></label></div>
-        <span>SQL Academy · T-Bonk training dataset · privacy-first</span>
+        <span>{productIdentity.productName} · T-Bonk training dataset · {productIdentity.privacyLabel}</span>
       </footer>
     </main>
 

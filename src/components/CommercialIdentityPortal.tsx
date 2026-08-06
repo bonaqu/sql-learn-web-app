@@ -40,6 +40,7 @@ import {
   type VerifiedContact
 } from '../lib/commercial-identity';
 import { useDialogFocus } from '../lib/dialog-focus';
+import { productIdentity } from '../generated/product-identity';
 
 const PENDING_REGISTRATION_KEY = 'sql-academy-pending-registration-v1';
 export const OPEN_CONTACT_REGISTRATION_EVENT = 'sql-academy-open-contact-registration';
@@ -315,7 +316,7 @@ function ContactWizard({
       {message && <div className="auth-notice success" role="status" aria-live="polite"><Check />{message}</div>}
 
       {step === 'destination' && <div className="commercial-identity-body">
-        <p>Контакт используется только для подтверждения, восстановления и чувствительных действий. SQL Academy сохраняет HMAC-отпечаток и маску, а не полный адрес или номер.</p>
+        <p>Контакт используется только для подтверждения, восстановления и чувствительных действий. {productIdentity.productName} сохраняет HMAC-отпечаток и маску, а не полный адрес или номер.</p>
         {channels.length > 1 && <div className="commercial-channel-tabs" role="group" aria-label="Канал подтверждения">
           {channels.map(item => <button key={item} type="button" aria-pressed={channel === item} className={channel === item ? 'active' : ''} onClick={() => { setChannel(item); setDestination(''); }}>
             {channelIcon(item)}{channelLabel(item)}
