@@ -129,9 +129,11 @@ jobs:
           echo 'generate-wrangler-config' > cloudflare-deployment-stage.txt
           node - <<'NODE'
           const fs = require('fs');
-          const alertCron = process.env.FEATURE_ADMIN_ALERTS === 'on'
-            ? (process.env.ADMIN_ALERT_CRON || '').trim()
-            : '';
+          const alertsEnabled = process.env.FEATURE_ADMIN_ALERTS === 'on';
+          const alertCron = alertsEnabled ? (process.env.ADMIN_ALERT_CRON || '').trim() : '';
+          if (alertsEnabled && !alertCron) {
+            throw new Error('FEATURE_ADMIN_ALERTS=on requires a non-empty ADMIN_ALERT_CRON');
+          }
           const config = {
             $schema: './node_modules/wrangler/config-schema.json',
             name: 'sql-learn-web-app',
