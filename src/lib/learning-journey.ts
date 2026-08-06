@@ -143,7 +143,7 @@ function lessonAction(lesson: CurriculumLesson): JourneyAction {
     kind: 'lesson',
     stage: 'lesson',
     title: lesson.title,
-    description: `Сначала собери mental model, выполни runnable example и пройди knowledge check. ${lesson.subtitle}`,
+    description: `Сначала собери мысленную модель, выполни рабочий пример и ответь на контрольный вопрос. ${lesson.subtitle}`,
     cta: 'Открыть урок',
     ...context(lesson.module),
     task: null,
@@ -210,14 +210,14 @@ function nextFoundationAction(
           task,
           'guided',
           'Примени только что изученную модель. Подсказки допустимы: сейчас важна правильная последовательность рассуждения.',
-          'Начать guided-задачу'
+          'Начать задачу с поддержкой'
         );
       }
       if (task.mode === 'practice') {
         return taskAction(
           task,
           'practice',
-          'Реши связанную задачу без подсказки и эталона. Обычная completion-галочка ещё не заменяет independent evidence.',
+          'Реши связанную задачу без подсказки и эталона. Обычная отметка о выполнении ещё не подтверждает самостоятельное владение навыком.',
           'Начать самостоятельную практику'
         );
       }
@@ -227,7 +227,7 @@ function nextFoundationAction(
   for (const task of foundationTasksForModule(moduleId)) {
     if (linkedTaskIds.has(task.id) || taskSatisfied(task, progress)) continue;
     return task.mode === 'lesson'
-      ? taskAction(task, 'guided', 'Закрепи mental model на короткой guided-задаче.', 'Начать guided-задачу')
+      ? taskAction(task, 'guided', 'Закрепи мысленную модель на короткой задаче с пошаговой поддержкой.', 'Начать задачу с поддержкой')
       : taskAction(task, 'practice', 'Подтверди навык самостоятельным SQL без подсказки и эталона.', 'Начать практику');
   }
   return null;
@@ -273,7 +273,7 @@ function checkpointAction(phaseId: string): JourneyAction | null {
     stage: 'checkpoint',
     title: checkpoint.title,
     description: 'Смешанная контрольная точка проверит, что знания фазы соединяются в один рабочий навык, а не существуют отдельными упражнениями.',
-    cta: 'Пройти checkpoint',
+    cta: 'Пройти контрольную точку',
     moduleId: null,
     moduleTitle: null,
     phaseId: phase.id,
@@ -293,14 +293,14 @@ function transferAction(moduleId: string, progress: Progress): JourneyAction | n
         task,
         'interview',
         'Теперь объясни допущения и собери решение без учебных костылей — как на техническом интервью или рабочем разборе.',
-        'Перейти в Interview'
+        'Перейти к задаче-интервью'
       );
     }
     return taskAction(
       task,
       'puzzle',
-      'Перенеси уже подтверждённый навык на непривычную формулировку. Puzzle не используется как первое знакомство с темой.',
-      'Решить SQL Puzzle'
+      'Перенеси уже подтверждённый навык на непривычную формулировку. SQL-головоломка не используется как первое знакомство с темой.',
+      'Решить SQL-головоломку'
     );
   }
   return null;
@@ -347,7 +347,7 @@ function remediationAction(
     return withRemediation(taskAction(
       task,
       'review',
-      `Checkpoint «${state.checkpointTitle}» показал слабое удержание модуля «${module.moduleTitle}» (${module.score}%). Повтори задачу самостоятельно после отчёта, без подсказки и эталона.`,
+      `Контрольная точка «${state.checkpointTitle}» показала слабое удержание модуля «${module.moduleTitle}» (${module.score}%). Повтори задачу самостоятельно после отчёта, без подсказки и эталона.`,
       'Исправить слабое место'
     ), state, unresolved.map(item => item.moduleId));
   }
@@ -360,7 +360,7 @@ function assessmentAction(): JourneyAction {
     stage: 'assessment',
     title: 'Итоговая проверка SQL',
     description: 'Проверь удержание навыков на смешанном наборе задач без привязки к одному уроку.',
-    cta: 'Открыть Assessment Center',
+    cta: 'Открыть итоговую проверку',
     moduleId: null,
     moduleTitle: null,
     phaseId: null,
@@ -380,7 +380,7 @@ function projectAction(curriculum: CurriculumProgressV1): JourneyAction | null {
     stage: 'project',
     title: project.title,
     description: project.summary,
-    cta: 'Открыть Project Lab',
+    cta: 'Открыть проектную лабораторию',
     moduleId: project.moduleIds[0] || null,
     moduleTitle: project.moduleIds[0] ? moduleTitles.get(project.moduleIds[0]) || project.moduleIds[0] : null,
     phaseId: project.moduleIds[0] ? phaseForModule(project.moduleIds[0])?.id || null : null,
@@ -396,8 +396,8 @@ function completeAction(): JourneyAction {
   return {
     kind: 'complete',
     stage: 'complete',
-    title: 'Маршрут от основ до expert SQL завершён',
-    description: 'Все обязательные ступени закрыты. Дальше маршрут строится из spaced review, новых dialect labs и повторной проверки production-навыков.',
+    title: 'Маршрут от основ до экспертного SQL завершён',
+    description: 'Все обязательные ступени закрыты. Дальше маршрут строится из интервальных повторений, новых лабораторий по диалектам и повторной проверки навыков для реальных систем.',
     cta: 'Открыть учебный план',
     moduleId: null,
     moduleTitle: null,
@@ -454,7 +454,7 @@ export function buildJourneyFrontier(
       action = withReason(
         review,
         'retrieval-review',
-        'Spaced retrieval имеет приоритет над новой темой, чтобы ранее изученное не распалось.'
+        'Повторение по памяти имеет приоритет над новой темой, чтобы ранее изученное не распалось.'
       );
     }
   }
@@ -470,7 +470,7 @@ export function buildJourneyFrontier(
       action = withReason(
         remediation,
         'checkpoint-remediation',
-        `Попытка ${state.attemptNumber}: ${state.score}% при пороге ${state.passingScore}%. Сначала восстанови ${weakTitles}; цель обучения не может обойти проваленный checkpoint.`
+        `Попытка ${state.attemptNumber}: ${state.score}% при пороге ${state.passingScore}%. Сначала восстанови ${weakTitles}; цель обучения не может обойти проваленную контрольную точку.`
       );
       break;
     }
@@ -500,12 +500,12 @@ export function buildJourneyFrontier(
         ? withReason(
             withRemediation(checkpoint, repaired, repaired.modules.map(module => module.moduleId)),
             'checkpoint-remediation',
-            `Слабые модули после попытки ${repaired.attemptNumber} исправлены новым independent evidence. Повтори checkpoint: remediation сама по себе не засчитывает проход.`
+            `Слабые модули после попытки ${repaired.attemptNumber} исправлены новым самостоятельным подтверждением навыка. Повтори контрольную точку: исправление слабых мест само по себе не засчитывает прохождение.`
           )
         : withReason(
             checkpoint,
             'phase-checkpoint',
-            'Все foundation-модули этой фазы закрыты; mixed checkpoint обязателен до transfer и новой специализации.'
+            'Все базовые модули этой фазы закрыты; смешанная контрольная точка обязательна до переноса навыка и новой специализации.'
           );
     }
   }
@@ -525,7 +525,7 @@ export function buildJourneyFrontier(
         action = withReason(
           transfer,
           'checkpoint-transfer',
-          'Foundation и checkpoint уже подтверждены; теперь тот же навык проверяется без учебного scaffolding.'
+          'Базовые задания и контрольная точка уже подтверждены; теперь тот же навык проверяется без учебных подсказок.'
         );
         break;
       }
@@ -539,7 +539,7 @@ export function buildJourneyFrontier(
       action = withReason(
         foundation,
         moduleFrontier.nextReasonCode || 'prerequisite-recovery',
-        moduleFrontier.nextReason || 'Модуль является следующим prerequisite-safe шагом маршрута.'
+        moduleFrontier.nextReason || 'Этот модуль — следующий безопасный шаг маршрута с учётом обязательных зависимостей.'
       );
     }
   }
@@ -552,7 +552,7 @@ export function buildJourneyFrontier(
         action = withReason(
           recovery,
           'prerequisite-recovery',
-          'Маршрут восстанавливает недостающий prerequisite вместо небезопасного перехода вперёд.'
+          'Маршрут возвращает недостающую обязательную тему вместо небезопасного перехода вперёд.'
         );
       }
     }
@@ -562,15 +562,15 @@ export function buildJourneyFrontier(
     action = withReason(
       assessmentAction(),
       'final-assessment',
-      'Все обязательные модули, checkpoints и transfer закрыты; пора проверить смешанное удержание навыков.'
+      'Все обязательные модули, контрольные точки и задания на перенос навыка закрыты; пора проверить смешанное удержание знаний.'
     );
   }
 
   if (!action) {
     const project = projectAction(curriculum);
     action = project
-      ? withReason(project, 'capstone-project', 'Assessment закрыт; capstone собирает знания в воспроизводимый production-артефакт.')
-      : withReason(completeAction(), 'route-complete', 'Все обязательные evidence-ступени академии завершены.');
+      ? withReason(project, 'capstone-project', 'Итоговая проверка пройдена; проект соединяет знания в воспроизводимый результат для рабочей среды.')
+      : withReason(completeAction(), 'route-complete', 'Все обязательные ступени подтверждения навыков в академии завершены.');
   }
 
   const decoratedAction: JourneyAction = {
