@@ -21,4 +21,11 @@ for (const path of [
   assert.ok(!source.includes('ADMIN_ALERT_WEBHOOK_SECRET'), `${path} must not contain the buyer HMAC secret`);
 }
 
-console.log('Admin alert Cloudflare profiles validated: shared scheduled entrypoint, default-off Cron, reviewed cooldown and zero webhook secrets.');
+const workerIndex = readFileSync(new URL('../worker/index.ts', import.meta.url), 'utf8');
+const exposeHeaders = workerIndex.match(/'access-control-expose-headers':\s*'([^']+)'/)?.[1] || '';
+assert.ok(exposeHeaders.split(',').map(value => value.trim()).includes('x-admin-alert-contract'),
+  'The authenticated browser operator must be able to read x-admin-alert-contract.');
+assert.ok(!workerIndex.includes('x-admin-alert-signature'),
+  'Outbound webhook signature headers must never be accepted or exposed by the browser API CORS contract.');
+
+console.log('Admin alert Cloudflare profiles validated: shared scheduled entrypoint, default-off Cron, reviewed cooldown, browser-visible response contract and zero webhook secrets.');
