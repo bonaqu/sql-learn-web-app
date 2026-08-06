@@ -178,7 +178,7 @@ async function deliverPayload(
   if (!url || !secret) throw new Error('Admin alert destination is incomplete');
 
   const body = JSON.stringify(payload);
-  const timestamp = String(Math.floor(Date.parse(payload.generatedAt) / 1_000));
+  const timestamp = String(Math.floor(Date.now() / 1_000));
   const signature = await hmac(secret, `${timestamp}.${body}`);
   const abort = new AbortController();
   const timeout = setTimeout(() => abort.abort(), DELIVERY_TIMEOUT_MS);
@@ -296,12 +296,38 @@ async function sendTestAlert(env: AdminAlertEnvironment, now = new Date()) {
   return { status: 'test' as const, delivered: true, eventId: payload.eventId };
 }
 
-async function boundedJson(request: Request) {
+async function boundedText(request: Request) {
   const declared = Number(request.headers.get('content-length') || 0);
   if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return null;
+  if (!request.body) return '';
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_BODY_BYTES) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+
+  const combined = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    combined.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(combined);
+}
+
+async function boundedJson(request: Request) {
+  const text = await boundedText(request);
+  if (text === null) return null;
   try {
-    const text = await request.text();
-    if (new TextEncoder().encode(text).byteLength > MAX_BODY_BYTES) return null;
     return JSON.parse(text) as unknown;
   } catch {
     return null;
@@ -384,8 +410,5 @@ export async function handleScheduledAdminAlerts(
     }));
     throw new Error(`Admin alert routing configuration invalid: ${configurationErrors.join(',')}`);
   }
-  const scheduledAt = Number.isFinite(controller.scheduledTime)
-    ? new Date(controller.scheduledTime)
-    : new Date();
-  return evaluateAndDispatchAdminAlerts(env, { source: 'schedule', now: scheduledAt });
+  return evaluateAndDispatchAdminAlerts(env, { source: 'schedule', now: new Date() });
 }
