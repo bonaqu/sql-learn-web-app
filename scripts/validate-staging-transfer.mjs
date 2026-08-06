@@ -9,6 +9,7 @@ const read = path => readFileSync(resolve(root, path), 'utf8').replace(/\r\n/g, 
 const contract = JSON.parse(read('config/staging-environment.json'));
 const template = JSON.parse(read('wrangler.staging.example.jsonc'));
 const workflow = read('.github/workflows/cloudflare-staging.yml');
+const contractWorkflow = read('.github/workflows/staging-transfer.yml');
 const deploymentGuide = read('docs/buyer-cloudflare-deployment.md');
 const transferChecklist = read('docs/transfer-acceptance-checklist.md');
 const productionHealth = read('.github/workflows/production-health.yml');
@@ -63,28 +64,43 @@ for (const forbidden of [
 
 const temp = mkdtempSync(join(tmpdir(), 'sql-academy-staging-'));
 try {
-  const output = join(temp, 'wrangler.staging.deploy.jsonc');
-  const sampleEnvironment = {
+  const baseEnvironment = {
     ...process.env,
     D1_ID: '11111111-1111-4111-8111-111111111111',
     KV_ID: '0123456789abcdef0123456789abcdef',
     STAGING_ALLOWED_ORIGINS: 'https://staging.example.com,https://review.example.com',
     STAGING_EXPECTED_ORIGIN: 'https://staging.example.com'
   };
-  const rendered = spawnSync(process.execPath, [
-    resolve(root, 'scripts/render-staging-wrangler.mjs'),
-    '--output',
-    output
-  ], { cwd: root, env: sampleEnvironment, encoding: 'utf8' });
-  assert.equal(rendered.status, 0, rendered.stderr || rendered.stdout);
-  const generated = JSON.parse(readFileSync(output, 'utf8'));
+
+  function render(name, overrides = {}) {
+    const output = join(temp, `${name}.jsonc`);
+    const result = spawnSync(process.execPath, [
+      resolve(root, 'scripts/render-staging-wrangler.mjs'),
+      '--output',
+      output
+    ], {
+      cwd: root,
+      env: { ...baseEnvironment, ...overrides },
+      encoding: 'utf8'
+    });
+    return {
+      output,
+      result,
+      combinedOutput: `${result.stderr}\n${result.stdout}`
+    };
+  }
+
+  const defaultRender = render('default');
+  assert.equal(defaultRender.result.status, 0, defaultRender.combinedOutput);
+  const generated = JSON.parse(readFileSync(defaultRender.output, 'utf8'));
   assert.equal(generated.name, contract.resources.workerName);
   assert.equal(generated.main, 'worker/entrypoint.ts');
   assert.equal(generated.d1_databases[0].database_name, contract.resources.d1DatabaseName);
-  assert.equal(generated.d1_databases[0].database_id, sampleEnvironment.D1_ID);
-  assert.equal(generated.kv_namespaces[0].id, sampleEnvironment.KV_ID);
+  assert.equal(generated.d1_databases[0].database_id, baseEnvironment.D1_ID);
+  assert.equal(generated.kv_namespaces[0].id, baseEnvironment.KV_ID);
   assert.equal(generated.vars.ALLOWED_ORIGINS, 'https://staging.example.com,https://review.example.com');
   assert.deepEqual(generated.triggers.crons, []);
+  assert.equal(generated.secrets, undefined);
   for (const flag of [
     'FEATURE_EMAIL_VERIFICATION',
     'FEATURE_SMS_VERIFICATION',
@@ -92,43 +108,73 @@ try {
     'FEATURE_ADMIN_CONSOLE',
     'FEATURE_ADMIN_ALERTS'
   ]) assert.equal(generated.vars[flag], 'off');
-  const generatedText = readFileSync(output, 'utf8');
+  const generatedText = readFileSync(defaultRender.output, 'utf8');
   for (const forbidden of [
     'CLOUDFLARE_API_TOKEN',
     'CLOUDFLARE_ACCOUNT_ID',
-    'WEBHOOK_SECRET',
-    'API_KEY',
-    'SIGNING_SECRET',
-    'TURNSTILE_SECRET'
+    'secret-value',
+    'password-value',
+    'recovery-code-value'
   ]) assert.ok(!generatedText.includes(forbidden), `Rendered config leaked ${forbidden}`);
+  assert.ok(Object.keys(generated.vars).every(name => !/(?:SECRET|PASSWORD|RECOVERY_CODE|API_KEY)/.test(name)));
 
-  const invalidOrigin = spawnSync(process.execPath, [
-    resolve(root, 'scripts/render-staging-wrangler.mjs'),
-    '--output',
-    join(temp, 'invalid-origin.jsonc')
-  ], {
-    cwd: root,
-    env: {
-      ...sampleEnvironment,
-      STAGING_ALLOWED_ORIGINS: 'https://127.0.0.1',
-      STAGING_EXPECTED_ORIGIN: 'https://127.0.0.1'
-    },
-    encoding: 'utf8'
+  const enabledRender = render('enabled', {
+    STAGING_FEATURE_EMAIL_VERIFICATION: 'on',
+    STAGING_FEATURE_TURNSTILE: 'on',
+    STAGING_FEATURE_ADMIN_CONSOLE: 'on',
+    STAGING_FEATURE_ADMIN_ALERTS: 'on',
+    STAGING_TURNSTILE_EXPECTED_HOSTNAMES: 'staging.example.com,review.example.com',
+    STAGING_ADMIN_ALLOWED_USER_IDS: 'operator_test_01',
+    STAGING_ADMIN_ALERT_CRON: '*/15 * * * *',
+    STAGING_CONTACT_REGISTRATION_POLICY: 'required-for-new-registration'
   });
-  assert.notEqual(invalidOrigin.status, 0);
-  assert.match(`${invalidOrigin.stderr}\n${invalidOrigin.stdout}`, /public HTTPS origin/);
+  assert.equal(enabledRender.result.status, 0, enabledRender.combinedOutput);
+  const enabled = JSON.parse(readFileSync(enabledRender.output, 'utf8'));
+  assert.deepEqual(enabled.triggers.crons, ['*/15 * * * *']);
+  assert.equal(enabled.vars.CONTACT_REGISTRATION_POLICY, 'required-for-new-registration');
+  assert.equal(enabled.vars.TURNSTILE_EXPECTED_HOSTNAMES, 'staging.example.com,review.example.com');
+  assert.equal(enabled.vars.ADMIN_ALLOWED_USER_IDS, 'operator_test_01');
+  assert.deepEqual(enabled.secrets?.required, [
+    'ADMIN_ALERT_WEBHOOK_SECRET',
+    'ADMIN_ALERT_WEBHOOK_URL',
+    'CONTACT_VERIFICATION_SIGNING_SECRET',
+    'EMAIL_VERIFICATION_EVENT_SECRET',
+    'EMAIL_VERIFICATION_WEBHOOK_SECRET',
+    'EMAIL_VERIFICATION_WEBHOOK_URL',
+    'TURNSTILE_SECRET_KEY'
+  ]);
+  assert.ok(Object.keys(enabled.vars).every(name => !/(?:SECRET|PASSWORD|RECOVERY_CODE|API_KEY)/.test(name)));
 
-  const invalidDatabase = spawnSync(process.execPath, [
-    resolve(root, 'scripts/render-staging-wrangler.mjs'),
-    '--output',
-    join(temp, 'invalid-d1.jsonc')
-  ], {
-    cwd: root,
-    env: { ...sampleEnvironment, D1_ID: 'production-database' },
-    encoding: 'utf8'
+  const invalidOrigin = render('invalid-origin', {
+    STAGING_ALLOWED_ORIGINS: 'https://127.0.0.1',
+    STAGING_EXPECTED_ORIGIN: 'https://127.0.0.1'
   });
-  assert.notEqual(invalidDatabase.status, 0);
-  assert.match(`${invalidDatabase.stderr}\n${invalidDatabase.stdout}`, /D1_ID must be a UUID/);
+  assert.notEqual(invalidOrigin.result.status, 0);
+  assert.match(invalidOrigin.combinedOutput, /public HTTPS origin/);
+
+  const invalidDatabase = render('invalid-d1', { D1_ID: 'production-database' });
+  assert.notEqual(invalidDatabase.result.status, 0);
+  assert.match(invalidDatabase.combinedOutput, /D1_ID must be a UUID/);
+
+  const missingTurnstileHost = render('missing-turnstile-host', {
+    STAGING_FEATURE_TURNSTILE: 'on',
+    STAGING_TURNSTILE_EXPECTED_HOSTNAMES: ''
+  });
+  assert.notEqual(missingTurnstileHost.result.status, 0);
+  assert.match(missingTurnstileHost.combinedOutput, /HOSTNAMES is required/);
+
+  const missingAdminAllowlist = render('missing-admin-allowlist', {
+    STAGING_FEATURE_ADMIN_CONSOLE: 'on',
+    STAGING_ADMIN_ALLOWED_USER_IDS: ''
+  });
+  assert.notEqual(missingAdminAllowlist.result.status, 0);
+  assert.match(missingAdminAllowlist.combinedOutput, /ADMIN_ALLOWED_USER_IDS is required/);
+
+  const incompleteRequiredPolicy = render('incomplete-required-policy', {
+    STAGING_CONTACT_REGISTRATION_POLICY: 'required-for-new-registration'
+  });
+  assert.notEqual(incompleteRequiredPolicy.result.status, 0);
+  assert.match(incompleteRequiredPolicy.combinedOutput, /needs Turnstile and at least one enabled contact channel/);
 } finally {
   rmSync(temp, { recursive: true, force: true });
 }
@@ -144,6 +190,8 @@ assert.ok(workflow.includes('WRANGLER_CONFIG: wrangler.staging.deploy.jsonc'));
 assert.ok(workflow.includes("contract: 'cloudflare-app-staging-acceptance-v1'"));
 assert.ok(workflow.includes('retention-days: 30'));
 assert.ok(workflow.includes('environment: staging'));
+assert.ok(workflow.includes('config.secrets?.required || []'));
+assert.ok(contractWorkflow.includes('config.secrets?.required || []'));
 for (const smoke of [
   'commercial-runtime-production-smoke.mjs',
   'cloudflare-production-smoke.mjs',
@@ -164,13 +212,15 @@ for (const forbidden of [
   'ADMIN_ALERT_WEBHOOK_SECRET:',
   'TURNSTILE_SECRET_KEY:'
 ]) assert.ok(!workflow.includes(forbidden), `Staging workflow must not materialize Worker secret ${forbidden}`);
-assert.ok(workflow.includes("! grep -Eq 'WEBHOOK_SECRET|API_KEY|TURNSTILE_SECRET|SIGNING_SECRET'"));
 
 for (const marker of [
   'GitHub Environment named `staging`',
   '`sql-learn-web-app-staging`',
   '`sql-academy-staging`',
   '`sql-academy-settings-staging`',
+  'Worker-secret readiness',
+  '`secrets.required`',
+  'two-pass bootstrap',
   'Real provider credentials',
   'issue #133',
   'cloudflare-app-staging-acceptance-v1',
@@ -204,4 +254,4 @@ assert.ok(productionHealth.includes("PRODUCTION_HEALTH_URL: ${{ vars.PRODUCTION_
 assert.ok(productionHealth.includes("if: env.PRODUCTION_HEALTH_URL != ''"));
 assert.ok(productionHealth.includes('workflow_dispatch:'));
 
-console.log('Cloudflare staging and buyer transfer validated: isolated resources, manual protected deployment, full smoke acceptance, redacted evidence, explicit provider boundary and owner-based sign-off.');
+console.log('Cloudflare staging and buyer transfer validated: isolated resources, fail-closed feature readiness, required-secret declarations, manual protected deployment, full smoke acceptance, redacted evidence, explicit provider boundary and owner-based sign-off.');
