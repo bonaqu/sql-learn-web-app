@@ -36,6 +36,9 @@ jobs:
           set -o pipefail
           npm run check 2>&1 | tee typescript-check.log
 
+      - name: Validate active Worker entrypoint compatibility
+        run: node scripts/validate-worker-entrypoint-compatibility.mjs
+
       - name: Production build
         shell: bash
         env:
