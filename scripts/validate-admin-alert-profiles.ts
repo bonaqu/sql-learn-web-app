@@ -37,5 +37,15 @@ assert.ok(routing.includes('request.body.getReader()'));
 assert.ok(routing.includes('if (total > MAX_BODY_BYTES)'));
 assert.ok(routing.includes('await reader.cancel()'));
 assert.ok(routing.includes("source: 'schedule', now: new Date()"));
+assert.ok(routing.includes("message: 'admin_alert_state_read_failed'"));
+assert.ok(routing.includes("message: 'admin_alert_state_invalid'"));
+const stateReadStart = routing.indexOf('async function readState');
+const stateWriteStart = routing.indexOf('async function writeState');
+assert.ok(stateReadStart >= 0 && stateWriteStart > stateReadStart);
+const stateReadSource = routing.slice(stateReadStart, stateWriteStart);
+assert.ok(stateReadSource.includes('try {'));
+assert.ok(stateReadSource.includes('} catch (error) {'));
+assert.ok(stateReadSource.includes('return null;'),
+  'Malformed or unreadable KV state must fall back to a resendable empty state.');
 
-console.log('Admin alert Cloudflare profiles validated: shared scheduled entrypoint, default-off Cron, fresh signatures, bounded operator bodies, browser-visible response contract and zero webhook secrets.');
+console.log('Admin alert Cloudflare profiles validated: shared scheduled entrypoint, default-off Cron, fresh signatures, bounded operator bodies, safe KV recovery, browser-visible response contract and zero webhook secrets.');
