@@ -38,6 +38,28 @@ const malformed = await handleAdminAlertRequest(
 );
 assert.equal(malformed?.status, 400);
 
+const brokenStateEnv = {
+  ...env,
+  SETTINGS: {
+    async get() {
+      throw new SyntaxError('Malformed JSON in KV state');
+    }
+  }
+} as unknown as Cloudflare.Env;
+const brokenStateResponse = await handleAdminAlertRequest(
+  new Request('https://academy.example/api/admin/alerts'),
+  brokenStateEnv,
+  'operator_test_01'
+);
+assert.equal(brokenStateResponse?.status, 200);
+const brokenStateBody = await brokenStateResponse?.json() as {
+  contract: string;
+  lastDelivery: unknown;
+};
+assert.equal(brokenStateBody.contract, 'admin-alert-routing-v1');
+assert.equal(brokenStateBody.lastDelivery, null,
+  'Malformed KV delivery state must not make the protected status endpoint unavailable.');
+
 const hidden = await handleAdminAlertRequest(
   new Request('https://academy.example/api/admin/alerts'),
   { ...env, FEATURE_ADMIN_CONSOLE: 'off' } as Cloudflare.Env,
@@ -52,4 +74,4 @@ const otherPath = await handleAdminAlertRequest(
 );
 assert.equal(otherPath, null);
 
-console.log('Admin alert HTTP boundary validated: protected route, strict methods, malformed JSON rejection and streaming 2 KiB body ceiling.');
+console.log('Admin alert HTTP boundary validated: protected route, strict methods, malformed JSON rejection, streaming 2 KiB ceiling and safe malformed-KV recovery.');
