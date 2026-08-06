@@ -67,6 +67,15 @@ jobs:
         shell: bash
         run: |
           node scripts/render-staging-wrangler.mjs --output wrangler.staging.contract.jsonc
-          ! grep -Eq 'WEBHOOK_SECRET|API_KEY|TURNSTILE_SECRET|SIGNING_SECRET|CLOUDFLARE_API_TOKEN' wrangler.staging.contract.jsonc
+          node - <<'NODE'
+          const fs = require('fs');
+          const config = JSON.parse(fs.readFileSync('wrangler.staging.contract.jsonc', 'utf8'));
+          const unsafeVars = Object.keys(config.vars || {}).filter(name => /(?:SECRET|PASSWORD|RECOVERY_CODE|API_KEY)/.test(name));
+          if (unsafeVars.length) throw new Error(`Rendered staging vars contain secret-shaped keys: ${unsafeVars.join(',')}`);
+          const required = config.secrets?.required || [];
+          if (!Array.isArray(required) || required.some(name => typeof name !== 'string' || !/^[A-Z0-9_]+$/.test(name))) {
+            throw new Error('Rendered staging required-secret declaration is invalid');
+          }
+          NODE
           npx wrangler deploy --dry-run --config wrangler.staging.contract.jsonc
           rm -f wrangler.staging.contract.jsonc
