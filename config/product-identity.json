@@ -2,7 +2,7 @@
   "contract": "product-identity-v1",
   "productName": "SQL Academy",
   "shortName": "SQL Academy",
-  "trackName": "Support Engineering Track",
+  "trackName": "Трек инженера поддержки",
   "description": "Интерактивная SQL-платформа: 240 проверяемых задач, 44 связанных урока, адаптивное повторение и инженерные учебные маршруты.",
   "locale": "ru",
   "licenseName": "SQL Academy Commercial Source License",
