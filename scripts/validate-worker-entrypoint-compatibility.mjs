@@ -7,10 +7,13 @@ const workerIndex = read('worker/index.ts');
 const wrangler = JSON.parse(read('wrangler.jsonc'));
 const typegen = JSON.parse(read('wrangler.typegen.jsonc'));
 const productionWorkflow = read('.github/workflows/cloudflare.yml');
+const pagesWorkflow = read('.github/workflows/pages.yml');
+const stagingWorkflow = read('.github/workflows/cloudflare-staging.yml');
 const stagingRenderer = read('scripts/render-staging-wrangler.mjs');
 const manifest = JSON.parse(read('package.json'));
 
 const SANDBOX_EXPORT = "export { Sandbox } from '@cloudflare/sandbox';";
+const ENTRYPOINT_PREFLIGHT = 'node scripts/validate-worker-entrypoint-compatibility.mjs';
 
 assert.equal(wrangler.main, 'worker/entrypoint.ts', 'Default Wrangler config must use the compatibility entrypoint');
 assert.equal(typegen.main, 'worker/entrypoint.ts', 'Worker type generation must use the compatibility entrypoint');
@@ -26,5 +29,16 @@ assert.ok(!JSON.stringify(wrangler).includes('durable_objects'),
   'Free-tier config must not recreate a Sandbox binding; the export exists only for deployment compatibility');
 assert.ok(entrypoint.indexOf(SANDBOX_EXPORT) < entrypoint.indexOf('export default'),
   'Named Durable Object export must remain a top-level module export before the default handler');
+assert.ok(manifest.scripts?.['validate:deployment-smoke']?.startsWith(`${ENTRYPOINT_PREFLIGHT} && `),
+  'Every repository deployment-smoke validation must begin with the active-entrypoint compatibility preflight');
+assert.ok(manifest.scripts?.check?.includes('npm run validate:deployment-smoke'),
+  'The canonical repository check must include deployment-smoke validation');
+for (const [name, workflow] of [
+  ['Cloudflare production', productionWorkflow],
+  ['GitHub Pages production', pagesWorkflow],
+  ['Cloudflare staging', stagingWorkflow]
+]) {
+  assert.ok(workflow.includes('npm run check'), `${name} deployment must run the canonical repository check`);
+}
 
-console.log('Worker entrypoint compatibility validated: the active production/staging module preserves the historical Sandbox Durable Object export without re-enabling a free-tier binding.');
+console.log('Worker entrypoint compatibility validated: production, Pages and staging checks all preserve the historical Sandbox Durable Object export without re-enabling a free-tier binding.');
