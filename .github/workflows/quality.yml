@@ -96,7 +96,7 @@ jobs:
 
       - name: Upload browser evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pr-browser-evidence-${{ github.run_attempt }}
           path: |
@@ -108,7 +108,7 @@ jobs:
 
       - name: Upload diagnostic logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pr-quality-diagnostics
           path: |

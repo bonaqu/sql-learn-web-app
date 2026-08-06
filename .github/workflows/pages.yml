@@ -105,7 +105,7 @@ jobs:
 
       - name: Upload Pages failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pages-deployment-diagnostics-${{ github.run_attempt }}
           path: |
