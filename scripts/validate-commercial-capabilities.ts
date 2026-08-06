@@ -17,7 +17,8 @@ assert.deepEqual(disabled.integrations, {
   emailVerification: { enabled: false },
   smsVerification: { enabled: false },
   turnstile: { enabled: false },
-  adminConsole: { enabled: false }
+  adminConsole: { enabled: false },
+  adminAlerts: { enabled: false }
 });
 
 const incomplete = {
@@ -36,6 +37,7 @@ assert.deepEqual(commercialConfigurationErrors(incomplete).sort(), [
   'TURNSTILE_INCOMPLETE'
 ]);
 assert.equal(handleHiddenAdminBoundary(new Request('https://academy.example.test/api/admin/health'), incomplete)?.status, 404);
+assert.equal(handleHiddenAdminBoundary(new Request('https://academy.example.test/api/admin/alerts'), incomplete)?.status, 404);
 
 const configured = {
   FEATURE_EMAIL_VERIFICATION: 'on',
@@ -57,10 +59,25 @@ assert.deepEqual(commercialCapabilities(configured).integrations, {
   emailVerification: { enabled: true },
   smsVerification: { enabled: true },
   turnstile: { enabled: true },
-  adminConsole: { enabled: true }
+  adminConsole: { enabled: true },
+  adminAlerts: { enabled: false }
 });
 assert.deepEqual(commercialConfigurationErrors(configured), []);
 assert.equal(handleHiddenAdminBoundary(new Request('https://academy.example.test/api/admin/health'), configured), null);
+assert.equal(handleHiddenAdminBoundary(new Request('https://academy.example.test/api/admin/alerts'), configured), null);
+
+const alertConfigured = {
+  ...configured,
+  DB: {},
+  SETTINGS: {},
+  FEATURE_ADMIN_ALERTS: 'on',
+  ADMIN_ALERT_CRON: '17 * * * *',
+  ADMIN_ALERT_COOLDOWN_MINUTES: '60',
+  ADMIN_ALERT_WEBHOOK_URL: 'https://alerts.example.test/sql-academy',
+  ADMIN_ALERT_WEBHOOK_SECRET: 'buyer-owned-alert-secret-at-least-thirty-two-characters'
+} as unknown as Cloudflare.Env;
+assert.equal(commercialCapabilities(alertConfigured).integrations.adminAlerts.enabled, true);
+assert.deepEqual(commercialConfigurationErrors(alertConfigured), []);
 
 const missingDeliveryEvents = {
   ...configured,
@@ -119,13 +136,18 @@ assert.match(workerSource, /withSecurityHeaders/);
 const productionConfig = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
 const typegenConfig = readFileSync(new URL('../wrangler.typegen.jsonc', import.meta.url), 'utf8');
 for (const config of [productionConfig, typegenConfig]) {
+  assert.match(config, /"main": "worker\/entrypoint\.ts"/);
   assert.match(config, /"ALLOWED_ORIGINS"/);
   assert.match(config, /"FEATURE_EMAIL_VERIFICATION": "off"/);
   assert.match(config, /"FEATURE_SMS_VERIFICATION": "off"/);
   assert.match(config, /"FEATURE_TURNSTILE": "off"/);
   assert.match(config, /"FEATURE_ADMIN_CONSOLE": "off"/);
+  assert.match(config, /"FEATURE_ADMIN_ALERTS": "off"/);
+  assert.match(config, /"ADMIN_ALERT_CRON": ""/);
+  assert.match(config, /"ADMIN_ALERT_COOLDOWN_MINUTES": "60"/);
   assert.match(config, /"TURNSTILE_EXPECTED_HOSTNAMES"/);
   assert.match(config, /"ADMIN_ALLOWED_USER_IDS"/);
+  assert.doesNotMatch(config, /ADMIN_ALERT_WEBHOOK_(?:URL|SECRET)/);
 }
 
 const workflow = readFileSync(new URL('../.github/workflows/cloudflare.yml', import.meta.url), 'utf8');
@@ -134,6 +156,8 @@ for (const marker of [
   "ALLOWED_ORIGINS: ${{ vars.ALLOWED_ORIGINS || 'https://bonaqu.github.io' }}",
   'ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS',
   'FEATURE_TURNSTILE: process.env.FEATURE_TURNSTILE',
+  'FEATURE_ADMIN_ALERTS: process.env.FEATURE_ADMIN_ALERTS',
+  'triggers: { crons: alertCron ? [alertCron] : [] }',
   'node scripts/commercial-runtime-production-smoke.mjs',
   'cloudflare-deployment-stage.txt',
   'for attempt in 1 2 3',
@@ -158,8 +182,10 @@ for (const secret of [
   'SMS_VERIFICATION_WEBHOOK_URL:',
   'SMS_VERIFICATION_WEBHOOK_SECRET:',
   'SMS_VERIFICATION_EVENT_SECRET:',
+  'ADMIN_ALERT_WEBHOOK_URL:',
+  'ADMIN_ALERT_WEBHOOK_SECRET:',
   'EMAIL_API_KEY:',
   'SMS_API_KEY:'
 ]) assert.ok(!workflow.includes(secret), `Secret must not be written into deployment config: ${secret}`);
 
-console.log('Commercial capability contract, verified-contact account routing, signed delivery-event readiness, Turnstile/admin security and observable deployment wiring are fail-closed.');
+console.log('Commercial capability contract, verified-contact account routing, signed delivery-event readiness, Turnstile/admin security, default-off alert routing and observable deployment wiring are fail-closed.');

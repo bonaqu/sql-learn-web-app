@@ -152,7 +152,7 @@ function sameDeliveryEvent(existing: ExistingDeliveryEventRow, body: DeliveryEve
     && existing.occurred_at === occurredAt;
 }
 
-async function pruneDeliveryRetention(env: ContactDeliveryEnvironment, body: DeliveryEventBody) {
+async function pruneDeliveryRetention(env: ContactDeliveryEnvironment, deliveryStatus: DeliveryStatus) {
   try {
     await runRetentionCleanup(env, {
       execute: true,
@@ -161,8 +161,7 @@ async function pruneDeliveryRetention(env: ContactDeliveryEnvironment, body: Del
   } catch (error) {
     const name = error instanceof Error ? error.name.slice(0, 80) : 'UnknownError';
     console.error('contact_delivery_retention_failed', {
-      eventId: body.eventId,
-      deliveryStatus: body.status,
+      deliveryStatus,
       name
     });
   }
@@ -250,7 +249,7 @@ export async function handleContactDeliveryEventRequest(
     }
   }
 
-  const retention = pruneDeliveryRetention(env, body);
+  const retention = pruneDeliveryRetention(env, body.status);
   if (context) context.waitUntil(retention);
   else await retention;
 

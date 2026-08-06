@@ -9,6 +9,7 @@ const calibrationSmoke = readFileSync('scripts/assessment-calibration-production
 const analyticsSmoke = readFileSync('scripts/learning-analytics-production-smoke.mjs', 'utf8');
 const dialectFreeSmoke = readFileSync('scripts/dialect-labs-free-production-smoke.ts', 'utf8');
 const core = readFileSync('worker/core.ts', 'utf8');
+const workerEntrypoint = readFileSync('worker/entrypoint.ts', 'utf8');
 const workerIndex = readFileSync('worker/index.ts', 'utf8');
 const curriculumWorker = readFileSync('worker/curriculum.ts', 'utf8');
 const capstoneWorker = readFileSync('worker/capstones.ts', 'utf8');
@@ -48,7 +49,7 @@ requireText(workflow, 'cloudflare-capstone-stage.txt', 'capstone stage diagnosti
 requireText(workflow, 'cloudflare-assessment-calibration-stage.txt', 'assessment calibration stage diagnostics');
 requireText(workflow, 'cloudflare-learning-analytics-stage.txt', 'learning analytics stage diagnostics');
 requireText(workflow, 'cloudflare-dialect-stage.txt', 'dialect stage diagnostics');
-requireText(workflow, "main: 'worker/index.ts'", 'canonical production Worker entrypoint');
+requireText(workflow, "main: 'worker/entrypoint.ts'", 'scheduled production Worker entrypoint');
 requireText(workflow, "compatibility_flags: ['nodejs_compat']", 'Worker Node compatibility');
 requireText(workflow, "DIALECT_ENGINE_MODE: 'preview-only'", 'free-tier dialect boundary');
 requireText(workflow, 'Deploy Worker, D1/KV and static assets', 'free-tier deployment step');
@@ -57,9 +58,14 @@ forbidText(workflow, 'Dockerfile', 'Container image build in production');
 forbidText(workflow, 'SANDBOX_TRANSPORT', 'Sandbox transport in free production');
 forbidText(workflow, 'real-required', 'paid engine requirement in free production');
 
+requireText(freeWrangler, '"main": "worker/entrypoint.ts"', 'default scheduled Worker entrypoint');
 requireText(freeWrangler, '"DIALECT_ENGINE_MODE": "preview-only"', 'default preview-only mode');
 forbidText(freeWrangler, '"containers"', 'Containers in default Wrangler config');
 forbidText(freeWrangler, '"durable_objects"', 'Sandbox Durable Object in default Wrangler config');
+requireText(workerEntrypoint, "import worker from './index';", 'HTTP pipeline delegation');
+requireText(workerEntrypoint, 'return worker.fetch(request, env, context);', 'canonical fetch delegation');
+requireText(workerEntrypoint, 'await handleScheduledAdminAlerts(controller, env);', 'awaited scheduled alert routing');
+forbidText(workerEntrypoint, 'const { waitUntil }', 'ExecutionContext method destructuring');
 requireText(paidWrangler, '"containers"', 'separate optional paid profile');
 requireText(paidWrangler, '"DIALECT_ENGINE_MODE": "real-required"', 'strict optional paid profile');
 requireText(paidWrangler, '"SANDBOX_TRANSPORT": "rpc"', 'optional paid RPC transport');

@@ -25,7 +25,9 @@ const json = (data: unknown, status = 200, extraHeaders: Record<string, string> 
 
 export function handleHiddenAdminBoundary(request: Request, env: CommercialEnvironment) {
   const pathname = new URL(request.url).pathname;
-  if (pathname !== '/api/admin/health' && !isRetentionAdminPath(request)) return null;
+  if (pathname !== '/api/admin/health'
+    && pathname !== '/api/admin/alerts'
+    && !isRetentionAdminPath(request)) return null;
   return adminConsoleReady(env) ? null : json({ error: 'Not found' }, 404);
 }
 
@@ -89,7 +91,7 @@ async function contactDeliveryAggregates(env: Cloudflare.Env) {
   const complained = count(row?.complained);
   const failed = count(row?.failed);
   return {
-    window: '24h',
+    window: '24h' as const,
     sent,
     accepted: count(row?.accepted),
     delivered,
@@ -130,7 +132,7 @@ async function contactSecurityAggregates(env: Cloudflare.Env) {
     FROM contact_security_events WHERE created_at >= datetime('now', '-24 hours')`)
     .first<SecurityAggregateRow>();
   return {
-    window: '24h',
+    window: '24h' as const,
     challengesCreated: count(row?.challenges_created),
     challengesRejected: count(row?.challenges_rejected),
     rateLimited: count(row?.rate_limited),
@@ -157,18 +159,7 @@ function contactAlerts(
   return alerts;
 }
 
-export async function handleAdminHealthRequest(
-  request: Request,
-  env: CommercialEnvironment,
-  userId: string
-): Promise<Response | null> {
-  const retentionResponse = await handleRetentionAdminRequest(request, env, userId);
-  if (retentionResponse) return retentionResponse;
-  if (new URL(request.url).pathname !== '/api/admin/health') return null;
-  if (!adminConsoleReady(env) || !adminAllowedUserIds(env).has(userId)) return json({ error: 'Not found' }, 404);
-  if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405, { allow: 'GET' });
-  if (!env.DB) return json({ error: 'D1 binding is not configured' }, 503);
-
+export async function collectAdminHealthSnapshot(env: CommercialEnvironment) {
   const [
     users,
     activeSessions,
@@ -187,8 +178,8 @@ export async function handleAdminHealthRequest(
     contactSecurityAggregates(env)
   ]);
 
-  return json({
-    ok: true,
+  return {
+    ok: true as const,
     generatedAt: new Date().toISOString(),
     capabilities: commercialCapabilities(env),
     configurationErrors: commercialConfigurationErrors(env),
@@ -213,5 +204,27 @@ export async function handleAdminHealthRequest(
       security: contactSecurity,
       alerts: contactAlerts(contactDelivery, contactSecurity)
     }
-  });
+  };
+}
+
+export type AdminHealthSnapshot = Awaited<ReturnType<typeof collectAdminHealthSnapshot>>;
+
+export async function handleAdminHealthRequest(
+  request: Request,
+  env: CommercialEnvironment,
+  userId: string
+): Promise<Response | null> {
+  const pathname = new URL(request.url).pathname;
+  if (pathname === '/api/admin/alerts') {
+    const { handleAdminAlertRequest } = await import('./admin-alert-routing');
+    return handleAdminAlertRequest(request, env, userId);
+  }
+
+  const retentionResponse = await handleRetentionAdminRequest(request, env, userId);
+  if (retentionResponse) return retentionResponse;
+  if (pathname !== '/api/admin/health') return null;
+  if (!adminConsoleReady(env) || !adminAllowedUserIds(env).has(userId)) return json({ error: 'Not found' }, 404);
+  if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405, { allow: 'GET' });
+  if (!env.DB) return json({ error: 'D1 binding is not configured' }, 503);
+  return json(await collectAdminHealthSnapshot(env));
 }

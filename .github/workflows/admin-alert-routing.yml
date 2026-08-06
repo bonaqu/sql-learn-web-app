@@ -1,0 +1,77 @@
+name: Admin Alert Routing Contract
+
+on:
+  pull_request:
+    branches:
+      - bonaqu_projects
+    paths:
+      - worker/admin-alert-config.ts
+      - worker/admin-alert-routing.ts
+      - worker/admin-health.ts
+      - worker/commercial-capabilities.ts
+      - worker/entrypoint.ts
+      - scripts/validate-admin-alert-routing.ts
+      - scripts/validate-admin-alert-profiles.ts
+      - scripts/validate-admin-alert-config-boundary.ts
+      - scripts/validate-admin-alert-http-boundary.ts
+      - docs/admin-alert-routing.md
+      - wrangler.jsonc
+      - wrangler.typegen.jsonc
+      - wrangler.real-engines.jsonc
+      - .github/workflows/cloudflare.yml
+      - .github/workflows/admin-alert-routing.yml
+  push:
+    branches:
+      - bonaqu_projects
+    paths:
+      - worker/admin-alert-config.ts
+      - worker/admin-alert-routing.ts
+      - worker/admin-health.ts
+      - worker/commercial-capabilities.ts
+      - worker/entrypoint.ts
+      - scripts/validate-admin-alert-routing.ts
+      - scripts/validate-admin-alert-profiles.ts
+      - scripts/validate-admin-alert-config-boundary.ts
+      - scripts/validate-admin-alert-http-boundary.ts
+      - docs/admin-alert-routing.md
+      - wrangler.jsonc
+      - wrangler.typegen.jsonc
+      - wrangler.real-engines.jsonc
+      - .github/workflows/cloudflare.yml
+      - .github/workflows/admin-alert-routing.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: admin-alert-routing-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact locked dependency tree
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate buyer-owned alert routing
+        run: npx tsx scripts/validate-admin-alert-routing.ts
+
+      - name: Validate alert configuration boundaries
+        run: npx tsx scripts/validate-admin-alert-config-boundary.ts
+
+      - name: Validate protected alert HTTP boundary
+        run: npx tsx scripts/validate-admin-alert-http-boundary.ts
+
+      - name: Validate Cloudflare profile defaults
+        run: npx tsx scripts/validate-admin-alert-profiles.ts

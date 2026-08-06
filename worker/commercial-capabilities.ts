@@ -1,3 +1,8 @@
+import {
+  adminAlertConfigurationErrors,
+  adminAlertRoutingReady,
+  type AdminAlertEnvironment
+} from './admin-alert-config';
 import { contactVerificationReady } from './contact-verification';
 
 type CommercialEnvKey =
@@ -17,14 +22,17 @@ type CommercialEnvKey =
   | 'TURNSTILE_EXPECTED_HOSTNAMES'
   | 'ADMIN_ALLOWED_USER_IDS';
 
-export type CommercialEnvironment = Cloudflare.Env & Partial<Record<CommercialEnvKey, string>>;
+export type CommercialEnvironment = Cloudflare.Env
+  & Partial<Record<CommercialEnvKey, string>>
+  & AdminAlertEnvironment;
 export type ContactRegistrationPolicy = 'optional' | 'required-for-new-registration';
 
 type CommercialCapabilityName =
   | 'emailVerification'
   | 'smsVerification'
   | 'turnstile'
-  | 'adminConsole';
+  | 'adminConsole'
+  | 'adminAlerts';
 
 export type CommercialCapabilities = {
   contract: 'commercial-capabilities-v1';
@@ -116,6 +124,7 @@ export function commercialConfigurationErrors(env: CommercialEnvironment) {
   }
   if (configuredContactRegistrationPolicy(env) === 'required-for-new-registration'
     && !contactRegistrationPolicyReady(env)) errors.push('CONTACT_REGISTRATION_POLICY_INCOMPLETE');
+  errors.push(...adminAlertConfigurationErrors(env));
   return errors;
 }
 
@@ -143,7 +152,8 @@ export function commercialCapabilities(env: CommercialEnvironment): CommercialCa
       emailVerification: { enabled: emailLogin },
       smsVerification: { enabled: smsLogin },
       turnstile: { enabled: turnstileReady(env) },
-      adminConsole: { enabled: adminConsoleReady(env) }
+      adminConsole: { enabled: adminConsoleReady(env) },
+      adminAlerts: { enabled: adminAlertRoutingReady(env) }
     }
   };
 }

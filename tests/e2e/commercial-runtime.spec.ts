@@ -34,13 +34,18 @@ test('desktop commercial runtime stays default-off, hidden and fail-closed', asy
       emailVerification: { enabled: false },
       smsVerification: { enabled: false },
       turnstile: { enabled: false },
-      adminConsole: { enabled: false }
+      adminConsole: { enabled: false },
+      adminAlerts: { enabled: false }
     }
   });
 
   const hiddenAdmin = await request.get(`${worker}/api/admin/health`);
   expect(hiddenAdmin.status()).toBe(404);
   expect(await hiddenAdmin.json()).toEqual({ error: 'Not found' });
+
+  const hiddenAlerts = await request.get(`${worker}/api/admin/alerts`);
+  expect(hiddenAlerts.status()).toBe(404);
+  expect(await hiddenAlerts.json()).toEqual({ error: 'Not found' });
 
   const rejectedOrigin = await request.get(`${worker}/api/capabilities`, { headers: { origin: 'https://evil.example.net' } });
   expect(rejectedOrigin.status()).toBe(403);

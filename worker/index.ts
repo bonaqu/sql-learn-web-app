@@ -62,7 +62,7 @@ function corsHeaders(origin: string) {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': CORS_METHODS,
     'access-control-allow-headers': CORS_HEADERS,
-    'access-control-expose-headers': 'retry-after, x-request-id, x-progress-contract, x-onboarding-contract, x-dialect-lab-contract, x-learning-analytics-contract, x-commercial-capabilities-contract, x-contact-verification-contract, x-contact-account-contract, x-contact-delivery-contract, x-contact-login-contract',
+    'access-control-expose-headers': 'retry-after, x-request-id, x-progress-contract, x-onboarding-contract, x-dialect-lab-contract, x-learning-analytics-contract, x-commercial-capabilities-contract, x-contact-verification-contract, x-contact-account-contract, x-contact-delivery-contract, x-contact-login-contract, x-admin-alert-contract',
     'access-control-max-age': '86400',
     vary: 'Origin'
   };
