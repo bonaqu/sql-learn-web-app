@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Report Pages deployment pending
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             await github.rest.repos.createCommitStatus({
@@ -79,7 +79,7 @@ jobs:
         run: echo 'upload-pages-artifact' > pages-deployment-stage.txt
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
@@ -105,7 +105,7 @@ jobs:
 
       - name: Upload Pages failure diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pages-deployment-diagnostics-${{ github.run_attempt }}
           path: |
@@ -117,7 +117,7 @@ jobs:
 
       - name: Report Pages deployment result
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
           JOB_STATUS: ${{ job.status }}
