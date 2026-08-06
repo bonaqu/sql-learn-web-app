@@ -37,6 +37,13 @@ type EvaluationOptions = {
   force?: boolean;
 };
 
+class AdminAlertDeliveryError extends Error {
+  constructor(code: 'ADMIN_ALERT_WEBHOOK_REQUEST_FAILED' | `ADMIN_ALERT_WEBHOOK_HTTP_${number}`) {
+    super(code);
+    this.name = 'AdminAlertDeliveryError';
+  }
+}
+
 const ALERT_SEVERITY: Record<string, Exclude<AlertSeverity, 'info'>> = {
   CONTACT_DELIVERY_RATE_LOW: 'warning',
   CONTACT_BOUNCE_RATE_HIGH: 'warning',
@@ -189,20 +196,25 @@ async function deliverPayload(
   const abort = new AbortController();
   const timeout = setTimeout(() => abort.abort(), DELIVERY_TIMEOUT_MS);
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      redirect: 'error',
-      signal: abort.signal,
-      headers: {
-        'content-type': 'application/json; charset=utf-8',
-        'x-sql-academy-alert-contract': payload.contract,
-        'x-sql-academy-alert-id': payload.eventId,
-        'x-sql-academy-alert-timestamp': timestamp,
-        'x-sql-academy-alert-signature': `sha256=${signature}`
-      },
-      body
-    });
-    if (!response.ok) throw new Error(`Admin alert webhook returned HTTP ${response.status}`);
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        redirect: 'error',
+        signal: abort.signal,
+        headers: {
+          'content-type': 'application/json; charset=utf-8',
+          'x-sql-academy-alert-contract': payload.contract,
+          'x-sql-academy-alert-id': payload.eventId,
+          'x-sql-academy-alert-timestamp': timestamp,
+          'x-sql-academy-alert-signature': `sha256=${signature}`
+        },
+        body
+      });
+    } catch {
+      throw new AdminAlertDeliveryError('ADMIN_ALERT_WEBHOOK_REQUEST_FAILED');
+    }
+    if (!response.ok) throw new AdminAlertDeliveryError(`ADMIN_ALERT_WEBHOOK_HTTP_${response.status}`);
   } finally {
     clearTimeout(timeout);
   }
