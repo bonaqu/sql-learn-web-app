@@ -8,6 +8,8 @@ const output = resolve(root, outputArg >= 0 ? process.argv[outputArg + 1] : 'wra
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KV_ID_PATTERN = /^[0-9a-f]{32}$/i;
 const CRON_FIELD_PATTERN = /^[0-9A-Za-z*?,/\\#LWD-]+$/;
+const HOSTNAME_PATTERN = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+const USER_ID_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
 const FLAG_NAMES = [
   'FEATURE_EMAIL_VERIFICATION',
   'FEATURE_SMS_VERIFICATION',
@@ -91,6 +93,12 @@ function reviewedInteger(name, minimum, maximum) {
   return String(parsed);
 }
 
+function commaSeparated(name, maximum) {
+  const values = variable(name).split(',').map(value => value.trim()).filter(Boolean);
+  if (values.length > maximum) throw new Error(`STAGING_${name} contains too many values`);
+  return [...new Set(values)];
+}
+
 if (contract.contract !== 'cloudflare-staging-environment-v1') {
   throw new Error('Unsupported staging environment contract');
 }
@@ -111,6 +119,30 @@ const contactPolicy = variable('CONTACT_REGISTRATION_POLICY').toLowerCase();
 if (contactPolicy !== 'optional' && contactPolicy !== 'required-for-new-registration') {
   throw new Error('STAGING_CONTACT_REGISTRATION_POLICY is invalid');
 }
+
+const turnstileHostnames = commaSeparated('TURNSTILE_EXPECTED_HOSTNAMES', 30)
+  .map(value => value.toLowerCase());
+if (turnstileHostnames.some(value => !HOSTNAME_PATTERN.test(value))) {
+  throw new Error('STAGING_TURNSTILE_EXPECTED_HOSTNAMES contains an invalid hostname');
+}
+if (flags.FEATURE_TURNSTILE === 'on' && !turnstileHostnames.length) {
+  throw new Error('STAGING_TURNSTILE_EXPECTED_HOSTNAMES is required when Turnstile is enabled');
+}
+
+const adminAllowedUserIds = commaSeparated('ADMIN_ALLOWED_USER_IDS', 100);
+if (adminAllowedUserIds.some(value => !USER_ID_PATTERN.test(value))) {
+  throw new Error('STAGING_ADMIN_ALLOWED_USER_IDS contains an invalid user ID');
+}
+if (flags.FEATURE_ADMIN_CONSOLE === 'on' && !adminAllowedUserIds.length) {
+  throw new Error('STAGING_ADMIN_ALLOWED_USER_IDS is required when the admin console is enabled');
+}
+
+if (contactPolicy === 'required-for-new-registration'
+  && (flags.FEATURE_TURNSTILE !== 'on'
+    || (flags.FEATURE_EMAIL_VERIFICATION !== 'on' && flags.FEATURE_SMS_VERIFICATION !== 'on'))) {
+  throw new Error('Required-contact registration needs Turnstile and at least one enabled contact channel');
+}
+
 const alertCron = flags.FEATURE_ADMIN_ALERTS === 'on' ? variable('ADMIN_ALERT_CRON') : '';
 if (flags.FEATURE_ADMIN_ALERTS === 'on') {
   const fields = alertCron.split(/\s+/);
@@ -118,6 +150,27 @@ if (flags.FEATURE_ADMIN_ALERTS === 'on') {
     throw new Error('STAGING_ADMIN_ALERT_CRON must be a five-field Cloudflare Cron expression');
   }
 }
+
+const requiredSecrets = new Set();
+if (flags.FEATURE_EMAIL_VERIFICATION === 'on' || flags.FEATURE_SMS_VERIFICATION === 'on') {
+  requiredSecrets.add('CONTACT_VERIFICATION_SIGNING_SECRET');
+}
+if (flags.FEATURE_EMAIL_VERIFICATION === 'on') {
+  requiredSecrets.add('EMAIL_VERIFICATION_WEBHOOK_URL');
+  requiredSecrets.add('EMAIL_VERIFICATION_WEBHOOK_SECRET');
+  requiredSecrets.add('EMAIL_VERIFICATION_EVENT_SECRET');
+}
+if (flags.FEATURE_SMS_VERIFICATION === 'on') {
+  requiredSecrets.add('SMS_VERIFICATION_WEBHOOK_URL');
+  requiredSecrets.add('SMS_VERIFICATION_WEBHOOK_SECRET');
+  requiredSecrets.add('SMS_VERIFICATION_EVENT_SECRET');
+}
+if (flags.FEATURE_TURNSTILE === 'on') requiredSecrets.add('TURNSTILE_SECRET_KEY');
+if (flags.FEATURE_ADMIN_ALERTS === 'on') {
+  requiredSecrets.add('ADMIN_ALERT_WEBHOOK_URL');
+  requiredSecrets.add('ADMIN_ALERT_WEBHOOK_SECRET');
+}
+const secretNames = [...requiredSecrets].sort();
 
 const config = {
   $schema: './node_modules/wrangler/config-schema.json',
@@ -140,6 +193,7 @@ const config = {
   }],
   kv_namespaces: [{ binding: 'SETTINGS', id: kvId }],
   ai: { binding: 'AI' },
+  ...(secretNames.length ? { secrets: { required: secretNames } } : {}),
   vars: {
     DIALECT_ENGINE_MODE: 'preview-only',
     ALLOWED_ORIGINS: allowedOrigins.join(','),
@@ -147,8 +201,8 @@ const config = {
     ADMIN_ALERT_CRON: alertCron,
     ADMIN_ALERT_COOLDOWN_MINUTES: reviewedInteger('ADMIN_ALERT_COOLDOWN_MINUTES', 5, 1_440),
     CONTACT_REGISTRATION_POLICY: contactPolicy,
-    TURNSTILE_EXPECTED_HOSTNAMES: variable('TURNSTILE_EXPECTED_HOSTNAMES'),
-    ADMIN_ALLOWED_USER_IDS: variable('ADMIN_ALLOWED_USER_IDS'),
+    TURNSTILE_EXPECTED_HOSTNAMES: turnstileHostnames.join(','),
+    ADMIN_ALLOWED_USER_IDS: adminAllowedUserIds.join(','),
     RETENTION_CONTACT_EVENTS_DAYS: reviewedInteger('RETENTION_CONTACT_EVENTS_DAYS', 1, 30),
     RETENTION_UNCONSUMED_CONTACT_HOURS: reviewedInteger('RETENTION_UNCONSUMED_CONTACT_HOURS', 1, 24),
     RETENTION_CONSUMED_CHALLENGE_HOURS: reviewedInteger('RETENTION_CONSUMED_CHALLENGE_HOURS', 1, 24),
@@ -166,5 +220,6 @@ console.log(JSON.stringify({
   kvNamespaceTitle: contract.resources.kvNamespaceTitle,
   expectedOrigin: expected,
   enabledFeatures: FLAG_NAMES.filter(name => flags[name] === 'on'),
+  requiredSecretNames: secretNames,
   output: output.replace(`${root}/`, '')
 }));
