@@ -33,6 +33,10 @@ assert.ok(manifest.scripts?.['validate:deployment-smoke']?.startsWith(`${ENTRYPO
   'Every repository deployment-smoke validation must begin with the active-entrypoint compatibility preflight');
 assert.ok(manifest.scripts?.check?.includes('npm run validate:deployment-smoke'),
   'The canonical repository check must include deployment-smoke validation');
+for (const scriptName of ['deploy:cloudflare', 'deploy:cloudflare:dry']) {
+  assert.ok(manifest.scripts?.[scriptName]?.startsWith(`${ENTRYPOINT_PREFLIGHT} && `),
+    `${scriptName} must fail before build or Wrangler when the active entrypoint is incompatible`);
+}
 for (const [name, workflow] of [
   ['Cloudflare production', productionWorkflow],
   ['GitHub Pages production', pagesWorkflow],
@@ -41,4 +45,4 @@ for (const [name, workflow] of [
   assert.ok(workflow.includes('npm run check'), `${name} deployment must run the canonical repository check`);
 }
 
-console.log('Worker entrypoint compatibility validated: production, Pages and staging checks all preserve the historical Sandbox Durable Object export without re-enabling a free-tier binding.');
+console.log('Worker entrypoint compatibility validated: production workflows and local Cloudflare deploy commands preserve the historical Sandbox Durable Object export without re-enabling a free-tier binding.');
