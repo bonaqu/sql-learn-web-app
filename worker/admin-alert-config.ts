@@ -14,6 +14,7 @@ const MAX_CRON_LENGTH = 80;
 const MAX_SECRET_LENGTH = 2_000;
 const MAX_URL_LENGTH = 2_000;
 const CRON_FIELD_PATTERN = /^[0-9A-Za-z*?,/\\#LWD-]+$/;
+const IPV4_PATTERN = /^\d{1,3}(?:\.\d{1,3}){3}$/;
 
 function enabledFlag(value: string | undefined) {
   return value?.trim().toLowerCase() === 'on';
@@ -34,12 +35,43 @@ function safeCron(value: string | undefined) {
   return fields.join(' ');
 }
 
+function privateOrReservedIpv4(hostname: string) {
+  if (!IPV4_PATTERN.test(hostname)) return false;
+  const octets = hostname.split('.').map(Number);
+  if (octets.some(octet => !Number.isInteger(octet) || octet < 0 || octet > 255)) return true;
+  const [first, second] = octets;
+  return first === 0
+    || first === 10
+    || first === 127
+    || (first === 100 && second >= 64 && second <= 127)
+    || (first === 169 && second === 254)
+    || (first === 172 && second >= 16 && second <= 31)
+    || (first === 192 && second === 168)
+    || (first === 198 && (second === 18 || second === 19))
+    || first >= 224;
+}
+
+function unsafeWebhookHostname(value: string) {
+  const hostname = value.toLowerCase().replace(/^\[|\]$/g, '');
+  if (!hostname
+    || hostname === 'localhost'
+    || hostname.endsWith('.localhost')
+    || hostname.endsWith('.local')
+    || hostname.endsWith('.internal')) return true;
+  if (hostname.includes(':')) return true;
+  return privateOrReservedIpv4(hostname);
+}
+
 function safeWebhookUrl(value: string | undefined) {
   const raw = (value || '').trim();
   if (!raw || raw.length > MAX_URL_LENGTH) return null;
   try {
     const parsed = new URL(raw);
-    if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.hash) return null;
+    if (parsed.protocol !== 'https:'
+      || parsed.username
+      || parsed.password
+      || parsed.hash
+      || unsafeWebhookHostname(parsed.hostname)) return null;
     return parsed.toString();
   } catch {
     return null;
