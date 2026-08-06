@@ -26,6 +26,18 @@ export type GoalModuleFrontier = {
 
 export const SHARED_FOUNDATION_MODULE_IDS: readonly string[] = [...phaseDefinitions[0].moduleIds];
 
+const learnerGoalTitles: Record<LearnerGoal, string> = {
+  support: 'SQL для технической поддержки',
+  analyst: 'SQL для аналитики',
+  backend: 'SQL для бэкенд-разработки',
+  interview: 'подготовка к SQL-интервью',
+  full: 'полная академия SQL'
+};
+
+export function learnerGoalTitle(goalInput: LearnerGoal | null | undefined) {
+  return learnerGoalTitles[goalInput || 'full'];
+}
+
 const goalPriority: Record<LearnerGoal, readonly string[]> = {
   support: [
     'support',
@@ -219,18 +231,18 @@ function routeReason(goal: LearnerGoal, moduleId: ModuleId): Pick<GoalModuleFron
   if (goal === 'full') {
     return {
       nextReasonCode: 'balanced-route',
-      nextReason: 'Полная академия сохраняет сбалансированный порядок query, data change и production-навыков.'
+      nextReason: 'Полная академия сохраняет сбалансированный порядок работы с запросами, изменением данных и навыками для реальных систем.'
     };
   }
   const preferred = goalPriority[goal].includes(moduleId);
   return preferred
     ? {
         nextReasonCode: 'goal-priority',
-        nextReason: `Модуль уже открыт prerequisites и имеет повышенный приоритет для цели «${goal}».`
+        nextReason: `Все обязательные предыдущие темы пройдены, а этот модуль особенно важен для цели «${learnerGoalTitle(goal)}».`
       }
     : {
         nextReasonCode: 'prerequisite-recovery',
-        nextReason: 'Этот модуль нужен как prerequisite, прежде чем выбранная специализация сможет двигаться дальше.'
+        nextReason: 'Этот модуль закрывает обязательную зависимость, без которой выбранная специализация не сможет двигаться дальше.'
       };
 }
 
