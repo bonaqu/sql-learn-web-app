@@ -6,6 +6,11 @@
     "d1DatabaseName": "sql-academy-staging",
     "kvNamespaceTitle": "sql-academy-settings-staging"
   },
+  "productionResources": {
+    "workerName": "sql-learn-web-app",
+    "d1DatabaseName": "sql-academy",
+    "kvNamespaceTitle": "sql-academy-settings"
+  },
   "safeDefaults": {
     "DIALECT_ENGINE_MODE": "preview-only",
     "FEATURE_EMAIL_VERIFICATION": "off",
