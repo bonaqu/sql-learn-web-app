@@ -13,6 +13,7 @@ on:
       - scripts/validate-admin-alert-routing.ts
       - scripts/validate-admin-alert-profiles.ts
       - scripts/validate-admin-alert-config-boundary.ts
+      - scripts/validate-admin-alert-http-boundary.ts
       - docs/admin-alert-routing.md
       - wrangler.jsonc
       - wrangler.typegen.jsonc
@@ -31,6 +32,7 @@ on:
       - scripts/validate-admin-alert-routing.ts
       - scripts/validate-admin-alert-profiles.ts
       - scripts/validate-admin-alert-config-boundary.ts
+      - scripts/validate-admin-alert-http-boundary.ts
       - docs/admin-alert-routing.md
       - wrangler.jsonc
       - wrangler.typegen.jsonc
@@ -67,6 +69,9 @@ jobs:
 
       - name: Validate alert configuration boundaries
         run: npx tsx scripts/validate-admin-alert-config-boundary.ts
+
+      - name: Validate protected alert HTTP boundary
+        run: npx tsx scripts/validate-admin-alert-http-boundary.ts
 
       - name: Validate Cloudflare profile defaults
         run: npx tsx scripts/validate-admin-alert-profiles.ts
