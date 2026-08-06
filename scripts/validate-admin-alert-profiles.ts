@@ -28,4 +28,14 @@ assert.ok(exposeHeaders.split(',').map(value => value.trim()).includes('x-admin-
 assert.ok(!workerIndex.includes('x-admin-alert-signature'),
   'Outbound webhook signature headers must never be accepted or exposed by the browser API CORS contract.');
 
-console.log('Admin alert Cloudflare profiles validated: shared scheduled entrypoint, default-off Cron, reviewed cooldown, browser-visible response contract and zero webhook secrets.');
+const routing = readFileSync(new URL('../worker/admin-alert-routing.ts', import.meta.url), 'utf8');
+assert.ok(routing.includes('const timestamp = String(Math.floor(Date.now() / 1_000));'),
+  'Webhook signature freshness must use delivery time rather than nominal Cron time.');
+assert.ok(!routing.includes('Date.parse(payload.generatedAt) / 1_000'),
+  'Delayed Cron invocations must not emit stale signature timestamps.');
+assert.ok(routing.includes('request.body.getReader()'));
+assert.ok(routing.includes('if (total > MAX_BODY_BYTES)'));
+assert.ok(routing.includes('await reader.cancel()'));
+assert.ok(routing.includes("source: 'schedule', now: new Date()"));
+
+console.log('Admin alert Cloudflare profiles validated: shared scheduled entrypoint, default-off Cron, fresh signatures, bounded operator bodies, browser-visible response contract and zero webhook secrets.');
