@@ -17,7 +17,7 @@ Verify the signature over the exact UTF-8 bytes of:
 <timestamp>.<raw request body>
 ```
 
-Reject stale timestamps according to the receiver's policy and deduplicate by `x-sql-academy-alert-id`. The Worker follows redirects with `redirect: error`, so the configured endpoint must return a direct 2xx response within eight seconds.
+The signature timestamp is created at the actual delivery attempt, not copied from the nominal Cron schedule. Reject stale timestamps according to the receiver's policy and deduplicate by `x-sql-academy-alert-id`. The Worker follows redirects with `redirect: error`, so the configured endpoint must return a direct 2xx response within eight seconds.
 
 The body contains:
 
@@ -56,20 +56,22 @@ npx wrangler secret put ADMIN_ALERT_WEBHOOK_URL
 npx wrangler secret put ADMIN_ALERT_WEBHOOK_SECRET
 ```
 
-`ADMIN_ALERT_WEBHOOK_URL` must be a direct HTTPS URL without credentials or a fragment. Query parameters are accepted because some buyer-owned receivers use opaque route tokens; treat the entire URL as a secret.
+`ADMIN_ALERT_WEBHOOK_URL` must be a direct public HTTPS URL without credentials or a fragment. Localhost names, `.local`/`.internal` destinations, private or reserved IPv4 literals and all IPv6 literals are rejected. Query parameters are accepted because some buyer-owned receivers use opaque route tokens; treat the entire URL as a secret.
 
 `ADMIN_ALERT_WEBHOOK_SECRET` must contain at least 32 characters and must also be configured on the receiver. Do not reuse contact-verification, Turnstile, session or provider credentials.
 
 The Cloudflare deployment workflow deliberately does not copy these two secrets into `wrangler.deploy.jsonc`. Existing encrypted Worker secrets remain owned by the buyer's Cloudflare account.
 
+Both the default Free profile and the optional real-dialect-engine profile use the same scheduled Worker entrypoint and remain `FEATURE_ADMIN_ALERTS=off` with `triggers.crons: []` in source control. The repository deployment workflow manages the Free profile. A buyer deploying the optional paid profile must supply its chosen alert vars, Cron trigger and Worker secrets in that deployment process as well.
+
 ## Activation sequence
 
 1. Deploy with `FEATURE_ADMIN_ALERTS=off` and `ADMIN_ALERT_CRON` empty.
-2. Create the receiver and implement timestamp, HMAC and event-ID validation.
+2. Create the public receiver and implement timestamp, HMAC and event-ID validation.
 3. Add both Worker secrets with `wrangler secret put`.
 4. Enable the existing admin console and allowlist an operator user ID if the protected test endpoint will be used.
 5. Set `ADMIN_ALERT_CRON` and `ADMIN_ALERT_COOLDOWN_MINUTES` repository variables.
-6. Set `FEATURE_ADMIN_ALERTS=on` and run the Cloudflare deployment workflow.
+6. Set `FEATURE_ADMIN_ALERTS=on` and run the Cloudflare deployment workflow. The deploy fails rather than silently creating no trigger when the feature is on but the schedule is empty.
 7. Authenticate as an allowlisted operator and inspect `GET /api/admin/alerts`. The response reports only safe readiness, schedule, cooldown, configuration-error codes and the last delivered alert codes/time.
 8. Send a test with:
 
@@ -89,7 +91,7 @@ The Cloudflare deployment workflow deliberately does not copy these two secrets 
 }
 ```
 
-The manual dispatch respects the same aggregate-only payload contract but intentionally bypasses cooldown. It does not fabricate an alert when there is no active or recently resolved alert set.
+The manual dispatch respects the same aggregate-only payload contract but intentionally bypasses cooldown. It does not fabricate an alert when there is no active or recently resolved alert set. Operator request bodies are streamed with a strict 2 KiB ceiling before JSON parsing.
 
 ## Safe disable and rotation
 
@@ -105,6 +107,7 @@ Do not delete alert state from KV during ordinary rotation. Keeping the state pr
 - A non-2xx response, timeout, redirect or network error does not advance KV delivery state.
 - Scheduled failures are awaited so Cloudflare records the Cron invocation as failed.
 - Manual failures return `ADMIN_ALERT_DELIVERY_FAILED` with a request ID and do not expose the destination or secret.
+- Invalid or oversized operator JSON is rejected before alert delivery is evaluated.
 - The current deployment remains fully functional with alerts disabled.
 
 ## Alert codes and severity
