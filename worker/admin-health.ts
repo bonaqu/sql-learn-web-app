@@ -214,9 +214,15 @@ export async function handleAdminHealthRequest(
   env: CommercialEnvironment,
   userId: string
 ): Promise<Response | null> {
+  const pathname = new URL(request.url).pathname;
+  if (pathname === '/api/admin/alerts') {
+    const { handleAdminAlertRequest } = await import('./admin-alert-routing');
+    return handleAdminAlertRequest(request, env, userId);
+  }
+
   const retentionResponse = await handleRetentionAdminRequest(request, env, userId);
   if (retentionResponse) return retentionResponse;
-  if (new URL(request.url).pathname !== '/api/admin/health') return null;
+  if (pathname !== '/api/admin/health') return null;
   if (!adminConsoleReady(env) || !adminAllowedUserIds(env).has(userId)) return json({ error: 'Not found' }, 404);
   if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405, { allow: 'GET' });
   if (!env.DB) return json({ error: 'D1 binding is not configured' }, 503);
