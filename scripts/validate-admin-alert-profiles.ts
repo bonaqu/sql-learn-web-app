@@ -48,4 +48,15 @@ assert.ok(stateReadSource.includes('} catch (error) {'));
 assert.ok(stateReadSource.includes('return null;'),
   'Malformed or unreadable KV state must fall back to a resendable empty state.');
 
-console.log('Admin alert Cloudflare profiles validated: shared scheduled entrypoint, default-off Cron, fresh signatures, bounded operator bodies, safe KV recovery, browser-visible response contract and zero webhook secrets.');
+assert.ok(routing.includes('class AdminAlertDeliveryError extends Error'));
+assert.ok(routing.includes("new AdminAlertDeliveryError('ADMIN_ALERT_WEBHOOK_REQUEST_FAILED')"));
+assert.ok(routing.includes('new AdminAlertDeliveryError(`ADMIN_ALERT_WEBHOOK_HTTP_${response.status}`)'));
+const deliveryStart = routing.indexOf('async function deliverPayload');
+const deliveryEnd = routing.indexOf('function safeDeliveryState', deliveryStart);
+assert.ok(deliveryStart >= 0 && deliveryEnd > deliveryStart);
+const deliverySource = routing.slice(deliveryStart, deliveryEnd);
+assert.ok(deliverySource.includes('} catch {'));
+assert.ok(!deliverySource.includes('throw error'));
+assert.ok(!deliverySource.includes('error.message'));
+
+console.log('Admin alert Cloudflare profiles validated: shared scheduled entrypoint, default-off Cron, fresh signatures, bounded operator bodies, safe KV recovery, sanitized webhook failures, browser-visible response contract and zero webhook secrets.');
