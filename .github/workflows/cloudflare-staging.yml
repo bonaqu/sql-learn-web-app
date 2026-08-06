@@ -115,10 +115,12 @@ jobs:
         run: |
           echo 'resource-isolation' > staging-deployment-stage.txt
           node - <<'NODE'
+          const contract = require('./config/staging-environment.json');
           const d1 = require('./staging-d1-list.json');
           const kv = require('./staging-kv-list.json');
-          const productionD1 = d1.find(item => item.name === 'sql-academy');
-          const productionKv = kv.find(item => item.title === 'sql-academy-settings' || item.name === 'sql-academy-settings');
+          const productionD1 = d1.find(item => item.name === contract.productionResources.d1DatabaseName);
+          const productionKv = kv.find(item => item.title === contract.productionResources.kvNamespaceTitle
+            || item.name === contract.productionResources.kvNamespaceTitle);
           const productionD1Id = productionD1 && (productionD1.uuid || productionD1.id);
           const productionKvId = productionKv && productionKv.id;
           if (productionD1Id && productionD1Id === process.env.D1_ID) {
@@ -153,6 +155,22 @@ jobs:
             throw new Error('Generated staging required-secret metadata is invalid');
           }
           NODE
+
+      - name: Verify enabled feature Worker secrets exist
+        shell: bash
+        run: |
+          echo 'feature-secret-readiness' > staging-deployment-stage.txt
+          WORKER_NAME=$(node -e "const m=require('./staging-render-metadata.json'); process.stdout.write(m.workerName)")
+          REQUIRED_COUNT=$(node -e "const m=require('./staging-render-metadata.json'); process.stdout.write(String(m.requiredSecretNames.length))")
+          if [ "$REQUIRED_COUNT" -gt 0 ]; then
+            npx wrangler secret list --name "$WORKER_NAME" --format json > staging-secret-list.json
+          else
+            printf '%s\n' '[]' > staging-secret-list.json
+          fi
+          node scripts/validate-staging-secret-presence.mjs \
+            --metadata staging-render-metadata.json \
+            --secret-list staging-secret-list.json
+          rm -f staging-secret-list.json
 
       - name: Validate staging Worker bundle
         run: |
@@ -219,6 +237,7 @@ jobs:
               'repository-validation',
               'production-build',
               'resource-isolation',
+              'feature-secret-readiness',
               'wrangler-dry-run',
               'd1-migrations',
               'commercial-runtime',
