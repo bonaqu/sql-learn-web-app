@@ -20,11 +20,11 @@ const manifest = `${JSON.stringify({
   start_url: './',
   scope: './',
   display: 'standalone',
-  theme_color: '#07130f',
-  background_color: '#07130f',
+  theme_color: '#09090b',
+  background_color: '#09090b',
   icons: [
-    { src: './pwa-192.png', sizes: '192x192', type: 'image/png' },
-    { src: './pwa-512.png', sizes: '512x512', type: 'image/png' }
+    { src: './logo.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+    { src: './maskable.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable' }
   ]
 }, null, 2)}\n`;
 
