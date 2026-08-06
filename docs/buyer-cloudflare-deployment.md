@@ -28,9 +28,9 @@ Do not transfer a personal developer API token as the permanent deployment crede
 
 Never point the staging config at production D1/KV identifiers. The permanent validation gate rejects shared production names and IDs.
 
-## GitHub Environment `staging`
+## GitHub Environment named `staging`
 
-Create a protected GitHub Environment named `staging` (exact name). Configure required reviewers according to the buyer's change-control policy.
+Create a protected GitHub Environment named exactly `staging`. Configure required reviewers according to the buyer's change-control policy.
 
 ### Required environment secrets
 
@@ -59,7 +59,27 @@ All default to fail-closed values:
 - `STAGING_ADMIN_ALERT_COOLDOWN_MINUTES=60`
 - reviewed retention values from `config/staging-environment.json`
 
-When a feature is enabled, configure its existing Worker secrets on the staging Worker before running acceptance. For example:
+When Turnstile is enabled, `STAGING_TURNSTILE_EXPECTED_HOSTNAMES` must contain at least one valid hostname. When the admin console is enabled, `STAGING_ADMIN_ALLOWED_USER_IDS` must contain at least one valid operator user ID. `required-for-new-registration` is accepted only when Turnstile and at least one contact channel are enabled.
+
+### Worker-secret readiness
+
+The staging renderer adds Wrangler `secrets.required` declarations only for features that are enabled. `wrangler deploy` therefore fails before release when an enabled feature is missing any required Worker secret; secret values are never written into generated config or workflow artifacts.
+
+| Enabled capability | Required staging Worker secrets |
+| --- | --- |
+| Email verification | `CONTACT_VERIFICATION_SIGNING_SECRET`, `EMAIL_VERIFICATION_WEBHOOK_URL`, `EMAIL_VERIFICATION_WEBHOOK_SECRET`, `EMAIL_VERIFICATION_EVENT_SECRET` |
+| SMS verification | `CONTACT_VERIFICATION_SIGNING_SECRET`, `SMS_VERIFICATION_WEBHOOK_URL`, `SMS_VERIFICATION_WEBHOOK_SECRET`, `SMS_VERIFICATION_EVENT_SECRET` |
+| Turnstile | `TURNSTILE_SECRET_KEY` |
+| Admin alerts | `ADMIN_ALERT_WEBHOOK_URL`, `ADMIN_ALERT_WEBHOOK_SECRET` |
+
+Use a two-pass bootstrap for a new buyer account:
+
+1. deploy staging once with every optional feature off, creating the Worker and isolated D1/KV resources;
+2. set independent staging Worker secrets;
+3. enable only the intended staging feature flags and expected-capability variables;
+4. rerun staging acceptance and retain the accepted evidence artifact.
+
+For example:
 
 ```bash
 npx wrangler secret put CONTACT_VERIFICATION_SIGNING_SECRET --name sql-learn-web-app-staging
@@ -82,7 +102,7 @@ The workflow:
 2. installs the exact lockfile with `npm ci`;
 3. runs the complete repository validation and production build;
 4. resolves or creates isolated staging D1/KV resources;
-5. renders a secret-free staging Wrangler config;
+5. renders a secret-free staging Wrangler config with required-secret names only for enabled features;
 6. performs a Worker dry run;
 7. applies D1 migrations to `sql-academy-staging` only;
 8. deploys `sql-learn-web-app-staging`;
