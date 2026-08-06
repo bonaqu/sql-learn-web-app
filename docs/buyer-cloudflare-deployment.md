@@ -24,9 +24,11 @@ Do not transfer a personal developer API token as the permanent deployment crede
 - D1: `sql-academy-staging`
 - KV: `sql-academy-settings-staging`
 
+The same contract records the stable production resource names used only for an isolation comparison. The staging workflow resolves the actual Cloudflare identifiers and fails if staging D1 or KV resolves to the corresponding production identifier. Accepted evidence records that both ID comparisons passed, but never publishes the IDs themselves.
+
 `wrangler.staging.example.jsonc` is a non-deployable template with placeholder IDs and all optional commercial features off. The deployment workflow resolves or creates separate staging D1/KV resources, then renders `wrangler.staging.deploy.jsonc` at runtime.
 
-Never point the staging config at production D1/KV identifiers. The permanent validation gate rejects shared production names and IDs.
+Never point the staging config at production D1/KV identifiers. The permanent validation gate rejects shared production names, and the protected deployment proves actual ID isolation in the buyer account.
 
 ## GitHub Environment named `staging`
 
@@ -63,7 +65,7 @@ When Turnstile is enabled, `STAGING_TURNSTILE_EXPECTED_HOSTNAMES` must contain a
 
 ### Worker-secret readiness
 
-The staging renderer adds Wrangler `secrets.required` declarations only for features that are enabled. `wrangler deploy` therefore fails before release when an enabled feature is missing any required Worker secret; secret values are never written into generated config or workflow artifacts.
+The renderer writes required **secret names** for the enabled feature set to a separate redacted metadata file; it never writes secret values or secret-shaped variables into Wrangler config. Before dry-run, migration or deployment, the workflow runs `wrangler secret list --name sql-learn-web-app-staging --format json` and compares the returned names with that metadata. Any missing name stops the deployment.
 
 | Enabled capability | Required staging Worker secrets |
 | --- | --- |
@@ -101,15 +103,16 @@ The workflow:
 1. verifies buyer credentials and public origins;
 2. installs the exact lockfile with `npm ci`;
 3. runs the complete repository validation and production build;
-4. resolves or creates isolated staging D1/KV resources;
-5. renders a secret-free staging Wrangler config with required-secret names only for enabled features;
-6. performs a Worker dry run;
-7. applies D1 migrations to `sql-academy-staging` only;
-8. deploys `sql-learn-web-app-staging`;
-9. runs commercial, auth, curriculum, checkpoint, capstone, assessment, analytics, dialect, mastery and onboarding smoke lifecycles against the deployed staging URL;
-10. uploads a redacted `cloudflare-app-staging-acceptance-v1` artifact for 30 days.
+4. resolves or creates isolated staging D1/KV resources and proves their IDs differ from production;
+5. renders a secret-free staging Wrangler config plus redacted required-secret metadata;
+6. verifies that every secret required by enabled features exists on the staging Worker;
+7. performs a Worker dry run;
+8. applies D1 migrations to `sql-academy-staging` only;
+9. deploys `sql-learn-web-app-staging`;
+10. runs commercial, auth, curriculum, checkpoint, capstone, assessment, analytics, dialect, mastery and onboarding smoke lifecycles against the deployed staging URL;
+11. uploads a redacted `cloudflare-app-staging-acceptance-v1` artifact for 30 days.
 
-The acceptance artifact contains resource names, commit SHA, run ID, staging URL and completed check names. It must not contain tokens, recovery codes, passwords, provider secrets or raw learner evidence.
+The acceptance artifact contains resource names, commit SHA, run ID, staging URL, required-secret names and completed check names. It must not contain resource IDs, tokens, recovery codes, passwords, provider secrets or raw learner evidence.
 
 ## Production promotion
 
