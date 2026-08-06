@@ -4,7 +4,7 @@ export const productIdentity = {
   "contract": "product-identity-v1",
   "productName": "SQL Academy",
   "shortName": "SQL Academy",
-  "trackName": "Support Engineering Track",
+  "trackName": "Трек инженера поддержки",
   "description": "Интерактивная SQL-платформа: 240 проверяемых задач, 44 связанных урока, адаптивное повторение и инженерные учебные маршруты.",
   "locale": "ru",
   "licenseName": "SQL Academy Commercial Source License",
@@ -16,6 +16,6 @@ export const productIdentity = {
   "supportUrl": "https://github.com/bonaqu/sql-learn-web-app/issues"
 } as const;
 
-export const productFullTitle = "SQL Academy — Support Engineering Track";
+export const productFullTitle = "SQL Academy — Трек инженера поддержки";
 
 export type ProductIdentity = typeof productIdentity;
