@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -21,9 +21,14 @@ assert.deepEqual(contract.resources, {
   d1DatabaseName: 'sql-academy-staging',
   kvNamespaceTitle: 'sql-academy-settings-staging'
 });
-assert.notEqual(contract.resources.workerName, 'sql-learn-web-app');
-assert.notEqual(contract.resources.d1DatabaseName, 'sql-academy');
-assert.notEqual(contract.resources.kvNamespaceTitle, 'sql-academy-settings');
+assert.deepEqual(contract.productionResources, {
+  workerName: 'sql-learn-web-app',
+  d1DatabaseName: 'sql-academy',
+  kvNamespaceTitle: 'sql-academy-settings'
+});
+for (const key of ['workerName', 'd1DatabaseName', 'kvNamespaceTitle']) {
+  assert.notEqual(contract.resources[key], contract.productionResources[key], `${key} must be isolated from production`);
+}
 assert.deepEqual(contract.requiredGithubEnvironmentSecrets.sort(), [
   'CLOUDFLARE_ACCOUNT_ID',
   'CLOUDFLARE_API_TOKEN'
@@ -74,10 +79,13 @@ try {
 
   function render(name, overrides = {}) {
     const output = join(temp, `${name}.jsonc`);
+    const metadataOutput = join(temp, `${name}-metadata.json`);
     const result = spawnSync(process.execPath, [
       resolve(root, 'scripts/render-staging-wrangler.mjs'),
       '--output',
-      output
+      output,
+      '--metadata-output',
+      metadataOutput
     ], {
       cwd: root,
       env: { ...baseEnvironment, ...overrides },
@@ -85,6 +93,7 @@ try {
     });
     return {
       output,
+      metadataOutput,
       result,
       combinedOutput: `${result.stderr}\n${result.stdout}`
     };
@@ -93,6 +102,7 @@ try {
   const defaultRender = render('default');
   assert.equal(defaultRender.result.status, 0, defaultRender.combinedOutput);
   const generated = JSON.parse(readFileSync(defaultRender.output, 'utf8'));
+  const generatedMetadata = JSON.parse(readFileSync(defaultRender.metadataOutput, 'utf8'));
   assert.equal(generated.name, contract.resources.workerName);
   assert.equal(generated.main, 'worker/entrypoint.ts');
   assert.equal(generated.d1_databases[0].database_name, contract.resources.d1DatabaseName);
@@ -101,6 +111,7 @@ try {
   assert.equal(generated.vars.ALLOWED_ORIGINS, 'https://staging.example.com,https://review.example.com');
   assert.deepEqual(generated.triggers.crons, []);
   assert.equal(generated.secrets, undefined);
+  assert.deepEqual(generatedMetadata.requiredSecretNames, []);
   for (const flag of [
     'FEATURE_EMAIL_VERIFICATION',
     'FEATURE_SMS_VERIFICATION',
@@ -130,11 +141,13 @@ try {
   });
   assert.equal(enabledRender.result.status, 0, enabledRender.combinedOutput);
   const enabled = JSON.parse(readFileSync(enabledRender.output, 'utf8'));
+  const enabledMetadata = JSON.parse(readFileSync(enabledRender.metadataOutput, 'utf8'));
   assert.deepEqual(enabled.triggers.crons, ['*/15 * * * *']);
   assert.equal(enabled.vars.CONTACT_REGISTRATION_POLICY, 'required-for-new-registration');
   assert.equal(enabled.vars.TURNSTILE_EXPECTED_HOSTNAMES, 'staging.example.com,review.example.com');
   assert.equal(enabled.vars.ADMIN_ALLOWED_USER_IDS, 'operator_test_01');
-  assert.deepEqual(enabled.secrets?.required, [
+  assert.equal(enabled.secrets, undefined);
+  assert.deepEqual(enabledMetadata.requiredSecretNames, [
     'ADMIN_ALERT_WEBHOOK_SECRET',
     'ADMIN_ALERT_WEBHOOK_URL',
     'CONTACT_VERIFICATION_SIGNING_SECRET',
@@ -144,6 +157,35 @@ try {
     'TURNSTILE_SECRET_KEY'
   ]);
   assert.ok(Object.keys(enabled.vars).every(name => !/(?:SECRET|PASSWORD|RECOVERY_CODE|API_KEY)/.test(name)));
+
+  const presentSecretList = join(temp, 'present-secrets.json');
+  writeFileSync(presentSecretList, JSON.stringify([
+    ...enabledMetadata.requiredSecretNames.map(name => ({ name, type: 'secret_text' })),
+    { name: 'UNRELATED_STAGING_SECRET', type: 'secret_text' }
+  ]));
+  const secretReady = spawnSync(process.execPath, [
+    resolve(root, 'scripts/validate-staging-secret-presence.mjs'),
+    '--metadata',
+    enabledRender.metadataOutput,
+    '--secret-list',
+    presentSecretList
+  ], { cwd: root, encoding: 'utf8' });
+  assert.equal(secretReady.status, 0, secretReady.stderr || secretReady.stdout);
+  assert.match(secretReady.stdout, /cloudflare-staging-secret-presence-v1/);
+
+  const missingSecretList = join(temp, 'missing-secrets.json');
+  writeFileSync(missingSecretList, JSON.stringify(
+    enabledMetadata.requiredSecretNames.slice(1).map(name => ({ name, type: 'secret_text' }))
+  ));
+  const secretMissing = spawnSync(process.execPath, [
+    resolve(root, 'scripts/validate-staging-secret-presence.mjs'),
+    '--metadata',
+    enabledRender.metadataOutput,
+    '--secret-list',
+    missingSecretList
+  ], { cwd: root, encoding: 'utf8' });
+  assert.notEqual(secretMissing.status, 0);
+  assert.match(`${secretMissing.stderr}\n${secretMissing.stdout}`, /Missing required staging Worker secrets/);
 
   const invalidOrigin = render('invalid-origin', {
     STAGING_ALLOWED_ORIGINS: 'https://127.0.0.1',
@@ -184,14 +226,21 @@ assert.match(workflow, /^on:\n  workflow_dispatch:\s*$/m);
 assert.doesNotMatch(workflow, /^  (?:push|pull_request|schedule):/m);
 assert.match(workflow, /^    environment: staging$/m);
 assert.ok(workflow.includes('npm ci --no-audit --no-fund'));
-assert.ok(workflow.includes('node scripts/render-staging-wrangler.mjs --output wrangler.staging.deploy.jsonc'));
+assert.ok(workflow.includes('node scripts/render-staging-wrangler.mjs \\'));
+assert.ok(workflow.includes('--metadata-output staging-render-metadata.json'));
 assert.ok(workflow.includes('D1_DATABASE_NAME=$D1_NAME'));
 assert.ok(workflow.includes('WRANGLER_CONFIG: wrangler.staging.deploy.jsonc'));
 assert.ok(workflow.includes("contract: 'cloudflare-app-staging-acceptance-v1'"));
 assert.ok(workflow.includes('retention-days: 30'));
 assert.ok(workflow.includes('environment: staging'));
-assert.ok(workflow.includes('config.secrets?.required || []'));
-assert.ok(contractWorkflow.includes('config.secrets?.required || []'));
+assert.ok(workflow.includes('contract.productionResources.d1DatabaseName'));
+assert.ok(workflow.includes('contract.productionResources.kvNamespaceTitle'));
+assert.ok(workflow.includes('resourceIsolation: { d1: true, kv: true }'));
+assert.ok(workflow.includes('wrangler secret list --name "$WORKER_NAME" --format json'));
+assert.ok(workflow.includes('scripts/validate-staging-secret-presence.mjs'));
+assert.ok(workflow.includes('rm -f staging-secret-list.json'));
+assert.ok(contractWorkflow.includes('--metadata-output staging-render-safe.json'));
+assert.ok(contractWorkflow.includes('metadata.requiredSecretNames'));
 for (const smoke of [
   'commercial-runtime-production-smoke.mjs',
   'cloudflare-production-smoke.mjs',
@@ -218,8 +267,9 @@ for (const marker of [
   '`sql-learn-web-app-staging`',
   '`sql-academy-staging`',
   '`sql-academy-settings-staging`',
+  'actual Cloudflare identifiers',
   'Worker-secret readiness',
-  '`secrets.required`',
+  '`wrangler secret list --name sql-learn-web-app-staging --format json`',
   'two-pass bootstrap',
   'Real provider credentials',
   'issue #133',
@@ -254,4 +304,4 @@ assert.ok(productionHealth.includes("PRODUCTION_HEALTH_URL: ${{ vars.PRODUCTION_
 assert.ok(productionHealth.includes("if: env.PRODUCTION_HEALTH_URL != ''"));
 assert.ok(productionHealth.includes('workflow_dispatch:'));
 
-console.log('Cloudflare staging and buyer transfer validated: isolated resources, fail-closed feature readiness, required-secret declarations, manual protected deployment, full smoke acceptance, redacted evidence, explicit provider boundary and owner-based sign-off.');
+console.log('Cloudflare staging and buyer transfer validated: isolated names and IDs, fail-closed feature readiness, real Worker secret-name presence, manual protected deployment, full smoke acceptance, redacted evidence, explicit provider boundary and owner-based sign-off.');
