@@ -3,8 +3,17 @@ import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const contract = JSON.parse(readFileSync(resolve(root, 'config/staging-environment.json'), 'utf8'));
-const outputArg = process.argv.indexOf('--output');
-const output = resolve(root, outputArg >= 0 ? process.argv[outputArg + 1] : 'wrangler.staging.deploy.jsonc');
+
+function optionPath(name, fallback = null) {
+  const index = process.argv.indexOf(name);
+  if (index < 0) return fallback ? resolve(root, fallback) : null;
+  const value = process.argv[index + 1];
+  if (!value || value.startsWith('--')) throw new Error(`${name} requires a path`);
+  return resolve(root, value);
+}
+
+const output = optionPath('--output', 'wrangler.staging.deploy.jsonc');
+const metadataOutput = optionPath('--metadata-output');
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KV_ID_PATTERN = /^[0-9a-f]{32}$/i;
 const CRON_FIELD_PATTERN = /^[0-9A-Za-z*?,/\\#LWD-]+$/;
@@ -193,7 +202,6 @@ const config = {
   }],
   kv_namespaces: [{ binding: 'SETTINGS', id: kvId }],
   ai: { binding: 'AI' },
-  ...(secretNames.length ? { secrets: { required: secretNames } } : {}),
   vars: {
     DIALECT_ENGINE_MODE: 'preview-only',
     ALLOWED_ORIGINS: allowedOrigins.join(','),
@@ -212,8 +220,7 @@ const config = {
   observability: { enabled: true, head_sampling_rate: 1 }
 };
 
-writeFileSync(output, `${JSON.stringify(config, null, 2)}\n`);
-console.log(JSON.stringify({
+const metadata = {
   contract: contract.contract,
   workerName: contract.resources.workerName,
   d1DatabaseName: contract.resources.d1DatabaseName,
@@ -222,4 +229,8 @@ console.log(JSON.stringify({
   enabledFeatures: FLAG_NAMES.filter(name => flags[name] === 'on'),
   requiredSecretNames: secretNames,
   output: output.replace(`${root}/`, '')
-}));
+};
+
+writeFileSync(output, `${JSON.stringify(config, null, 2)}\n`);
+if (metadataOutput) writeFileSync(metadataOutput, `${JSON.stringify(metadata, null, 2)}\n`);
+console.log(JSON.stringify(metadata));
