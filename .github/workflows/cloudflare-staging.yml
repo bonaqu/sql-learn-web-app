@@ -110,6 +110,25 @@ jobs:
           test -n "$KV_ID"
           echo "KV_ID=$KV_ID" >> "$GITHUB_ENV"
 
+      - name: Prove staging resource IDs are not production IDs
+        shell: bash
+        run: |
+          echo 'resource-isolation' > staging-deployment-stage.txt
+          node - <<'NODE'
+          const d1 = require('./staging-d1-list.json');
+          const kv = require('./staging-kv-list.json');
+          const productionD1 = d1.find(item => item.name === 'sql-academy');
+          const productionKv = kv.find(item => item.title === 'sql-academy-settings' || item.name === 'sql-academy-settings');
+          const productionD1Id = productionD1 && (productionD1.uuid || productionD1.id);
+          const productionKvId = productionKv && productionKv.id;
+          if (productionD1Id && productionD1Id === process.env.D1_ID) {
+            throw new Error('Staging D1 resolves to the production D1 identifier');
+          }
+          if (productionKvId && productionKvId === process.env.KV_ID) {
+            throw new Error('Staging KV resolves to the production KV identifier');
+          }
+          NODE
+
       - name: Render fail-closed staging Wrangler config
         run: |
           echo 'render-staging-config' > staging-deployment-stage.txt
@@ -188,11 +207,13 @@ jobs:
             workerName: contract.resources.workerName,
             d1DatabaseName: contract.resources.d1DatabaseName,
             kvNamespaceTitle: contract.resources.kvNamespaceTitle,
+            resourceIsolation: { d1: true, kv: true },
             deployUrl: process.env.DEPLOY_URL,
             expectedOrigin: process.env.STAGING_EXPECTED_ORIGIN,
             checks: [
               'repository-validation',
               'production-build',
+              'resource-isolation',
               'wrangler-dry-run',
               'd1-migrations',
               'commercial-runtime',
