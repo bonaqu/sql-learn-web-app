@@ -1,0 +1,56 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "sql-learn-web-app-staging",
+  "main": "worker/entrypoint.ts",
+  "compatibility_date": "2026-07-27",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "triggers": {
+    "crons": []
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sql-academy-staging",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "SETTINGS",
+      "id": "00000000000000000000000000000000"
+    }
+  ],
+  "ai": {
+    "binding": "AI"
+  },
+  "vars": {
+    "DIALECT_ENGINE_MODE": "preview-only",
+    "ALLOWED_ORIGINS": "https://staging.example.com",
+    "FEATURE_EMAIL_VERIFICATION": "off",
+    "FEATURE_SMS_VERIFICATION": "off",
+    "FEATURE_TURNSTILE": "off",
+    "FEATURE_ADMIN_CONSOLE": "off",
+    "FEATURE_ADMIN_ALERTS": "off",
+    "ADMIN_ALERT_CRON": "",
+    "ADMIN_ALERT_COOLDOWN_MINUTES": "60",
+    "CONTACT_REGISTRATION_POLICY": "optional",
+    "TURNSTILE_EXPECTED_HOSTNAMES": "",
+    "ADMIN_ALLOWED_USER_IDS": "",
+    "RETENTION_CONTACT_EVENTS_DAYS": "30",
+    "RETENTION_UNCONSUMED_CONTACT_HOURS": "24",
+    "RETENTION_CONSUMED_CHALLENGE_HOURS": "24",
+    "RETENTION_EXPIRED_SESSION_HOURS": "0",
+    "RETENTION_CLEANUP_BATCH_SIZE": "250"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

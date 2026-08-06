@@ -1,0 +1,299 @@
+name: Deploy Cloudflare Staging
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy and accept isolated app staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: staging
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      STAGING_ALLOWED_ORIGINS: ${{ vars.STAGING_ALLOWED_ORIGINS }}
+      STAGING_EXPECTED_ORIGIN: ${{ vars.STAGING_EXPECTED_ORIGIN }}
+      STAGING_FEATURE_EMAIL_VERIFICATION: ${{ vars.STAGING_FEATURE_EMAIL_VERIFICATION || 'off' }}
+      STAGING_FEATURE_SMS_VERIFICATION: ${{ vars.STAGING_FEATURE_SMS_VERIFICATION || 'off' }}
+      STAGING_FEATURE_TURNSTILE: ${{ vars.STAGING_FEATURE_TURNSTILE || 'off' }}
+      STAGING_FEATURE_ADMIN_CONSOLE: ${{ vars.STAGING_FEATURE_ADMIN_CONSOLE || 'off' }}
+      STAGING_FEATURE_ADMIN_ALERTS: ${{ vars.STAGING_FEATURE_ADMIN_ALERTS || 'off' }}
+      STAGING_ADMIN_ALERT_CRON: ${{ vars.STAGING_ADMIN_ALERT_CRON }}
+      STAGING_ADMIN_ALERT_COOLDOWN_MINUTES: ${{ vars.STAGING_ADMIN_ALERT_COOLDOWN_MINUTES || '60' }}
+      STAGING_CONTACT_REGISTRATION_POLICY: ${{ vars.STAGING_CONTACT_REGISTRATION_POLICY || 'optional' }}
+      STAGING_TURNSTILE_EXPECTED_HOSTNAMES: ${{ vars.STAGING_TURNSTILE_EXPECTED_HOSTNAMES }}
+      STAGING_ADMIN_ALLOWED_USER_IDS: ${{ vars.STAGING_ADMIN_ALLOWED_USER_IDS }}
+      STAGING_RETENTION_CONTACT_EVENTS_DAYS: ${{ vars.STAGING_RETENTION_CONTACT_EVENTS_DAYS || '30' }}
+      STAGING_RETENTION_UNCONSUMED_CONTACT_HOURS: ${{ vars.STAGING_RETENTION_UNCONSUMED_CONTACT_HOURS || '24' }}
+      STAGING_RETENTION_CONSUMED_CHALLENGE_HOURS: ${{ vars.STAGING_RETENTION_CONSUMED_CHALLENGE_HOURS || '24' }}
+      STAGING_RETENTION_EXPIRED_SESSION_HOURS: ${{ vars.STAGING_RETENTION_EXPIRED_SESSION_HOURS || '0' }}
+      STAGING_RETENTION_CLEANUP_BATCH_SIZE: ${{ vars.STAGING_RETENTION_CLEANUP_BATCH_SIZE || '250' }}
+      EXPECT_EMAIL_VERIFICATION: ${{ vars.STAGING_EXPECT_EMAIL_VERIFICATION || 'false' }}
+      EXPECT_SMS_VERIFICATION: ${{ vars.STAGING_EXPECT_SMS_VERIFICATION || 'false' }}
+      EXPECT_TURNSTILE: ${{ vars.STAGING_EXPECT_TURNSTILE || 'false' }}
+      EXPECT_ADMIN_CONSOLE: ${{ vars.STAGING_EXPECT_ADMIN_CONSOLE || 'false' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize acceptance evidence
+        run: |
+          printf '%s\n' '{"contract":"cloudflare-app-staging-acceptance-v1","status":"running"}' > staging-acceptance.json
+          echo 'checkout' > staging-deployment-stage.txt
+
+      - name: Validate staging credentials and public origin
+        shell: bash
+        run: |
+          echo 'credentials-and-origin' > staging-deployment-stage.txt
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -n "$STAGING_ALLOWED_ORIGINS"
+          test -n "$STAGING_EXPECTED_ORIGIN"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact locked dependency tree
+        run: |
+          echo 'dependencies' > staging-deployment-stage.txt
+          npm ci --no-audit --no-fund
+
+      - name: Validate repository and build staging assets
+        env:
+          VITE_API_BASE: http://127.0.0.1:8787
+        run: |
+          echo 'repository-validation' > staging-deployment-stage.txt
+          npm run check
+          echo 'production-build' > staging-deployment-stage.txt
+          npm run build
+          npm run validate:metadata -- --dist
+
+      - name: Ensure isolated staging D1 database
+        shell: bash
+        run: |
+          echo 'resolve-staging-d1' > staging-deployment-stage.txt
+          D1_NAME=$(node -e "const c=require('./config/staging-environment.json'); process.stdout.write(c.resources.d1DatabaseName)")
+          D1_LIST_PATH="$RUNNER_TEMP/sql-academy-staging-d1-list.json"
+          npx wrangler d1 list --json > "$D1_LIST_PATH"
+          D1_ID=$(node -e "const x=require(process.argv[1]); const d=x.find(v=>v.name===process.argv[2]); if(d) process.stdout.write(d.uuid||d.id)" "$D1_LIST_PATH" "$D1_NAME")
+          if [ -z "$D1_ID" ]; then
+            npx wrangler d1 create "$D1_NAME"
+            npx wrangler d1 list --json > "$D1_LIST_PATH"
+            D1_ID=$(node -e "const x=require(process.argv[1]); const d=x.find(v=>v.name===process.argv[2]); if(d) process.stdout.write(d.uuid||d.id)" "$D1_LIST_PATH" "$D1_NAME")
+          fi
+          test -n "$D1_ID"
+          echo "D1_DATABASE_NAME=$D1_NAME" >> "$GITHUB_ENV"
+          echo "D1_ID=$D1_ID" >> "$GITHUB_ENV"
+          echo "D1_LIST_PATH=$D1_LIST_PATH" >> "$GITHUB_ENV"
+
+      - name: Ensure isolated staging KV namespace
+        shell: bash
+        run: |
+          echo 'resolve-staging-kv' > staging-deployment-stage.txt
+          KV_TITLE=$(node -e "const c=require('./config/staging-environment.json'); process.stdout.write(c.resources.kvNamespaceTitle)")
+          KV_LIST_PATH="$RUNNER_TEMP/sql-academy-staging-kv-list.json"
+          npx wrangler kv namespace list > "$KV_LIST_PATH"
+          KV_ID=$(node -e "const x=require(process.argv[1]); const d=x.find(v=>v.title===process.argv[2] || v.name===process.argv[2]); if(d) process.stdout.write(d.id)" "$KV_LIST_PATH" "$KV_TITLE")
+          if [ -z "$KV_ID" ]; then
+            npx wrangler kv namespace create "$KV_TITLE"
+            npx wrangler kv namespace list > "$KV_LIST_PATH"
+            KV_ID=$(node -e "const x=require(process.argv[1]); const d=x.find(v=>v.title===process.argv[2] || v.name===process.argv[2]); if(d) process.stdout.write(d.id)" "$KV_LIST_PATH" "$KV_TITLE")
+          fi
+          test -n "$KV_ID"
+          echo "KV_ID=$KV_ID" >> "$GITHUB_ENV"
+          echo "KV_LIST_PATH=$KV_LIST_PATH" >> "$GITHUB_ENV"
+
+      - name: Prove staging resource IDs are not production IDs
+        shell: bash
+        run: |
+          echo 'resource-isolation' > staging-deployment-stage.txt
+          trap 'rm -f "$D1_LIST_PATH" "$KV_LIST_PATH"' EXIT
+          node - <<'NODE'
+          const fs = require('fs');
+          const contract = require('./config/staging-environment.json');
+          const d1 = JSON.parse(fs.readFileSync(process.env.D1_LIST_PATH, 'utf8'));
+          const kv = JSON.parse(fs.readFileSync(process.env.KV_LIST_PATH, 'utf8'));
+          const productionD1 = d1.find(item => item.name === contract.productionResources.d1DatabaseName);
+          const productionKv = kv.find(item => item.title === contract.productionResources.kvNamespaceTitle
+            || item.name === contract.productionResources.kvNamespaceTitle);
+          const productionD1Id = productionD1 && (productionD1.uuid || productionD1.id);
+          const productionKvId = productionKv && productionKv.id;
+          if (productionD1Id && productionD1Id === process.env.D1_ID) {
+            throw new Error('Staging D1 resolves to the production D1 identifier');
+          }
+          if (productionKvId && productionKvId === process.env.KV_ID) {
+            throw new Error('Staging KV resolves to the production KV identifier');
+          }
+          NODE
+          rm -f "$D1_LIST_PATH" "$KV_LIST_PATH"
+          trap - EXIT
+
+      - name: Render fail-closed staging Wrangler config
+        run: |
+          echo 'render-staging-config' > staging-deployment-stage.txt
+          node scripts/render-staging-wrangler.mjs \
+            --output wrangler.staging.deploy.jsonc \
+            --metadata-output staging-render-metadata.json
+          test -s wrangler.staging.deploy.jsonc
+          test -s staging-render-metadata.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const config = JSON.parse(fs.readFileSync('wrangler.staging.deploy.jsonc', 'utf8'));
+          const metadata = JSON.parse(fs.readFileSync('staging-render-metadata.json', 'utf8'));
+          const serialized = JSON.stringify(config);
+          for (const forbidden of ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']) {
+            if (serialized.includes(forbidden)) throw new Error(`Generated staging config leaked ${forbidden}`);
+          }
+          const unsafeVars = Object.keys(config.vars || {}).filter(name => /(?:SECRET|PASSWORD|RECOVERY_CODE|API_KEY)/.test(name));
+          if (unsafeVars.length) throw new Error(`Generated staging vars contain secret-shaped keys: ${unsafeVars.join(',')}`);
+          if (Object.hasOwn(config, 'secrets')) throw new Error('Generated Wrangler config contains an unsupported top-level secrets declaration');
+          const required = metadata.requiredSecretNames;
+          if (!Array.isArray(required) || required.some(name => typeof name !== 'string' || !/^[A-Z0-9_]+$/.test(name))) {
+            throw new Error('Generated staging required-secret metadata is invalid');
+          }
+          NODE
+
+      - name: Verify enabled feature Worker secrets exist
+        shell: bash
+        run: |
+          echo 'feature-secret-readiness' > staging-deployment-stage.txt
+          WORKER_NAME=$(node -e "const m=require('./staging-render-metadata.json'); process.stdout.write(m.workerName)")
+          REQUIRED_COUNT=$(node -e "const m=require('./staging-render-metadata.json'); process.stdout.write(String(m.requiredSecretNames.length))")
+          SECRET_LIST_PATH="$RUNNER_TEMP/sql-academy-staging-secret-list.json"
+          trap 'rm -f "$SECRET_LIST_PATH"' EXIT
+          if [ "$REQUIRED_COUNT" -gt 0 ]; then
+            npx wrangler secret list --name "$WORKER_NAME" --format json > "$SECRET_LIST_PATH"
+          else
+            printf '%s\n' '[]' > "$SECRET_LIST_PATH"
+          fi
+          node scripts/validate-staging-secret-presence.mjs \
+            --metadata staging-render-metadata.json \
+            --secret-list "$SECRET_LIST_PATH"
+          rm -f "$SECRET_LIST_PATH"
+          trap - EXIT
+
+      - name: Validate staging Worker bundle
+        run: |
+          echo 'staging-wrangler-dry-run' > staging-deployment-stage.txt
+          npx wrangler deploy --dry-run --config wrangler.staging.deploy.jsonc
+
+      - name: Apply isolated staging D1 migrations
+        run: |
+          echo 'staging-d1-migrations' > staging-deployment-stage.txt
+          npx wrangler d1 migrations apply "$D1_DATABASE_NAME" --remote --config wrangler.staging.deploy.jsonc
+
+      - name: Deploy isolated staging Worker
+        id: deploy
+        shell: bash
+        run: |
+          echo 'staging-worker-deploy' > staging-deployment-stage.txt
+          set -o pipefail
+          npx wrangler deploy --config wrangler.staging.deploy.jsonc 2>&1 | tee staging-deploy.log
+          DEPLOY_URL=$(grep -Eo 'https://[A-Za-z0-9.-]+\.workers\.dev' staging-deploy.log | tail -n 1)
+          test -n "$DEPLOY_URL"
+          echo "DEPLOY_URL=$DEPLOY_URL" >> "$GITHUB_ENV"
+          echo "url=$DEPLOY_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Run full application staging acceptance
+        env:
+          WRANGLER_CONFIG: wrangler.staging.deploy.jsonc
+          EXPECTED_ALLOWED_ORIGIN: ${{ env.STAGING_EXPECTED_ORIGIN }}
+        shell: bash
+        run: |
+          echo 'staging-acceptance' > staging-deployment-stage.txt
+          node scripts/commercial-runtime-production-smoke.mjs
+          node scripts/cloudflare-production-smoke.mjs
+          node scripts/concept-progress-production-smoke.mjs
+          node scripts/checkpoint-production-smoke.mjs
+          node scripts/checkpoint-reservation-production-smoke.mjs
+          node scripts/capstone-production-smoke.mjs
+          node scripts/assessment-calibration-production-smoke.mjs
+          node scripts/learning-analytics-production-smoke.mjs
+          npx tsx scripts/dialect-labs-free-production-smoke.ts
+          node scripts/mastery-progress-production-smoke.mjs
+          node scripts/onboarding-production-smoke.mjs
+
+      - name: Write redacted staging acceptance evidence
+        shell: bash
+        run: |
+          echo 'acceptance-evidence' > staging-deployment-stage.txt
+          node - <<'NODE'
+          const fs = require('fs');
+          const contract = require('./config/staging-environment.json');
+          const evidence = {
+            contract: 'cloudflare-app-staging-acceptance-v1',
+            status: 'accepted',
+            repository: process.env.GITHUB_REPOSITORY,
+            commitSha: process.env.GITHUB_SHA,
+            workflowRunId: process.env.GITHUB_RUN_ID,
+            githubEnvironment: contract.githubEnvironment,
+            workerName: contract.resources.workerName,
+            d1DatabaseName: contract.resources.d1DatabaseName,
+            kvNamespaceTitle: contract.resources.kvNamespaceTitle,
+            resourceIsolation: { d1: true, kv: true },
+            deployUrl: process.env.DEPLOY_URL,
+            expectedOrigin: process.env.STAGING_EXPECTED_ORIGIN,
+            checks: [
+              'repository-validation',
+              'production-build',
+              'resource-isolation',
+              'feature-secret-readiness',
+              'wrangler-dry-run',
+              'd1-migrations',
+              'commercial-runtime',
+              'auth-and-curriculum',
+              'concept-history',
+              'checkpoint-lifecycle',
+              'capstone-lifecycle',
+              'assessment-calibration',
+              'learning-analytics',
+              'dialect-preview-matrix',
+              'mastery-progress',
+              'onboarding'
+            ]
+          };
+          fs.writeFileSync('staging-acceptance.json', JSON.stringify(evidence, null, 2));
+          NODE
+
+      - name: Upload accepted staging evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-app-staging-acceptance-${{ github.run_id }}
+          path: |
+            staging-acceptance.json
+            staging-deployment-stage.txt
+            staging-render-metadata.json
+            cloudflare-*-evidence.json
+            cloudflare-*-stage.txt
+            cloudflare-*-summary.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload staging failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloudflare-app-staging-failure-${{ github.run_attempt }}
+          path: |
+            staging-acceptance.json
+            staging-deployment-stage.txt
+            staging-*.json
+            staging-*.txt
+            staging-*.log
+            cloudflare-*.json
+            cloudflare-*.txt
+            cloudflare-*.log
+            ~/.npm/_logs
+          if-no-files-found: ignore
+          retention-days: 14

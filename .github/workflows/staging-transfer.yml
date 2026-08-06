@@ -1,0 +1,128 @@
+name: Staging and Transfer Contract
+
+on:
+  pull_request:
+    branches:
+      - bonaqu_projects
+    paths:
+      - config/staging-environment.json
+      - wrangler.staging.example.jsonc
+      - scripts/render-staging-wrangler.mjs
+      - scripts/validate-staging-secret-presence.mjs
+      - scripts/validate-staging-artifact-boundary.mjs
+      - scripts/validate-staging-transfer.mjs
+      - docs/buyer-cloudflare-deployment.md
+      - docs/transfer-acceptance-checklist.md
+      - .github/workflows/cloudflare-staging.yml
+      - .github/workflows/production-health.yml
+      - .github/workflows/staging-transfer.yml
+  push:
+    branches:
+      - bonaqu_projects
+    paths:
+      - config/staging-environment.json
+      - wrangler.staging.example.jsonc
+      - scripts/render-staging-wrangler.mjs
+      - scripts/validate-staging-secret-presence.mjs
+      - scripts/validate-staging-artifact-boundary.mjs
+      - scripts/validate-staging-transfer.mjs
+      - docs/buyer-cloudflare-deployment.md
+      - docs/transfer-acceptance-checklist.md
+      - .github/workflows/cloudflare-staging.yml
+      - .github/workflows/production-health.yml
+      - .github/workflows/staging-transfer.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging-transfer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install exact locked dependency tree
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate staging and transfer contract
+        run: node scripts/validate-staging-transfer.mjs && node scripts/validate-staging-artifact-boundary.mjs
+
+      - name: Build production-equivalent assets
+        run: npm run build
+
+      - name: Render and dry-run isolated staging Worker
+        env:
+          D1_ID: 11111111-1111-4111-8111-111111111111
+          KV_ID: 0123456789abcdef0123456789abcdef
+          STAGING_ALLOWED_ORIGINS: https://staging.example.com
+          STAGING_EXPECTED_ORIGIN: https://staging.example.com
+        shell: bash
+        run: |
+          node scripts/render-staging-wrangler.mjs \
+            --output wrangler.staging.contract.jsonc \
+            --metadata-output staging-render-safe.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const config = JSON.parse(fs.readFileSync('wrangler.staging.contract.jsonc', 'utf8'));
+          const metadata = JSON.parse(fs.readFileSync('staging-render-safe.json', 'utf8'));
+          const unsafeVars = Object.keys(config.vars || {}).filter(name => /(?:SECRET|PASSWORD|RECOVERY_CODE|API_KEY)/.test(name));
+          if (unsafeVars.length) throw new Error(`Rendered staging vars contain secret-shaped keys: ${unsafeVars.join(',')}`);
+          if (Object.hasOwn(config, 'secrets')) throw new Error('Wrangler config must not contain an unsupported top-level secrets declaration');
+          if (!Array.isArray(metadata.requiredSecretNames) || metadata.requiredSecretNames.length !== 0) {
+            throw new Error('Safe-default staging metadata unexpectedly requires secrets');
+          }
+          NODE
+          npx wrangler deploy --dry-run --config wrangler.staging.contract.jsonc
+
+          STAGING_FEATURE_EMAIL_VERIFICATION=on \
+          STAGING_FEATURE_SMS_VERIFICATION=on \
+          STAGING_FEATURE_TURNSTILE=on \
+          STAGING_FEATURE_ADMIN_CONSOLE=on \
+          STAGING_FEATURE_ADMIN_ALERTS=on \
+          STAGING_ADMIN_ALERT_CRON='0 * * * *' \
+          STAGING_CONTACT_REGISTRATION_POLICY=required-for-new-registration \
+          STAGING_TURNSTILE_EXPECTED_HOSTNAMES=staging.example.com \
+          STAGING_ADMIN_ALLOWED_USER_IDS=staging_admin_01 \
+          node scripts/render-staging-wrangler.mjs \
+            --output wrangler.staging.features.contract.jsonc \
+            --metadata-output staging-render-features.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const config = JSON.parse(fs.readFileSync('wrangler.staging.features.contract.jsonc', 'utf8'));
+          const metadata = JSON.parse(fs.readFileSync('staging-render-features.json', 'utf8'));
+          const expected = [
+            'ADMIN_ALERT_WEBHOOK_SECRET',
+            'ADMIN_ALERT_WEBHOOK_URL',
+            'CONTACT_VERIFICATION_SIGNING_SECRET',
+            'EMAIL_VERIFICATION_EVENT_SECRET',
+            'EMAIL_VERIFICATION_WEBHOOK_SECRET',
+            'EMAIL_VERIFICATION_WEBHOOK_URL',
+            'SMS_VERIFICATION_EVENT_SECRET',
+            'SMS_VERIFICATION_WEBHOOK_SECRET',
+            'SMS_VERIFICATION_WEBHOOK_URL',
+            'TURNSTILE_SECRET_KEY'
+          ];
+          if (Object.hasOwn(config, 'secrets')) throw new Error('Feature-on Wrangler config contains an unsupported top-level secrets declaration');
+          if (JSON.stringify(metadata.requiredSecretNames) !== JSON.stringify(expected)) {
+            throw new Error(`Feature-on required-secret metadata drifted: ${JSON.stringify(metadata.requiredSecretNames)}`);
+          }
+          fs.writeFileSync('staging-secret-list.fixture.json', JSON.stringify(expected.map(name => ({ name, type: 'secret_text' }))));
+          NODE
+          node scripts/validate-staging-secret-presence.mjs \
+            --metadata staging-render-features.json \
+            --secret-list staging-secret-list.fixture.json \
+            > staging-secret-presence.fixture.json
+          npx wrangler deploy --dry-run --config wrangler.staging.features.contract.jsonc
+          rm -f wrangler.staging.contract.jsonc wrangler.staging.features.contract.jsonc staging-render-safe.json staging-render-features.json staging-secret-list.fixture.json staging-secret-presence.fixture.json

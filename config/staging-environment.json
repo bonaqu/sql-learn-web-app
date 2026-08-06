@@ -1,0 +1,41 @@
+{
+  "contract": "cloudflare-staging-environment-v1",
+  "githubEnvironment": "staging",
+  "resources": {
+    "workerName": "sql-learn-web-app-staging",
+    "d1DatabaseName": "sql-academy-staging",
+    "kvNamespaceTitle": "sql-academy-settings-staging"
+  },
+  "productionResources": {
+    "workerName": "sql-learn-web-app",
+    "d1DatabaseName": "sql-academy",
+    "kvNamespaceTitle": "sql-academy-settings"
+  },
+  "safeDefaults": {
+    "DIALECT_ENGINE_MODE": "preview-only",
+    "FEATURE_EMAIL_VERIFICATION": "off",
+    "FEATURE_SMS_VERIFICATION": "off",
+    "FEATURE_TURNSTILE": "off",
+    "FEATURE_ADMIN_CONSOLE": "off",
+    "FEATURE_ADMIN_ALERTS": "off",
+    "ADMIN_ALERT_CRON": "",
+    "ADMIN_ALERT_COOLDOWN_MINUTES": "60",
+    "CONTACT_REGISTRATION_POLICY": "optional",
+    "TURNSTILE_EXPECTED_HOSTNAMES": "",
+    "ADMIN_ALLOWED_USER_IDS": "",
+    "RETENTION_CONTACT_EVENTS_DAYS": "30",
+    "RETENTION_UNCONSUMED_CONTACT_HOURS": "24",
+    "RETENTION_CONSUMED_CHALLENGE_HOURS": "24",
+    "RETENTION_EXPIRED_SESSION_HOURS": "0",
+    "RETENTION_CLEANUP_BATCH_SIZE": "250"
+  },
+  "requiredGithubEnvironmentSecrets": [
+    "CLOUDFLARE_API_TOKEN",
+    "CLOUDFLARE_ACCOUNT_ID"
+  ],
+  "requiredGithubEnvironmentVariables": [
+    "STAGING_ALLOWED_ORIGINS",
+    "STAGING_EXPECTED_ORIGIN"
+  ],
+  "externalProviderBoundaryIssue": 133
+}
