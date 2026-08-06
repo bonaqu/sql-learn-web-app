@@ -78,8 +78,8 @@
     "restore:d1:rehearsal": "node scripts/d1-restore-rehearsal.mjs",
     "probe:production": "node scripts/production-health-probe.mjs",
     "preview": "vite preview",
-    "deploy:cloudflare": "npm run build && wrangler deploy",
-    "deploy:cloudflare:dry": "npm run build && wrangler deploy --dry-run",
+    "deploy:cloudflare": "node scripts/validate-worker-entrypoint-compatibility.mjs && npm run build && wrangler deploy",
+    "deploy:cloudflare:dry": "node scripts/validate-worker-entrypoint-compatibility.mjs && npm run build && wrangler deploy --dry-run",
     "identity:generate": "tsx scripts/generate-product-identity.ts",
     "identity:check": "tsx scripts/generate-product-identity.ts --check",
     "validate:product-identity": "tsx scripts/validate-product-identity.ts"
