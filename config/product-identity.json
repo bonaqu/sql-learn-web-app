@@ -1,0 +1,15 @@
+{
+  "contract": "product-identity-v1",
+  "productName": "SQL Academy",
+  "shortName": "SQL Academy",
+  "trackName": "Support Engineering Track",
+  "description": "Интерактивная SQL-платформа с практикой, проверкой результата, адаптивным повторением и инженерными учебными маршрутами.",
+  "locale": "ru",
+  "licenseName": "SQL Academy Commercial Source License",
+  "licenseLabel": "Commercial Source",
+  "privacyLabel": "privacy-first",
+  "privacySummary": "Аккаунт, учебный прогресс и опциональные данные подтверждения обрабатываются по документированным правилам приватности и хранения.",
+  "homepageUrl": "https://bonaqu.github.io/sql-learn-web-app/",
+  "repositoryUrl": "https://github.com/bonaqu/sql-learn-web-app",
+  "supportUrl": "https://github.com/bonaqu/sql-learn-web-app/issues"
+}
