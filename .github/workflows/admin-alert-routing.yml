@@ -11,9 +11,11 @@ on:
       - worker/commercial-capabilities.ts
       - worker/entrypoint.ts
       - scripts/validate-admin-alert-routing.ts
+      - scripts/validate-admin-alert-profiles.ts
       - docs/admin-alert-routing.md
       - wrangler.jsonc
       - wrangler.typegen.jsonc
+      - wrangler.real-engines.jsonc
       - .github/workflows/cloudflare.yml
       - .github/workflows/admin-alert-routing.yml
   push:
@@ -26,9 +28,11 @@ on:
       - worker/commercial-capabilities.ts
       - worker/entrypoint.ts
       - scripts/validate-admin-alert-routing.ts
+      - scripts/validate-admin-alert-profiles.ts
       - docs/admin-alert-routing.md
       - wrangler.jsonc
       - wrangler.typegen.jsonc
+      - wrangler.real-engines.jsonc
       - .github/workflows/cloudflare.yml
       - .github/workflows/admin-alert-routing.yml
 
@@ -58,3 +62,6 @@ jobs:
 
       - name: Validate buyer-owned alert routing
         run: npx tsx scripts/validate-admin-alert-routing.ts
+
+      - name: Validate Cloudflare profile defaults
+        run: npx tsx scripts/validate-admin-alert-profiles.ts
