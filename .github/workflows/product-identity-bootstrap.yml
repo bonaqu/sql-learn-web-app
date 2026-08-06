@@ -1,10 +1,10 @@
 name: Product Identity Bootstrap
 
-# One-time branch bootstrap; removed after the generated integration commit.
+# One-time same-repository bootstrap; removed after the generated integration commit.
 on:
-  push:
+  pull_request:
     branches:
-      - agent/buyer-product-identity
+      - bonaqu_projects
     paths:
       - scripts/apply-product-identity-bootstrap.mjs
       - .github/workflows/product-identity-bootstrap.yml
@@ -13,19 +13,22 @@ permissions:
   contents: write
 
 concurrency:
-  group: product-identity-bootstrap
+  group: product-identity-bootstrap-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
   apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout branch
+      - name: Checkout head branch
         uses: actions/checkout@v4
         with:
-          ref: agent/buyer-product-identity
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -52,4 +55,4 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add index.html vite.config.ts src/App.tsx src/components/CommercialIdentityPortal.tsx README.md package.json package-lock.json public/manifest.webmanifest src/generated/product-identity.ts
           git commit -m 'Integrate buyer product identity across public surfaces'
-          git push origin HEAD:agent/buyer-product-identity
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
