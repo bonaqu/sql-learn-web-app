@@ -155,6 +155,19 @@ jobs:
             }],
             kv_namespaces: [{ binding: 'SETTINGS', id: process.env.KV_ID }],
             ai: { binding: 'AI' },
+            // `Sandbox` was provisioned by the historical paid Containers deployment.
+            // Keep the original tag and append one irreversible retirement migration so
+            // the current Free Worker can deploy without exporting the removed class.
+            migrations: [
+              {
+                tag: 'dialect-sandbox-v1',
+                new_sqlite_classes: ['Sandbox']
+              },
+              {
+                tag: 'dialect-sandbox-free-retirement-v1',
+                deleted_classes: ['Sandbox']
+              }
+            ],
             vars: {
               DIALECT_ENGINE_MODE: 'preview-only',
               ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS,
@@ -176,6 +189,12 @@ jobs:
             },
             observability: { enabled: true, head_sampling_rate: 1 }
           };
+          const sandboxCreation = config.migrations.find(migration => migration.tag === 'dialect-sandbox-v1');
+          const sandboxRetirement = config.migrations.find(migration => migration.tag === 'dialect-sandbox-free-retirement-v1');
+          if (JSON.stringify(sandboxCreation?.new_sqlite_classes) !== JSON.stringify(['Sandbox'])
+            || JSON.stringify(sandboxRetirement?.deleted_classes) !== JSON.stringify(['Sandbox'])) {
+            throw new Error('Legacy Sandbox Durable Object lifecycle contract drifted');
+          }
           fs.writeFileSync('wrangler.deploy.jsonc', JSON.stringify(config, null, 2));
           NODE
 
