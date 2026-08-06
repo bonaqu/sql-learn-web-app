@@ -108,12 +108,18 @@ function validState(value: unknown): value is AlertDeliveryState {
 
 async function readState(env: AdminAlertEnvironment) {
   if (!env.SETTINGS) return null;
-  const value = await env.SETTINGS.get<unknown>(STATE_KEY, 'json');
-  if (value !== null && !validState(value)) {
-    console.warn(JSON.stringify({ message: 'admin_alert_state_invalid' }));
+  try {
+    const value = await env.SETTINGS.get<unknown>(STATE_KEY, 'json');
+    if (value !== null && !validState(value)) {
+      console.warn(JSON.stringify({ message: 'admin_alert_state_invalid' }));
+      return null;
+    }
+    return value;
+  } catch (error) {
+    const name = error instanceof Error ? error.name.slice(0, 80) : 'UnknownError';
+    console.warn(JSON.stringify({ message: 'admin_alert_state_read_failed', name }));
     return null;
   }
-  return value;
 }
 
 async function writeState(env: AdminAlertEnvironment, state: AlertDeliveryState) {
