@@ -6,7 +6,8 @@ import { tasks } from '../src/data/course-catalog';
 import { curriculumLessons } from '../src/data/complete-curriculum';
 import { loadProductIdentity, productFullTitle } from './product-identity';
 
-const identity = loadProductIdentity(new URL('..', import.meta.url).pathname);
+const root = fileURLToPath(new URL('..', import.meta.url));
+const identity = loadProductIdentity(root);
 const indexHtml = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const viteConfig = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8');
 const taskCount = tasks.length;
