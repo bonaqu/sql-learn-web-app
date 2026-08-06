@@ -1,11 +1,12 @@
 # SQL Academy
 
-Open-source SQL-платформа для быстрого профессионального обучения 2nd Support Engineer. Репозиторий не содержит имени владельца, работодателя, адресов, телефонов или реальных рабочих данных. Все компании, сотрудники и обращения в учебном наборе вымышлены; основной банк в кейсах называется **T-Bonk**.
+Коммерчески лицензируемая SQL-платформа для быстрого профессионального обучения 2nd Support Engineer. Публичный бренд, homepage, repository и support URL задаются единым buyer-owned контрактом; учебные компании, сотрудники и обращения вымышлены, а основной банк в кейсах называется **T-Bonk**.
 
 ## Онлайн
 
-- GitHub Pages: https://bonaqu.github.io/sql-learn-web-app/
-- Cloudflare Worker: https://sql-learn-web-app.bonaqu.workers.dev
+- Канонический frontend URL: поле `homepageUrl` в [`config/product-identity.json`](config/product-identity.json).
+- Репозиторий и поддержка: поля `repositoryUrl` и `supportUrl` в том же identity-контракте.
+- Cloudflare API hostname относится к deployment security configuration и не используется как публичный бренд.
 
 Оба frontend-адреса используют один Cloudflare Worker API с D1 и KV. Учебная платформа монтируется только после успешной проверки пользовательской сессии.
 
@@ -281,3 +282,14 @@ Worker не доверяет клиентскому `x-profile-id`: user ID оп
 - Assessment evidence не содержит password/recovery/session token.
 - Dialect progress хранит только lab/dialect/version, pass state, duration и digest — learner SQL в D1 не сохраняется.
 - Production smokes создают временные аккаунты, проверяют cascade и удаляют их.
+
+
+## Product identity и передача покупателю
+
+Публичное имя, track, описание, homepage, repository/support URL, лицензионная подпись и privacy label находятся в одном файле [`config/product-identity.json`](config/product-identity.json). После изменения выполняются `npm run identity:generate`, `npm run identity:check` и production build.
+
+Полная процедура ребрендинга, URL/security boundary и правило сохранения внутренних storage/API identifiers: [`docs/product-identity-handoff.md`](docs/product-identity-handoff.md).
+
+## Лицензия
+
+Исходный код распространяется по условиям файла [`LICENSE`](LICENSE) и не заявляется как open source. Сторонние зависимости сохраняют собственные лицензии и перечислены в [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).

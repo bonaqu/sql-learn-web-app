@@ -5,7 +5,7 @@ export const productIdentity = {
   "productName": "SQL Academy",
   "shortName": "SQL Academy",
   "trackName": "Support Engineering Track",
-  "description": "Интерактивная SQL-платформа с практикой, проверкой результата, адаптивным повторением и инженерными учебными маршрутами.",
+  "description": "Интерактивная SQL-платформа: 240 проверяемых задач, 44 связанных урока, адаптивное повторение и инженерные учебные маршруты.",
   "locale": "ru",
   "licenseName": "SQL Academy Commercial Source License",
   "licenseLabel": "Commercial Source",
