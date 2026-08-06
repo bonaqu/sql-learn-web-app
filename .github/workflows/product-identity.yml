@@ -20,6 +20,7 @@ on:
       - scripts/product-identity.ts
       - scripts/generate-product-identity.ts
       - scripts/validate-product-identity.ts
+      - scripts/validate-product-identity-boundaries.ts
       - scripts/validate-public-metadata.ts
       - .github/workflows/product-identity.yml
   push:
@@ -41,6 +42,7 @@ on:
       - scripts/product-identity.ts
       - scripts/generate-product-identity.ts
       - scripts/validate-product-identity.ts
+      - scripts/validate-product-identity-boundaries.ts
       - scripts/validate-public-metadata.ts
       - .github/workflows/product-identity.yml
 
@@ -73,6 +75,9 @@ jobs:
 
       - name: Validate source identity contract
         run: npm run validate:product-identity
+
+      - name: Validate identity security and localization boundaries
+        run: npx tsx scripts/validate-product-identity-boundaries.ts
 
       - name: Build production metadata
         run: npm run build
