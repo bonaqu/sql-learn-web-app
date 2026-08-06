@@ -19,6 +19,7 @@ export type ProductIdentity = {
 
 const URL_FIELDS = ['homepageUrl', 'repositoryUrl', 'supportUrl'] as const;
 const IPV4_PATTERN = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+const CYRILLIC_PATTERN = /[А-Яа-яЁё]/;
 
 function nonEmptyString(value: unknown, field: string, minimum: number, maximum: number) {
   if (typeof value !== 'string') throw new Error(`${field} must be a string`);
@@ -115,6 +116,22 @@ export function validateProductIdentity(value: unknown): ProductIdentity {
   }
   if (/open[ -]?source|открыт(?:ый|ого)\s+исходн/i.test(`${identity.licenseName} ${identity.licenseLabel}`)) {
     throw new Error('Commercial product identity must not claim an open-source license');
+  }
+  if (identity.locale === 'ru') {
+    for (const [field, text] of [
+      ['trackName', identity.trackName],
+      ['description', identity.description],
+      ['licenseLabel', identity.licenseLabel],
+      ['privacyLabel', identity.privacyLabel],
+      ['privacySummary', identity.privacySummary]
+    ] as const) {
+      if (!CYRILLIC_PATTERN.test(text)) throw new Error(`${field} must be localized for the Russian identity`);
+    }
+    if (/\b(?:Commercial Source|privacy-first|Support Engineering Track)\b/i.test(
+      `${identity.trackName} ${identity.licenseLabel} ${identity.privacyLabel}`
+    )) {
+      throw new Error('Russian public labels must not fall back to English service copy');
+    }
   }
   return identity;
 }
