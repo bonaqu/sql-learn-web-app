@@ -10,6 +10,7 @@ on:
       - worker/contact-security-events.ts
       - worker/contact-delivery-events.ts
       - scripts/validate-retention-policy.ts
+      - scripts/validate-retention-log-privacy.ts
       - docs/technical-data-retention.md
       - wrangler.jsonc
       - wrangler.typegen.jsonc
@@ -24,6 +25,7 @@ on:
       - worker/contact-security-events.ts
       - worker/contact-delivery-events.ts
       - scripts/validate-retention-policy.ts
+      - scripts/validate-retention-log-privacy.ts
       - docs/technical-data-retention.md
       - wrangler.jsonc
       - wrangler.typegen.jsonc
@@ -56,3 +58,6 @@ jobs:
 
       - name: Validate retention policy
         run: npx tsx scripts/validate-retention-policy.ts
+
+      - name: Validate retention log privacy
+        run: npx tsx scripts/validate-retention-log-privacy.ts
