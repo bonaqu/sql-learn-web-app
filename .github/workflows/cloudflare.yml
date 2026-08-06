@@ -26,6 +26,9 @@ jobs:
       FEATURE_SMS_VERIFICATION: ${{ vars.FEATURE_SMS_VERIFICATION || 'off' }}
       FEATURE_TURNSTILE: ${{ vars.FEATURE_TURNSTILE || 'off' }}
       FEATURE_ADMIN_CONSOLE: ${{ vars.FEATURE_ADMIN_CONSOLE || 'off' }}
+      FEATURE_ADMIN_ALERTS: ${{ vars.FEATURE_ADMIN_ALERTS || 'off' }}
+      ADMIN_ALERT_CRON: ${{ vars.ADMIN_ALERT_CRON }}
+      ADMIN_ALERT_COOLDOWN_MINUTES: ${{ vars.ADMIN_ALERT_COOLDOWN_MINUTES || '60' }}
       CONTACT_REGISTRATION_POLICY: ${{ vars.CONTACT_REGISTRATION_POLICY || 'optional' }}
       TURNSTILE_EXPECTED_HOSTNAMES: ${{ vars.TURNSTILE_EXPECTED_HOSTNAMES }}
       ADMIN_ALLOWED_USER_IDS: ${{ vars.ADMIN_ALLOWED_USER_IDS }}
@@ -126,10 +129,13 @@ jobs:
           echo 'generate-wrangler-config' > cloudflare-deployment-stage.txt
           node - <<'NODE'
           const fs = require('fs');
+          const alertCron = process.env.FEATURE_ADMIN_ALERTS === 'on'
+            ? (process.env.ADMIN_ALERT_CRON || '').trim()
+            : '';
           const config = {
             $schema: './node_modules/wrangler/config-schema.json',
             name: 'sql-learn-web-app',
-            main: 'worker/index.ts',
+            main: 'worker/entrypoint.ts',
             compatibility_date: '2026-07-27',
             compatibility_flags: ['nodejs_compat'],
             assets: {
@@ -138,6 +144,7 @@ jobs:
               not_found_handling: 'single-page-application',
               run_worker_first: ['/api/*']
             },
+            triggers: { crons: alertCron ? [alertCron] : [] },
             d1_databases: [{
               binding: 'DB',
               database_name: 'sql-academy',
@@ -153,6 +160,9 @@ jobs:
               FEATURE_SMS_VERIFICATION: process.env.FEATURE_SMS_VERIFICATION,
               FEATURE_TURNSTILE: process.env.FEATURE_TURNSTILE,
               FEATURE_ADMIN_CONSOLE: process.env.FEATURE_ADMIN_CONSOLE,
+              FEATURE_ADMIN_ALERTS: process.env.FEATURE_ADMIN_ALERTS,
+              ADMIN_ALERT_CRON: alertCron,
+              ADMIN_ALERT_COOLDOWN_MINUTES: process.env.ADMIN_ALERT_COOLDOWN_MINUTES,
               CONTACT_REGISTRATION_POLICY: process.env.CONTACT_REGISTRATION_POLICY,
               TURNSTILE_EXPECTED_HOSTNAMES: process.env.TURNSTILE_EXPECTED_HOSTNAMES || '',
               ADMIN_ALLOWED_USER_IDS: process.env.ADMIN_ALLOWED_USER_IDS || '',
