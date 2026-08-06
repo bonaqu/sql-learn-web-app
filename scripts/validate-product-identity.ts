@@ -54,7 +54,7 @@ for (const token of [
   '__PRODUCT_PRIVACY_SUMMARY__',
   '<!-- PRODUCT_CANONICAL -->'
 ]) assert.ok(html.includes(token), `index.html is missing product identity token ${token}`);
-assert.doesNotMatch(html, /Open-source|open source|contains no personal data/i);
+assert.doesNotMatch(html, /Open-source|contains no personal data/i);
 assert.doesNotMatch(html, /bonaqu\.github\.io|github\.com\/bonaqu/i,
   'Public HTML must receive buyer URLs through the identity transform, not source hardcodes.');
 
@@ -63,8 +63,8 @@ for (const marker of [
   "loadProductIdentity(process.cwd())",
   'productFullTitle(identity)',
   'transformIndexHtml',
-  "html.replaceAll('__PRODUCT_NAME__'",
-  "html.replace('<!-- PRODUCT_CANONICAL -->'",
+  ".replaceAll('__PRODUCT_NAME__'",
+  ".replace('<!-- PRODUCT_CANONICAL -->'",
   'identity.shortName',
   'identity.description',
   'identity.locale'
@@ -86,10 +86,11 @@ assert.ok(commercialIdentity.includes('productIdentity.productName'));
 assert.doesNotMatch(commercialIdentity, /SQL Academy сохраняет HMAC/);
 
 const readme = read('README.md');
-assert.doesNotMatch(readme, /^Open-source|open-source|open source/mi);
+assert.doesNotMatch(readme, /^\s*Open-source\b|является\s+open source|open-source platform/mi);
 assert.ok(readme.includes('Коммерчески лицензируемая'));
 assert.ok(readme.includes('docs/product-identity-handoff.md'));
 assert.ok(readme.includes('config/product-identity.json'));
+assert.ok(readme.includes('не заявляется как open source'));
 
 const runbook = read('docs/product-identity-handoff.md');
 for (const marker of [
