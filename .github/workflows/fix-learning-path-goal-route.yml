@@ -1,0 +1,54 @@
+name: Fix Learning Path Goal Route Guard
+
+on:
+  pull_request:
+    branches:
+      - bonaqu_projects
+    paths:
+      - .github/workflows/fix-learning-path-goal-route.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: fix-learning-path-goal-route-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fix:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout same-repository head branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Apply exact validator fix and remove script
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check scripts/fix-learning-path-goal-route-guard.mjs
+          node scripts/fix-learning-path-goal-route-guard.mjs
+          rm scripts/fix-learning-path-goal-route-guard.mjs
+
+      - name: Enforce changed-file allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed=$(git status --porcelain --untracked-files=all | cut -c4- | sort)
+          expected=$(printf '%s\n' \
+            'scripts/fix-learning-path-goal-route-guard.mjs' \
+            'scripts/validate-learning-path.ts' | sort)
+          test "$changed" = "$expected"
+
+      - name: Commit only validator fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/fix-learning-path-goal-route-guard.mjs scripts/validate-learning-path.ts
+          git commit -m 'Narrow Learning Path goal-route copy guard'
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
