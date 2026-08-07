@@ -106,6 +106,10 @@ function advancedFrontierFixture(userId: string, goal: LearnerGoal, prefixLength
   const route = goalModuleRoute(goal);
   const safePrefixLength = Math.max(SHARED_FOUNDATION_MODULE_IDS.length, Math.min(prefixLength, route.length - 1));
   const strongModuleIds = route.slice(0, safePrefixLength);
+  const completedDate = new Date(Date.now() - 5 * 60_000);
+  const completedAt = completedDate.toISOString();
+  const checkpointStartedAt = new Date(completedDate.getTime() - 10 * 60_000).toISOString();
+  const lastStudyDate = completedAt.slice(0, 10);
   const fullyCoveredPhases = phaseDefinitions.filter(phase => phase.moduleIds.every(moduleId => strongModuleIds.includes(moduleId)));
   const checkpointReports = fullyCoveredPhases.flatMap(phase => {
     const checkpoint = checkpointForPhase(phase.id);
@@ -117,8 +121,8 @@ function advancedFrontierFixture(userId: string, goal: LearnerGoal, prefixLength
       status: 'completed',
       passed: true,
       score: 100,
-      startedAt: '2026-08-03T15:00:00.000Z',
-      completedAt: '2026-08-03T15:10:00.000Z',
+      startedAt: checkpointStartedAt,
+      completedAt,
       durationSeconds: 600,
       taskResults: []
     }] : [];
@@ -129,7 +133,6 @@ function advancedFrontierFixture(userId: string, goal: LearnerGoal, prefixLength
     const phase = phaseDefinitions.find(item => item.moduleIds.some(moduleId => moduleId === task.module));
     return Boolean(phase && openedPhaseIds.has(phase.id) && strongModuleIds.includes(task.module));
   });
-  const completedAt = '2026-08-03T15:15:00.000Z';
   const progress = {
     version: 4,
     completed: transferTasks.map(task => task.id),
@@ -146,7 +149,7 @@ function advancedFrontierFixture(userId: string, goal: LearnerGoal, prefixLength
     xp: transferTasks.reduce((sum, task) => sum + task.xp, 0),
     streak: 1,
     history: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => ({ day, solved: 0 })),
-    lastStudyDate: '2026-08-03'
+    lastStudyDate
   };
   const profile = {
     version: 1,
