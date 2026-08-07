@@ -53,10 +53,21 @@ for (const [action, expectedMajor] of supportedActions) {
 
 const pagesWorkflow = readFileSync(join(workflowsDirectory, 'pages.yml'), 'utf8');
 assert.ok(pagesWorkflow.includes('uses: actions/upload-pages-artifact@v5'));
-assert.ok(/uses: actions\/upload-pages-artifact@v5[\s\S]*?with:\s*\n\s+path: dist\b/.test(pagesWorkflow));
+assert.ok(
+  pagesWorkflow.includes('PAGES_ARTIFACT_NAME: github-pages-${{ github.run_attempt }}'),
+  'Pages artifact names must be unique per workflow attempt so retries cannot create ambiguous duplicates'
+);
+assert.ok(
+  /uses: actions\/upload-pages-artifact@v5[\s\S]*?with:\s*\n\s+name: \$\{\{ env\.PAGES_ARTIFACT_NAME \}\}\s*\n\s+path: dist\b/.test(pagesWorkflow),
+  'Pages upload must use the retry-safe artifact name and dist payload'
+);
+assert.ok(
+  /uses: actions\/deploy-pages@v5[\s\S]*?with:\s*\n\s+artifact_name: \$\{\{ env\.PAGES_ARTIFACT_NAME \}\}/.test(pagesWorkflow),
+  'Pages deployment must request the exact retry-safe artifact uploaded by this attempt'
+);
 
 console.log(
   `GitHub Actions runtime validated across ${workflowFiles.length} workflows: `
     + [...counts.entries()].map(([action, count]) => `${action}=${count}`).join(', ')
-    + '; github-script v9 ESM hazards are absent.'
+    + '; github-script v9 ESM hazards are absent and Pages retries use unique artifacts.'
 );
