@@ -293,7 +293,7 @@ for (const forbidden of [
   'пяти видах evidence',
   'Анализирую evidence graph',
   'Skill graph',
-  'goal-route',
+  'Карта доказательств и goal-route',
   'completed evidence',
   'locked prerequisite',
   '% evidence',
