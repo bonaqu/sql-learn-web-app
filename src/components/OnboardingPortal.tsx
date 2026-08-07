@@ -38,8 +38,11 @@ import {
   loadOnboardingProfile,
   ONBOARDING_ASSESSMENT_INTENT_KEY,
   onboardingReady,
+  placementLevelLabels,
+  recommendedTrackLabels,
   saveOnboardingProfile,
   studyDayLabels,
+  weekPlanKindLabels,
   type ExperienceLevel,
   type LearnerGoal,
   type LearnerOnboardingProfile,
@@ -56,7 +59,7 @@ const steps: Array<{ id: WizardStep; title: string; short: string }> = [
   { id: 'goal', title: 'Цель', short: 'Зачем' },
   { id: 'schedule', title: 'Ритм', short: 'Когда' },
   { id: 'experience', title: 'Опыт', short: 'Контекст' },
-  { id: 'placement', title: 'Placement', short: 'Evidence' },
+  { id: 'placement', title: 'Диагностика', short: 'Проверка' },
   { id: 'plan', title: 'План', short: 'Неделя' }
 ];
 
@@ -64,12 +67,12 @@ const experienceOptions: Array<{ id: ExperienceLevel; title: string; description
   { id: 'none', title: 'С нуля', description: 'SQL ещё не использовал или помню только отдельные слова.' },
   { id: 'basics', title: 'Знаю базу', description: 'Писал SELECT, WHERE, ORDER BY и простые агрегаты.' },
   { id: 'regular', title: 'Использую время от времени', description: 'Есть JOIN, GROUP BY, подзапросы или рабочие отчёты.' },
-  { id: 'advanced', title: 'Уверенный опыт', description: 'Работал с окнами, транзакциями, планами или production-схемами.' }
+  { id: 'advanced', title: 'Уверенный опыт', description: 'Работал с окнами, транзакциями, планами выполнения или боевыми схемами.' }
 ];
 
 const paceOptions: Array<{ id: StudyPace; title: string; detail: string }> = [
   { id: 'gentle', title: 'Мягкий', detail: '2–3 сессии в неделю, минимум новых тем.' },
-  { id: 'steady', title: 'Устойчивый', detail: '3–5 сессий, баланс уроков, практики и review.' },
+  { id: 'steady', title: 'Устойчивый', detail: '3–5 сессий, баланс уроков, практики и повторения.' },
   { id: 'intensive', title: 'Интенсивный', detail: '5–7 сессий, но без удвоения после пропусков.' }
 ];
 
@@ -175,7 +178,7 @@ export default function OnboardingPortal({ openRequest = 0 }: { openRequest?: nu
 
   const nextStep = () => {
     if (step === 'goal' && !profile.goal) {
-      setMessage('Выбери конкретную цель — она определит контекст задач, но не заменит placement evidence.');
+      setMessage('Выбери конкретную цель — она определит контекст задач, но не заменит подтверждённые результаты диагностики.');
       return;
     }
     if (step === 'schedule' && profile.studyDays.length < 2) {
@@ -183,7 +186,7 @@ export default function OnboardingPortal({ openRequest = 0 }: { openRequest?: nu
       return;
     }
     if (step === 'experience' && !profile.experience) {
-      setMessage('Укажи примерный опыт. Он нужен для объяснений, но не разблокирует advanced-контент.');
+      setMessage('Укажи примерный опыт. Он нужен для объяснений, но сам по себе не открывает продвинутые темы.');
       return;
     }
     setMessage('');
@@ -222,7 +225,7 @@ export default function OnboardingPortal({ openRequest = 0 }: { openRequest?: nu
     const next = completeOnboarding(profile, placement);
     const saved = persist(next);
     setStep('plan');
-    setMessage('Placement отложен. План намеренно начинается с foundation и не делает предположений о навыке.');
+    setMessage('Диагностика отложена. План намеренно начинается с базового уровня и не делает предположений о навыках.');
     void syncOnboardingProfile(saved).catch(() => undefined);
   };
 
@@ -231,7 +234,7 @@ export default function OnboardingPortal({ openRequest = 0 }: { openRequest?: nu
     const next = completeOnboarding(profile, profile.placement);
     persist(next);
     setStep('plan');
-    setMessage('Placement принят. Skip и advanced-доступ всё равно будут подтверждаться модульным evidence, а не одним общим баллом.');
+    setMessage('Диагностика принята. Пропуск тем и доступ к продвинутым модулям подтверждаются результатами по каждому модулю, а не одним общим баллом.');
   };
 
   const finish = async () => {
@@ -244,7 +247,7 @@ export default function OnboardingPortal({ openRequest = 0 }: { openRequest?: nu
       const synced = await syncOnboardingProfile(saved);
       setProfile(synced.profile);
       setSyncState('synced');
-      setMessage('Стартовый контракт сохранён локально и в облаке. Его можно пересобрать без сброса учебного evidence.');
+      setMessage('Стартовый план сохранён локально и в облаке. Его можно пересобрать без сброса учебных результатов.');
     } catch {
       setSyncState('offline');
       setMessage('План сохранён локально. При восстановлении сети он синхронизируется автоматически.');
@@ -263,7 +266,7 @@ export default function OnboardingPortal({ openRequest = 0 }: { openRequest?: nu
   if (!open) return null;
 
   const content = step === 'goal' ? <section className="onboarding-step" data-testid="onboarding-goal">
-    <div className="onboarding-heading"><small>01 · цель</small><h1>Для какой работы тебе нужен SQL?</h1><p>Контекст меняет примеры и маршрут. Он не снижает требования к evidence.</p></div>
+    <div className="onboarding-heading"><small>01 · цель</small><h1>Для какой работы тебе нужен SQL?</h1><p>Контекст меняет примеры и маршрут. Он не снижает требования к подтверждённым результатам.</p></div>
     <div className="onboarding-choice-grid goal-grid">{goalOptions.map(item => <button
       key={item.id}
       className={profile.goal === item.id ? 'selected' : ''}
@@ -275,29 +278,29 @@ export default function OnboardingPortal({ openRequest = 0 }: { openRequest?: nu
     <div className="onboarding-days"><strong>Учебные дни</strong><div>{dayOrder.map(day => <button key={day} className={profile.studyDays.includes(day) ? 'selected' : ''} aria-pressed={profile.studyDays.includes(day)} onClick={() => toggleDay(day)}>{studyDayLabels[day]}</button>)}</div><small>{profile.studyDays.length} сессии в неделю · минимум 2</small></div>
     <div className="onboarding-pace">{paceOptions.map(item => <button key={item.id} className={profile.pace === item.id ? 'selected' : ''} onClick={() => update({ pace: item.id })}><Gauge /><span><strong>{item.title}</strong><small>{item.detail}</small></span></button>)}</div>
   </section> : step === 'experience' ? <section className="onboarding-step" data-testid="onboarding-experience">
-    <div className="onboarding-heading"><small>03 · self-report</small><h1>Какой опыт уже есть?</h1><p>Ответ регулирует темп объяснений. Он не выдаёт mastery, сертификат или advanced-доступ.</p></div>
+    <div className="onboarding-heading"><small>03 · самооценка</small><h1>Какой опыт уже есть?</h1><p>Ответ регулирует темп объяснений. Он не подтверждает владение темой, не выдаёт сертификат и не открывает продвинутые модули.</p></div>
     <div className="onboarding-choice-grid experience-grid">{experienceOptions.map(item => <button key={item.id} className={profile.experience === item.id ? 'selected' : ''} onClick={() => update({ experience: item.id })}><span><Code2 /></span><strong>{item.title}</strong><p>{item.description}</p>{profile.experience === item.id && <CheckCircle2 />}</button>)}</div>
-    <div className="onboarding-integrity-note"><ShieldCheck /><div><strong>Self-report ≠ evidence</strong><p>Пропустить базовую тему можно только после выполненной диагностики по этому модулю, independent practice или checkpoint report.</p></div></div>
+    <div className="onboarding-integrity-note"><ShieldCheck /><div><strong>Самооценка ≠ подтверждённый навык</strong><p>Пропустить базовую тему можно только после диагностики по этому модулю, самостоятельной практики или контрольного этапа.</p></div></div>
   </section> : step === 'placement' ? <section className="onboarding-step" data-testid="onboarding-placement">
-    <div className="onboarding-heading"><small>04 · executable placement</small><h1>{profile.placement.status === 'completed' ? 'Стартовый уровень измерен' : profile.placement.status === 'pending' ? 'Заверши Diagnostic SQL Check' : 'Проверим не память терминов, а SQL'}</h1><p>Placement использует те же исполняемые задачи и result contracts, что основное обучение.</p></div>
+    <div className="onboarding-heading"><small>04 · исполняемая диагностика</small><h1>{profile.placement.status === 'completed' ? 'Стартовый уровень измерен' : profile.placement.status === 'pending' ? 'Заверши диагностику SQL' : 'Проверим не память терминов, а SQL'}</h1><p>Диагностика использует те же исполняемые задачи и критерии результата, что основное обучение.</p></div>
     {profile.placement.status === 'completed' ? <div className="placement-result">
-      <div className="placement-score"><strong>{profile.placement.score}%</strong><span>{profile.placement.level}</span></div>
-      <div className="placement-summary"><article><Route /><span><small>Рекомендуемый маршрут</small><strong>{profile.placement.recommendedTrack}</strong></span></article><article><Sparkles /><span><small>Сильные модули</small><strong>{profile.placement.strongModuleIds.length ? profile.placement.strongModuleIds.map(moduleTitle).join(', ') : 'пока не подтверждены'}</strong></span></article><article><Target /><span><small>Первый фокус</small><strong>{profile.placement.focusModuleIds.length ? profile.placement.focusModuleIds.map(moduleTitle).join(', ') : 'закрепление основы'}</strong></span></article></div>
+      <div className="placement-score"><strong>{profile.placement.score}%</strong><span>{profile.placement.level ? placementLevelLabels[profile.placement.level] : 'Уровень не определён'}</span></div>
+      <div className="placement-summary"><article><Route /><span><small>Рекомендуемый маршрут</small><strong>{recommendedTrackLabels[profile.placement.recommendedTrack]}</strong></span></article><article><Sparkles /><span><small>Сильные модули</small><strong>{profile.placement.strongModuleIds.length ? profile.placement.strongModuleIds.map(moduleTitle).join(', ') : 'пока не подтверждены'}</strong></span></article><article><Target /><span><small>Первый фокус</small><strong>{profile.placement.focusModuleIds.length ? profile.placement.focusModuleIds.map(moduleTitle).join(', ') : 'закрепление основы'}</strong></span></article></div>
       <div className="placement-actions"><button className="primary" onClick={acceptPlacement}><Check />Принять результат и построить неделю</button><button onClick={repeatPlacement}><RefreshCw />Пройти заново</button></div>
     </div> : <div className="placement-offer">
-      <div className="placement-proof"><ClipboardPlacement /><span><strong>Короткая диагностика</strong><small>SQL выполняется локально; в отчёт попадают score и модульные результаты, а не рабочие данные.</small></span></div>
-      <ul><li><Check />Self-report не влияет на score</li><li><Check />Слабый общий результат не открывает advanced-темы</li><li><Check />Повторный placement не стирает существующий progress</li></ul>
-      <div className="placement-actions"><button data-testid="start-placement" className="primary" onClick={() => void startPlacement()}><ListChecks />{profile.placement.status === 'pending' ? 'Вернуться в Diagnostic' : 'Начать executable placement'}</button><button data-testid="defer-placement" onClick={defer}>Начать с foundation без placement</button></div>
+      <div className="placement-proof"><ClipboardPlacement /><span><strong>Короткая диагностика</strong><small>SQL выполняется локально; в отчёт попадают итоговый балл и результаты по модулям, а не рабочие данные.</small></span></div>
+      <ul><li><Check />Самооценка не влияет на итоговый балл</li><li><Check />Слабый общий результат не открывает продвинутые темы</li><li><Check />Повторная диагностика не стирает существующий прогресс</li></ul>
+      <div className="placement-actions"><button data-testid="start-placement" className="primary" onClick={() => void startPlacement()}><ListChecks />{profile.placement.status === 'pending' ? 'Вернуться к диагностике' : 'Начать диагностику SQL'}</button><button data-testid="defer-placement" onClick={defer}>Начать с базового уровня без диагностики</button></div>
     </div>}
   </section> : <section className="onboarding-step" data-testid="onboarding-plan">
-    <div className="onboarding-heading"><small>05 · first week</small><h1>Первая неделя без перегруза</h1><p>Каждая сессия имеет один основной результат. Review не добавляется поверх новой темы — он заменяет её при долге повторения.</p></div>
-    <div className="week-plan">{profile.firstWeekPlan.map((item, index) => <article key={item.id}><span><small>{studyDayLabels[item.day]}</small><strong>{item.minutes}</strong><b>мин</b></span><div><small>0{index + 1} · {item.kind}</small><h2>{item.title}</h2><p>{item.detail}</p>{item.moduleId && <em>{moduleTitle(item.moduleId)}</em>}</div></article>)}</div>
+    <div className="onboarding-heading"><small>05 · первая неделя</small><h1>Первая неделя без перегруза</h1><p>Каждая сессия имеет один основной результат. Повторение не добавляется поверх новой темы — оно заменяет её, когда знания пора освежить.</p></div>
+    <div className="week-plan">{profile.firstWeekPlan.map((item, index) => <article key={item.id}><span><small>{studyDayLabels[item.day]}</small><strong>{item.minutes}</strong><b>мин</b></span><div><small>0{index + 1} · {weekPlanKindLabels[item.kind]}</small><h2>{item.title}</h2><p>{item.detail}</p>{item.moduleId && <em>{moduleTitle(item.moduleId)}</em>}</div></article>)}</div>
     <div className="recovery-rule"><CalendarDays /><div><strong>Правило восстановления</strong><p>{profile.recoveryRule}</p></div></div>
-    <div className="onboarding-final-actions"><button data-testid="complete-onboarding" className="primary" onClick={() => void finish()}><CheckCircle2 />{ready ? 'Синхронизировать план' : 'Принять стартовый контракт'}</button><button onClick={repeatPlacement}><RefreshCw />Повторить placement без сброса evidence</button></div>
+    <div className="onboarding-final-actions"><button data-testid="complete-onboarding" className="primary" onClick={() => void finish()}><CheckCircle2 />{ready ? 'Синхронизировать план' : 'Принять стартовый контракт'}</button><button onClick={repeatPlacement}><RefreshCw />Повторить диагностику без сброса результатов</button></div>
   </section>;
 
   return createPortal(<div ref={shellRef} tabIndex={-1} className="onboarding-shell" role="dialog" aria-modal="true" aria-labelledby="onboarding-title" data-testid="onboarding-portal">
-    <header className="onboarding-topbar"><div className="onboarding-brand"><Compass /><span><strong id="onboarding-title">SQL Academy · Стартовый контракт</strong><small>цель → ритм → evidence → первая неделя</small></span></div><button data-autofocus onClick={() => setOpen(false)} aria-label="Закрыть стартовый план"><X /></button></header>
+    <header className="onboarding-topbar"><div className="onboarding-brand"><Compass /><span><strong id="onboarding-title">SQL Academy · Стартовый контракт</strong><small>цель → ритм → диагностика → первая неделя</small></span></div><button data-autofocus onClick={() => setOpen(false)} aria-label="Закрыть стартовый план"><X /></button></header>
     <div className="onboarding-progress" aria-label={`Шаг ${stepIndex + 1} из ${steps.length}`}>{steps.map((item, index) => <button key={item.id} className={item.id === step ? 'active' : index < stepIndex ? 'done' : ''} onClick={() => index <= stepIndex && setStep(item.id)} disabled={index > stepIndex}><span>{index < stepIndex ? <Check /> : index + 1}</span><small>{item.short}</small></button>)}</div>
     <main className="onboarding-page">{content}{message && <div className={`onboarding-message ${syncState}`} role="status" aria-live="polite">{syncState === 'synced' ? <CheckCircle2 /> : syncState === 'syncing' ? <RefreshCw className="spin" /> : <ShieldCheck />}<span>{message}</span></div>}</main>
     {step !== 'placement' && step !== 'plan' && <footer className="onboarding-footer"><button onClick={previousStep} disabled={stepIndex === 0}><ArrowLeft />Назад</button><button className="primary" onClick={nextStep}>Продолжить<ArrowRight /></button></footer>}
