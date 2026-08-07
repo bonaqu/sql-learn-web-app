@@ -322,6 +322,35 @@ for (const required of [
   if (!learningPathPortalSource.includes(required)) failures.push(`Learning Path is missing localized route copy: ${required}`);
 }
 
+const skillEvidenceSource = readFileSync(new URL('../src/lib/skill-evidence.ts', import.meta.url), 'utf8');
+for (const forbidden of [
+  'lesson mastery loop',
+  'passed checkpoint evidence',
+  'completed assessment evidence',
+  'предыдущий checkpoint',
+  'practice mastery',
+  'Checkpoint score',
+  'completed checkpoint attempt',
+  'migrated legacy task evidence',
+  'historical best',
+  'current gate',
+  'Checkpoint evidence',
+  'executable report'
+]) {
+  if (skillEvidenceSource.includes(forbidden)) failures.push(`Skill evidence retained internal learner copy: ${forbidden}`);
+}
+for (const required of [
+  'цикл освоения урока',
+  'подтверждённого результата контрольного этапа',
+  'результата итоговой проверки',
+  'самостоятельной практикой',
+  'Результат контрольного этапа',
+  'исторический максимум',
+  'Новый исполняемый отчёт отсутствует'
+]) {
+  if (!skillEvidenceSource.includes(required)) failures.push(`Skill evidence is missing localized explanation: ${required}`);
+}
+
 const readinessExplainerSource = readFileSync(new URL('../src/components/ReadinessExplainer.tsx', import.meta.url), 'utf8');
 for (const forbidden of [
   'Как считается readiness?',
