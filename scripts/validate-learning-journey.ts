@@ -245,6 +245,34 @@ assert.doesNotMatch(guidedHomeSource, /tasks\.find\(/,
   'The Today page must not fall back to physical task-array order.');
 assert.match(guidedHomeSource, /JOURNEY_EVIDENCE_EVENTS/,
   'The Today page must react to shared curriculum/checkpoint/assessment evidence events.');
+for (const forbiddenCopy of [
+  'prerequisite-safe шаг',
+  'подтверждённый prefix',
+  'Следуй frontier',
+  'аналитика, backend',
+  'independent evidence',
+  'retrieval-повторение',
+  'Новые independent-попытки',
+  'retrieval review',
+  'Синхронизация evidence-графа',
+  'goal-aware frontier',
+  'пропуска prerequisites',
+  'Lesson → practice → checkpoint → transfer',
+  '{item.kind}',
+  '${nextStep.stage}'
+]) {
+  assert.ok(!guidedHomeSource.includes(forbiddenCopy), `Today UI retained internal learner copy: ${forbiddenCopy}`);
+}
+for (const requiredCopy of [
+  "const journeyStageLabels: Record<JourneyFrontier['action']['stage'], string>",
+  'journeyStageLabels[nextStep.stage]',
+  'weekPlanKindLabels[item.kind]',
+  'Следуй следующему шагу',
+  'повторение по памяти',
+  'Урок → практика → контроль → перенос навыка'
+]) {
+  assert.ok(guidedHomeSource.includes(requiredCopy), `Today UI is missing localized route copy: ${requiredCopy}`);
+}
 for (const forbiddenImport of [
   "import('../lib/assessment')",
   "import('../lib/checkpoints')",

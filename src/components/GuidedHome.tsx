@@ -20,6 +20,7 @@ import {
   ONBOARDING_CHANGED_EVENT,
   onboardingReady,
   studyDayLabels,
+  weekPlanKindLabels,
   type WeekPlanItem
 } from '../lib/learner-onboarding';
 import type { JourneyFrontier } from '../lib/learning-journey';
@@ -57,6 +58,19 @@ function loadJourneyModules() {
   ]);
   return journeyModulesPromise;
 }
+
+const journeyStageLabels: Record<JourneyFrontier['action']['stage'], string> = {
+  lesson: 'Урок',
+  guided: 'Практика с подсказками',
+  practice: 'Самостоятельная практика',
+  review: 'Повторение',
+  checkpoint: 'Контрольный этап',
+  interview: 'Интервью',
+  puzzle: 'SQL-головоломка',
+  assessment: 'Итоговая проверка',
+  project: 'Итоговый проект',
+  complete: 'Маршрут завершён'
+};
 
 function nextPlanItem(items: WeekPlanItem[]): WeekPlanItem | null {
   if (!items.length) return null;
@@ -154,16 +168,16 @@ export default function GuidedHome({
       <div className="guided-welcome-copy">
         <span className="guided-icon"><Compass /></span>
         <h1>Сначала выберем, зачем тебе SQL.</h1>
-        <p>Академия построит один понятный маршрут: общая база, цель, подтверждённый стартовый уровень и следующий prerequisite-safe шаг.</p>
+        <p>Академия построит один понятный маршрут: общая база, выбранная цель, подтверждённый стартовый уровень и следующий доступный шаг.</p>
         <div className="guided-actions">
           <button className="primary" onClick={onConfigure}><Sparkles /> Настроить мой маршрут</button>
           <button onClick={onExplore}>Посмотреть программу</button>
         </div>
       </div>
       <ol className="guided-steps" aria-label="Как начинается обучение">
-        <li><span>1</span><div><strong>Выбери результат</strong><p>Работа, аналитика, backend, интервью или полный путь.</p></div></li>
-        <li><span>2</span><div><strong>Определи старт</strong><p>Диагностика пропускает только непрерывный подтверждённый prefix.</p></div></li>
-        <li><span>3</span><div><strong>Следуй frontier</strong><p>На главной и во всех режимах используется одно рекомендуемое действие.</p></div></li>
+        <li><span>1</span><div><strong>Выбери результат</strong><p>Поддержка, аналитика, бэкенд, интервью или полный путь.</p></div></li>
+        <li><span>2</span><div><strong>Определи старт</strong><p>Диагностика позволяет пропустить только непрерывную цепочку подтверждённых базовых тем.</p></div></li>
+        <li><span>3</span><div><strong>Следуй следующему шагу</strong><p>На главной и во всех режимах используется одно рекомендуемое действие.</p></div></li>
       </ol>
     </section>;
   }
@@ -177,7 +191,7 @@ export default function GuidedHome({
         <h1>{primaryIsReview ? 'Сначала закрепим изученное.' : 'Продолжим единый маршрут.'}</h1>
         <p>{primaryIsReview
           ? `В очереди ${reviewCount} ${reviewCount === 1 ? 'задача' : 'задач'} на повторение.${nextStep ? ` После них вернёмся к этапу «${nextStep.title}».` : ''}`
-          : nextStep?.routeReason || nextStep?.description || 'Сверяю prerequisites, уроки, independent evidence, checkpoints и выбранную цель.'}</p>
+          : nextStep?.routeReason || nextStep?.description || 'Сверяю обязательные темы, уроки, самостоятельные результаты, контрольные этапы и выбранную цель.'}</p>
       </div>
       <button className="guided-configure" onClick={onConfigure}><Settings2 /> Изменить цель и ритм</button>
     </header>
@@ -185,7 +199,7 @@ export default function GuidedHome({
     {remediation && <aside
       className="guided-remediation-banner"
       data-testid="guided-checkpoint-remediation"
-      aria-label={`Восстановление после checkpoint ${remediation.checkpointTitle}`}
+      aria-label={`Восстановление после контрольного этапа ${remediation.checkpointTitle}`}
     >
       <Flag />
       <div>
@@ -193,9 +207,9 @@ export default function GuidedHome({
         <p>
           Результат {remediation.score}% при пороге {remediation.passingScore}%. Слабые модули: {remediation.modules.map(module => module.moduleTitle).join(', ')}.{' '}
           {primaryIsReview
-            ? 'Сначала закрой уже назревшее retrieval-повторение, затем маршрут вернётся к восстановлению.'
+            ? 'Сначала закрой уже назревшее повторение по памяти, затем маршрут вернётся к восстановлению.'
             : nextStep?.stage === 'checkpoint'
-              ? 'Новые independent-попытки подтверждены — повтори checkpoint; transfer пока закрыт.'
+              ? 'Новые самостоятельные попытки подтверждены — повтори контрольный этап; перенос навыка в новые режимы пока закрыт.'
               : 'Исправь отмеченные навыки новой самостоятельной попыткой после даты провала.'}
         </p>
       </div>
@@ -212,16 +226,16 @@ export default function GuidedHome({
         <span>{primaryIsReview ? <RefreshCw /> : <Target />}</span>
         <div>
           <small>{primaryIsReview
-            ? 'Приоритет на сегодня · retrieval review'
+            ? 'Приоритет на сегодня · повторение по памяти'
             : nextStep
-              ? `${nextStep.phaseTitle || 'Итоговый этап'}${nextStep.moduleTitle ? ` · ${nextStep.moduleTitle}` : ''} · ${nextStep.stage}`
-              : 'Синхронизация evidence-графа'}</small>
+              ? `${nextStep.phaseTitle || 'Итоговый этап'}${nextStep.moduleTitle ? ` · ${nextStep.moduleTitle}` : ''} · ${journeyStageLabels[nextStep.stage]}`
+              : 'Синхронизация учебных результатов'}</small>
           <h2>{primaryIsReview ? 'Адаптивное повторение' : nextStep?.title || 'Строю следующий шаг…'}</h2>
           <p>{primaryIsReview
             ? 'Восстанови решение по памяти, не перечитывая урок заранее.'
             : nextStep
               ? `${nextStep.description}${nextStep.routeReason ? ` Почему сейчас: ${nextStep.routeReason}` : ''}`
-              : 'Загружаю компактную сводку прогресса и goal-aware frontier.'}</p>
+              : 'Загружаю компактную сводку прогресса и следующий шаг выбранного маршрута.'}</p>
         </div>
       </div>
       <button className="primary" disabled={!primaryIsReview && !nextStep} onClick={() => primaryIsReview ? onReview() : startNextStep()}>
@@ -231,19 +245,19 @@ export default function GuidedHome({
 
     <div className="guided-grid">
       <article className="guided-week">
-        <div className="guided-card-heading"><div><CalendarDays /><span><strong>Первая неделя</strong><small>Общая база и специализация без пропуска prerequisites</small></span></div><button onClick={onOpenPlan}>Весь план <Route /></button></div>
+        <div className="guided-card-heading"><div><CalendarDays /><span><strong>Первая неделя</strong><small>Общая база и специализация без пропуска обязательных тем</small></span></div><button onClick={onOpenPlan}>Весь план <Route /></button></div>
         <div className="guided-week-list">{profile.firstWeekPlan.slice(0, 5).map(item => {
           const active = planned?.id === item.id;
           return <div key={item.id} className={active ? 'active' : ''}>
             <span>{studyDayLabels[item.day]}</span>
-            <p><strong>{item.title}</strong><small>{item.minutes} мин · {item.kind}</small></p>
+            <p><strong>{item.title}</strong><small>{item.minutes} мин · {weekPlanKindLabels[item.kind]}</small></p>
             {active ? <ArrowRight /> : <Clock3 />}
           </div>;
         })}</div>
       </article>
 
       <article className="guided-progress-card">
-        <div className="guided-card-heading"><div><ListChecks /><span><strong>Прогресс маршрута</strong><small>Lesson → practice → checkpoint → transfer</small></span></div></div>
+        <div className="guided-card-heading"><div><ListChecks /><span><strong>Прогресс маршрута</strong><small>Урок → практика → контроль → перенос навыка</small></span></div></div>
         <div className="guided-progress-value"><strong>{completion}%</strong><span>{progress.completed.length} из {TOTAL_TASK_COUNT} задач · {journey?.completedLessons || 0} уроков</span></div>
         <div className="guided-progress-bar"><i style={{ width: `${completion}%` }} /></div>
         <div className="guided-mini-actions">
