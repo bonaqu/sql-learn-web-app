@@ -106,7 +106,7 @@ Unique bundled notice/license texts: **200**
 - `@babel/types@7.29.8` — MIT — transitive — https://github.com/babel/babel
 - `@cloudflare/containers@0.3.7` — MIT OR Apache-2.0 — transitive — https://github.com/cloudflare/containers
 - `@cloudflare/kv-asset-handler@0.5.0` — MIT OR Apache-2.0 — transitive — https://github.com/cloudflare/workers-sdk
-- `@cloudflare/sandbox@0.10.3` — Apache-2.0 — direct-runtime — https://github.com/cloudflare/sandbox-sdk
+- `@cloudflare/sandbox@0.12.4` — Apache-2.0 — direct-runtime — https://github.com/cloudflare/sandbox-sdk
 - `@cloudflare/unenv-preset@2.16.1` — MIT OR Apache-2.0 — transitive — https://github.com/cloudflare/workers-sdk
 - `@cloudflare/workerd-linux-64@1.20260730.1` — Apache-2.0 — transitive — https://github.com/cloudflare/workerd
 - `@cspotcode/source-map-support@0.8.1` — MIT — transitive — https://github.com/cspotcode/node-source-map-support
@@ -7964,7 +7964,7 @@ THE SOFTWARE.
 
 ### SHA-256 `85ad950cce8752f716dbf49be95b2639172cb49f291336d57f1fdc9989e38179`
 
-Applies to: `@cloudflare/sandbox@0.10.3 (LICENSE)`
+Applies to: `@cloudflare/sandbox@0.12.4 (LICENSE)`
 
 ```text
 Apache License

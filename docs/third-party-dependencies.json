@@ -1144,7 +1144,7 @@
     },
     {
       "name": "@cloudflare/sandbox",
-      "version": "0.10.3",
+      "version": "0.12.4",
       "kind": "direct-runtime",
       "license": "Apache-2.0",
       "repository": "https://github.com/cloudflare/sandbox-sdk",
