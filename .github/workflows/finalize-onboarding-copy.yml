@@ -1,0 +1,55 @@
+name: Finalize Onboarding Copy
+
+on:
+  pull_request:
+    branches:
+      - bonaqu_projects
+    paths:
+      - .github/workflows/finalize-onboarding-copy.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-onboarding-copy-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout same-repository head branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Apply exact copy fixes and remove script
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/finalize-onboarding-copy.mjs
+          rm scripts/finalize-onboarding-copy.mjs
+
+      - name: Enforce changed-file allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed=$(git status --porcelain --untracked-files=all | cut -c4- | sort)
+          expected=$(printf '%s\n' \
+            'scripts/finalize-onboarding-copy.mjs' \
+            'scripts/validate-onboarding.ts' \
+            'src/components/OnboardingPortal.tsx' \
+            'src/lib/learner-onboarding.ts' | sort)
+          test "$changed" = "$expected"
+
+      - name: Commit final learner-facing copy
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/finalize-onboarding-copy.mjs scripts/validate-onboarding.ts src/components/OnboardingPortal.tsx src/lib/learner-onboarding.ts
+          git commit -m 'Finish Russian onboarding copy and guards'
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
