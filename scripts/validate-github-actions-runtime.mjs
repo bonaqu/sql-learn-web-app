@@ -9,6 +9,11 @@ const workflowFiles = readdirSync(workflowsDirectory)
   .sort((left, right) => left.localeCompare(right));
 
 assert.ok(workflowFiles.length > 0, 'No GitHub Actions workflows were found');
+assert.deepEqual(
+  workflowFiles.filter(file => /bootstrap/i.test(file)),
+  [],
+  'Temporary bootstrap workflows must be removed before merge'
+);
 
 const supportedActions = new Map([
   ['actions/github-script', 9],
@@ -69,5 +74,5 @@ assert.ok(
 console.log(
   `GitHub Actions runtime validated across ${workflowFiles.length} workflows: `
     + [...counts.entries()].map(([action, count]) => `${action}=${count}`).join(', ')
-    + '; github-script v9 ESM hazards are absent and Pages retries use unique artifacts.'
+    + '; github-script v9 ESM hazards are absent, Pages retries use unique artifacts and no bootstrap workflow remains.'
 );
