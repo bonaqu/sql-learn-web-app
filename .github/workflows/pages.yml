@@ -20,6 +20,8 @@ jobs:
     name: Build and deploy production
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      PAGES_ARTIFACT_NAME: github-pages-${{ github.run_attempt }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -81,6 +83,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
+          name: ${{ env.PAGES_ARTIFACT_NAME }}
           path: dist
 
       - name: Record Pages deployment stage
@@ -89,6 +92,8 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+        with:
+          artifact_name: ${{ env.PAGES_ARTIFACT_NAME }}
 
       - name: Smoke-test deployed Pages
         shell: bash
