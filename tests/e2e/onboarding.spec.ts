@@ -61,7 +61,7 @@ async function chooseCoreContract(page: Page) {
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
   await expect(dialog.getByTestId('onboarding-schedule')).toBeVisible();
   await dialog.getByRole('radio', { name: /25/ }).click();
-  await dialog.getByRole('button', { name: 'Вт' }).click();
+  await dialog.getByRole('button', { name: 'Вт', exact: true }).click();
   await dialog.getByRole('button', { name: /Устойчивый/i }).click();
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
   await expect(dialog.getByTestId('onboarding-experience')).toBeVisible();
