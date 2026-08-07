@@ -223,6 +223,9 @@ for (const forbidden of [
   'Diagnostic SQL Check',
   'executable placement',
   'Начать с foundation',
+  'Support SQL',
+  'Backend SQL',
+  'Стартовый контракт',
   '{profile.placement.level}',
   '{profile.placement.recommendedTrack}',
   '{item.kind}'
@@ -234,7 +237,9 @@ for (const required of [
   'recommendedTrackLabels[profile.placement.recommendedTrack]',
   'weekPlanKindLabels[item.kind]',
   'Самооценка ≠ подтверждённый навык',
-  'Начать с базового уровня без диагностики'
+  'Начать с базового уровня без диагностики',
+  'SQL Academy · Стартовый план',
+  'Принять стартовый план'
 ]) {
   assert(onboardingPortalSource.includes(required), `Onboarding UI is missing localized contract: ${required}`);
 }

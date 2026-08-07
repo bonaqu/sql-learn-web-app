@@ -56,9 +56,9 @@ export const ONBOARDING_SYNCED_EVENT = 'sql-academy-onboarding-synced';
 export const ONBOARDING_ASSESSMENT_INTENT_KEY = 'sql-academy-onboarding-assessment-intent-v1';
 
 export const goalOptions: Array<{ id: LearnerGoal; title: string; description: string; track: RecommendedTrack }> = [
-  { id: 'support', title: 'Support SQL', description: 'Диагностика инцидентов, SLA, очереди, качество данных и расследования.', track: 'support' },
+  { id: 'support', title: 'SQL для поддержки', description: 'Диагностика инцидентов, SLA, очереди, качество данных и расследования.', track: 'support' },
   { id: 'analyst', title: 'Аналитика', description: 'Метрики, агрегации, окна, временные ряды и объяснимые отчёты.', track: 'analytics' },
-  { id: 'backend', title: 'Backend SQL', description: 'Схемы, DML, транзакции, индексы, планы и безопасные изменения.', track: 'performance' },
+  { id: 'backend', title: 'SQL для бэкенда', description: 'Схемы, DML, транзакции, индексы, планы и безопасные изменения.', track: 'performance' },
   { id: 'interview', title: 'Интервью', description: 'Задачи под временем, формулирование допущений и устойчивое объяснение решения.', track: 'interview' },
   { id: 'full', title: 'Полная академия', description: 'Последовательный путь от нуля до боевых задач и итоговых проектов.', track: 'fundamentals' }
 ];
