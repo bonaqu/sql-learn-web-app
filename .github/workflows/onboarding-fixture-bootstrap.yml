@@ -1,0 +1,88 @@
+name: Refresh Advanced Onboarding Fixture
+
+on:
+  pull_request:
+    branches:
+      - bonaqu_projects
+    paths:
+      - tests/e2e/onboarding.spec.ts
+      - .github/workflows/onboarding-fixture-bootstrap.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: onboarding-fixture-bootstrap-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout same-repository head branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Replace stale absolute fixture dates
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = 'tests/e2e/onboarding.spec.ts';
+          let source = fs.readFileSync(path, 'utf8');
+
+          function replaceOne(before, after) {
+            const occurrences = source.split(before).length - 1;
+            if (occurrences !== 1) {
+              throw new Error(`Expected one fixture fragment, found ${occurrences}: ${before}`);
+            }
+            source = source.replace(before, after);
+          }
+
+          replaceOne(
+            "  const strongModuleIds = route.slice(0, safePrefixLength);\n  const fullyCoveredPhases =",
+            "  const strongModuleIds = route.slice(0, safePrefixLength);\n  const completedDate = new Date(Date.now() - 5 * 60_000);\n  const completedAt = completedDate.toISOString();\n  const checkpointStartedAt = new Date(completedDate.getTime() - 10 * 60_000).toISOString();\n  const lastStudyDate = completedAt.slice(0, 10);\n  const fullyCoveredPhases ="
+          );
+          replaceOne("      startedAt: '2026-08-03T15:00:00.000Z',", '      startedAt: checkpointStartedAt,');
+          replaceOne("      completedAt: '2026-08-03T15:10:00.000Z',", '      completedAt,');
+          replaceOne("  const completedAt = '2026-08-03T15:15:00.000Z';\n", '');
+          replaceOne("    lastStudyDate: '2026-08-03'", '    lastStudyDate');
+
+          fs.writeFileSync(path, source);
+          NODE
+
+      - name: Remove one-time bootstrap
+        run: rm .github/workflows/onboarding-fixture-bootstrap.yml
+
+      - name: Enforce changed-file allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const allowed = new Set([
+            'tests/e2e/onboarding.spec.ts',
+            '.github/workflows/onboarding-fixture-bootstrap.yml'
+          ]);
+          const changed = execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], { encoding: 'utf8' })
+            .split('\n')
+            .filter(Boolean)
+            .map(line => line.slice(3));
+          const unexpected = changed.filter(path => !allowed.has(path));
+          if (unexpected.length) throw new Error(`Unexpected changed files: ${unexpected.join(', ')}`);
+          if (changed.length !== 2) throw new Error(`Expected exactly two changed paths, found ${changed.length}`);
+          NODE
+
+      - name: Commit refreshed fixture and bootstrap removal
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tests/e2e/onboarding.spec.ts .github/workflows/onboarding-fixture-bootstrap.yml
+          git commit -m 'Keep advanced onboarding fixture ahead of review scheduling'
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
