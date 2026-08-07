@@ -129,9 +129,9 @@ test('desktop checkpoint retries offline evidence sync and hydrates Learning Pat
   await expect(learningPath).toBeVisible();
   await learningPath.locator('.roadmap-section').scrollIntoViewIfNeeded();
   const explainer = learningPath.getByTestId('readiness-explainer');
-  await explainer.getByRole('button', { name: /Как считается readiness/i }).click();
+  await explainer.getByRole('button', { name: /Как считается готовность/i }).click();
   await explainer.locator('select').selectOption(evidenceModule);
-  await expect(explainer.getByText(/completed checkpoint report/).first()).toBeVisible();
+  await expect(explainer.getByText(/завершённый отчёт контрольного этапа/).first()).toBeVisible();
   await learningPath.getByRole('button', { name: 'Закрыть учебный путь' }).click();
 
   await openAdvancedTool(secondPage, 'checkpoint-trigger');
