@@ -216,7 +216,7 @@ test('desktop onboarding uses executable placement and resumes one shared fronti
 
   await expect(dialog).toBeVisible();
   await expect(dialog.getByTestId('onboarding-placement')).toContainText('78%');
-  await expect(dialog.getByTestId('onboarding-placement')).toContainText('support');
+  await expect(dialog.getByTestId('onboarding-placement')).toContainText('Поддержка и расследования');
   await expect(dialog.getByTestId('onboarding-placement')).toContainText('Оконные функции');
   await dialog.getByRole('button', { name: /Принять результат/i }).click();
   await expect(dialog.getByTestId('onboarding-plan')).toBeVisible();
@@ -303,7 +303,7 @@ test('mobile deferred placement starts from zero and keeps the shared goal front
   await dialog.getByTestId('defer-placement').click();
 
   await expect(dialog.getByTestId('onboarding-plan')).toBeVisible();
-  await expect(dialog).toContainText('foundation');
+  await expect(dialog).toContainText('базового уровня');
   await expect(dialog).toContainText(/Общая база обязательна/i);
   await expect(dialog.locator('.week-plan article')).toHaveCount(3);
   await expectNoHorizontalOverflow(page);

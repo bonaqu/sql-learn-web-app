@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import type { AssessmentReport } from '../src/lib/assessment.ts';
 import { goalModuleRoute, SHARED_FOUNDATION_MODULE_IDS } from '../src/lib/goal-aware-route.ts';
 import {
@@ -10,8 +11,11 @@ import {
   latestCompletedDiagnostic,
   onboardingReady,
   placementLevel,
+  placementLevelLabels,
   preferredOnboardingProfile,
+  recommendedTrackLabels,
   sanitizeOnboardingProfile,
+  weekPlanKindLabels,
   type LearnerGoal,
   type LearnerOnboardingProfile
 } from '../src/lib/learner-onboarding.ts';
@@ -67,6 +71,12 @@ function diagnosticReport(
 const empty = emptyOnboardingProfile();
 assert(!onboardingReady(empty), 'Empty profile must not complete onboarding');
 assert(empty.studyDays.length >= 2, 'Default study contract needs at least two days');
+assert(Object.keys(placementLevelLabels).length === 4, 'Every persisted placement level needs a learner-facing label');
+assert(Object.keys(recommendedTrackLabels).length === 5, 'Every persisted recommended track needs a learner-facing label');
+assert(Object.keys(weekPlanKindLabels).length === 5, 'Every persisted week-plan kind needs a learner-facing label');
+assert(new Set(Object.values(placementLevelLabels)).size === 4, 'Placement labels must remain distinct');
+assert(new Set(Object.values(recommendedTrackLabels)).size === 5, 'Track labels must remain distinct');
+assert(new Set(Object.values(weekPlanKindLabels)).size === 5, 'Week-plan labels must remain distinct');
 
 const sanitized = sanitizeOnboardingProfile({
   version: 1,
@@ -205,10 +215,39 @@ const sameTimeSparse = { ...completed, firstWeekPlan: [], updatedAt: now };
 const sameTimeRich = { ...completed, updatedAt: now };
 assert(preferredOnboardingProfile(sameTimeSparse, sameTimeRich)?.firstWeekPlan.length === completed.firstWeekPlan.length, 'Richer same-time profile must win deterministically');
 
+const onboardingPortalSource = readFileSync(new URL('../src/components/OnboardingPortal.tsx', import.meta.url), 'utf8');
+for (const forbidden of [
+  "title: 'Placement'",
+  "short: 'Evidence'",
+  'Self-report ≠ evidence',
+  'Diagnostic SQL Check',
+  'executable placement',
+  'Начать с foundation',
+  'Support SQL',
+  'Backend SQL',
+  'Стартовый контракт',
+  '{profile.placement.level}',
+  '{profile.placement.recommendedTrack}',
+  '{item.kind}'
+]) {
+  assert(!onboardingPortalSource.includes(forbidden), `Onboarding UI must not expose internal copy: ${forbidden}`);
+}
+for (const required of [
+  'placementLevelLabels[profile.placement.level]',
+  'recommendedTrackLabels[profile.placement.recommendedTrack]',
+  'weekPlanKindLabels[item.kind]',
+  'Самооценка ≠ подтверждённый навык',
+  'Начать с базового уровня без диагностики',
+  'SQL Academy · Стартовый план',
+  'Принять стартовый план'
+]) {
+  assert(onboardingPortalSource.includes(required), `Onboarding UI is missing localized contract: ${required}`);
+}
+
 if (failures.length) {
   console.error(`Onboarding validation failed with ${failures.length} issue(s):`);
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
 
-console.log(`Onboarding validated: goal contract, safe placement prefix, dynamic analyst/backend divergence at ${analystBackendDivergence}, prerequisite-aware ${completed.firstWeekPlan.length}-session plan, defer path and conflict resolution.`);
+console.log(`Onboarding validated: localized learner-facing taxonomy, goal contract, safe placement prefix, dynamic analyst/backend divergence at ${analystBackendDivergence}, prerequisite-aware ${completed.firstWeekPlan.length}-session plan, defer path and conflict resolution.`);
