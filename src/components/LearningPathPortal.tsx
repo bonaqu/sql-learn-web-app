@@ -100,6 +100,13 @@ function evidenceActionLabel(action: ModuleSkillEvidence['recommendedAction']) {
   return 'повторение';
 }
 
+const sessionReasonLabels: Record<SessionItem['reason'], string> = {
+  review: 'повторение по памяти',
+  weakness: 'восстановление слабой темы',
+  new: 'следующий шаг маршрута',
+  checkpoint: 'контрольный этап'
+};
+
 function reasonIcon(reason: SessionItem['reason']) {
   if (reason === 'review') return <RefreshCw />;
   if (reason === 'weakness') return <Target />;
@@ -382,6 +389,30 @@ export default function LearningPathPortal({
           следующийШаг: evidenceActionLabel(module.recommendedAction),
           ограничения: module.blockers
         }));
+      const mentorContext = {
+        цель: currentGoalTitle,
+        причинаСледующегоШага: session.frontier.action.routeReason,
+        восстановление: activeRemediation
+          ? {
+              контрольныйЭтап: activeRemediation.checkpointTitle,
+              результат: `${activeRemediation.score}% из ${activeRemediation.passingScore}%`,
+              слабыеТемы: activeRemediation.modules.map(module => module.moduleTitle)
+            }
+          : null,
+        готовность: `${context.readiness}%`,
+        слабыеТемы: context.weakest.map(item => ({
+          тема: item.title,
+          освоение: `${item.mastery}%`,
+          ошибки: item.errors,
+          подсказки: item.hints
+        })),
+        сессия: context.session.map(item => ({
+          шаг: item.title,
+          причина: sessionReasonLabels[item.reason],
+          тема: item.topic
+        })),
+        выполнено: `${context.completed}/${context.total}`
+      };
       const response = await fetch('/api/mentor', {
         method: 'POST',
         headers: {
@@ -390,7 +421,7 @@ export default function LearningPathPortal({
         },
         body: JSON.stringify({
           mode: 'review',
-          question: `Составь персональный учебный план на ${targetMinutes} минут. Не давай готовые SQL-решения. Учитывай пять видов подтверждённых результатов. Данные: ${JSON.stringify({ context, evidenceContext })}`,
+          question: `Составь персональный учебный план на ${targetMinutes} минут. Не давай готовые SQL-решения. Учитывай пять видов подтверждённых результатов. Данные: ${JSON.stringify({ контекст: mentorContext, ограничения: evidenceContext })}`,
           sql: '',
           task: 'Персональный маршрут SQL Academy: урок, практика, контрольный этап, итоговая проверка и проект.',
           topic: 'Адаптивный учебный маршрут',

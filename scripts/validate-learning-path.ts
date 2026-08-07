@@ -300,7 +300,8 @@ for (const forbidden of [
   'next:',
   'Исполняемая контрольная этапа',
   "topic: 'Adaptive Learning Path'",
-  'Evidence readiness'
+  'Evidence readiness',
+  'JSON.stringify({ context, evidenceContext })'
 ]) {
   if (learningPathPortalSource.includes(forbidden)) failures.push(`Learning Path retained internal learner copy: ${forbidden}`);
 }
@@ -313,7 +314,10 @@ for (const required of [
   'AI-наставник',
   'Карта навыков и результатов',
   'дальше:',
-  'Контрольный этап с практическими задачами'
+  'Контрольный этап с практическими задачами',
+  'const mentorContext = {',
+  'sessionReasonLabels[item.reason]',
+  'JSON.stringify({ контекст: mentorContext, ограничения: evidenceContext })'
 ]) {
   if (!learningPathPortalSource.includes(required)) failures.push(`Learning Path is missing localized route copy: ${required}`);
 }
