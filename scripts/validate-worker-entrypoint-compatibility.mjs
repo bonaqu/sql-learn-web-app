@@ -11,7 +11,9 @@ const pagesWorkflow = read('.github/workflows/pages.yml');
 const stagingWorkflow = read('.github/workflows/cloudflare-staging.yml');
 const stagingRenderer = read('scripts/render-staging-wrangler.mjs');
 const manifest = JSON.parse(read('package.json'));
+const lockfile = JSON.parse(read('package-lock.json'));
 
+const SANDBOX_VERSION = '0.12.4';
 const SANDBOX_EXPORT = "export { Sandbox } from '@cloudflare/sandbox';";
 const ENTRYPOINT_PREFLIGHT = 'node scripts/validate-worker-entrypoint-compatibility.mjs';
 
@@ -23,8 +25,16 @@ assert.ok(entrypoint.includes(SANDBOX_EXPORT), 'Active Worker entrypoint must pr
 assert.equal((entrypoint.match(/export \{ Sandbox \} from '@cloudflare\/sandbox';/g) || []).length, 1,
   'Active Worker entrypoint must expose exactly one direct Sandbox export');
 assert.ok(workerIndex.includes(SANDBOX_EXPORT), 'Canonical HTTP Worker module must retain its Sandbox export');
-assert.equal(manifest.dependencies?.['@cloudflare/sandbox'], '0.10.3',
-  'Historical Sandbox export must remain backed by the reviewed pinned runtime package');
+assert.equal(manifest.dependencies?.['@cloudflare/sandbox'], SANDBOX_VERSION,
+  'Historical Sandbox export must remain backed by the reviewed exact runtime package');
+assert.equal(lockfile.packages?.['node_modules/@cloudflare/sandbox']?.version, SANDBOX_VERSION,
+  'Sandbox package-lock entry must match the reviewed exact runtime package');
+assert.match(lockfile.packages?.['node_modules/@cloudflare/sandbox']?.integrity || '', /^sha512-/,
+  'Sandbox package-lock entry must retain npm integrity evidence');
+for (const source of [entrypoint, workerIndex]) {
+  assert.doesNotMatch(source, /\bsandbox\.desktop\b|\bDesktopClient\b|\bDesktopSession\b/,
+    'Sandbox 0.12 removed desktop APIs; the compatibility entrypoint must not depend on them');
+}
 assert.ok(!JSON.stringify(wrangler).includes('durable_objects'),
   'Free-tier config must not recreate a Sandbox binding; the export exists only for deployment compatibility');
 assert.ok(entrypoint.indexOf(SANDBOX_EXPORT) < entrypoint.indexOf('export default'),
@@ -45,4 +55,4 @@ for (const [name, workflow] of [
   assert.ok(workflow.includes('npm run check'), `${name} deployment must run the canonical repository check`);
 }
 
-console.log('Worker entrypoint compatibility validated: production workflows and local Cloudflare deploy commands preserve the historical Sandbox Durable Object export without re-enabling a free-tier binding.');
+console.log(`Worker entrypoint compatibility validated: Sandbox ${SANDBOX_VERSION} preserves the historical Durable Object export, desktop APIs are absent, and free-tier bindings remain disabled.`);
