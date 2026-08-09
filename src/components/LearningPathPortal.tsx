@@ -39,6 +39,7 @@ import {
 } from '../lib/curriculum-progress';
 import { openDeferredFeature } from '../lib/deferred-features';
 import type { GoalSwitchEvidence } from '../lib/goal-switch';
+import { journeyStageLabels } from '../lib/journey-display';
 import {
   buildDailySession,
   learningPhases,
@@ -79,12 +80,12 @@ function profileId() {
 }
 
 function levelLabel(module: ModuleMastery) {
-  if (module.routeState === 'current') return 'Текущий goal-priority';
-  if (module.routeState === 'eligible') return 'Prerequisites готовы · позже по цели';
-  if (module.routeState === 'locked') return 'Prerequisites не закрыты';
+  if (module.routeState === 'current') return 'Текущий приоритет цели';
+  if (module.routeState === 'eligible') return 'Обязательные темы пройдены · позже по цели';
+  if (module.routeState === 'locked') return 'Сначала пройди обязательные темы';
   if (module.level === 'mastered') return 'Освоено';
-  if (module.routeState === 'completed' && module.recommendedTask) return 'Foundation закрыт · transfer';
-  if (module.routeState === 'completed') return 'Foundation закрыт';
+  if (module.routeState === 'completed' && module.recommendedTask) return 'База освоена · перенос навыка';
+  if (module.routeState === 'completed') return 'База освоена';
   if (module.level === 'practice') return 'Закрепление';
   if (module.level === 'learning') return 'В работе';
   return 'Новый модуль';
@@ -93,11 +94,18 @@ function levelLabel(module: ModuleMastery) {
 function evidenceActionLabel(action: ModuleSkillEvidence['recommendedAction']) {
   if (action === 'lesson') return 'следующий урок';
   if (action === 'practice') return 'практика';
-  if (action === 'checkpoint') return 'checkpoint';
-  if (action === 'assessment') return 'assessment';
-  if (action === 'project') return 'capstone';
+  if (action === 'checkpoint') return 'контрольный этап';
+  if (action === 'assessment') return 'итоговая проверка';
+  if (action === 'project') return 'итоговый проект';
   return 'повторение';
 }
+
+const sessionReasonLabels: Record<SessionItem['reason'], string> = {
+  review: 'повторение по памяти',
+  weakness: 'восстановление слабой темы',
+  new: 'следующий шаг маршрута',
+  checkpoint: 'контрольный этап'
+};
 
 function reasonIcon(reason: SessionItem['reason']) {
   if (reason === 'review') return <RefreshCw />;
@@ -115,7 +123,7 @@ function localPlan(progress: Progress, evidence?: LearningSessionEvidence) {
     .join('\n');
   return `План на ближайшую сессию
 • Готовность: ${context.readiness}%
-• Главный фокус: ${weakest ? `${weakest.title} (${weakest.mastery}% mastery)` : 'закрепление пройденного'}
+• Главный фокус: ${weakest ? `${weakest.title} (${weakest.mastery}% освоения)` : 'закрепление пройденного'}
 ${items}
 • После сессии повтори ошибочный запрос без подсказки.`;
 }
@@ -376,11 +384,35 @@ export default function LearningPathPortal({
         .sort((left, right) => left.readiness - right.readiness)
         .slice(0, 5)
         .map(module => ({
-          module: module.title,
-          readiness: module.readiness,
-          next: module.recommendedAction,
-          blockers: module.blockers
+          тема: module.title,
+          готовность: module.readiness,
+          следующийШаг: evidenceActionLabel(module.recommendedAction),
+          ограничения: module.blockers
         }));
+      const mentorContext = {
+        цель: currentGoalTitle,
+        причинаСледующегоШага: session.frontier.action.routeReason,
+        восстановление: activeRemediation
+          ? {
+              контрольныйЭтап: activeRemediation.checkpointTitle,
+              результат: `${activeRemediation.score}% из ${activeRemediation.passingScore}%`,
+              слабыеТемы: activeRemediation.modules.map(module => module.moduleTitle)
+            }
+          : null,
+        готовность: `${context.readiness}%`,
+        слабыеТемы: context.weakest.map(item => ({
+          тема: item.title,
+          освоение: `${item.mastery}%`,
+          ошибки: item.errors,
+          подсказки: item.hints
+        })),
+        сессия: context.session.map(item => ({
+          шаг: item.title,
+          причина: sessionReasonLabels[item.reason],
+          тема: item.topic
+        })),
+        выполнено: `${context.completed}/${context.total}`
+      };
       const response = await fetch('/api/mentor', {
         method: 'POST',
         headers: {
@@ -389,12 +421,12 @@ export default function LearningPathPortal({
         },
         body: JSON.stringify({
           mode: 'review',
-          question: `Составь персональный учебный план на ${targetMinutes} минут. Не давай готовые SQL-решения. Учитывай пять видов evidence. Данные: ${JSON.stringify({ context, evidenceContext })}`,
+          question: `Составь персональный учебный план на ${targetMinutes} минут. Не давай готовые SQL-решения. Учитывай пять видов подтверждённых результатов. Данные: ${JSON.stringify({ контекст: mentorContext, ограничения: evidenceContext })}`,
           sql: '',
-          task: 'Персональный маршрут SQL Academy по lesson, practice, checkpoint, assessment и project evidence.',
-          topic: 'Adaptive Learning Path',
+          task: 'Персональный маршрут SQL Academy: урок, практика, контрольный этап, итоговая проверка и проект.',
+          topic: 'Адаптивный учебный маршрут',
           difficulty: 'Персональный план',
-          lastFeedback: `Evidence readiness ${readiness}%.`,
+          lastFeedback: `Готовность по подтверждённым результатам ${readiness}%.`,
           attempts: context.weakest.reduce((sum, item) => sum + item.errors, 0),
           hintsUsed: context.weakest.reduce((sum, item) => sum + item.hints, 0),
           allowSolution: false
@@ -444,7 +476,7 @@ export default function LearningPathPortal({
     data-testid="learning-path"
   >
     <header className="path-topbar">
-      <div className="path-brand"><div><Route /></div><span><strong>Adaptive Learning Path</strong><small>Единый evidence graph SQL Academy</small></span></div>
+      <div className="path-brand"><div><Route /></div><span><strong>Адаптивный учебный маршрут</strong><small>Единая карта учебных результатов SQL Academy</small></span></div>
       <div className="path-top-actions">
         {!goalSwitchOpen && <label><Clock3 />Сессия<select value={targetMinutes} onChange={event => setTargetMinutes(Number(event.target.value))}>
           <option value={15}>15 минут</option>
@@ -464,7 +496,7 @@ export default function LearningPathPortal({
     /> : <main className="learning-path-page">
       <section className="path-hero">
         <div className="path-hero-copy">
-          <span className="path-kicker"><Sparkles /> lesson + practice + checkpoint + assessment + project</span>
+          <span className="path-kicker"><Sparkles /> урок + практика + контроль + итоговая проверка + проект</span>
           <h1 id="learning-path-title">Не просто список задач.<br />Доказуемый путь к рабочему SQL.</h1>
           <p>{readinessLabel(readiness)}. Следующая цель — <strong>{nextPhase?.title || 'закрепление курса'}</strong>.</p>
           <div className="path-hero-actions">
@@ -474,26 +506,26 @@ export default function LearningPathPortal({
           </div>
         </div>
         <div className="readiness-ring" style={{ '--readiness': `${readiness * 3.6}deg` } as React.CSSProperties}>
-          <div><strong>{readiness}%</strong><span>evidence readiness</span></div>
+          <div><strong>{readiness}%</strong><span>готовность по результатам</span></div>
         </div>
       </section>
 
       <section className="path-metrics">
         <article><Gauge /><span><small>Готовые модули</small><strong>{masteredModules}<b>/{mastery.length}</b></strong></span></article>
         <article><CheckCircle2 /><span><small>Решено задач</small><strong>{progress.completed.length}<b>/{tasks.length}</b></strong></span></article>
-        <article><Flame /><span><small>Текущий streak</small><strong>{progress.streak}<b> дней</b></strong></span></article>
-        <article><Flag /><span><small>Checkpoints</small><strong>{passedCheckpoints}<b>/{evidenceGraph.phases.length}</b></strong></span></article>
+        <article><Flame /><span><small>Серия занятий</small><strong>{progress.streak}<b> дней</b></strong></span></article>
+        <article><Flag /><span><small>Контрольные этапы</small><strong>{passedCheckpoints}<b>/{evidenceGraph.phases.length}</b></strong></span></article>
       </section>
 
       {activeRemediation && <section className="checkpoint-remediation-banner" data-testid="checkpoint-remediation-banner">
         <div className="checkpoint-remediation-icon"><Flag /></div>
         <div className="checkpoint-remediation-copy">
-          <small>Failed checkpoint · попытка {activeRemediation.attemptNumber}</small>
+          <small>Не пройден контрольный этап · попытка {activeRemediation.attemptNumber}</small>
           <h2>{activeRemediation.checkpointTitle}: {activeRemediation.score}% из {activeRemediation.passingScore}%</h2>
-          <p>Targeted remediation временно сильнее специализации. Слабые модули: {activeRemediation.modules.map(module => `${module.moduleTitle} (${module.score}%)`).join(', ')}.</p>
+          <p>Точечное восстановление временно важнее специализации. Слабые модули: {activeRemediation.modules.map(module => `${module.moduleTitle} (${module.score}%)`).join(', ')}.</p>
           <span>{session.frontier.action.routeReasonCode === 'checkpoint-remediation'
             ? session.frontier.action.routeReason
-            : `Сначала завершится более приоритетный ${session.frontier.action.stage}; затем маршрут автоматически вернётся к remediation.`}</span>
+            : `Сначала завершится более приоритетный этап «${journeyStageLabels[session.frontier.action.stage]}»; затем маршрут автоматически вернётся к восстановлению.`}</span>
         </div>
         <button onClick={() => session.items[0] && startSessionItem(session.items[0])} disabled={!session.items.length}>
           {session.frontier.action.routeReasonCode === 'checkpoint-remediation' ? 'Начать восстановление' : 'Начать текущий шаг'} <ChevronRight />
@@ -511,24 +543,24 @@ export default function LearningPathPortal({
               <span className="session-time">{item.minutes} мин</span><ChevronRight />
             </button>)}
           </div>
-          {session.focusModule && <div className="focus-explanation"><Target /><div><strong>Почему этот фокус</strong><p>{session.focusModule.title}: mastery {session.focusModule.mastery}%, ошибок {session.focusModule.incorrect}, подсказок {session.focusModule.hints}.</p></div></div>}
+          {session.focusModule && <div className="focus-explanation"><Target /><div><strong>Почему этот фокус</strong><p>{session.focusModule.title}: освоение {session.focusModule.mastery}%, ошибок {session.focusModule.incorrect}, подсказок {session.focusModule.hints}.</p></div></div>}
         </div>
 
         <aside className="path-ai-card path-card">
-          <div className="path-section-heading"><div><span className="path-eyebrow">AI Coach</span><h2>План следующего шага</h2><p>Основан на пяти видах evidence, а не случайном совете.</p></div><BrainCircuit /></div>
-          <pre className={mentorLoading ? 'path-ai-answer loading' : 'path-ai-answer'} aria-live="polite">{mentorLoading ? 'Анализирую evidence graph…' : mentorAnswer}</pre>
+          <div className="path-section-heading"><div><span className="path-eyebrow">AI-наставник</span><h2>План следующего шага</h2><p>Основан на пяти видах подтверждённых результатов, а не случайном совете.</p></div><BrainCircuit /></div>
+          <pre className={mentorLoading ? 'path-ai-answer loading' : 'path-ai-answer'} aria-live="polite">{mentorLoading ? 'Анализирую карту учебных результатов…' : mentorAnswer}</pre>
           <button className="path-ai-refresh" onClick={() => void askMentor()} disabled={mentorLoading}><RefreshCw className={mentorLoading ? 'spin' : ''} />Пересчитать AI-план</button>
-          <small><ShieldCheck /> Без имени, email и данных работодателя.</small>
+          <small><ShieldCheck /> Без имени, адреса электронной почты и данных работодателя.</small>
         </aside>
       </section>
 
       <section className="roadmap-section">
-        <div className="roadmap-heading"><div><span className="path-eyebrow">Skill graph · {currentGoalTitle}</span><h2>Карта доказательств и goal-route</h2><p>Readiness и порядок объясняются тем же frontier: общий foundation, текущий приоритет, eligible позже и обязательная expert-ширина.</p></div><Trophy /></div>
+        <div className="roadmap-heading"><div><span className="path-eyebrow">Карта навыков · {currentGoalTitle}</span><h2>Карта навыков и результатов</h2><p>Готовность и порядок объясняются одним маршрутом: общая база, текущий приоритет, доступные позже темы и обязательная профессиональная широта.</p></div><Trophy /></div>
         <div className="route-state-legend" data-testid="goal-route-legend">
           <span className="current"><i />текущий приоритет</span>
-          <span className="eligible"><i />prerequisites готовы · позже</span>
-          <span className="completed"><i />completed evidence</span>
-          <span className="locked"><i />locked prerequisite</span>
+          <span className="eligible"><i />обязательные темы пройдены · позже</span>
+          <span className="completed"><i />результат подтверждён</span>
+          <span className="locked"><i />сначала обязательные темы</span>
         </div>
         <div className="phase-list">
           {legacyPhases.map((phase, phaseIndex) => {
@@ -543,8 +575,8 @@ export default function LearningPathPortal({
               <button className="phase-summary" onClick={() => phase.unlocked && setExpandedPhase(expanded ? '' : phase.id)}>
                 <span className="phase-number">{phase.unlocked ? String(phaseIndex + 1).padStart(2, '0') : <LockKeyhole />}</span>
                 <span className="phase-title"><strong>{phase.title}</strong><small>{phase.subtitle}</small></span>
-                <span className="phase-progress"><i><b style={{ width: `${phaseReadiness}%` }} /></i><small>{phaseReadiness}% evidence</small></span>
-                <span className={passed ? 'checkpoint passed' : 'checkpoint'}>{passed ? <Check /> : <Flag />}{passed ? 'Пройден' : 'Checkpoint'}</span>
+                <span className="phase-progress"><i><b style={{ width: `${phaseReadiness}%` }} /></i><small>{phaseReadiness}% подтверждено</small></span>
+                <span className={passed ? 'checkpoint passed' : 'checkpoint'}>{passed ? <Check /> : <Flag />}{passed ? 'Пройден' : 'Контроль'}</span>
                 <ChevronRight className={expanded ? 'rotated' : ''} />
               </button>
               {expanded && <div className="phase-modules">
@@ -560,7 +592,7 @@ export default function LearningPathPortal({
                     disabled={module.routeState === 'locked'}
                   >
                     <span className="module-state">{readinessValue >= 82 ? <Check /> : module.routeState === 'locked' ? <LockKeyhole /> : <Circle />}</span>
-                    <span className="module-copy"><strong>{module.title}</strong><small>{levelLabel(module)} · next: {evidence ? evidenceActionLabel(evidence.recommendedAction) : 'practice'}</small></span>
+                    <span className="module-copy"><strong>{module.title}</strong><small>{levelLabel(module)} · дальше: {evidence ? evidenceActionLabel(evidence.recommendedAction) : 'практика'}</small></span>
                     <span className="module-mastery"><strong>{readinessValue}%</strong><i><b style={{ width: `${readinessValue}%` }} /></i></span>
                     {evidence?.recommendedTargetId || module.recommendedTask ? <ChevronRight /> : <GraduationCap />}
                   </button>;
@@ -569,7 +601,7 @@ export default function LearningPathPortal({
                   className={`checkpoint-card ${passed ? 'passed' : ''}`}
                   onClick={() => openCheckpoint(phaseEvidence.checkpointId)}
                 >
-                  <Flag /><span><strong>Исполняемая контрольная этапа</strong><small>{phaseEvidence.completionCriteria.join(' · ')}</small></span><b>{passed ? 'Открыть отчёт' : 'Проверить себя'}</b><ChevronRight />
+                  <Flag /><span><strong>Контрольный этап с практическими задачами</strong><small>{phaseEvidence.completionCriteria.join(' · ')}</small></span><b>{passed ? 'Открыть отчёт' : 'Проверить себя'}</b><ChevronRight />
                 </button>}
               </div>}
             </article>;
