@@ -56,15 +56,38 @@ export const ONBOARDING_SYNCED_EVENT = 'sql-academy-onboarding-synced';
 export const ONBOARDING_ASSESSMENT_INTENT_KEY = 'sql-academy-onboarding-assessment-intent-v1';
 
 export const goalOptions: Array<{ id: LearnerGoal; title: string; description: string; track: RecommendedTrack }> = [
-  { id: 'support', title: 'Support SQL', description: 'Диагностика инцидентов, SLA, очереди, качество данных и расследования.', track: 'support' },
+  { id: 'support', title: 'SQL для поддержки', description: 'Диагностика инцидентов, SLA, очереди, качество данных и расследования.', track: 'support' },
   { id: 'analyst', title: 'Аналитика', description: 'Метрики, агрегации, окна, временные ряды и объяснимые отчёты.', track: 'analytics' },
-  { id: 'backend', title: 'Backend SQL', description: 'Схемы, DML, транзакции, индексы, планы и безопасные изменения.', track: 'performance' },
+  { id: 'backend', title: 'SQL для бэкенда', description: 'Схемы, DML, транзакции, индексы, планы и безопасные изменения.', track: 'performance' },
   { id: 'interview', title: 'Интервью', description: 'Задачи под временем, формулирование допущений и устойчивое объяснение решения.', track: 'interview' },
-  { id: 'full', title: 'Полная академия', description: 'Последовательный путь от нуля до production-задач и capstone.', track: 'fundamentals' }
+  { id: 'full', title: 'Полная академия', description: 'Последовательный путь от нуля до боевых задач и итоговых проектов.', track: 'fundamentals' }
 ];
 
 export const studyDayLabels: Record<StudyDay, string> = {
   MO: 'Пн', TU: 'Вт', WE: 'Ср', TH: 'Чт', FR: 'Пт', SA: 'Сб', SU: 'Вс'
+};
+
+export const placementLevelLabels: Record<PlacementLevel, string> = {
+  foundation: 'Базовый уровень',
+  developing: 'Формирующийся уровень',
+  working: 'Рабочий уровень',
+  advanced: 'Продвинутый уровень'
+};
+
+export const recommendedTrackLabels: Record<RecommendedTrack, string> = {
+  fundamentals: 'Основы SQL',
+  analytics: 'Аналитический SQL',
+  support: 'Поддержка и расследования',
+  performance: 'Бэкенд и производительность',
+  interview: 'Подготовка к интервью'
+};
+
+export const weekPlanKindLabels: Record<WeekPlanItem['kind'], string> = {
+  orientation: 'Ориентация',
+  lesson: 'Урок',
+  practice: 'Практика',
+  review: 'Повторение',
+  placement: 'Диагностика'
 };
 
 const AUTH_SESSION_KEY = 'sql-academy-auth-session-v2';
@@ -113,7 +136,7 @@ export function emptyOnboardingProfile(): LearnerOnboardingProfile {
     pace: 'steady',
     placement: { ...defaultPlacement },
     firstWeekPlan: [],
-    recoveryRule: 'Пропущенную сессию не удваивай: перенеси только один следующий шаг, а новую тему замени коротким review.',
+    recoveryRule: 'Пропущенную сессию не удваивай: перенеси только один следующий шаг, а новую тему замени коротким повторением.',
     completedAt: null,
     updatedAt: now()
   };
@@ -271,20 +294,20 @@ export function deferredPlacement(_profile: LearnerOnboardingProfile): Placement
 function planTemplate(kind: WeekPlanItem['kind'], moduleId: string | null) {
   if (kind === 'orientation') return {
     title: 'Контракт результата и рабочая среда',
-    detail: 'Сформулируй grain результата и проверь одну короткую задачу без подсказки. Orientation не заменяет отдельный retrieval review.'
+    detail: 'Определи, что означает одна строка результата, и проверь одну короткую задачу без подсказки. Вводная сессия не заменяет отдельное повторение по памяти.'
   };
   if (kind === 'review') return {
-    title: 'Retrieval review без перечитывания',
+    title: 'Повторение по памяти без перечитывания',
     detail: 'Сначала воспроизведи модель по памяти, затем проверь карточку и повтори одну ошибочную задачу.'
   };
   if (kind === 'placement') return {
-    title: 'Executable placement',
-    detail: 'Пройди Diagnostic SQL Check. Self-report не открывает advanced-модули без исполняемого evidence.'
+    title: 'Исполняемая диагностика',
+    detail: 'Пройди диагностическую проверку SQL. Самооценка не открывает продвинутые модули без подтверждённого результата.'
   };
-  const title = moduleId ? onboardingModuleTitle(moduleId) : 'SQL foundation';
+  const title = moduleId ? onboardingModuleTitle(moduleId) : 'Основы SQL';
   return kind === 'lesson'
-    ? { title: `Урок: ${title}`, detail: 'Изучи mental model, пройди knowledge check и сразу перейди к связанной практике.' }
-    : { title: `Independent practice: ${title}`, detail: 'Реши задачу без подсказки и эталона. При ошибке следуй remediation, а не перебирай SQL наугад.' };
+    ? { title: `Урок: ${title}`, detail: 'Разбери модель темы, пройди проверку понимания и сразу перейди к связанной практике.' }
+    : { title: `Самостоятельная практика: ${title}`, detail: 'Реши задачу без подсказки и эталона. При ошибке разбери причину и следующий шаг, а не перебирай SQL наугад.' };
 }
 
 function weekKinds(profile: LearnerOnboardingProfile, count: number): WeekPlanItem['kind'][] {
@@ -336,7 +359,7 @@ export function buildFirstWeekPlan(profile: LearnerOnboardingProfile): WeekPlanI
     const routeDetail = moduleId
       ? sharedFoundation.has(moduleId)
         ? ' Общая база обязательна для любой выбранной цели.'
-        : ` Это ближайший prerequisite-safe приоритет маршрута «${goalLabel}».`
+        : ` Это ближайший доступный приоритет маршрута «${goalLabel}» с учётом уже пройденных основ.`
       : '';
     return {
       id: `week-${index + 1}-${day.toLowerCase()}`,

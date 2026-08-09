@@ -57,11 +57,11 @@ async function openOnboarding(page: Page) {
 
 async function chooseCoreContract(page: Page) {
   const dialog = page.getByTestId('onboarding-portal');
-  await dialog.getByRole('button', { name: /Support SQL/i }).click();
+  await dialog.getByRole('button', { name: /SQL для поддержки/i }).click();
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
   await expect(dialog.getByTestId('onboarding-schedule')).toBeVisible();
   await dialog.getByRole('radio', { name: /25/ }).click();
-  await dialog.getByRole('button', { name: 'Вт' }).click();
+  await dialog.getByRole('button', { name: 'Вт', exact: true }).click();
   await dialog.getByRole('button', { name: /Устойчивый/i }).click();
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
   await expect(dialog.getByTestId('onboarding-experience')).toBeVisible();
@@ -216,7 +216,7 @@ test('desktop onboarding uses executable placement and resumes one shared fronti
 
   await expect(dialog).toBeVisible();
   await expect(dialog.getByTestId('onboarding-placement')).toContainText('78%');
-  await expect(dialog.getByTestId('onboarding-placement')).toContainText('support');
+  await expect(dialog.getByTestId('onboarding-placement')).toContainText('Поддержка и расследования');
   await expect(dialog.getByTestId('onboarding-placement')).toContainText('Оконные функции');
   await dialog.getByRole('button', { name: /Принять результат/i }).click();
   await expect(dialog.getByTestId('onboarding-plan')).toBeVisible();
@@ -229,9 +229,9 @@ test('desktop onboarding uses executable placement and resumes one shared fronti
   await dialog.getByRole('button', { name: 'Закрыть стартовый план' }).click();
 
   await expect(page.getByTestId('onboarding-trigger')).toContainText('Мой учебный план');
-  await expectSharedFoundationToday(page, /Support SQL/i);
+  await expectSharedFoundationToday(page, /SQL для поддержки/i);
   await page.reload();
-  await expectSharedFoundationToday(page, /Support SQL/i);
+  await expectSharedFoundationToday(page, /SQL для поддержки/i);
   await page.screenshot({ path: testInfo.outputPath('desktop-goal-aware-today.png'), fullPage: true });
 
   const secondContext = await browser.newContext();
@@ -242,10 +242,10 @@ test('desktop onboarding uses executable placement and resumes one shared fronti
   await openOnboarding(secondPage);
   const secondDialog = secondPage.getByTestId('onboarding-portal');
   await expect(secondDialog.getByTestId('onboarding-plan')).toBeVisible();
-  await expect(secondDialog).toContainText('Support');
+  await expect(secondDialog).toContainText('SQL для поддержки');
   await expect(secondDialog.locator('.week-plan article')).toHaveCount(4);
   await secondDialog.getByRole('button', { name: 'Закрыть стартовый план' }).click();
-  await expectSharedFoundationToday(secondPage, /Support SQL/i);
+  await expectSharedFoundationToday(secondPage, /SQL для поддержки/i);
   await secondContext.close();
 });
 
@@ -279,7 +279,7 @@ test('desktop onboarding advanced analyst and backend evidence resume different 
   const backendAction = backendPage.getByTestId('guided-journey-action');
   await expect(backendAction).toHaveAttribute('data-route-reason', 'goal-priority');
   await expect(backendAction).toContainText(backend.expectedModuleTitle);
-  await expect(backendPage.getByTestId('guided-today')).toContainText(/Backend SQL/i);
+  await expect(backendPage.getByTestId('guided-today')).toContainText(/SQL для бэкенда/i);
   expect(backend.expectedModuleId).not.toBe(analyst.expectedModuleId);
   await expectNoHorizontalOverflow(backendPage);
   await backendPage.screenshot({ path: testInfo.outputPath('desktop-backend-frontier.png'), fullPage: true });
@@ -303,7 +303,7 @@ test('mobile deferred placement starts from zero and keeps the shared goal front
   await dialog.getByTestId('defer-placement').click();
 
   await expect(dialog.getByTestId('onboarding-plan')).toBeVisible();
-  await expect(dialog).toContainText('foundation');
+  await expect(dialog).toContainText('базового уровня');
   await expect(dialog).toContainText(/Общая база обязательна/i);
   await expect(dialog.locator('.week-plan article')).toHaveCount(3);
   await expectNoHorizontalOverflow(page);
