@@ -282,18 +282,18 @@ function actionReason(action: JourneyAction, progress: Progress): SessionItem['r
 function actionLabel(action: JourneyAction) {
   if (action.routeReasonCode === 'checkpoint-remediation') {
     return action.stage === 'checkpoint'
-      ? 'Повтор checkpoint после targeted remediation'
-      : 'Targeted remediation после failed checkpoint';
+      ? 'Повтор контрольного этапа после восстановления'
+      : 'Восстановление после непройденного контрольного этапа';
   }
-  if (action.stage === 'lesson') return 'Mental model и knowledge checks';
-  if (action.stage === 'guided') return 'Guided application после урока';
-  if (action.stage === 'practice') return 'Independent practice без подсказок';
-  if (action.stage === 'checkpoint') return 'Обязательный checkpoint фазы';
-  if (action.stage === 'interview') return 'Transfer: объяснение и решение';
-  if (action.stage === 'puzzle') return 'Transfer: непривычная формулировка';
+  if (action.stage === 'lesson') return 'Мысленная модель и проверка понимания';
+  if (action.stage === 'guided') return 'Практика с подсказками после урока';
+  if (action.stage === 'practice') return 'Самостоятельная практика без подсказок';
+  if (action.stage === 'checkpoint') return 'Обязательный контрольный этап';
+  if (action.stage === 'interview') return 'Перенос навыка: объяснение и решение';
+  if (action.stage === 'puzzle') return 'Перенос навыка: непривычная формулировка';
   if (action.stage === 'assessment') return 'Смешанная итоговая проверка';
-  if (action.stage === 'project') return 'Capstone на рабочем сценарии';
-  if (action.stage === 'complete') return 'Поддержание expert-уровня';
+  if (action.stage === 'project') return 'Итоговый проект на рабочем сценарии';
+  if (action.stage === 'complete') return 'Поддержание профессионального уровня';
   return 'Следующий этап маршрута';
 }
 

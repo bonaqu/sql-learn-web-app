@@ -234,10 +234,10 @@ export function buildSkillEvidenceGraph(
       }))
     );
     const blockers: string[] = [];
-    if (evidence.lesson.available && evidence.lesson.score < 100) blockers.push('Не завершён lesson mastery loop: теория, check и independent SQL');
+    if (evidence.lesson.available && evidence.lesson.score < 100) blockers.push('Не завершён цикл освоения урока: теория, проверка понимания и самостоятельный SQL');
     if (evidence.practice.available && evidence.practice.score < thresholds.curriculumPrerequisite) blockers.push('Недостаточно самостоятельной практики');
-    if (evidence.checkpoint.available && evidence.checkpoint.completed < evidence.checkpoint.total) blockers.push('Нет passed checkpoint evidence');
-    if (evidence.assessment.available && assessmentScore < thresholds.assessmentEvidence) blockers.push('Нет устойчивого completed assessment evidence');
+    if (evidence.checkpoint.available && evidence.checkpoint.completed < evidence.checkpoint.total) blockers.push('Нет подтверждённого результата контрольного этапа');
+    if (evidence.assessment.available && assessmentScore < thresholds.assessmentEvidence) blockers.push('Нет устойчивого результата итоговой проверки');
 
     let recommendedAction: RecommendedEvidenceAction = 'review';
     let recommendedTargetId: string | null = null;
@@ -292,13 +292,13 @@ export function buildSkillEvidenceGraph(
     if (index > 0) {
       const previousCheckpoint = curriculumCheckpoints[index - 1];
       if (previousCheckpoint && !checkpointPassed(previousCheckpoint.id, progress, checkpointReports)) {
-        blockers.push(`Не пройден предыдущий checkpoint: ${previousCheckpoint.title}`);
+        blockers.push(`Не пройден предыдущий контрольный этап: ${previousCheckpoint.title}`);
       }
     }
     if (phaseModules.some(item => item.evidence.practice.score < thresholds.phasePracticeCompletion)) {
-      blockers.push(`Есть модуль с practice mastery ниже ${thresholds.phasePracticeCompletion}%`);
+      blockers.push(`Есть модуль с самостоятельной практикой ниже ${thresholds.phasePracticeCompletion}%`);
     }
-    if (!passed) blockers.push('Нет passed checkpoint evidence');
+    if (!passed) blockers.push('Нет подтверждённого результата контрольного этапа');
 
     return {
       phaseId: definition.id,
@@ -314,18 +314,18 @@ export function buildSkillEvidenceGraph(
       completed: passed && phaseModules.every(item => item.evidence.practice.score >= thresholds.phasePracticeCompletion),
       blockers,
       completionCriteria: [
-        `Practice mastery каждого модуля не ниже ${thresholds.phasePracticeCompletion}%`,
-        `Checkpoint score не ниже ${checkpoint.passingScore}%`,
+        `Самостоятельная практика каждого модуля не ниже ${thresholds.phasePracticeCompletion}%`,
+        `Результат контрольного этапа не ниже ${checkpoint.passingScore}%`,
         checkpointSource === 'report'
-          ? 'Источник: текущая completed checkpoint attempt, синхронизируемая между устройствами'
+          ? 'Источник: текущая завершённая попытка контрольного этапа, синхронизируемая между устройствами'
           : checkpointSource === 'legacy'
-            ? 'Источник: migrated legacy task evidence; рекомендуется подтвердить новым report'
+            ? 'Источник: перенесённый результат из старой версии; рекомендуется подтвердить новым отчётом'
             : attemptState
-              ? 'Последняя completed attempt не пройдена; historical best не открывает текущий gate'
-              : 'Checkpoint evidence ещё не получено',
+              ? 'Последняя завершённая попытка не пройдена; исторический максимум не открывает текущий этап'
+              : 'Подтверждённый результат контрольного этапа ещё не получен',
         attemptState
           ? `Текущая попытка #${attemptState.currentAttempt.attemptNumber}: ${attemptState.currentAttempt.score}%. Исторический максимум: ${attemptState.historicalBestScore}%`
-          : 'Новый executable report отсутствует'
+          : 'Новый исполняемый отчёт отсутствует'
       ]
     } satisfies PhaseSkillEvidence;
   });

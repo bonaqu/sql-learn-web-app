@@ -27,19 +27,19 @@ const CAPSTONE_REPORTS_CHANGED_EVENT = 'sql-academy-capstone-reports-changed';
 const evidenceLabels: Record<ReadinessEvidenceKind, string> = {
   lesson: 'Уроки',
   practice: 'Практика',
-  checkpoint: 'Checkpoint',
-  assessment: 'Assessment',
+  checkpoint: 'Контроль',
+  assessment: 'Итоговая проверка',
   project: 'Проект'
 };
 
 const sourceLabels: Record<ReadinessEvidenceSource, string> = {
   'lesson-progress': 'завершённые уроки',
   'task-progress': 'самостоятельные задачи',
-  'checkpoint-report': 'completed checkpoint report',
-  'legacy-checkpoint-task': 'migrated legacy evidence',
-  'assessment-report': 'completed assessment report',
-  'capstone-report': 'immutable passed capstone report',
-  'project-progress': 'legacy project checkbox (не authoritative)'
+  'checkpoint-report': 'завершённый отчёт контрольного этапа',
+  'legacy-checkpoint-task': 'перенесённый результат из старой версии',
+  'assessment-report': 'завершённый отчёт итоговой проверки',
+  'capstone-report': 'неизменяемый отчёт о пройденном итоговом проекте',
+  'project-progress': 'старая отметка проекта (не подтверждает навык)'
 };
 
 function loadGraph() {
@@ -117,7 +117,7 @@ export default function ReadinessExplainer() {
       }}
     >
       <Info />
-      <span><strong>Как считается readiness?</strong><small>Только completed evidence и нормализованные применимые веса</small></span>
+      <span><strong>Как считается готовность?</strong><small>Только подтверждённые результаты и нормализованные применимые веса</small></span>
       <ChevronDown />
     </button>
 
@@ -129,7 +129,7 @@ export default function ReadinessExplainer() {
 
       <div className="readiness-formula">
         <strong>{selected.readiness}%</strong>
-        <span>Сумма вкладов делится на {applicableWeight} применимых весовых пунктов. Неприменимый capstone или checkpoint не уменьшает максимум модуля.</span>
+        <span>Сумма вкладов делится на {applicableWeight} применимых весовых пунктов. Неприменимый итоговый проект или контрольный этап не уменьшает максимум модуля.</span>
       </div>
 
       <div className="readiness-evidence-grid">{(Object.keys(selected.evidence) as ReadinessEvidenceKind[]).map(kind => {
@@ -139,16 +139,16 @@ export default function ReadinessExplainer() {
           ? Math.round(evidence.score * weight / applicableWeight)
           : 0;
         return <article key={kind} className={evidence.available ? '' : 'unavailable'}>
-          <header><span>{evidenceLabels[kind]}</span><strong>{evidence.available ? `${evidence.score}%` : 'N/A'}</strong></header>
+          <header><span>{evidenceLabels[kind]}</span><strong>{evidence.available ? `${evidence.score}%` : 'Не применяется'}</strong></header>
           <div><i><b style={{ width: `${evidence.available ? evidence.score : 0}%` }} /></i><small>{evidence.available ? `вес ${weight} → вклад ${contribution} п.п.` : 'не относится к этому модулю'}</small></div>
           <p>{evidence.sourceKinds.length
             ? evidence.sourceKinds.map(source => sourceLabels[source]).join(' · ')
-            : evidence.available ? 'completed evidence пока отсутствует' : 'вес исключён из знаменателя'}</p>
+            : evidence.available ? 'подтверждённых результатов пока нет' : 'вес исключён из знаменателя'}</p>
           <footer>{evidence.completed}/{evidence.total} подтверждено</footer>
         </article>;
       })}</div>
 
-      <aside><ShieldCheck /><span><strong>Integrity rule</strong><small>Expired и abandoned attempts остаются в истории, но не участвуют в readiness. Project evidence создаёт только immutable passed capstone report; legacy checkbox не участвует в сертификате.</small></span></aside>
+      <aside><ShieldCheck /><span><strong>Правило целостности</strong><small>Просроченные и прерванные попытки остаются в истории, но не участвуют в готовности. Результат проекта создаёт только неизменяемый отчёт о пройденном итоговом проекте; старая отметка не участвует в сертификате.</small></span></aside>
     </div>}
   </section>, slot);
 }

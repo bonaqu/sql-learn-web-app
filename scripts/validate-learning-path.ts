@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { curriculumCheckpoints, curriculumLessons } from '../src/data/complete-curriculum.ts';
 import { modules, tasks } from '../src/data/course-catalog.ts';
 import { lessonChecks } from '../src/data/lesson-checks.ts';
@@ -9,6 +10,7 @@ import {
   phaseDefinitions,
   type LearningSessionEvidence
 } from '../src/lib/learning-path.ts';
+import { journeyStageLabels } from '../src/lib/journey-display.ts';
 import { nextJourneyAction, type JourneyAction } from '../src/lib/learning-journey.ts';
 import { emptyCurriculumProgress, type CurriculumProgressV1 } from '../src/lib/curriculum-progress.ts';
 import type { LearnerGoal } from '../src/lib/learner-onboarding.ts';
@@ -69,6 +71,8 @@ const completedCurriculum: CurriculumProgressV1 = {
 };
 
 const failures: string[] = [];
+if (Object.keys(journeyStageLabels).length !== 10) failures.push('Every journey stage needs a learner-facing label');
+if (new Set(Object.values(journeyStageLabels)).size !== 10) failures.push('Journey stage labels must remain distinct');
 const baseEvidence: LearningSessionEvidence = {
   curriculum: emptyCurriculumProgress(),
   goal: 'full'
@@ -270,10 +274,135 @@ for (const marker of [
 if (/previousModule|previousReady/.test(learningPathSource)) {
   failures.push('Adaptive Path must not lock mastery by previous physical module position');
 }
+for (const forbidden of [
+  'Повтор checkpoint после targeted remediation',
+  'Targeted remediation после failed checkpoint',
+  'Mental model и knowledge checks',
+  'Guided application после урока',
+  'Independent practice без подсказок',
+  'Обязательный checkpoint фазы',
+  'Transfer: объяснение и решение',
+  'Transfer: непривычная формулировка',
+  'Capstone на рабочем сценарии',
+  'Поддержание expert-уровня'
+]) {
+  if (learningPathSource.includes(forbidden)) failures.push(`Learning session retained internal learner copy: ${forbidden}`);
+}
+for (const required of [
+  'Мысленная модель и проверка понимания',
+  'Практика с подсказками после урока',
+  'Самостоятельная практика без подсказок',
+  'Обязательный контрольный этап',
+  'Перенос навыка: объяснение и решение',
+  'Итоговый проект на рабочем сценарии'
+]) {
+  if (!learningPathSource.includes(required)) failures.push(`Learning session is missing localized copy: ${required}`);
+}
+
+const learningPathPortalSource = readFileSync(new URL('../src/components/LearningPathPortal.tsx', import.meta.url), 'utf8');
+for (const forbidden of [
+  'Текущий goal-priority',
+  'Prerequisites готовы',
+  'Prerequisites не закрыты',
+  'Foundation закрыт',
+  'Adaptive Learning Path',
+  'Единый evidence graph',
+  'lesson + practice + checkpoint + assessment + project',
+  'evidence readiness',
+  'Текущий streak',
+  '<small>Checkpoints</small>',
+  'Failed checkpoint',
+  'Targeted remediation',
+  'AI Coach',
+  'пяти видах evidence',
+  'Анализирую evidence graph',
+  'Skill graph',
+  'Карта доказательств и goal-route',
+  'completed evidence',
+  'locked prerequisite',
+  '% evidence',
+  'next:',
+  'Исполняемая контрольная этапа',
+  "topic: 'Adaptive Learning Path'",
+  'Evidence readiness',
+  'JSON.stringify({ context, evidenceContext })'
+]) {
+  if (learningPathPortalSource.includes(forbidden)) failures.push(`Learning Path retained internal learner copy: ${forbidden}`);
+}
+for (const required of [
+  "from '../lib/journey-display'",
+  'journeyStageLabels[session.frontier.action.stage]',
+  'Адаптивный учебный маршрут',
+  'готовность по результатам',
+  'Контрольные этапы',
+  'AI-наставник',
+  'Карта навыков и результатов',
+  'дальше:',
+  'Контрольный этап с практическими задачами',
+  'const mentorContext = {',
+  'sessionReasonLabels[item.reason]',
+  'JSON.stringify({ контекст: mentorContext, ограничения: evidenceContext })'
+]) {
+  if (!learningPathPortalSource.includes(required)) failures.push(`Learning Path is missing localized route copy: ${required}`);
+}
+
+const skillEvidenceSource = readFileSync(new URL('../src/lib/skill-evidence.ts', import.meta.url), 'utf8');
+for (const forbidden of [
+  'lesson mastery loop',
+  'passed checkpoint evidence',
+  'completed assessment evidence',
+  'предыдущий checkpoint',
+  'practice mastery',
+  'Checkpoint score',
+  'completed checkpoint attempt',
+  'migrated legacy task evidence',
+  'historical best',
+  'current gate',
+  'Checkpoint evidence',
+  'executable report'
+]) {
+  if (skillEvidenceSource.includes(forbidden)) failures.push(`Skill evidence retained internal learner copy: ${forbidden}`);
+}
+for (const required of [
+  'цикл освоения урока',
+  'подтверждённого результата контрольного этапа',
+  'результата итоговой проверки',
+  'самостоятельной практикой',
+  'Результат контрольного этапа',
+  'исторический максимум',
+  'Новый исполняемый отчёт отсутствует'
+]) {
+  if (!skillEvidenceSource.includes(required)) failures.push(`Skill evidence is missing localized explanation: ${required}`);
+}
+
+const readinessExplainerSource = readFileSync(new URL('../src/components/ReadinessExplainer.tsx', import.meta.url), 'utf8');
+for (const forbidden of [
+  'Как считается readiness?',
+  'completed evidence',
+  'Неприменимый capstone',
+  'N/A',
+  'Integrity rule',
+  'Expired и abandoned attempts',
+  'Project evidence',
+  'immutable passed capstone report',
+  'legacy checkbox'
+]) {
+  if (readinessExplainerSource.includes(forbidden)) failures.push(`Readiness explainer retained internal learner copy: ${forbidden}`);
+}
+for (const required of [
+  'Как считается готовность?',
+  'подтверждённые результаты',
+  'Неприменимый итоговый проект',
+  'Не применяется',
+  'Правило целостности',
+  'Просроченные и прерванные попытки'
+]) {
+  if (!readinessExplainerSource.includes(required)) failures.push(`Readiness explainer is missing localized copy: ${required}`);
+}
 
 if (failures.length) {
   console.error(`Learning path validation failed:\n- ${failures.join('\n- ')}`);
   process.exit(1);
 }
 
-console.log(`Learning path validated: ${goals.length} goals, ${mastery.length} modules, ${phases.length} phases and one evidence-aware lesson/task/checkpoint/assessment/project frontier.`);
+console.log(`Learning path validated: ${goals.length} goals, ${mastery.length} modules, ${phases.length} phases, complete Russian stage labels and one canonical lesson/task/checkpoint/assessment/project frontier.`);

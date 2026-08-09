@@ -122,7 +122,7 @@ test('desktop adaptive learning path shares the canonical beginner frontier and 
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ answer: 'Персональный план\n• Изучи mental model\n• Выполни связанную практику\n• Заверши контрольной точкой' })
+      body: JSON.stringify({ answer: 'Персональный план\n• Разбери модель темы\n• Выполни связанную практику\n• Заверши контрольным этапом' })
     });
   });
 
@@ -130,14 +130,17 @@ test('desktop adaptive learning path shares the canonical beginner frontier and 
   await page.getByTestId('learning-path-trigger').click();
   const learningPath = page.getByTestId('learning-path');
   await expect(learningPath).toBeVisible();
+  await expect(learningPath.locator('.path-brand')).toContainText('Адаптивный учебный маршрут');
   await expect(learningPath.getByRole('heading', { name: /Доказуемый путь к рабочему SQL/ })).toBeVisible();
+  await expect(learningPath.locator('.readiness-ring')).toContainText('готовность по результатам');
+  await expect(learningPath.locator('.path-metrics')).toContainText('Контрольные этапы');
   await expect(learningPath.locator('.phase-card')).toHaveCount(8);
   const sessionItems = learningPath.locator('.session-list > button');
   const sessionCount = await sessionItems.count();
   expect(sessionCount).toBeGreaterThanOrEqual(1);
   expect(sessionCount).toBeLessThanOrEqual(3);
   await expect(sessionItems.first()).toHaveAttribute('data-stage', 'lesson');
-  await expect(sessionItems.first()).toContainText(/Mental model/i);
+  await expect(sessionItems.first()).toContainText(/Мысленная модель и проверка понимания/i);
   await expect(sessionItems.first()).toContainText(/SQL-мышление/i);
   await expect(learningPath.locator('.readiness-ring strong')).toHaveText('0%');
 
@@ -147,13 +150,15 @@ test('desktop adaptive learning path shares the canonical beginner frontier and 
   await page.screenshot({ path: testInfo.outputPath('desktop-learning-path.png') });
 
   await learningPath.locator('.roadmap-section').scrollIntoViewIfNeeded();
-  await expect(learningPath.getByRole('heading', { name: 'Карта доказательств' })).toBeVisible();
+  await expect(learningPath.getByRole('heading', { name: 'Карта навыков и результатов' })).toBeVisible();
+  await expect(learningPath.getByTestId('goal-route-legend')).toContainText('обязательные темы пройдены');
+  await expect(learningPath.getByTestId('goal-route-legend')).not.toContainText(/prerequisite|evidence|locked/i);
   expect(await learningPath.locator('.module-node').count()).toBeGreaterThanOrEqual(6);
 
   const explainer = learningPath.getByTestId('readiness-explainer');
   await expect(explainer).toBeVisible();
-  await explainer.getByRole('button', { name: /Как считается readiness/i }).click();
-  await expect(explainer.getByText(/Expired и abandoned attempts/)).toBeVisible();
+  await explainer.getByRole('button', { name: /Как считается готовность/i }).click();
+  await expect(explainer.getByText(/Просроченные и прерванные попытки/)).toBeVisible();
   await expect(explainer.locator('.readiness-evidence-grid article')).toHaveCount(5);
   await expect(explainer.getByText(/вес 55/)).toBeVisible();
   await expectNoHorizontalOverflow(page);
@@ -250,11 +255,11 @@ test('mobile adaptive learning path keeps the same lesson frontier and readiness
   await page.screenshot({ path: testInfo.outputPath('mobile-learning-path.png') });
 
   await learningPath.locator('.roadmap-section').scrollIntoViewIfNeeded();
-  await expect(learningPath.getByRole('heading', { name: 'Карта доказательств' })).toBeVisible();
+  await expect(learningPath.getByRole('heading', { name: 'Карта навыков и результатов' })).toBeVisible();
   const explainer = learningPath.getByTestId('readiness-explainer');
-  await explainer.getByRole('button', { name: /Как считается readiness/i }).click();
+  await explainer.getByRole('button', { name: /Как считается готовность/i }).click();
   await expect(explainer.locator('.readiness-evidence-grid article')).toHaveCount(5);
-  await expect(explainer.getByText(/Неприменимый capstone/)).toBeVisible();
+  await expect(explainer.getByText(/Неприменимый итоговый проект/)).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('mobile-readiness-explainer.png'), fullPage: true });
 
