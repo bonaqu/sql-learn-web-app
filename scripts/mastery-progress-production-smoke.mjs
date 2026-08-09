@@ -100,7 +100,9 @@ try {
   });
   expectStatus(stored, 200, 'put mastery evidence');
   expectMasteryContract(stored, 'put mastery evidence');
-  if (stored.body?.revision !== 1) throw new Error(`expected revision 1, got ${stored.text}`);
+  if (stored.body?.revision !== 1 || stored.body?.progress?.taskStats?.['task-001']?.independentPasses !== 1) {
+    throw new Error(`expected canonical revision 1 response, got ${stored.text}`);
+  }
 
   await mark('get-mastery-evidence');
   const fetched = await request(PROGRESS_PATH);
@@ -115,6 +117,27 @@ try {
     throw new Error(`mastery evidence round-trip mismatch: ${fetched.text}`);
   }
 
+  await mark('reject-cached-legacy-overwrite');
+  const destructiveLegacy = structuredClone(progress);
+  destructiveLegacy.completed = [];
+  destructiveLegacy.taskStats = {};
+  destructiveLegacy.xp = 0;
+  const legacyRejected = await request('/api/progress', {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(destructiveLegacy)
+  });
+  expectStatus(legacyRejected, 428, 'cached legacy overwrite');
+  if (legacyRejected.body?.code !== 'PROGRESS_REVISION_REQUIRED') {
+    throw new Error(`legacy overwrite did not return the recovery contract: ${legacyRejected.text}`);
+  }
+  const preservedAfterLegacy = await request(PROGRESS_PATH);
+  expectStatus(preservedAfterLegacy, 200, 'preserved after legacy overwrite');
+  if (preservedAfterLegacy.body?.revision !== 1
+    || preservedAfterLegacy.body?.progress?.taskStats?.['task-001']?.independentPasses !== 1) {
+    throw new Error(`legacy overwrite changed canonical progress: ${preservedAfterLegacy.text}`);
+  }
+
   await mark('reject-invalid-diagnostic');
   const invalid = structuredClone(progress);
   invalid.taskStats['task-001'].lastDiagnostic.kind = 'made-up-kind';
@@ -127,34 +150,56 @@ try {
   expectMasteryContract(rejected, 'invalid diagnostic');
 
   await mark('reject-stale-revision');
+  const secondDeviceProgress = structuredClone(progress);
+  secondDeviceProgress.completed = ['task-002'];
+  secondDeviceProgress.taskStats = {
+    'task-002': {
+      attempts: 1,
+      incorrect: 0,
+      hintsUsed: 0,
+      independentPasses: 1,
+      lastIndependentAt: '2026-07-25T19:00:00.000Z',
+      lastAttemptAt: '2026-07-25T19:00:00.000Z',
+      completedAt: '2026-07-25T19:00:00.000Z'
+    }
+  };
+  secondDeviceProgress.lastTask = 'task-002';
   const conflict = await request(PROGRESS_PATH, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ progress, baseRevision: 0 })
+    body: JSON.stringify({ progress: secondDeviceProgress, baseRevision: 0 })
   });
   expectStatus(conflict, 409, 'stale revision');
   expectMasteryContract(conflict, 'stale revision');
 
-  await mark('update-independent-evidence');
-  const nextProgress = structuredClone(progress);
-  nextProgress.taskStats['task-001'].attempts = 5;
-  nextProgress.taskStats['task-001'].independentPasses = 2;
-  nextProgress.taskStats['task-001'].lastIndependentAt = '2026-07-25T19:00:00.000Z';
+  await mark('reread-merge-and-update-independent-evidence');
+  const reread = await request(PROGRESS_PATH);
+  expectStatus(reread, 200, 'reread after conflict');
+  const nextProgress = structuredClone(reread.body.progress);
+  nextProgress.completed = [...new Set([...nextProgress.completed, ...secondDeviceProgress.completed])].sort();
+  nextProgress.taskStats = { ...nextProgress.taskStats, ...secondDeviceProgress.taskStats };
+  nextProgress.lastTask = secondDeviceProgress.lastTask;
   const updated = await request(PROGRESS_PATH, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ progress: nextProgress, baseRevision: 1 })
+    body: JSON.stringify({ progress: nextProgress, baseRevision: reread.body.revision })
   });
   expectStatus(updated, 200, 'update mastery evidence');
   expectMasteryContract(updated, 'update mastery evidence');
-  if (updated.body?.revision !== 2) throw new Error(`expected revision 2, got ${updated.text}`);
+  if (updated.body?.revision !== 2
+    || !updated.body?.progress?.completed?.includes('task-001')
+    || !updated.body?.progress?.completed?.includes('task-002')) {
+    throw new Error(`expected canonical merged revision 2, got ${updated.text}`);
+  }
 
   await mark('verify-updated-evidence');
   const verified = await request(PROGRESS_PATH);
   expectStatus(verified, 200, 'verify mastery evidence');
   expectMasteryContract(verified, 'verify mastery evidence');
-  if (verified.body?.progress?.taskStats?.['task-001']?.independentPasses !== 2) {
-    throw new Error(`updated independent evidence is missing: ${verified.text}`);
+  if (verified.body?.revision !== 2
+    || verified.body?.progress?.taskStats?.['task-001']?.independentPasses !== 1
+    || verified.body?.progress?.taskStats?.['task-002']?.independentPasses !== 1) {
+    throw new Error(`merged two-device evidence is missing: ${verified.text}`);
   }
 
   await mark('delete-account');
@@ -171,7 +216,7 @@ try {
   expectMasteryContract(revoked, 'revoked progress session');
 
   await mark('complete');
-  console.log('Mastery progress production smoke passed: versioned contract, validated evidence, revision conflict and account cleanup.');
+  console.log('Mastery progress production smoke passed: canonical revision responses, cached-client fail-closed behavior, two-device conflict recovery and account cleanup.');
 } catch (error) {
   await fs.writeFile(failureFile, `stage=${stage}\n${error instanceof Error ? error.stack || error.message : String(error)}\n`);
   throw error;

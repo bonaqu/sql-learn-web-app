@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { appendFileSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -7,10 +8,13 @@ const outputLog = 'wrangler-playwright.log';
 const internalLog = 'wrangler-internal-playwright.log';
 const configuredRestarts = Number(process.env.PLAYWRIGHT_WORKER_RESTARTS || 2);
 const maxRestarts = Math.min(5, Math.max(0, Number.isFinite(configuredRestarts) ? Math.floor(configuredRestarts) : 2));
+const configuredPort = Number(process.env.PLAYWRIGHT_WORKER_PORT || 8787);
+const workerPort = Number.isInteger(configuredPort) && configuredPort >= 1 && configuredPort <= 65_535 ? configuredPort : 8787;
 const wranglerLogsDirectory = join(homedir(), '.config', '.wrangler', 'logs');
-const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+const require = createRequire(import.meta.url);
+const command = process.execPath;
 const args = [
-  'wrangler', 'dev', '--local', '--ip', '127.0.0.1', '--port', '8787', '--config', 'wrangler.jsonc'
+  require.resolve('wrangler'), 'dev', '--local', '--ip', '127.0.0.1', '--port', String(workerPort), '--config', 'wrangler.jsonc'
 ];
 
 let child = null;

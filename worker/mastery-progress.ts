@@ -163,14 +163,17 @@ async function authenticatedProgress(
   if (!body || !validProgress(body.progress) || !boundedInteger(body.baseRevision, 1_000_000)) {
     return json({ error: 'Invalid progress sync payload' }, 400);
   }
+  const baseRevision = Number(body.baseRevision);
   const serialized = JSON.stringify(body.progress);
   if (new TextEncoder().encode(serialized).byteLength > MAX_PROGRESS_BYTES) {
     return json({ error: 'Progress payload is too large' }, 413);
   }
 
-  if (body.baseRevision === 0) {
+  const updatedAt = sqliteTime();
+  const nextRevision = baseRevision + 1;
+  if (baseRevision === 0) {
     const inserted = await env.DB.prepare(`INSERT OR IGNORE INTO progress(profile_id, payload, updated_at, revision)
-      VALUES(?, ?, ?, 1)`).bind(auth.userId, serialized, sqliteTime()).run();
+      VALUES(?, ?, ?, 1)`).bind(auth.userId, serialized, updatedAt).run();
     if ((inserted.meta.changes || 0) !== 1) {
       const current = await env.DB.prepare('SELECT revision, updated_at FROM progress WHERE profile_id = ?')
         .bind(auth.userId).first<{ revision: number; updated_at: string }>();
@@ -178,17 +181,14 @@ async function authenticatedProgress(
     }
   } else {
     const updated = await env.DB.prepare(`UPDATE progress SET payload = ?, updated_at = ?, revision = revision + 1
-      WHERE profile_id = ? AND revision = ?`).bind(serialized, sqliteTime(), auth.userId, body.baseRevision).run();
+      WHERE profile_id = ? AND revision = ?`).bind(serialized, updatedAt, auth.userId, baseRevision).run();
     if ((updated.meta.changes || 0) !== 1) {
       const current = await env.DB.prepare('SELECT revision, updated_at FROM progress WHERE profile_id = ?')
         .bind(auth.userId).first<{ revision: number; updated_at: string }>();
       return json({ error: 'Progress conflict', revision: current?.revision || 0, updatedAt: current?.updated_at || null }, 409);
     }
   }
-
-  const current = await env.DB.prepare('SELECT revision, updated_at FROM progress WHERE profile_id = ?')
-    .bind(auth.userId).first<{ revision: number; updated_at: string }>();
-  return json({ ok: true, revision: current?.revision || 0, updatedAt: current?.updated_at || null });
+  return json({ ok: true, progress: body.progress, revision: nextRevision, updatedAt });
 }
 
 export async function handleMasteryProgressRequest(request: Request, env: Cloudflare.Env) {

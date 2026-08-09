@@ -178,7 +178,8 @@ export function gradeReviewSchedule(
   grade: ReviewGrade,
   now = Date.now()
 ): ReviewSchedule {
-  if (!previous.introducedAt) return previous;
+  const dueAtTimestamp = new Date(previous.dueAt).getTime();
+  if (!previous.introducedAt || !Number.isFinite(dueAtTimestamp) || dueAtTimestamp > now) return previous;
   let intervalDays = previous.intervalDays;
   let ease = previous.ease;
   let repetitions = previous.repetitions;
