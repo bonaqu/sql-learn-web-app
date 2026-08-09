@@ -250,4 +250,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Onboarding validated: localized learner-facing taxonomy, goal contract, safe placement prefix, dynamic analyst/backend divergence at ${analystBackendDivergence}, prerequisite-aware ${completed.firstWeekPlan.length}-session plan, defer path and conflict resolution.`);
+process.stdout.write(`Onboarding validated: localized learner-facing taxonomy, goal contract, safe placement prefix, dynamic analyst/backend divergence at ${analystBackendDivergence}, prerequisite-aware ${completed.firstWeekPlan.length}-session plan, defer path and conflict resolution.\n`);

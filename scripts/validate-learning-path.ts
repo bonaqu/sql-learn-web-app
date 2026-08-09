@@ -405,4 +405,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Learning path validated: ${goals.length} goals, ${mastery.length} modules, ${phases.length} phases, complete Russian stage labels and one canonical lesson/task/checkpoint/assessment/project frontier.`);
+process.stdout.write(`Learning path validated: ${goals.length} goals, ${mastery.length} modules, ${phases.length} phases, complete Russian stage labels and one canonical lesson/task/checkpoint/assessment/project frontier.\n`);
