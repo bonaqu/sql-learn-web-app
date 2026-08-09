@@ -264,7 +264,7 @@ for (const forbiddenCopy of [
   assert.ok(!guidedHomeSource.includes(forbiddenCopy), `Today UI retained internal learner copy: ${forbiddenCopy}`);
 }
 for (const requiredCopy of [
-  "const journeyStageLabels: Record<JourneyFrontier['action']['stage'], string>",
+  "import { journeyStageLabels } from '../lib/journey-display'",
   'journeyStageLabels[nextStep.stage]',
   'weekPlanKindLabels[item.kind]',
   'Следуй следующему шагу',

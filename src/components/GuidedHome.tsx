@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { type SqlTask, TOTAL_TASK_COUNT } from '../data/course-catalog';
 import { openJourneyDestination } from '../lib/academy-navigation';
+import { journeyStageLabels } from '../lib/journey-display';
 import {
   goalOptions,
   loadOnboardingProfile,
@@ -58,19 +59,6 @@ function loadJourneyModules() {
   ]);
   return journeyModulesPromise;
 }
-
-const journeyStageLabels: Record<JourneyFrontier['action']['stage'], string> = {
-  lesson: 'Урок',
-  guided: 'Практика с подсказками',
-  practice: 'Самостоятельная практика',
-  review: 'Повторение',
-  checkpoint: 'Контрольный этап',
-  interview: 'Интервью',
-  puzzle: 'SQL-головоломка',
-  assessment: 'Итоговая проверка',
-  project: 'Итоговый проект',
-  complete: 'Маршрут завершён'
-};
 
 function nextPlanItem(items: WeekPlanItem[]): WeekPlanItem | null {
   if (!items.length) return null;
