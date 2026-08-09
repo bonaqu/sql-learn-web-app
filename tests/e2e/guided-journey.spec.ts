@@ -21,7 +21,9 @@ test('desktop guided journey turns a first goal into one canonical primary actio
   await authenticatePage(page, 'guided');
   await page.goto('./');
 
-  await expect(page.getByTestId('guided-first-run')).toBeVisible();
+  const firstRun = page.getByTestId('guided-first-run');
+  await expect(firstRun).toBeVisible();
+  await expect(firstRun).not.toContainText(/prerequisite-safe|prefix|frontier|backend/i);
   await page.getByRole('button', { name: 'Настроить мой маршрут' }).click();
   await expect(page.getByTestId('onboarding-portal')).toBeVisible();
   await completeDeferredOnboarding(page);
@@ -33,6 +35,9 @@ test('desktop guided journey turns a first goal into one canonical primary actio
   await expect(journeyAction.getByRole('button', { name: /Открыть урок/ })).toHaveCount(1);
   await expect(journeyAction).toContainText(/Надёжная база/i);
   await expect(journeyAction).toContainText(/SQL-мышление/i);
+  await expect(journeyAction).toContainText(/Урок/i);
+  await expect(journeyAction).not.toContainText(/evidence|frontier|retrieval review/i);
+  await expect(page.locator('.guided-progress-card')).toContainText('Урок → практика → контроль → перенос навыка');
 
   const primaryNavigation = page.locator('.sidebar nav');
   await expect(primaryNavigation.locator(':scope > button, :scope > .onboarding-nav-slot')).toHaveCount(5);
