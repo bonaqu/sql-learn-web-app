@@ -140,7 +140,7 @@ test('desktop adaptive learning path shares the canonical beginner frontier and 
   expect(sessionCount).toBeGreaterThanOrEqual(1);
   expect(sessionCount).toBeLessThanOrEqual(3);
   await expect(sessionItems.first()).toHaveAttribute('data-stage', 'lesson');
-  await expect(sessionItems.first()).toContainText(/Mental model/i);
+  await expect(sessionItems.first()).toContainText(/Мысленная модель и проверка понимания/i);
   await expect(sessionItems.first()).toContainText(/SQL-мышление/i);
   await expect(learningPath.locator('.readiness-ring strong')).toHaveText('0%');
 

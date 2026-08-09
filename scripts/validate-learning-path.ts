@@ -274,6 +274,30 @@ for (const marker of [
 if (/previousModule|previousReady/.test(learningPathSource)) {
   failures.push('Adaptive Path must not lock mastery by previous physical module position');
 }
+for (const forbidden of [
+  'Повтор checkpoint после targeted remediation',
+  'Targeted remediation после failed checkpoint',
+  'Mental model и knowledge checks',
+  'Guided application после урока',
+  'Independent practice без подсказок',
+  'Обязательный checkpoint фазы',
+  'Transfer: объяснение и решение',
+  'Transfer: непривычная формулировка',
+  'Capstone на рабочем сценарии',
+  'Поддержание expert-уровня'
+]) {
+  if (learningPathSource.includes(forbidden)) failures.push(`Learning session retained internal learner copy: ${forbidden}`);
+}
+for (const required of [
+  'Мысленная модель и проверка понимания',
+  'Практика с подсказками после урока',
+  'Самостоятельная практика без подсказок',
+  'Обязательный контрольный этап',
+  'Перенос навыка: объяснение и решение',
+  'Итоговый проект на рабочем сценарии'
+]) {
+  if (!learningPathSource.includes(required)) failures.push(`Learning session is missing localized copy: ${required}`);
+}
 
 const learningPathPortalSource = readFileSync(new URL('../src/components/LearningPathPortal.tsx', import.meta.url), 'utf8');
 for (const forbidden of [
