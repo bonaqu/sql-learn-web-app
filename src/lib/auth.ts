@@ -75,6 +75,18 @@ type CloudProgress = {
   updatedAt: string | null;
 };
 
+type SavedCloudProgress = {
+  ok: true;
+  progress: Progress;
+  revision: number;
+  updatedAt: string | null;
+};
+
+export type ProgressSyncApi = {
+  read: () => Promise<CloudProgress>;
+  write: (progress: Progress, baseRevision: number) => Promise<SavedCloudProgress>;
+};
+
 function parseMinutes(value: number): 15 | 25 | 40 {
   return value === 15 || value === 40 ? value : 25;
 }
@@ -393,47 +405,71 @@ async function fetchCloudProgress() {
 }
 
 async function putProgress(progress: Progress, baseRevision: number) {
-  return parseResponse<{ ok: true; revision: number; updatedAt: string | null }>(await fetch('/api/user/progress', {
+  return parseResponse<SavedCloudProgress>(await fetch('/api/user/progress', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ progress, baseRevision })
   }));
 }
 
-export async function syncUserProgress(session = loadAuthSession()) {
-  if (!session) throw new Error('Необходим вход');
-  let cloud = await fetchCloudProgress();
-  const local = loadProgress();
+function progressConflict(error: unknown) {
+  return (error as Error & { status?: number }).status === 409;
+}
+
+export async function reconcileProgress(local: Progress, api: ProgressSyncApi) {
+  let cloud = await api.read();
   let merged = mergeProgress(local, cloud.progress);
-  let localChanged = progressFingerprint(local) !== progressFingerprint(merged);
-  const syncedAt = new Date().toISOString();
 
   if (cloud.progress && progressFingerprint(cloud.progress) === progressFingerprint(merged)) {
-    const next = { ...session, revision: cloud.revision, lastSyncAt: syncedAt };
-    if (localChanged) localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-    persistAuthSession(next);
-    return { session: next, progress: merged, localChanged, revision: next.revision };
+    return { progress: merged, revision: cloud.revision, updatedAt: cloud.updatedAt, wrote: false };
   }
 
   try {
-    const saved = await putProgress(merged, cloud.revision);
-    session = { ...session, revision: saved.revision, lastSyncAt: syncedAt };
+    const saved = await api.write(merged, cloud.revision);
+    return {
+      progress: mergeProgress(merged, saved.progress),
+      revision: saved.revision,
+      updatedAt: saved.updatedAt,
+      wrote: true
+    };
   } catch (error) {
-    if ((error as Error & { status?: number }).status !== 409) throw error;
-    cloud = await fetchCloudProgress();
-    merged = mergeProgress(merged, cloud.progress);
-    localChanged = progressFingerprint(local) !== progressFingerprint(merged);
-    if (cloud.progress && progressFingerprint(cloud.progress) === progressFingerprint(merged)) {
-      session = { ...session, revision: cloud.revision, lastSyncAt: syncedAt };
-    } else {
-      const saved = await putProgress(merged, cloud.revision);
-      session = { ...session, revision: saved.revision, lastSyncAt: syncedAt };
-    }
+    if (!progressConflict(error)) throw error;
   }
 
-  if (localChanged) localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+  cloud = await api.read();
+  merged = mergeProgress(merged, cloud.progress);
+  if (cloud.progress && progressFingerprint(cloud.progress) === progressFingerprint(merged)) {
+    return { progress: merged, revision: cloud.revision, updatedAt: cloud.updatedAt, wrote: false };
+  }
+
+  const saved = await api.write(merged, cloud.revision);
+  return {
+    progress: mergeProgress(merged, saved.progress),
+    revision: saved.revision,
+    updatedAt: saved.updatedAt,
+    wrote: true
+  };
+}
+
+export async function syncUserProgress(session = loadAuthSession()) {
+  if (!session) throw new Error('Необходим вход');
+  const local = loadProgress();
+  const reconciled = await reconcileProgress(local, {
+    read: fetchCloudProgress,
+    write: putProgress
+  });
+  const localChanged = progressFingerprint(local) !== progressFingerprint(reconciled.progress);
+  const syncedAt = new Date().toISOString();
+  session = { ...session, revision: reconciled.revision, lastSyncAt: syncedAt };
+  if (localChanged) localStorage.setItem(STORAGE_KEY, JSON.stringify(reconciled.progress));
   persistAuthSession(session);
-  return { session, progress: merged, localChanged, revision: session.revision };
+  return {
+    session,
+    progress: reconciled.progress,
+    localChanged,
+    revision: session.revision,
+    wrote: reconciled.wrote
+  };
 }
 
 export function recoveryCodesDownload(codes: string[]) {

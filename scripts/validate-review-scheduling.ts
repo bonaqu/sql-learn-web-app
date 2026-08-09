@@ -6,6 +6,7 @@ import {
   type Progress,
   type TaskStats
 } from '../src/lib/progress';
+import { gradeReviewSchedule, type ReviewSchedule } from '../src/lib/spaced-repetition';
 
 const target = tasks.find(task => task.mode === 'practice') || tasks[0];
 assert.ok(target, 'Review scheduling requires at least one executable task.');
@@ -84,4 +85,17 @@ const unfinished = progress({
 assert.ok(reviewQueue(unfinished).some(task => task.id === target.id),
   'An unfinished attempted task must remain recoverable through the review queue.');
 
-console.log(`Review scheduling validated: immediate remediation for unresolved evidence and ${CLEAN_REVIEW_INTERVAL_DAYS}-day spacing after a clean latest independent pass.`);
+const staleReview: ReviewSchedule = {
+  cardId: 'review-select',
+  dueAt: new Date(now + 60_000).toISOString(),
+  intervalDays: 3,
+  ease: 2.5,
+  repetitions: 2,
+  lapses: 1,
+  introducedAt: isoDaysAgo(4),
+  lastReviewedAt: isoDaysAgo(1)
+};
+assert.equal(gradeReviewSchedule(staleReview, 'again', now), staleReview,
+  'A stale/future Review task ID must not change review debt, repetitions or lapse evidence.');
+
+console.log(`Review scheduling validated: immediate remediation, ${CLEAN_REVIEW_INTERVAL_DAYS}-day spacing and fail-closed stale Review grading.`);

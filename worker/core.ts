@@ -1,47 +1,3 @@
-type AttemptErrorKind =
-  | 'syntax'
-  | 'schema'
-  | 'runtime'
-  | 'result-shape'
-  | 'row-set'
-  | 'ordering'
-  | 'values'
-  | 'null-filter'
-  | 'aggregation'
-  | 'join-cardinality';
-
-type AttemptDiagnosticPayload = {
-  kind: AttemptErrorKind;
-  title: string;
-  explanation: string;
-  nextStep: string;
-  atlasId?: string;
-};
-
-type TaskStatsPayload = {
-  attempts: number;
-  incorrect: number;
-  hintsUsed: number;
-  solutionViews?: number;
-  independentPasses?: number;
-  lastIndependentAt?: string;
-  errorKinds?: Partial<Record<AttemptErrorKind, number>>;
-  lastDiagnostic?: AttemptDiagnosticPayload;
-  lastAttemptAt?: string;
-  completedAt?: string;
-};
-
-type ProgressPayload = {
-  version: 4;
-  completed: string[];
-  taskStats: Record<string, TaskStatsPayload>;
-  xp: number;
-  streak: number;
-  history: Array<{ day: string; solved: number }>;
-  lastTask?: string;
-  lastStudyDate?: string;
-};
-
 type MentorMode = 'next-step' | 'debug' | 'concept' | 'review';
 
 type MentorPayload = {
@@ -57,26 +13,12 @@ type MentorPayload = {
   allowSolution?: boolean;
 };
 
-const MAX_PROGRESS_BYTES = 200_000;
 const MAX_SETTINGS_BYTES = 20_000;
 const MAX_MENTOR_BYTES = 30_000;
 const MENTOR_PROFILE_DAILY_LIMIT = 20;
 const MENTOR_GLOBAL_DAILY_LIMIT = 100;
 const PROFILE_PATTERN = /^[a-zA-Z0-9_-]{8,80}$/;
-const TASK_ID_PATTERN = /^task-[0-9]{3}$/;
 const MENTOR_MODES = new Set<MentorMode>(['next-step', 'debug', 'concept', 'review']);
-const ATTEMPT_ERROR_KINDS = new Set<AttemptErrorKind>([
-  'syntax',
-  'schema',
-  'runtime',
-  'result-shape',
-  'row-set',
-  'ordering',
-  'values',
-  'null-filter',
-  'aggregation',
-  'join-cardinality'
-]);
 
 const json = (data: unknown, status = 200, extraHeaders: Record<string, string> = {}) => new Response(JSON.stringify(data), {
   status,
@@ -100,68 +42,6 @@ const bodyTooLarge = (request: Request, maxBytes: number) => {
 
 const boundedInteger = (value: unknown, max = 1_000_000) =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max;
-
-const boundedString = (value: unknown, max: number) =>
-  typeof value === 'string' && value.length <= max;
-
-const validAttemptDiagnostic = (value: unknown): value is AttemptDiagnosticPayload => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const diagnostic = value as Partial<AttemptDiagnosticPayload>;
-  return ATTEMPT_ERROR_KINDS.has(diagnostic.kind as AttemptErrorKind)
-    && boundedString(diagnostic.title, 160)
-    && boundedString(diagnostic.explanation, 1_200)
-    && boundedString(diagnostic.nextStep, 1_200)
-    && (diagnostic.atlasId === undefined || boundedString(diagnostic.atlasId, 120));
-};
-
-const validErrorKinds = (value: unknown) => {
-  if (value === undefined) return true;
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  return Object.entries(value).every(([kind, count]) =>
-    ATTEMPT_ERROR_KINDS.has(kind as AttemptErrorKind) && boundedInteger(count, 10_000));
-};
-
-const validTaskStats = (value: unknown): value is TaskStatsPayload => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const stats = value as Partial<TaskStatsPayload>;
-  return boundedInteger(stats.attempts, 10_000)
-    && boundedInteger(stats.incorrect, 10_000)
-    && boundedInteger(stats.hintsUsed, 10_000)
-    && (stats.solutionViews === undefined || boundedInteger(stats.solutionViews, 10_000))
-    && (stats.independentPasses === undefined || boundedInteger(stats.independentPasses, 10_000))
-    && (stats.lastIndependentAt === undefined || boundedString(stats.lastIndependentAt, 80))
-    && validErrorKinds(stats.errorKinds)
-    && (stats.lastDiagnostic === undefined || validAttemptDiagnostic(stats.lastDiagnostic))
-    && (stats.lastAttemptAt === undefined || boundedString(stats.lastAttemptAt, 80))
-    && (stats.completedAt === undefined || boundedString(stats.completedAt, 80));
-};
-
-const validProgress = (payload: unknown): payload is ProgressPayload => {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
-  const value = payload as Partial<ProgressPayload>;
-  if (value.version !== 4
-    || !Array.isArray(value.completed)
-    || !value.completed.every(item => typeof item === 'string' && TASK_ID_PATTERN.test(item))
-    || !value.taskStats
-    || typeof value.taskStats !== 'object'
-    || Array.isArray(value.taskStats)
-    || !boundedInteger(value.xp)
-    || !boundedInteger(value.streak, 100_000)
-    || !Array.isArray(value.history)
-    || value.history.length > 31) return false;
-
-  const validHistory = value.history.every(point => point
-    && typeof point.day === 'string'
-    && point.day.length <= 16
-    && boundedInteger(point.solved, 10_000));
-  const validStats = Object.entries(value.taskStats).every(([taskId, stats]) =>
-    TASK_ID_PATTERN.test(taskId) && validTaskStats(stats));
-
-  return validHistory
-    && validStats
-    && (value.lastTask === undefined || TASK_ID_PATTERN.test(value.lastTask))
-    && (value.lastStudyDate === undefined || boundedString(value.lastStudyDate, 80));
-};
 
 const mentorFallback = (sql: string, mode: MentorMode, feedback: string) => {
   const normalized = sql.toLowerCase();
@@ -224,31 +104,26 @@ export default {
       if (!env.DB) return json({ error: 'D1 binding is not configured' }, 503);
 
       if (request.method === 'GET') {
-        const row = await env.DB.prepare('SELECT payload, updated_at FROM progress WHERE profile_id = ?')
+        const row = await env.DB.prepare('SELECT payload, revision, updated_at FROM progress WHERE profile_id = ?')
           .bind(id)
-          .first<{ payload: string; updated_at: string }>();
-        if (!row) return json({ progress: null });
+          .first<{ payload: string; revision: number; updated_at: string }>();
+        if (!row) return json({ progress: null, revision: 0, updatedAt: null });
         try {
-          return json({ progress: JSON.parse(row.payload), updatedAt: row.updated_at });
+          return json({ progress: JSON.parse(row.payload), revision: row.revision || 0, updatedAt: row.updated_at });
         } catch {
           return json({ error: 'Stored progress is corrupted' }, 500);
         }
       }
 
       if (request.method === 'PUT') {
-        if (bodyTooLarge(request, MAX_PROGRESS_BYTES)) return json({ error: 'Progress payload is too large' }, 413);
-        const payload: unknown = await request.json();
-        if (!validProgress(payload)) return json({ error: 'Invalid progress payload' }, 400);
-        const serialized = JSON.stringify(payload);
-        if (new TextEncoder().encode(serialized).byteLength > MAX_PROGRESS_BYTES) return json({ error: 'Progress payload is too large' }, 413);
-        await env.DB.prepare(`INSERT INTO progress(profile_id, payload, updated_at) VALUES(?, ?, datetime('now'))
-          ON CONFLICT(profile_id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at`)
-          .bind(id, serialized)
-          .run();
-        return json({ ok: true, version: payload.version });
+        return json({
+          error: 'Legacy progress writes are read-only. Reload and use the revisioned mastery progress contract.',
+          code: 'PROGRESS_REVISION_REQUIRED',
+          recoveryPath: '/api/mastery/progress'
+        }, 428, { 'x-progress-contract': 'legacy-read-only' });
       }
 
-      return json({ error: 'Method not allowed' }, 405, { allow: 'GET, PUT' });
+      return json({ error: 'Method not allowed' }, 405, { allow: 'GET' });
     }
 
     if (url.pathname === '/api/settings') {

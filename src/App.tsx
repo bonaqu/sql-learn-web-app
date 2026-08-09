@@ -46,6 +46,7 @@ import { trainingSeedSql } from './data/training-dataset';
 import { openJourneyDestination } from './lib/academy-navigation';
 import { classifySqlAttempt, type AttemptDiagnostic } from './lib/attempt-diagnostics';
 import { localMentor, MentorMode } from './lib/mentor';
+import { syncUserProgress } from './lib/auth';
 import { productIdentity } from './generated/product-identity';
 import {
   loadProgress,
@@ -235,6 +236,7 @@ function App() {
   }, [editorFullscreen]);
 
   const queue = useMemo(() => reviewQueue(progress), [progress]);
+  const selectedReviewTaskIsDue = view !== 'review' || queue.some(task => task.id === selected.id);
   const focusTopics = useMemo(() => calculateWeakTopics(progress), [progress]);
   const completed = useMemo(() => new Set(progress.completed), [progress.completed]);
   const currentStats = progress.taskStats[selected.id] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
@@ -293,6 +295,11 @@ function App() {
   };
 
   const runSql = useCallback(() => {
+    if (!selectedReviewTaskIsDue) {
+      setStatus('idle');
+      setMessage('Эта задача уже не входит в очередь повторения. Открой актуальный следующий шаг.');
+      return;
+    }
     if (!selectedReadiness.canRun) {
       setStatus('idle');
       setMessage(`Preview без mastery: ${selectedReadiness.reason}`);
@@ -351,7 +358,7 @@ function App() {
         hintsUsed: visibleHints
       }));
     }
-  }, [currentStats.attempts, engine, selected, selectedReadiness, solutionViewedThisSession, sql, visibleHints]);
+  }, [currentStats.attempts, engine, selected, selectedReadiness, selectedReviewTaskIsDue, solutionViewedThisSession, sql, visibleHints]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -370,6 +377,10 @@ function App() {
   }, [editorFullscreen, runSql]);
 
   const revealHint = () => {
+    if (!selectedReviewTaskIsDue) {
+      setMessage('Подсказки закрыты: задача больше не входит в очередь повторения.');
+      return;
+    }
     if (!selectedReadiness.canRun) {
       setMessage(`Подсказки недоступны в preview: ${selectedReadiness.reason}`);
       return;
@@ -380,6 +391,11 @@ function App() {
   };
 
   const toggleSolution = () => {
+    if (!selectedReviewTaskIsDue) {
+      setMessage('Эталон закрыт: задача больше не входит в очередь повторения.');
+      setStatus('idle');
+      return;
+    }
     if (!selectedReadiness.canRun) {
       setMessage(`Эталон недоступен в preview: ${selectedReadiness.reason}`);
       setStatus('idle');
@@ -468,12 +484,8 @@ function App() {
   const syncProgress = async () => {
     setSyncState('syncing');
     try {
-      const response = await fetch('/api/progress', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json', 'x-profile-id': profileId() },
-        body: JSON.stringify(progress)
-      });
-      if (!response.ok) throw new Error('sync');
+      const synced = await syncUserProgress();
+      setProgress(synced.progress);
       setSyncState('synced');
     } catch {
       setSyncState('local');
@@ -575,8 +587,20 @@ function App() {
         onExplore={() => navigate('catalog')}
       />}
 
-      {(view === 'catalog' || view === 'practice' || view === 'review' || view === 'interview' || view === 'puzzle') &&
-        <section className={`workspace ${mobileTaskOpen ? 'task-open' : ''}`}>
+      {(view === 'catalog' || view === 'practice' || view === 'review' || view === 'interview' || view === 'puzzle') && (
+        view === 'review' && queue.length === 0
+          ? <section className="review-queue-empty" data-testid="review-empty-state" aria-labelledby="review-empty-title">
+              <ShieldCheck />
+              <div>
+                <small>Очередь актуальна</small>
+                <h1 id="review-empty-title">На сегодня повторений нет</h1>
+                <p>Новые задачи появятся после ошибок, guided-попыток или когда подойдёт срок следующего самостоятельного воспроизведения.</p>
+              </div>
+              <button className="primary" onClick={() => workspaceJourney?.action ? openCanonicalAction() : navigate('practice')}>
+                <BrainCircuit /> Продолжить обучение
+              </button>
+            </section>
+          : <section className={`workspace ${mobileTaskOpen ? 'task-open' : ''}`} data-review-task-id={view === 'review' ? selected.id : undefined}>
           <div className="catalog-panel">
             <div className="section-heading">
               <div>
@@ -713,7 +737,7 @@ function App() {
               />
             </div>
           </div>
-        </section>}
+          </section>)}
 
       {view === 'achievements' && <section className="page">
         <h1>Достижения</h1>

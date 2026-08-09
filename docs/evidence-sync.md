@@ -60,3 +60,17 @@ The Playwright checkpoint flow verifies:
 - reconnecting uploads it without reopening Checkpoint Center;
 - a second authenticated browser hydrates the report automatically;
 - Learning Path sees checkpoint provenance before Checkpoint Center is opened.
+
+## Course progress CAS contract
+
+Authenticated course progress uses `GET|PUT /api/mastery/progress` (the compatibility alias `/api/user/progress` resolves to the same handler). Every write carries `baseRevision` and is accepted only when it matches the current D1 row. A successful write increments the revision once and returns the canonical stored progress with that exact revision.
+
+On HTTP 409 the browser re-reads D1, deterministically unions local and cloud completion/evidence, then retries once from the new revision. Local storage and the visible sync state change only after reconciliation succeeds. Network failure therefore leaves local work intact and does not report a successful sync.
+
+The older profile-scoped `PUT /api/progress` contract is now fail-closed with HTTP 428 and `PROGRESS_REVISION_REQUIRED`; its `GET` remains read-only for recovery diagnostics. This is a code-only compatibility migration: migration `0002_anonymous_accounts.sql` already added `progress.revision`, so no historical D1 migration is rewritten and no new schema migration is required. A cached pre-change client cannot overwrite a newer row; after one reload, the current bundle retries through the revisioned contract.
+
+Regression evidence is split across:
+
+- `scripts/validate-evidence-sync.ts` for a deterministic 409 → re-read → union → revision-2 trace, offline immutability and legacy fail-closed behavior;
+- `tests/e2e/evidence-sync.spec.ts` for the same interleaving against the local Wrangler/D1 runtime, plus cached-client reload and empty Review state;
+- `scripts/mastery-progress-production-smoke.mjs` for deployed D1 revision, legacy-overwrite rejection, union preservation and account cleanup.
