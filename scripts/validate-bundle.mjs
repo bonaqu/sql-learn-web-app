@@ -1,9 +1,11 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
 const DIST = new URL('../dist/', import.meta.url);
 const ASSETS = new URL('../dist/assets/', import.meta.url);
+const ASSETS_PATH = fileURLToPath(ASSETS);
 const kib = value => Math.round(value / 1024 * 10) / 10;
 
 function fail(message) {
@@ -32,11 +34,11 @@ const allAssets = readdirSync(ASSETS);
 const files = allAssets.filter(name => /\.(?:js|css)$/.test(name));
 const js = files.filter(name => name.endsWith('.js'));
 const css = files.filter(name => name.endsWith('.css'));
-const entryPath = join(ASSETS.pathname, entryName);
+const entryPath = join(ASSETS_PATH, entryName);
 const entrySource = readFileSync(entryPath, 'utf8');
 const entry = fileInfo(entryPath);
-const cssTotal = css.reduce((total, name) => total + fileInfo(join(ASSETS.pathname, name)).bytes, 0);
-const cssGzip = css.reduce((total, name) => total + fileInfo(join(ASSETS.pathname, name)).gzip, 0);
+const cssTotal = css.reduce((total, name) => total + fileInfo(join(ASSETS_PATH, name)).bytes, 0);
+const cssGzip = css.reduce((total, name) => total + fileInfo(join(ASSETS_PATH, name)).gzip, 0);
 
 const ENTRY_RAW_BUDGET = 460 * 1024;
 const ENTRY_GZIP_BUDGET = 155 * 1024;
@@ -51,7 +53,7 @@ if (cssTotal > CSS_RAW_BUDGET) fail(`CSS total is ${kib(cssTotal)} KiB raw; budg
 if (cssGzip > CSS_GZIP_BUDGET) fail(`CSS total is ${kib(cssGzip)} KiB gzip; budget ${kib(CSS_GZIP_BUDGET)} KiB`);
 
 for (const name of js) {
-  const info = fileInfo(join(ASSETS.pathname, name));
+  const info = fileInfo(join(ASSETS_PATH, name));
   if (info.bytes > CHUNK_RAW_BUDGET) fail(`${name} is ${kib(info.bytes)} KiB raw; chunk budget ${kib(CHUNK_RAW_BUDGET)} KiB`);
   if (info.gzip > CHUNK_GZIP_BUDGET) fail(`${name} is ${kib(info.gzip)} KiB gzip; chunk budget ${kib(CHUNK_GZIP_BUDGET)} KiB`);
 }
@@ -71,14 +73,14 @@ for (const marker of ['dialect-null-ordering', 'dialect-isolation-lost-update', 
 
 const syllabusChunk = chunkFor(js, 'SyllabusPortal');
 if (syllabusChunk) {
-  const syllabusSource = readFileSync(join(ASSETS.pathname, syllabusChunk), 'utf8');
+  const syllabusSource = readFileSync(join(ASSETS_PATH, syllabusChunk), 'utf8');
   if (syllabusSource.includes('dialect-null-ordering')) fail('SyllabusPortal chunk eagerly contains executable dialect cases');
   if (!syllabusSource.includes('DialectLabWorkbench')) fail('SyllabusPortal does not preserve the lazy DialectLabWorkbench import');
 }
 
 const dialectChunk = chunkFor(js, 'DialectLabWorkbench');
 if (dialectChunk) {
-  const dialectSource = readFileSync(join(ASSETS.pathname, dialectChunk), 'utf8');
+  const dialectSource = readFileSync(join(ASSETS_PATH, dialectChunk), 'utf8');
   if (!dialectSource.includes('dialect-null-ordering')) fail('DialectLabWorkbench chunk is missing its manifest/case payload');
 }
 
