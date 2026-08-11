@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { TEST_PASSWORD } from './auth-helper';
 import { guidedHome, seedFirstLessonEvidence } from './navigation-helper';
 
-const WORKER_URL = 'http://127.0.0.1:8787';
+const WORKER_URL = process.env.PLAYWRIGHT_WORKER_URL || `http://127.0.0.1:${process.env.PLAYWRIGHT_WORKER_PORT || '8792'}`;
 
 const replaceEditorSql = async (page: import('@playwright/test').Page, sql: string) => {
   const editor = page.locator('.monaco-editor');

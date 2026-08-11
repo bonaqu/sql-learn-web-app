@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 const applicationPath = process.env.GITHUB_ACTIONS ? '/sql-learn-web-app/' : '/';
 const applicationUrl = `http://127.0.0.1:4173${applicationPath}`;
-const workerPort = process.env.PLAYWRIGHT_WORKER_PORT || '8787';
+const workerPort = process.env.PLAYWRIGHT_WORKER_PORT || '8792';
 const workerUrl = `http://127.0.0.1:${workerPort}/api/health`;
 
 const desktop = { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } };

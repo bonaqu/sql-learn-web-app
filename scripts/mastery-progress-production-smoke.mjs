@@ -216,7 +216,7 @@ try {
   expectMasteryContract(revoked, 'revoked progress session');
 
   await mark('complete');
-  console.log('Mastery progress production smoke passed: canonical revision responses, cached-client fail-closed behavior, two-device conflict recovery and account cleanup.');
+  process.stdout.write('Mastery progress production smoke passed: canonical revision responses, cached-client fail-closed behavior, two-device conflict recovery and account cleanup.\n');
 } catch (error) {
   await fs.writeFile(failureFile, `stage=${stage}\n${error instanceof Error ? error.stack || error.message : String(error)}\n`);
   throw error;

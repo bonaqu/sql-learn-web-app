@@ -98,4 +98,4 @@ const staleReview: ReviewSchedule = {
 assert.equal(gradeReviewSchedule(staleReview, 'again', now), staleReview,
   'A stale/future Review task ID must not change review debt, repetitions or lapse evidence.');
 
-console.log(`Review scheduling validated: immediate remediation, ${CLEAN_REVIEW_INTERVAL_DAYS}-day spacing and fail-closed stale Review grading.`);
+process.stdout.write(`Review scheduling validated: immediate remediation, ${CLEAN_REVIEW_INTERVAL_DAYS}-day spacing and fail-closed stale Review grading.\n`);

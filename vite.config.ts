@@ -2,7 +2,7 @@ import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
-import { escapeHtml, loadProductIdentity, productFullTitle } from './scripts/product-identity';
+import { escapeHtml, loadProductIdentity, productFullTitle } from './scripts/product-identity.ts';
 
 const identity = loadProductIdentity(process.cwd());
 const fullTitle = productFullTitle(identity);
@@ -31,6 +31,14 @@ function productIdentityHtml() {
 
 export default defineConfig(({ command }) => ({
   base: command === 'build' && process.env.GITHUB_ACTIONS ? '/sql-learn-web-app/' : '/',
+  preview: {
+    proxy: {
+      '/api': {
+        target: `http://127.0.0.1:${process.env.PLAYWRIGHT_WORKER_PORT || '8792'}`,
+        changeOrigin: true
+      }
+    }
+  },
   resolve: {
     alias: [
       {

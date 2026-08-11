@@ -2,7 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { authenticatePage } from './auth-helper';
 
-const WORKER_URL = process.env.PLAYWRIGHT_WORKER_URL || 'http://127.0.0.1:8787';
+const WORKER_URL = process.env.PLAYWRIGHT_WORKER_URL || `http://127.0.0.1:${process.env.PLAYWRIGHT_WORKER_PORT || '8792'}`;
 const PROGRESS_KEY = 'sql-academy-progress-v4';
 
 type Progress = {

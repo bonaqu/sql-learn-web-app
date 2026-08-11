@@ -1,11 +1,14 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gzipSync } from 'node:zlib';
 
-const DIST = new URL('../dist/', import.meta.url);
-const ASSETS = new URL('../dist/assets/', import.meta.url);
-const ASSETS_PATH = fileURLToPath(ASSETS);
+const distFlag = process.argv.indexOf('--dist');
+if (distFlag >= 0 && !process.argv[distFlag + 1]) throw new Error('--dist requires a directory path');
+const DIST_PATH = distFlag >= 0
+  ? resolve(process.argv[distFlag + 1])
+  : fileURLToPath(new URL('../dist/', import.meta.url));
+const ASSETS_PATH = join(DIST_PATH, 'assets');
 const kib = value => Math.round(value / 1024 * 10) / 10;
 
 function fail(message) {
@@ -23,14 +26,14 @@ function chunkFor(files, boundary) {
   return files.find(name => name.startsWith(`${boundary}-`) || name.includes(`-${boundary}-`));
 }
 
-const indexPath = new URL('index.html', DIST);
+const indexPath = join(DIST_PATH, 'index.html');
 const html = readFileSync(indexPath, 'utf8');
 const entryMatch = html.match(/<script[^>]+type="module"[^>]+src="([^"]+)"/i)
   || html.match(/<script[^>]+src="([^"]+)"[^>]+type="module"/i);
 if (!entryMatch) throw new Error('Cannot locate the Vite entry script in dist/index.html');
 
 const entryName = basename(entryMatch[1]);
-const allAssets = readdirSync(ASSETS);
+const allAssets = readdirSync(ASSETS_PATH);
 const files = allAssets.filter(name => /\.(?:js|css)$/.test(name));
 const js = files.filter(name => name.endsWith('.js'));
 const css = files.filter(name => name.endsWith('.css'));
@@ -86,4 +89,4 @@ if (dialectChunk) {
 
 if (!allAssets.some(name => /^sql-wasm.*\.wasm$/.test(name))) fail('bundled sql.js WASM asset is missing');
 
-console.log(`Bundle validation passed: entry ${kib(entry.bytes)} KiB raw / ${kib(entry.gzip)} KiB gzip; CSS ${kib(cssTotal)} KiB raw / ${kib(cssGzip)} KiB gzip; ${js.length} JS chunks with lazy Dialect Lab and bundled WASM.`);
+process.stdout.write(`Bundle validation passed: dist ${DIST_PATH}; entry ${kib(entry.bytes)} KiB raw / ${kib(entry.gzip)} KiB gzip; CSS ${kib(cssTotal)} KiB raw / ${kib(cssGzip)} KiB gzip; ${js.length} JS chunks with lazy Dialect Lab and bundled WASM.\n`);

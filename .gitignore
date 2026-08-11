@@ -12,3 +12,7 @@ playwright-report/
 backups/
 production-health-result.json
 *.local.sql
+worker-configuration.d.ts
+*.tsbuildinfo
+wrangler-playwright.log
+wrangler-internal-playwright.log

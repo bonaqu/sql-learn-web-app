@@ -1,6 +1,7 @@
 import { expect, Page, type APIResponse } from '@playwright/test';
 
-const WORKER_URL = process.env.PLAYWRIGHT_WORKER_URL || 'http://127.0.0.1:8787';
+const WORKER_PORT = process.env.PLAYWRIGHT_WORKER_PORT || '8792';
+const WORKER_URL = process.env.PLAYWRIGHT_WORKER_URL || `http://127.0.0.1:${WORKER_PORT}`;
 const SESSION_KEY = 'sql-academy-auth-session-v2';
 const WORKER_ATTEMPTS = 8;
 
