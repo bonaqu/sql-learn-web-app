@@ -4,6 +4,11 @@ type TaskStatsPayload = {
   hintsUsed: number;
   lastAttemptAt?: string;
   completedAt?: string;
+  evidenceContractVersion?: string;
+  evaluationContractId?: string;
+  evaluationContractVersion?: string;
+  validatedFixtureIds?: string[];
+  hiddenFixtureIds?: string[];
 };
 
 type ProgressPayload = {
@@ -89,6 +94,12 @@ const json = (data: unknown, status = 200, headers: Record<string, string> = {})
 const boundedInteger = (value: unknown, max = 1_000_000) =>
   typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= max;
 
+const boundedString = (value: unknown, max: number) => typeof value === 'string' && value.length <= max;
+const validFixtureIds = (value: unknown) => value === undefined || (Array.isArray(value)
+  && value.length <= 12
+  && value.every(item => boundedString(item, 96))
+  && new Set(value).size === value.length);
+
 function validTaskStats(value: unknown): value is TaskStatsPayload {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const stats = value as Partial<TaskStatsPayload>;
@@ -96,7 +107,12 @@ function validTaskStats(value: unknown): value is TaskStatsPayload {
     && boundedInteger(stats.incorrect, 10_000)
     && boundedInteger(stats.hintsUsed, 10_000)
     && (stats.lastAttemptAt === undefined || typeof stats.lastAttemptAt === 'string')
-    && (stats.completedAt === undefined || typeof stats.completedAt === 'string');
+    && (stats.completedAt === undefined || typeof stats.completedAt === 'string')
+    && (stats.evidenceContractVersion === undefined || boundedString(stats.evidenceContractVersion, 96))
+    && (stats.evaluationContractId === undefined || boundedString(stats.evaluationContractId, 160))
+    && (stats.evaluationContractVersion === undefined || boundedString(stats.evaluationContractVersion, 96))
+    && validFixtureIds(stats.validatedFixtureIds)
+    && validFixtureIds(stats.hiddenFixtureIds);
 }
 
 function validProgress(payload: unknown): payload is ProgressPayload {

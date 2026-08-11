@@ -1,6 +1,4 @@
-import { type ReactNode, useEffect, useState } from 'react';
-import AuthGate from './AuthGate';
-import CapabilityAuthScreen from './CapabilityAuthScreen';
+import { lazy, Suspense, type ReactNode, useEffect, useState } from 'react';
 import {
   AUTH_CHANGED_EVENT,
   type AuthSession,
@@ -11,6 +9,12 @@ import {
 const PENDING_REGISTRATION_KEY = 'sql-academy-pending-registration-v1';
 const REGISTRATION_PENDING_EVENT = 'sql-academy-registration-pending';
 const PRIMARY_CONTACT_AUTH_CLASS = 'primary-contact-auth-active';
+const AuthGate = lazy(() => import('./AuthGate'));
+const CapabilityAuthScreen = lazy(() => import('./CapabilityAuthScreen'));
+
+function AuthLoadingState() {
+  return <main className="auth-loading" role="status" aria-live="polite">Загружаем безопасный вход…</main>;
+}
 
 function hasPendingRegistration() {
   try {
@@ -46,10 +50,18 @@ export default function IntegratedAuthGate({ children }: { children: ReactNode }
     return () => document.documentElement.classList.remove(PRIMARY_CONTACT_AUTH_CLASS);
   }, [delegateToExistingGate]);
 
-  if (delegateToExistingGate) return <AuthGate>{children}</AuthGate>;
+  if (delegateToExistingGate) return (
+    <Suspense fallback={<AuthLoadingState />}>
+      <AuthGate>{children}</AuthGate>
+    </Suspense>
+  );
 
-  return <CapabilityAuthScreen onAuthenticated={session => {
-    saveAuthSession(session);
-    setDelegateToExistingGate(true);
-  }} />;
+  return (
+    <Suspense fallback={<AuthLoadingState />}>
+      <CapabilityAuthScreen onAuthenticated={session => {
+        saveAuthSession(session);
+        setDelegateToExistingGate(true);
+      }} />
+    </Suspense>
+  );
 }

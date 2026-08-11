@@ -1,9 +1,9 @@
-import { tasks } from '../data/course-catalog';
 import { loadAuthSession } from './auth';
 import {
   checkpointById,
   checkpointDurationMinutes,
   checkpointEligibility,
+  checkpointSessionTask,
   loadLocalCheckpointReports,
   type CheckpointAnswer,
   type CheckpointSession
@@ -28,7 +28,7 @@ export function prepareCheckpointSession(
 
   const checkpointModules = new Set<string>(checkpoint.moduleIds);
   const selected = checkpoint.taskIds.flatMap(taskId => {
-    const task = tasks.find(item => item.id === taskId);
+    const task = checkpointSessionTask(taskId);
     return task ? [task] : [];
   });
   if (selected.length !== checkpoint.taskIds.length) {

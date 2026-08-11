@@ -251,10 +251,19 @@ for (const moduleId of advancedModuleIds) {
     bypassedModuleIds,
     passedCheckpointIds: priorCheckpointIds
   });
-  assert.equal(afterGuided.stage, 'practice', `${moduleId}: independent practice must follow guided evidence`);
-  assert.ok(practice.some(task => task.id === afterGuided.task?.id), `${moduleId}: journey selected a non-practice task after guided evidence`);
+  assert.equal(afterGuided.stage, 'guided', `${moduleId}: guided correctness must not unlock independent practice`);
+  assert.ok(guided.some(task => task.id === afterGuided.task?.id), `${moduleId}: guided contract must remain pending without independent evidence`);
 
-  const afterFoundation = nextJourneyAction(progressWithEvidence(practice, guided), curriculum, {
+  const afterIndependentGuided = nextJourneyAction(progressWithEvidence(guided), curriculum, {
+    includeReview: false,
+    goal: 'full',
+    bypassedModuleIds,
+    passedCheckpointIds: priorCheckpointIds
+  });
+  assert.equal(afterIndependentGuided.stage, 'practice', `${moduleId}: independent practice must follow independent guided-contract evidence`);
+  assert.ok(practice.some(task => task.id === afterIndependentGuided.task?.id), `${moduleId}: journey selected a non-practice task after independent guided-contract evidence`);
+
+  const afterFoundation = nextJourneyAction(progressWithEvidence(foundation), curriculum, {
     includeReview: false,
     goal: 'full',
     bypassedModuleIds,
@@ -271,7 +280,7 @@ for (const moduleId of advancedModuleIds) {
   assert.equal(afterFoundation.stage, 'checkpoint', `${moduleId}: checkpoint must follow the complete advanced phase foundation`);
   assert.equal(afterFoundation.checkpointId, targetCheckpoint!.id, `${moduleId}: wrong phase checkpoint after foundation`);
 
-  const afterCheckpoint = nextJourneyAction(progressWithEvidence(practice, guided), curriculum, {
+  const afterCheckpoint = nextJourneyAction(progressWithEvidence(foundation), curriculum, {
     includeReview: false,
     goal: 'full',
     bypassedModuleIds,
@@ -281,7 +290,7 @@ for (const moduleId of advancedModuleIds) {
   assert.ok(transfer.some(task => task.id === afterCheckpoint.task?.id), `${moduleId}: Interview action is outside the module transfer set`);
 
   const interviews = transfer.filter(task => task.mode === 'interview');
-  const afterInterviews = nextJourneyAction(progressWithEvidence([...practice, ...interviews], guided), curriculum, {
+  const afterInterviews = nextJourneyAction(progressWithEvidence([...foundation, ...interviews]), curriculum, {
     includeReview: false,
     goal: 'full',
     bypassedModuleIds,
@@ -298,4 +307,4 @@ assert.deepEqual(totalModes, {
   puzzle: advancedModuleIds.length * 2
 }, 'Advanced track aggregate stage distribution drifted');
 
-console.log(`Advanced task progression validated: ${advancedModuleIds.length} modules, canonical lesson examples, authored catalog baseline, phase-wide checkpoints, ${totalModes.lesson} guided, ${totalModes.practice} practice, ${totalModes.interview} interview and ${totalModes.puzzle} puzzle tasks.`);
+process.stdout.write(`Advanced task progression validated: ${advancedModuleIds.length} modules, canonical lesson examples, authored catalog baseline, phase-wide checkpoints, ${totalModes.lesson} guided, ${totalModes.practice} practice, ${totalModes.interview} interview and ${totalModes.puzzle} puzzle tasks.\n`);

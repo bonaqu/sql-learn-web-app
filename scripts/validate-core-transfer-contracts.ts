@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { modules as coreModules, tasks as rawCoreTasks } from '../src/data/course';
 import { applyCoreTaskProgression } from '../src/data/core-task-progression';
+import { applyFoundationCorridorOverrides } from '../src/data/foundation-corridor';
 import { tasks } from '../src/data/course-catalog';
 import { stripSqlCommentsAndLiterals } from '../src/data/sql-syntax-frontier';
 import type { SqlTask } from '../src/data/course-catalog';
 
 const coreModuleIds = new Set(coreModules.map(([id]) => id));
-const baseline = new Map(applyCoreTaskProgression(rawCoreTasks).map(task => [task.id, task]));
+const baseline = new Map(applyCoreTaskProgression(applyFoundationCorridorOverrides(rawCoreTasks)).map(task => [task.id, task]));
 
 function invariantContract(task: SqlTask) {
   return {

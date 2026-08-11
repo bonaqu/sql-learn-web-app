@@ -354,6 +354,7 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
       progress={taskProgress}
       curriculum={progress}
       reviewState={reviewState}
+      onProgress={setProgress}
       onOpenTask={openMasteryTask}
       onOpenReview={openReviewDeck}
     />

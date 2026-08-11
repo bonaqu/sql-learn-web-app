@@ -11,6 +11,9 @@ import {
   transferTasksForModule
 } from '../src/lib/learning-journey';
 import type { Progress, TaskStats } from '../src/lib/progress';
+import { evaluationContractForTask, foundationCorridorTaskIds } from '../src/data/foundation-evaluation-contracts';
+import { checkpointTaskList } from '../src/data/checkpoint-task-bank';
+import { FOUNDATION_EVIDENCE_CONTRACT_VERSION, TASK_EVALUATION_CONTRACT_VERSION } from '../src/lib/task-evaluation-contract';
 
 const coreModuleIds = coreModules.map(([id]) => id);
 const rawById = new Map(rawCoreTasks.map(task => [task.id, task]));
@@ -57,7 +60,14 @@ function progressWithEvidence(independent: readonly SqlTask[], guided: readonly 
       hintsUsed: 0,
       independentPasses: 1,
       completedAt: '2026-08-02T00:00:00.000Z',
-      lastAttemptAt: '2026-08-02T00:00:00.000Z'
+      lastAttemptAt: '2026-08-02T00:00:00.000Z',
+      ...(task.evaluationContractId ? {
+        evidenceContractVersion: FOUNDATION_EVIDENCE_CONTRACT_VERSION,
+        evaluationContractId: task.evaluationContractId,
+        evaluationContractVersion: TASK_EVALUATION_CONTRACT_VERSION,
+        validatedFixtureIds: evaluationContractForTask(task.id)?.fixtures.map(fixture => fixture.id),
+        hiddenFixtureIds: evaluationContractForTask(task.id)?.fixtures.filter(fixture => fixture.visibility !== 'public').map(fixture => fixture.id)
+      } : {})
     };
   }
   for (const task of guided) {
@@ -103,11 +113,17 @@ for (const moduleId of coreModuleIds) {
     totalModes[task.mode] += 1;
     const raw = rawById.get(task.id);
     assert.ok(raw, `${task.id}: missing raw core contract`);
-    assert.deepEqual(
-      progressionInvariant(task),
-      progressionInvariant(raw!),
-      `${task.id}: core progression changed SQL, XP, difficulty, guide or persisted identity`
-    );
+    if (foundationCorridorTaskIds.includes(task.id)) {
+      assert.equal(task.evaluationContractId, evaluationContractForTask(task.id)?.id, `${task.id}: foundation contract link drifted`);
+      assert.equal(task.xp, raw!.xp, `${task.id}: persisted XP changed`);
+      assert.equal(task.module, raw!.module, `${task.id}: persisted module changed`);
+    } else {
+      assert.deepEqual(
+        progressionInvariant(task),
+        progressionInvariant(raw!),
+        `${task.id}: core progression changed SQL, XP, difficulty, guide or persisted identity`
+      );
+    }
   }
   assert.deepEqual(counts, expectedModeCounts, `${moduleId}: expected 1 guided, 3 practice, 1 interview and 1 puzzle task`);
 
@@ -120,7 +136,15 @@ for (const moduleId of coreModuleIds) {
   const checkpointTaskIndex = checkpoint?.moduleIds.findIndex(id => id === moduleId) ?? -1;
   const checkpointTaskId = checkpointTaskIndex >= 0 ? checkpoint?.taskIds[checkpointTaskIndex] : undefined;
   const practices = moduleTasks.filter(task => task.mode === 'practice');
-  assert.equal(checkpointTaskId, practices.at(-1)?.id, `${moduleId}: checkpoint must use the last independent practice, not guided or transfer evidence`);
+  if (checkpoint?.id === 'checkpoint-foundation') {
+    assert.equal(
+      checkpointTaskId,
+      checkpointTaskList().find(task => task.module === moduleId)?.id,
+      `${moduleId}: foundation checkpoint must use its unseen task bank`
+    );
+  } else {
+    assert.equal(checkpointTaskId, practices.at(-1)?.id, `${moduleId}: checkpoint must use the last independent practice, not guided or transfer evidence`);
+  }
 
   const foundation = foundationTasksForModule(moduleId);
   const transfer = transferTasksForModule(moduleId);
@@ -163,10 +187,19 @@ for (const moduleId of coreModuleIds) {
     bypassedModuleIds,
     passedCheckpointIds: priorCheckpointIds
   });
-  assert.equal(afterGuided.stage, 'practice', `${moduleId}: independent practice must follow guided evidence`);
-  assert.ok(practice.some(task => task.id === afterGuided.task?.id), `${moduleId}: journey selected a non-practice task after guided evidence`);
+  assert.equal(afterGuided.stage, 'guided', `${moduleId}: guided correctness must not unlock independent practice`);
+  assert.equal(afterGuided.task?.id, guided[0]?.id, `${moduleId}: guided contract must be retried independently`);
 
-  const afterFoundation = nextJourneyAction(progressWithEvidence(practice, guided), curriculum, {
+  const afterIndependentGuided = nextJourneyAction(progressWithEvidence(guided), curriculum, {
+    includeReview: false,
+    goal: 'full',
+    bypassedModuleIds,
+    passedCheckpointIds: priorCheckpointIds
+  });
+  assert.equal(afterIndependentGuided.stage, 'practice', `${moduleId}: independent practice must follow independent guided-contract evidence`);
+  assert.ok(practice.some(task => task.id === afterIndependentGuided.task?.id), `${moduleId}: journey selected a non-practice task after independent guided-contract evidence`);
+
+  const afterFoundation = nextJourneyAction(progressWithEvidence(foundation), curriculum, {
     includeReview: false,
     goal: 'full',
     bypassedModuleIds,
@@ -183,7 +216,7 @@ for (const moduleId of coreModuleIds) {
   assert.equal(afterFoundation.stage, 'checkpoint', `${moduleId}: checkpoint must follow the complete phase foundation`);
   assert.equal(afterFoundation.checkpointId, targetCheckpoint!.id, `${moduleId}: wrong checkpoint after the phase foundation`);
 
-  const afterCheckpoint = nextJourneyAction(progressWithEvidence(practice, guided), curriculum, {
+  const afterCheckpoint = nextJourneyAction(progressWithEvidence(foundation), curriculum, {
     includeReview: false,
     goal: 'full',
     bypassedModuleIds,
@@ -192,7 +225,7 @@ for (const moduleId of coreModuleIds) {
   assert.equal(afterCheckpoint.stage, 'interview', `${moduleId}: Interview must be the first post-checkpoint transfer`);
   assert.equal(afterCheckpoint.task?.id, transfer[0]?.id, `${moduleId}: wrong Interview task`);
 
-  const afterInterview = nextJourneyAction(progressWithEvidence([...practice, transfer[0]], guided), curriculum, {
+  const afterInterview = nextJourneyAction(progressWithEvidence([...foundation, transfer[0]]), curriculum, {
     includeReview: false,
     goal: 'full',
     bypassedModuleIds,
@@ -209,4 +242,4 @@ assert.deepEqual(totalModes, {
   puzzle: coreModuleIds.length
 }, 'Core aggregate stage distribution drifted');
 
-console.log(`Core task progression validated: ${coreModuleIds.length} modules, phase-wide checkpoints, ${totalModes.lesson} guided, ${totalModes.practice} practice, ${totalModes.interview} interview and ${totalModes.puzzle} puzzle tasks.`);
+process.stdout.write(`Core task progression validated: ${coreModuleIds.length} modules, phase-wide checkpoints, ${totalModes.lesson} guided, ${totalModes.practice} practice, ${totalModes.interview} interview and ${totalModes.puzzle} puzzle tasks.\n`);

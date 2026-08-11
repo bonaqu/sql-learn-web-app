@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
+import { tasks } from '../../src/data/course-catalog';
 import { authenticatePage, loginPage } from './auth-helper';
 import { openAdvancedTool } from './navigation-helper';
 
@@ -20,6 +21,89 @@ async function solveConceptCard(card: import('@playwright/test').Locator) {
   }
   throw new Error('No correct concept-check option found');
 }
+
+async function replacePracticeSql(page: import('@playwright/test').Page, sql: string) {
+  const editor = page.locator('.editor-panel .monaco-editor');
+  await expect(editor).toBeVisible();
+  await editor.click();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.insertText(sql);
+}
+
+test('desktop curriculum honest foundation gate unlocks filtering only after four independent prerequisite contracts', async ({ page }, testInfo) => {
+  await authenticatePage(page, 'foundationgate');
+  await page.goto('./');
+  await openAdvancedTool(page, 'curriculum-trigger');
+
+  const studio = page.getByRole('dialog', { name: /Curriculum Studio/i });
+  await expect(studio).toBeVisible();
+  await expect(studio.getByRole('heading', { name: 'SQL-мышление', exact: true })).toBeVisible();
+  const sectionButtons = studio.getByRole('button', { name: /Отметить раздел изученным/i });
+  await expect(sectionButtons).toHaveCount(3);
+  while (await sectionButtons.count()) await sectionButtons.first().click();
+  const cards = studio.getByTestId('concept-check-panel').locator('.concept-check-card');
+  await expect(cards).toHaveCount(3);
+  for (let index = 0; index < await cards.count(); index += 1) await solveConceptCard(cards.nth(index));
+  await expect.poll(() => page.evaluate(() => {
+    return Object.keys(localStorage)
+      .filter(key => key.startsWith('sql-academy-curriculum-progress-v1:'))
+      .map(key => {
+        const state = JSON.parse(localStorage.getItem(key) || 'null');
+        return {
+          key,
+          sections: Array.isArray(state?.completedSections) ? state.completedSections.length : 0,
+          correctAnswers: state?.answers
+            ? Object.values(state.answers).filter(answer => (answer as { correct?: boolean }).correct).length
+            : 0,
+          completed: Boolean(state?.completedLessons?.includes('lesson-sql-thinking'))
+        };
+      });
+  })).toContainEqual(expect.objectContaining({ sections: 3, correctAnswers: 3, completed: true }));
+
+  await studio.getByLabel('Поиск по урокам').fill('Фильтрация');
+  await studio.getByRole('button', { name: /Фильтрация.*закрыто/i }).click();
+  await expect(studio.getByTestId('curriculum-access-gate')).toBeVisible();
+
+  await studio.getByLabel('Поиск по урокам').fill('SQL-мышление');
+  await studio.getByRole('button', { name: /SQL-мышление/i }).first().click();
+  const corridor = tasks.filter(task => task.module === 'sql-thinking' && (task.mode === 'lesson' || task.mode === 'practice'));
+  expect(corridor).toHaveLength(4);
+  await studio.locator('.curriculum-practice-links button').first().click();
+  await expect(studio).toBeHidden();
+
+  for (const task of corridor) {
+    const taskRow = page.locator('.task-row').filter({ has: page.getByText(task.title, { exact: true }) });
+    await taskRow.click();
+    await replacePracticeSql(page, task.solution);
+    const run = page.getByRole('button', { name: /Проверить SQL/i });
+    await expect(run).toBeEnabled();
+    await run.click();
+    await expect(page.locator('.feedback.success')).toContainText('Independent mastery подтверждён');
+    await expect.poll(() => page.evaluate(({ key, taskId }) => {
+      const progress = JSON.parse(localStorage.getItem(key) || 'null');
+      const stats = progress?.taskStats?.[taskId];
+      return {
+        independentPasses: Number(stats?.independentPasses || 0),
+        evidenceVersion: String(stats?.evidenceContractVersion || ''),
+        fixtures: Array.isArray(stats?.validatedFixtureIds) ? stats.validatedFixtureIds.length : 0,
+        hidden: Array.isArray(stats?.hiddenFixtureIds) ? stats.hiddenFixtureIds.length : 0
+      };
+    }, { key: 'sql-academy-progress-v4', taskId: task.id })).toEqual({
+      independentPasses: 1,
+      evidenceVersion: 'foundation-evidence-v1',
+      fixtures: 3,
+      hidden: 2
+    });
+  }
+
+  await expect(page.getByTestId('workspace-next-step')).toBeVisible();
+  await openAdvancedTool(page, 'curriculum-trigger');
+  await studio.getByLabel('Поиск по урокам').fill('Фильтрация');
+  await studio.getByRole('button', { name: /Фильтрация/i }).first().click();
+  await expect(studio.getByTestId('curriculum-access-gate')).toHaveCount(0);
+  await expect(studio.getByRole('heading', { name: 'Фильтрация', exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('foundation-gate-honest-unlock.png'), fullPage: true });
+});
 
 test('desktop curriculum studio diagnoses misconceptions and syncs project draft across devices', async ({ page, browser }, testInfo) => {
   const auth = await authenticatePage(page, 'curriculum');

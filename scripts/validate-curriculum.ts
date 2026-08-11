@@ -7,6 +7,7 @@ import {
   curriculumLessons
 } from '../src/data/complete-curriculum';
 import { modules, tasks } from '../src/data/course-catalog';
+import { checkpointTaskList } from '../src/data/checkpoint-task-bank';
 import { advancedModules } from '../src/data/advanced-syllabus';
 import { trainingSeedSql } from '../src/data/training-dataset';
 import { dialectPatterns, dialects } from '../src/data/sql-dialects';
@@ -24,7 +25,7 @@ const assert = (condition: unknown, message: string) => {
 const unique = (values: string[]) => new Set(values).size === values.length;
 const moduleIds = new Set<string>(modules.map(([id]) => id));
 const advancedModuleIds = new Set<string>(advancedModules.map(([id]) => id));
-const taskIds = new Set(tasks.map(task => task.id));
+const taskIds = new Set([...tasks, ...checkpointTaskList()].map(task => task.id));
 const lessonIds = curriculumLessons.map(lesson => lesson.id);
 const sectionIds = curriculumLessons.flatMap(lesson => lesson.sections.map(section => section.id));
 const checkIds = curriculumLessons.map(lesson => lesson.check.id);

@@ -349,7 +349,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
     if (finishingRef.current || !engine || !session || !activeTask || !activeAnswer) return;
     const attempts = activeAnswer.attempts + 1;
     try {
-      const evaluation = evaluateAssessmentSql(engine, editorSql, activeTask.solution);
+      const evaluation = evaluateAssessmentSql(engine, editorSql, activeTask, 'checkpoint');
       const next = updateCheckpointAnswer(session, activeTask.id, {
         sql: editorSql,
         attempts,
@@ -362,8 +362,8 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
       setResult(evaluation.output);
       setRunState(evaluation.correct ? 'success' : 'error');
       setMessage(evaluation.correct
-        ? 'Результат совпал. Можно перейти к следующей задаче.'
-        : 'Запрос выполнился, но форма или значения результата не совпали. Проверь гранулярность, NULL и порядок.');
+        ? 'Контракт результата и невидимые данные пройдены. Можно перейти к следующей задаче.'
+        : `${evaluation.diagnostic?.title || 'Результат не совпал'}. ${evaluation.diagnostic?.nextStep || 'Проверь гранулярность, NULL и порядок.'}`);
     } catch (reason) {
       const next = updateCheckpointAnswer(session, activeTask.id, {
         sql: editorSql,

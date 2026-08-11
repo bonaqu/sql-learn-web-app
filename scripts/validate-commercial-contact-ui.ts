@@ -133,14 +133,16 @@ assert.ok(!primary.includes('code: input.code'), 'Primary password login may hav
 assert.ok(primary.includes('maskedDestination'), 'Primary recovery no longer displays only masked destinations');
 
 for (const marker of [
-  "import AuthGate from './AuthGate'",
-  "import CapabilityAuthScreen from './CapabilityAuthScreen'",
+  "const AuthGate = lazy(() => import('./AuthGate'))",
+  "const CapabilityAuthScreen = lazy(() => import('./CapabilityAuthScreen'))",
   "const PENDING_REGISTRATION_KEY = 'sql-academy-pending-registration-v1'",
   'Boolean(loadAuthSession()) || hasPendingRegistration()',
   'window.addEventListener(AUTH_CHANGED_EVENT, authChanged)',
   'window.addEventListener(REGISTRATION_PENDING_EVENT, registrationPending)',
   'document.documentElement.classList.toggle(PRIMARY_CONTACT_AUTH_CLASS, !delegateToExistingGate)',
-  'if (delegateToExistingGate) return <AuthGate>{children}</AuthGate>',
+  'if (delegateToExistingGate) return (',
+  '<Suspense fallback={<AuthLoadingState />}>',
+  '<AuthGate>{children}</AuthGate>',
   '<CapabilityAuthScreen onAuthenticated={session =>',
   'saveAuthSession(session)',
   'setDelegateToExistingGate(true)'
@@ -171,4 +173,4 @@ assert.ok(integrationCss.includes('.auth-policy-card.ready'), 'Ready registratio
 assert.ok(integrationCss.includes('.auth-policy-card.blocked'), 'Blocked registration policy has no visual state');
 assert.ok(integrationCss.includes('@media (max-width: 700px)'), 'Primary auth integration has no mobile contract');
 
-console.log('Capability-gated auth UI validated: one primary login screen, password-only contact identifiers, fail-closed registration policy, canonical recovery handoff and no parallel auth state.');
+process.stdout.write('Capability-gated auth UI validated: one primary login screen, password-only contact identifiers, fail-closed registration policy, canonical recovery handoff and no parallel auth state.\n');

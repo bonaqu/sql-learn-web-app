@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "types:worker": "wrangler types worker-configuration.d.ts --config wrangler.typegen.jsonc",
-    "validate:course": "tsx scripts/validate-course.ts",
+    "validate:course": "tsx scripts/validate-foundation-gate.ts && tsx scripts/validate-course.ts",
+    "validate:foundation-gate": "tsx scripts/validate-foundation-gate.ts",
     "validate:path": "tsx scripts/validate-learning-path.ts",
     "validate:journey": "tsx scripts/validate-learning-journey.ts",
     "validate:review-scheduling": "tsx scripts/validate-review-scheduling.ts",

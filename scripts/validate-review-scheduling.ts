@@ -7,6 +7,8 @@ import {
   type TaskStats
 } from '../src/lib/progress';
 import { gradeReviewSchedule, type ReviewSchedule } from '../src/lib/spaced-repetition';
+import { evaluationContractForTask } from '../src/data/foundation-evaluation-contracts';
+import { FOUNDATION_EVIDENCE_CONTRACT_VERSION, TASK_EVALUATION_CONTRACT_VERSION } from '../src/lib/task-evaluation-contract';
 
 const target = tasks.find(task => task.mode === 'practice') || tasks[0];
 assert.ok(target, 'Review scheduling requires at least one executable task.');
@@ -16,10 +18,18 @@ const isoDaysAgo = (days: number) => new Date(now - days * 86_400_000).toISOStri
 const history = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => ({ day, solved: 0 }));
 
 function progress(stats: TaskStats, completed = true): Progress {
+  const contract = evaluationContractForTask(target.id);
+  const verified = stats.independentPasses && target.evaluationContractId ? {
+    evidenceContractVersion: FOUNDATION_EVIDENCE_CONTRACT_VERSION,
+    evaluationContractId: target.evaluationContractId,
+    evaluationContractVersion: TASK_EVALUATION_CONTRACT_VERSION,
+    validatedFixtureIds: contract?.fixtures.map(fixture => fixture.id),
+    hiddenFixtureIds: contract?.fixtures.filter(fixture => fixture.visibility !== 'public').map(fixture => fixture.id)
+  } : {};
   return {
     version: 4,
     completed: completed ? [target.id] : [],
-    taskStats: { [target.id]: stats },
+    taskStats: { [target.id]: { ...stats, ...verified } },
     xp: completed ? target.xp : 0,
     streak: completed ? 1 : 0,
     history

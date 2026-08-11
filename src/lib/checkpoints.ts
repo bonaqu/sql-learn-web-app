@@ -4,6 +4,7 @@ import {
   type CurriculumCheckpoint
 } from '../data/complete-curriculum';
 import { modules, tasks, type SqlTask } from '../data/course-catalog';
+import { checkpointTaskById } from '../data/checkpoint-task-bank';
 import { loadAuthSession } from './auth';
 import {
   checkpointAttemptState,
@@ -151,6 +152,10 @@ export function checkpointDurationMinutes(checkpointId: string) {
   return index >= 4 ? 35 : 30;
 }
 
+export function checkpointSessionTask(taskId: string) {
+  return checkpointTaskById(taskId) || tasks.find(task => task.id === taskId) || null;
+}
+
 function legacyCheckpointTask(checkpoint: CurriculumCheckpoint): SqlTask | null {
   const candidates = tasks.filter(task => checkpointContainsModule(checkpoint, task.module));
   return [...candidates].sort((left, right) => {
@@ -242,7 +247,7 @@ export function createCheckpointSession(
   }
 
   const selected = eligibility.checkpoint.taskIds.flatMap(taskId => {
-    const task = tasks.find(item => item.id === taskId);
+    const task = checkpointSessionTask(taskId);
     return task ? [task] : [];
   });
   if (selected.length !== eligibility.checkpoint.taskIds.length) {
@@ -318,7 +323,7 @@ export function remainingCheckpointSeconds(session: CheckpointSession, now = Dat
 }
 
 export function currentCheckpointTask(session: CheckpointSession) {
-  return tasks.find(task => task.id === session.taskIds[session.currentIndex]) || null;
+  return checkpointSessionTask(session.taskIds[session.currentIndex]);
 }
 
 export function mergeCheckpointAnswer(previous: CheckpointAnswer, patch: Partial<CheckpointAnswer>) {
@@ -399,7 +404,7 @@ export function buildCheckpointReport(
   );
   const expectedSeconds = checkpointDurationMinutes(checkpoint.id) * 60 / Math.max(1, session.taskIds.length);
   const taskScores = session.taskIds.map(taskId => {
-    const task = tasks.find(item => item.id === taskId);
+    const task = checkpointSessionTask(taskId);
     const answer = session.answers[taskId];
     if (!task || !answer) throw new Error(`Checkpoint task ${taskId} is missing`);
     return taskScore(task, answer, expectedSeconds);

@@ -9,6 +9,7 @@ import { applyAdvancedTaskProgression } from './advanced-task-progression';
 import { applyAdvancedTransferContracts } from './advanced-transfer-contracts';
 import { applyCoreTaskProgression } from './core-task-progression';
 import { applyCoreTransferContracts } from './core-transfer-contracts';
+import { applyFoundationCorridorOverrides } from './foundation-corridor';
 import {
   moduleOrderIndex,
   taskDifficultyOrder,
@@ -31,8 +32,10 @@ const sourceTasks = applyAdvancedTransferContracts(
   applyCoreTransferContracts(
     applyAdvancedTaskProgression(
       applyCoreTaskProgression(
-        applySyntaxFrontierTaskOverrides(
-          applyAdvancedAuthoredCatalogOverrides([...coreTasks, ...advancedTasks])
+        applyFoundationCorridorOverrides(
+          applySyntaxFrontierTaskOverrides(
+            applyAdvancedAuthoredCatalogOverrides([...coreTasks, ...advancedTasks])
+          )
         )
       )
     )

@@ -31,6 +31,11 @@ type TaskStatsPayload = {
   lastDiagnostic?: AttemptDiagnosticPayload;
   lastAttemptAt?: string;
   completedAt?: string;
+  evidenceContractVersion?: string;
+  evaluationContractId?: string;
+  evaluationContractVersion?: string;
+  validatedFixtureIds?: string[];
+  hiddenFixtureIds?: string[];
 };
 
 type ProgressPayload = {
@@ -104,7 +109,18 @@ function validTaskStats(value: unknown): value is TaskStatsPayload {
     && validErrorKinds(stats.errorKinds)
     && (stats.lastDiagnostic === undefined || validAttemptDiagnostic(stats.lastDiagnostic))
     && (stats.lastAttemptAt === undefined || boundedString(stats.lastAttemptAt, 80))
-    && (stats.completedAt === undefined || boundedString(stats.completedAt, 80));
+    && (stats.completedAt === undefined || boundedString(stats.completedAt, 80))
+    && (stats.evidenceContractVersion === undefined || boundedString(stats.evidenceContractVersion, 96))
+    && (stats.evaluationContractId === undefined || boundedString(stats.evaluationContractId, 160))
+    && (stats.evaluationContractVersion === undefined || boundedString(stats.evaluationContractVersion, 96))
+    && (stats.validatedFixtureIds === undefined || (Array.isArray(stats.validatedFixtureIds)
+      && stats.validatedFixtureIds.length <= 12
+      && stats.validatedFixtureIds.every(item => boundedString(item, 96))
+      && new Set(stats.validatedFixtureIds).size === stats.validatedFixtureIds.length))
+    && (stats.hiddenFixtureIds === undefined || (Array.isArray(stats.hiddenFixtureIds)
+      && stats.hiddenFixtureIds.length <= 12
+      && stats.hiddenFixtureIds.every(item => boundedString(item, 96))
+      && new Set(stats.hiddenFixtureIds).size === stats.hiddenFixtureIds.length));
 }
 
 function validProgress(payload: unknown): payload is ProgressPayload {

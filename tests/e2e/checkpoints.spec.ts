@@ -1,13 +1,18 @@
 import { expect, test } from '@playwright/test';
+import { checkpointTaskById } from '../../src/data/checkpoint-task-bank';
 import { curriculumCheckpoints } from '../../src/data/complete-curriculum';
-import { tasks } from '../../src/data/course-catalog';
+import { evaluationContractForTask } from '../../src/data/foundation-evaluation-contracts';
+import {
+  FOUNDATION_EVIDENCE_CONTRACT_VERSION,
+  TASK_EVALUATION_CONTRACT_VERSION
+} from '../../src/lib/task-evaluation-types';
 import { authenticatePage, loginPage } from './auth-helper';
 import { guidedHome, openAdvancedTool } from './navigation-helper';
 
 const PROGRESS_KEY = 'sql-academy-progress-v4';
 const AUTH_KEY = 'sql-academy-auth-session-v2';
 const FIRST_CHECKPOINT = curriculumCheckpoints[0];
-const FIRST_CHECKPOINT_TASK = tasks.find(task => task.id === FIRST_CHECKPOINT.taskIds[0]);
+const FIRST_CHECKPOINT_TASK = checkpointTaskById(FIRST_CHECKPOINT.taskIds[0]);
 if (!FIRST_CHECKPOINT_TASK) throw new Error(`Missing first checkpoint task ${FIRST_CHECKPOINT.taskIds[0]}`);
 const FIRST_CHECKPOINT_SOLUTION = FIRST_CHECKPOINT_TASK.solution;
 
@@ -16,14 +21,26 @@ function checkpointReadyProgress() {
   return {
     version: 4,
     completed,
-    taskStats: Object.fromEntries(completed.map(id => [id, {
-      attempts: 1,
-      incorrect: 0,
-      hintsUsed: 0,
-      independentPasses: 1,
-      completedAt: new Date().toISOString(),
-      lastAttemptAt: new Date().toISOString()
-    }])),
+    taskStats: Object.fromEntries(completed.map(id => {
+      const contract = evaluationContractForTask(id);
+      return [id, {
+        attempts: 1,
+        incorrect: 0,
+        hintsUsed: 0,
+        independentPasses: 1,
+        completedAt: new Date().toISOString(),
+        lastAttemptAt: new Date().toISOString(),
+        ...(contract ? {
+          evidenceContractVersion: FOUNDATION_EVIDENCE_CONTRACT_VERSION,
+          evaluationContractId: contract.id,
+          evaluationContractVersion: TASK_EVALUATION_CONTRACT_VERSION,
+          validatedFixtureIds: contract.fixtures.map(fixture => fixture.id),
+          hiddenFixtureIds: contract.fixtures
+            .filter(fixture => fixture.visibility !== 'public')
+            .map(fixture => fixture.id)
+        } : {})
+      }];
+    })),
     xp: 3600,
     streak: 5,
     history: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => ({ day, solved: 2 })),
@@ -79,7 +96,7 @@ test('desktop checkpoint retries offline evidence sync and hydrates Learning Pat
 
   await replaceEditorSql(page, FIRST_CHECKPOINT_SOLUTION);
   await checkpointSession.getByRole('button', { name: 'Проверить SQL' }).click();
-  await expect(checkpointSession.locator('.assessment-feedback.success')).toContainText('Результат совпал');
+  await expect(checkpointSession.locator('.assessment-feedback.success')).toContainText('невидимые данные пройдены');
   await expect(checkpointSession.getByTestId('checkpoint-result')).toBeVisible();
 
   const sessionKey = `sql-academy-checkpoint-session-v1:${String(auth.session.userId)}`;

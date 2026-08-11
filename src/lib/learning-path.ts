@@ -114,7 +114,6 @@ function clamp(value: number, min = 0, max = 100) {
 }
 
 function taskSatisfied(task: SqlTask, progress: Progress) {
-  if (task.mode === 'lesson') return progress.completed.includes(task.id);
   return hasIndependentTaskEvidence(progress, task.id);
 }
 

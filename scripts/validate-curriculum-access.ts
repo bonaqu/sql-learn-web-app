@@ -101,7 +101,8 @@ if (dmlLesson && coreLesson) {
     }]))),
     updatedAt: answeredAt
   };
-  assert(lessonAccess(dmlLesson, emptyProgress, lessonReady, []).unlocked, 'Completed prerequisite lessons with all concept checks must unlock DML');
+  assert(!lessonAccess(dmlLesson, emptyProgress, lessonReady, []).unlocked,
+    'Theory and concept checks alone must not unlock DML without independent SQL contracts');
 
   const weakDiagnostic = diagnosticReport(60, 'transactions', 60);
   assert(!lessonAccess(dmlLesson, emptyProgress, emptyCurriculum, [weakDiagnostic]).unlocked, 'Weak diagnostic must not unlock advanced content');
@@ -127,4 +128,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Curriculum access validated: ${advancedCurriculumLessons.length} advanced lessons, multi-check prerequisite evidence, mastery ${PREREQUISITE_MASTERY}%, module bypass ${DIAGNOSTIC_MODULE_BYPASS}%, and no global-score teleport at ${DIAGNOSTIC_GLOBAL_BYPASS}%.`);
+process.stdout.write(`Curriculum access validated: ${advancedCurriculumLessons.length} advanced lessons, theory-only access rejected, independent task evidence required, module bypass ${DIAGNOSTIC_MODULE_BYPASS}%, and no global-score teleport at ${DIAGNOSTIC_GLOBAL_BYPASS}%.\n`);
