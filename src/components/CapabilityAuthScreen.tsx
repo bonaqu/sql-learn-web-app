@@ -300,7 +300,7 @@ export default function CapabilityAuthScreen({ onAuthenticated }: { onAuthentica
       <div className="auth-brand-copy">
         <span className="auth-kicker">Support Engineering Track</span>
         <h1>Твой SQL-прогресс — только после входа.</h1>
-        <p>Логин и пароль синхронизируют задачи, mastery, учебный путь и будущие экзамены между всеми устройствами.</p>
+        <p>Логин и пароль синхронизируют задачи, освоение тем, учебный путь и будущие экзамены между всеми устройствами.</p>
         <div className="auth-proof"><span><ShieldCheck />контакты только при готовом провайдере</span><span><Cloud />Cloudflare D1 sync</span><span><KeyRound />8 recovery-кодов</span></div>
       </div>
       <small>Пароль не хранится в открытом виде. Email или телефон никогда не заменяют пароль и recovery-коды.</small>

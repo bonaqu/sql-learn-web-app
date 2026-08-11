@@ -263,7 +263,7 @@ function App() {
     setStatus('idle');
     setMessage(readiness.canRun
       ? 'Задача открыта. Сначала опиши ожидаемый результат, затем пиши SQL.'
-      : `Preview без mastery: ${readiness.reason}`);
+      : `Предпросмотр без зачёта: ${readiness.reason}`);
     setVisibleHints(0);
     setShowSolution(false);
     setSolutionViewedThisSession(false);
@@ -284,7 +284,7 @@ function App() {
     }
     if (!selectedReadiness.canRun) {
       setStatus('idle');
-      setMessage(`Preview без mastery: ${selectedReadiness.reason}`);
+      setMessage(`Предпросмотр без зачёта: ${selectedReadiness.reason}`);
       return;
     }
     if (!engine) return;
@@ -302,8 +302,8 @@ function App() {
       setAttemptDiagnostic(diagnostic);
       setMessage(correct
         ? independent
-          ? 'Верно. Independent mastery подтверждён: результат получен без подсказки и эталона.'
-          : 'Верно. Результат совпал, но эта сессия была guided. Повтори позже без подсказки и эталона для independent mastery.'
+          ? 'Верно. Самостоятельное решение подтверждено: результат получен без подсказки и эталона.'
+          : 'Верно. Результат совпал, но в этой попытке использовалась помощь. Повтори позже без подсказки и эталона, чтобы закрепить самостоятельное решение.'
         : `${diagnostic?.title || 'Результат отличается'}. ${diagnostic?.nextStep || 'Сравни контракт результата.'}`);
       setProgress(current => recordAttempt(current, selected, correct, {
         diagnostic: diagnostic || undefined,
@@ -575,7 +575,7 @@ function App() {
               <div>
                 <small>Очередь актуальна</small>
                 <h1 id="review-empty-title">На сегодня повторений нет</h1>
-                <p>Новые задачи появятся после ошибок, guided-попыток или когда подойдёт срок следующего самостоятельного воспроизведения.</p>
+                <p>Новые задачи появятся после ошибок, попыток с помощью или когда подойдёт срок следующего самостоятельного воспроизведения.</p>
               </div>
               <button className="primary" onClick={() => workspaceJourney?.action ? openCanonicalAction() : navigate('practice')}>
                 <BrainCircuit /> Продолжить обучение
@@ -627,11 +627,11 @@ function App() {
                 <span>{selected.topic}</span><span>{selected.difficulty}</span><span>{selected.xp} XP</span>
                 <span>{workspaceStageLabel(selected)}</span>
                 <span className={selectedReadiness.canRun ? 'stage-ready' : 'stage-preview'}>{selectedReadiness.label}</span>
-                <span className={guidedSession ? 'guided-attempt' : 'independent-attempt'}>{guidedSession ? 'Guided attempt' : 'Independent attempt'}</span>
+                <span className={guidedSession ? 'guided-attempt' : 'independent-attempt'}>{guidedSession ? 'Попытка с помощью' : 'Самостоятельная попытка'}</span>
               </div>
               {!selectedReadiness.canRun && <section className="workspace-readiness-gate" data-testid="workspace-preview-gate" aria-live="polite">
                 <LockKeyhole />
-                <div><small>{selectedReadiness.status === 'loading' ? 'Проверяю evidence' : 'Preview без mastery'}</small><h3>{selectedReadiness.label}</h3><p>{selectedReadiness.reason}</p></div>
+                <div><small>{selectedReadiness.status === 'loading' ? 'Проверяю готовность' : 'Предпросмотр без зачёта'}</small><h3>{selectedReadiness.label}</h3><p>{selectedReadiness.reason}</p></div>
                 <button onClick={openCanonicalAction} disabled={!workspaceJourney}>Открыть правильный следующий этап <ChevronRight /></button>
               </section>}
               <div className="task-title-row">
@@ -686,13 +686,13 @@ function App() {
             </div>
 
             <div className="runner-actions">
-              <button className="primary" onClick={runSql} disabled={!engine || !selectedReadiness.canRun}><Code2 /> {selectedReadiness.canRun ? 'Проверить SQL' : 'Preview: запуск закрыт'} <kbd>Ctrl ↵</kbd></button>
+              <button className="primary" onClick={runSql} disabled={!engine || !selectedReadiness.canRun}><Code2 /> {selectedReadiness.canRun ? 'Проверить SQL' : 'Запуск пока закрыт'} <kbd>Ctrl ↵</kbd></button>
               <button onClick={() => { setSql(selected.starter); setResult([]); setStatus('idle'); setAttemptDiagnostic(null); setMessage('Редактор сброшен.'); }}><RotateCcw /> Сбросить</button>
               <button onClick={toggleSolution} disabled={!selectedReadiness.canRun}><Target /> {showSolution ? 'Скрыть решение' : solutionUnlocked ? 'Показать решение' : 'Решение заблокировано'}</button>
             </div>
 
             {showSolution && <div className="solution-card"><strong>Эталонный вариант</strong><pre>{selected.solution}</pre></div>}
-            <div className={`feedback ${status}`} role="status" aria-live="polite"><p>{message}</p><span>Попыток: {currentStats.attempts} · Ошибок: {currentStats.incorrect} · Подсказок: {currentStats.hintsUsed} · Independent: {currentStats.independentPasses || 0}</span></div>
+            <div className={`feedback ${status}`} role="status" aria-live="polite"><p>{message}</p><span>Попыток: {currentStats.attempts} · Ошибок: {currentStats.incorrect} · Подсказок: {currentStats.hintsUsed} · Самостоятельно: {currentStats.independentPasses || 0}</span></div>
             {status === 'success' && workspaceJourney?.action && <section className="workspace-next-step" data-testid="workspace-next-step">
               <CheckCircle2 />
               <div><small>Следующий канонический этап</small><h3>{workspaceJourney.action.title}</h3><p>{workspaceJourney.action.description}</p></div>

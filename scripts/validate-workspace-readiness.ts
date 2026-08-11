@@ -194,8 +194,8 @@ const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8
 for (const marker of [
   'workspaceTaskReadiness',
   'workspace-preview-gate',
-  'Preview без mastery',
-  'Preview: запуск закрыт',
+  'Предпросмотр без зачёта',
+  'Запуск пока закрыт',
   'workspace-next-step',
   'openCanonicalAction',
   'JOURNEY_EVIDENCE_EVENTS'
