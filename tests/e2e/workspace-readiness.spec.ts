@@ -22,9 +22,9 @@ test('desktop academy keeps Interview browseable but gates execution before the 
 
   const gate = page.getByTestId('workspace-preview-gate');
   await expect(gate).toBeVisible();
-  await expect(gate).toContainText(/Preview без mastery/i);
+  await expect(gate).toContainText(/Предпросмотр без зачёта/i);
   await expect(gate).toContainText(/контрольн(?:ая|ую) точк/i);
-  await expect(page.getByRole('button', { name: /Preview: запуск закрыт/i })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /Запуск пока закрыт/i })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Следующая подсказка' })).toBeDisabled();
   await expect(page.getByRole('button', { name: /Решение заблокировано/i })).toBeDisabled();
   await expectNoHorizontalOverflow(page);

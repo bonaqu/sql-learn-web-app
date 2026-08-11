@@ -60,15 +60,15 @@ test('desktop mastery loop distinguishes guided success, independent retry and r
   await page.getByRole('button', { name: 'Следующая подсказка' }).click();
   await replaceEditorSql(page, FIRST_SOLUTION);
   await page.getByRole('button', { name: /Проверить SQL/i }).click();
-  await expect(page.locator('.feedback.success')).toContainText('guided');
-  await expect(page.locator('.feedback.success')).toContainText('Independent: 0');
+  await expect(page.locator('.feedback.success')).toContainText('использовалась помощь');
+  await expect(page.locator('.feedback.success')).toContainText('Самостоятельно: 0');
 
   await page.getByRole('button', { name: /002 Форма результата: обращение и состояние/ }).click();
   await page.getByRole('button', { name: /001 Форма результата: обращение и сервис/ }).click();
   await replaceEditorSql(page, FIRST_SOLUTION);
   await page.getByRole('button', { name: /Проверить SQL/i }).click();
-  await expect(page.locator('.feedback.success')).toContainText('Independent mastery подтверждён');
-  await expect(page.locator('.feedback.success')).toContainText('Independent: 1');
+  await expect(page.locator('.feedback.success')).toContainText('Самостоятельное решение подтверждено');
+  await expect(page.locator('.feedback.success')).toContainText('Самостоятельно: 1');
 
   await openAdvancedTool(page, 'curriculum-trigger');
   const studio = page.getByRole('dialog', { name: /Учебная программа/i });

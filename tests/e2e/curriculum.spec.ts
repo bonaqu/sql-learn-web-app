@@ -88,7 +88,7 @@ test('desktop curriculum honest foundation gate unlocks filtering only after fou
     const run = page.getByRole('button', { name: /Проверить SQL/i });
     await expect(run).toBeEnabled();
     await run.click();
-    await expect(page.locator('.feedback.success')).toContainText('Independent mastery подтверждён');
+    await expect(page.locator('.feedback.success')).toContainText('Самостоятельное решение подтверждено');
     await expect.poll(() => page.evaluate(({ key, taskId }) => {
       const progress = JSON.parse(localStorage.getItem(key) || 'null');
       const stats = progress?.taskStats?.[taskId];

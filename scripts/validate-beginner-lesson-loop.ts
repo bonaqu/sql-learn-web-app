@@ -8,6 +8,27 @@ import { tasks } from '../src/data/course-catalog';
 const expectedModules = ['sql-thinking', 'filtering', 'select'] as const;
 const forbiddenVisibleTerms = /\b(mastery|frontier|foundation|evidence|placement)\b/i;
 
+const noviceJourneySources = [
+  '../src/App.tsx',
+  '../src/components/AuthGate.tsx',
+  '../src/components/CapabilityAuthScreen.tsx',
+  '../src/components/BeginnerLessonLoop.tsx',
+  '../src/components/CurriculumPortal.tsx',
+  '../src/components/ConceptCheckPanel.tsx',
+  '../src/components/LessonMasteryPanel.tsx'
+] as const;
+
+function learnerCopyLeaks(source: string) {
+  const candidates: string[] = [];
+  for (const line of source.split(/\r?\n/)) {
+    for (const match of line.matchAll(/(['"`])((?:\\.|(?!\1).)*)\1/g)) {
+      candidates.push(match[2].replace(/\$\{[^}]+\}/g, ''));
+    }
+    for (const match of line.matchAll(/>([^<>{}]*)</g)) candidates.push(match[1]);
+  }
+  return candidates.filter(copy => /[А-Яа-яЁё]/.test(copy) && forbiddenVisibleTerms.test(copy));
+}
+
 function violations(cycle: Partial<BeginnerLessonCycle>) {
   const result: string[] = [];
   if (!cycle.objective || !cycle.successCriterion) result.push('measurable objective');
@@ -51,6 +72,11 @@ const loopSource = readFileSync(new URL('../src/components/BeginnerLessonLoop.ts
 const portalSource = readFileSync(new URL('../src/components/CurriculumPortal.tsx', import.meta.url), 'utf8');
 const conceptSource = readFileSync(new URL('../src/components/ConceptCheckPanel.tsx', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../src/styles-curriculum.css', import.meta.url), 'utf8');
+
+for (const sourcePath of noviceJourneySources) {
+  const source = readFileSync(new URL(sourcePath, import.meta.url), 'utf8');
+  assert.deepEqual(learnerCopyLeaks(source), [], `${sourcePath}: Russian learner copy exposes internal terminology`);
+}
 
 assert.match(loopSource, /worked-example-locked/, 'Worked SQL must stay hidden until prediction');
 assert.match(loopSource, /onStageComplete\(lesson\.sections\[0\]\.id\)/, 'Prediction must produce progress evidence');
