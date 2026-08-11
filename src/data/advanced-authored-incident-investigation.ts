@@ -258,7 +258,7 @@ ORDER BY request_failure_pct DESC, plan, region;`,
     hints: ['impacted user — пользователь хотя бы с одной ошибкой.', 'Request rate использует SUM(failed)/SUM(total).', 'Сохрани entity grain: сначала per_user, затем cohort.']
   },
   'task-238': {
-    title: 'Ранжируй причины через evidence matrix',
+    title: 'Ранжируй причины по матрице подтверждений',
     description: 'Для каждой гипотезы агрегируй взвешенные supporting, contradicting и neutral evidence items. Положительный вес поддерживает гипотезу, противоречие вычитается; выведи evidence score и rank, чтобы итоговая причина опиралась на набор независимых наблюдений, а не на одну корреляцию.',
     starter: `CREATE TEMP TABLE evidence_matrix(hypothesis TEXT NOT NULL, evidence_name TEXT NOT NULL, weight INTEGER NOT NULL, result TEXT NOT NULL);
 
@@ -316,7 +316,7 @@ GROUP BY region ORDER BY failed_requests DESC,region;`,
     hints: ['Фильтр фиксирует подтверждённую affected population.', 'Сначала агрегируй на user grain, чтобы не считать пользователя несколько раз.', 'Ordered subquery делает GROUP_CONCAT воспроизводимым.']
   },
   'task-240': {
-    title: 'Собери воспроизводимый incident evidence report',
+    title: 'Собери воспроизводимый отчёт с подтверждениями по инциденту',
     description: 'Сформируй итоговый набор фактов по scope, timing, quality falsification, основной гипотезе, действию, восстановлению и follow-up. Посчитай статусы, evidence gap и report readiness; расследование считается завершённым только при доказанном восстановлении и явно открытом профилактическом действии.',
     starter: `-- Напиши итоговый evidence report с нуля:
 -- создай facts для scope, timing, quality, hypothesis, action, recovery, followup;

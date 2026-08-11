@@ -67,6 +67,9 @@ for (const moduleId of expectedModules) {
 
 assert.deepEqual(new Set(allCoveredTaskIds), new Set(foundationCorridorTaskIds), 'Every foundation corridor task must appear exactly once in the editorial map');
 assert.equal(allCoveredTaskIds.length, new Set(allCoveredTaskIds).size, 'Foundation task appears in more than one beginner cycle');
+for (const task of tasks) {
+  assert.equal(forbiddenVisibleTerms.test(task.title), false, `${task.id}: task list title exposes internal terminology`);
+}
 
 const loopSource = readFileSync(new URL('../src/components/BeginnerLessonLoop.tsx', import.meta.url), 'utf8');
 const portalSource = readFileSync(new URL('../src/components/CurriculumPortal.tsx', import.meta.url), 'utf8');
