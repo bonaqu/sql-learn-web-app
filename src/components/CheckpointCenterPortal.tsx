@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import initSqlJs from 'sql.js';
+import initSqlJs from '../lib/sql-browser';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -177,9 +177,9 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
 
   useEffect(() => {
     if (!open || !session || engine || engineError) return;
-    initSqlJs({ locateFile: file => `https://sql.js.org/dist/${file}` })
+    initSqlJs()
       .then(setEngine)
-      .catch(() => setEngineError('Не удалось загрузить SQLite WASM. Проверь соединение и открой Checkpoint Center снова.'));
+      .catch(() => setEngineError('Не удалось запустить локальный SQLite. Перезагрузи приложение и открой проверку снова.'));
   }, [engine, engineError, open, session]);
 
   useEffect(() => {

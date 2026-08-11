@@ -107,7 +107,7 @@ export default function DeferredFeaturePortals() {
       <AssessmentCenterPortal externalLauncher openRequest={assessmentRequest} />
       <AssessmentCalibrationPanel />
     </Suspense>}
-    {curriculumLoaded && <Suspense fallback={<div className="feature-loading" role="status">Загрузка Curriculum Studio…</div>}>
+    {curriculumLoaded && <Suspense fallback={<div className="feature-loading" role="status">Загрузка учебной программы…</div>}>
       <CurriculumPortal openRequest={curriculumRequest} />
       <CurriculumContinuityCompanion />
     </Suspense>}

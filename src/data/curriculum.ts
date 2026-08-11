@@ -1,5 +1,6 @@
 import { moduleGuides, modules, tasks } from './course';
 import type { AdvancedModuleId } from './advanced-syllabus';
+import type { BeginnerLessonCycle } from './beginner-lesson-cycles';
 
 type CoreModuleId = typeof modules[number][0];
 export type CourseModuleId = CoreModuleId | AdvancedModuleId;
@@ -47,6 +48,7 @@ export interface CurriculumLesson {
   example: RunnableExample;
   check: KnowledgeCheck;
   practiceTaskIds: string[];
+  beginnerCycle?: BeginnerLessonCycle;
 }
 
 export interface CurriculumCheckpoint {

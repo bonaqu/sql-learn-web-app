@@ -16,7 +16,7 @@ async function solveConceptCard(card: Locator) {
   const options = card.locator('label');
   for (let index = 0; index < await options.count(); index += 1) {
     await options.nth(index).click();
-    await card.getByRole('button', { name: /Проверить reasoning|Проверить ещё раз/ }).click();
+    await card.getByRole('button', { name: /Проверить рассуждение|Проверить ещё раз/ }).click();
     if (await card.evaluate(element => element.classList.contains('correct'))) return;
   }
   throw new Error('No correct concept-check option found');
@@ -24,10 +24,17 @@ async function solveConceptCard(card: Locator) {
 
 async function completeFirstLessonTheory(page: import('@playwright/test').Page) {
   await openAdvancedTool(page, 'curriculum-trigger');
-  const studio = page.getByRole('dialog', { name: /Curriculum Studio/i });
+  const studio = page.getByRole('dialog', { name: /Учебная программа/i });
   await expect(studio).toBeVisible();
-  const sectionButtons = studio.getByRole('button', { name: /Отметить раздел изученным/i });
-  while (await sectionButtons.count()) await sectionButtons.first().click();
+  const loop = studio.getByTestId('beginner-lesson-loop');
+  await loop.getByTestId('beginner-prediction').getByRole('radio').nth(1).check();
+  await loop.getByRole('button', { name: 'Проверить прогноз' }).click();
+  await loop.getByRole('button', { name: 'Выполнить пример' }).click();
+  await expect(loop.getByTestId('beginner-example-result')).toBeVisible();
+  const faded = loop.getByTestId('beginner-faded-practice');
+  await faded.getByRole('textbox', { name: /SQL с пропуском/i }).fill('SELECT ticket_id, status FROM tickets ORDER BY ticket_id;');
+  await faded.getByRole('button', { name: 'Проверить мой SQL' }).click();
+  await expect(faded).toContainText('форма результата задана явно');
 
   const conceptPanel = studio.getByTestId('concept-check-panel');
   const cards = conceptPanel.locator('.concept-check-card');
@@ -35,7 +42,7 @@ async function completeFirstLessonTheory(page: import('@playwright/test').Page) 
   for (let index = 0; index < await cards.count(); index += 1) await solveConceptCard(cards.nth(index));
   await expect(conceptPanel).toContainText('3/3');
   await expect(studio.getByTestId('lesson-mastery-loop')).toContainText('Реши связанную SQL-задачу');
-  await studio.getByRole('button', { name: 'Закрыть Curriculum Studio' }).click();
+  await studio.getByRole('button', { name: 'Закрыть учебную программу' }).click();
 }
 
 test('desktop mastery loop distinguishes guided success, independent retry and retention evidence', async ({ page }, testInfo) => {
@@ -64,14 +71,14 @@ test('desktop mastery loop distinguishes guided success, independent retry and r
   await expect(page.locator('.feedback.success')).toContainText('Independent: 1');
 
   await openAdvancedTool(page, 'curriculum-trigger');
-  const studio = page.getByRole('dialog', { name: /Curriculum Studio/i });
-  await expect(studio.getByText('Applied mastery', { exact: true }).first()).toBeVisible();
-  await expect(studio.getByTestId('lesson-mastery-loop')).toContainText('independent SQL evidence');
+  const studio = page.getByRole('dialog', { name: /Учебная программа/i });
+  await expect(studio.getByText('Получилось самостоятельно', { exact: true }).first()).toBeVisible();
+  await expect(studio.getByTestId('lesson-mastery-loop')).toContainText('самостоятельных решения');
   const remediation = studio.getByTestId('lesson-remediation');
   await expect(remediation).toContainText('SQL начинается с синтаксиса');
   await expect(remediation).toContainText('Сначала запиши');
   await page.screenshot({ path: testInfo.outputPath('desktop-mastery-loop.png'), fullPage: true });
-  await studio.getByRole('button', { name: 'Закрыть Curriculum Studio' }).click();
+  await studio.getByRole('button', { name: 'Закрыть учебную программу' }).click();
 
   await openAdvancedTool(page, 'syllabus-trigger');
   const syllabus = page.getByRole('dialog', { name: /SQL Syllabus Center/i });

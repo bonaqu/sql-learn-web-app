@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import initSqlJs from 'sql.js';
+import initSqlJs from '../lib/sql-browser';
 import {
   AlarmClock,
   AlertTriangle,
@@ -165,7 +165,7 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
     if (!open || !session || engine || engineError) return;
     initSqlJs()
       .then(setEngine)
-      .catch(() => setEngineError('Не удалось загрузить SQLite WASM. Проверь соединение и открой Assessment Center снова.'));
+      .catch(() => setEngineError('Не удалось запустить локальный SQLite. Перезагрузи приложение и открой проверку снова.'));
   }, [engine, engineError, open, session]);
 
   useEffect(() => {

@@ -16,10 +16,22 @@ async function solveConceptCard(card: import('@playwright/test').Locator) {
   const options = card.locator('label');
   for (let index = 0; index < await options.count(); index += 1) {
     await options.nth(index).click();
-    await card.getByRole('button', { name: /Проверить reasoning|Проверить ещё раз/ }).click();
+    await card.getByRole('button', { name: /Проверить рассуждение|Проверить ещё раз/ }).click();
     if (await card.evaluate(element => element.classList.contains('correct'))) return;
   }
   throw new Error('No correct concept-check option found');
+}
+
+async function completeBeginnerLoop(studio: import('@playwright/test').Locator) {
+  const loop = studio.getByTestId('beginner-lesson-loop');
+  await loop.getByTestId('beginner-prediction').getByRole('radio').nth(1).check();
+  await loop.getByRole('button', { name: 'Проверить прогноз' }).click();
+  await loop.getByRole('button', { name: 'Выполнить пример' }).click();
+  await expect(loop.getByTestId('beginner-example-result')).toBeVisible();
+  const faded = loop.getByTestId('beginner-faded-practice');
+  await faded.getByRole('textbox', { name: /SQL с пропуском/i }).fill('SELECT ticket_id, status FROM tickets ORDER BY ticket_id;');
+  await faded.getByRole('button', { name: 'Проверить мой SQL' }).click();
+  await expect(faded).toContainText('форма результата задана явно');
 }
 
 async function replacePracticeSql(page: import('@playwright/test').Page, sql: string) {
@@ -35,12 +47,10 @@ test('desktop curriculum honest foundation gate unlocks filtering only after fou
   await page.goto('./');
   await openAdvancedTool(page, 'curriculum-trigger');
 
-  const studio = page.getByRole('dialog', { name: /Curriculum Studio/i });
+  const studio = page.getByRole('dialog', { name: /Учебная программа/i });
   await expect(studio).toBeVisible();
   await expect(studio.getByRole('heading', { name: 'SQL-мышление', exact: true })).toBeVisible();
-  const sectionButtons = studio.getByRole('button', { name: /Отметить раздел изученным/i });
-  await expect(sectionButtons).toHaveCount(3);
-  while (await sectionButtons.count()) await sectionButtons.first().click();
+  await completeBeginnerLoop(studio);
   const cards = studio.getByTestId('concept-check-panel').locator('.concept-check-card');
   await expect(cards).toHaveCount(3);
   for (let index = 0; index < await cards.count(); index += 1) await solveConceptCard(cards.nth(index));
@@ -111,16 +121,11 @@ test('desktop curriculum studio diagnoses misconceptions and syncs project draft
 
   const trigger = page.getByTestId('curriculum-trigger');
   await openAdvancedTool(page, 'curriculum-trigger');
-  const studio = page.getByRole('dialog', { name: /Curriculum Studio/i });
+  const studio = page.getByRole('dialog', { name: /Учебная программа/i });
   await expect(studio).toBeVisible();
   await expect(page.getByRole('heading', { name: 'SQL-мышление', exact: true })).toBeVisible();
 
-  await page.getByRole('button', { name: /Выполнить на SQLite/i }).click();
-  await expect(page.getByTestId('curriculum-example-result')).toBeVisible();
-
-  const sectionButtons = page.getByRole('button', { name: /Отметить раздел изученным/i });
-  await expect(sectionButtons).toHaveCount(3);
-  while (await sectionButtons.count()) await sectionButtons.first().click();
+  await completeBeginnerLoop(studio);
 
   const conceptPanel = page.getByTestId('concept-check-panel');
   await expect(conceptPanel).toBeVisible();
@@ -129,7 +134,7 @@ test('desktop curriculum studio diagnoses misconceptions and syncs project draft
 
   const explanation = page.getByTestId('concept-check-explanation');
   await explanation.getByLabel('Выбрать индекс').check();
-  await explanation.getByRole('button', { name: 'Проверить reasoning' }).click();
+  await explanation.getByRole('button', { name: 'Проверить рассуждение' }).click();
   await expect(explanation.getByText(/Заблуждение:/)).toBeVisible();
   await expect(explanation.locator('.concept-option-feedback')).toContainText(/Сначала|контракт|результат/i);
   await explanation.getByLabel('Описать одну строку и столбцы результата').check();
@@ -144,8 +149,8 @@ test('desktop curriculum studio diagnoses misconceptions and syncs project draft
   await page.getByLabel('Поиск по урокам').fill('DML');
   await page.getByRole('button', { name: /DML и безопасные изменения: основа, закрыто/i }).click();
   await expect(page.getByTestId('curriculum-access-gate')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Эта advanced-тема пока закрыта' })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Diagnostic SQL Check/i })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Эта тема пока закрыта' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Проверить SQL-знания/i })).toBeVisible();
   await expectNoSeriousAxeViolations(page);
 
   await page.getByRole('tab', { name: /Project Lab/i }).click();
@@ -161,7 +166,7 @@ test('desktop curriculum studio diagnoses misconceptions and syncs project draft
   await expectNoSeriousAxeViolations(page);
   await page.screenshot({ path: testInfo.outputPath('curriculum-misconception-desktop.png'), fullPage: true });
 
-  await page.getByRole('button', { name: 'Закрыть Curriculum Studio' }).click();
+  await page.getByRole('button', { name: 'Закрыть учебную программу' }).click();
   await expect(trigger).toBeFocused();
 
   const secondContext = await browser.newContext();
@@ -169,7 +174,7 @@ test('desktop curriculum studio diagnoses misconceptions and syncs project draft
   await loginPage(secondPage, auth.username, auth.password);
   await secondPage.goto('./');
   await openAdvancedTool(secondPage, 'curriculum-trigger');
-  const secondStudio = secondPage.getByRole('dialog', { name: /Curriculum Studio/i });
+  const secondStudio = secondPage.getByRole('dialog', { name: /Учебная программа/i });
   await secondStudio.getByTestId('curriculum-sync').click();
   await expect(secondStudio.getByTestId('curriculum-sync')).toContainText('В облаке', { timeout: 25_000 });
   await secondPage.getByRole('tab', { name: /Project Lab/i }).click();
@@ -182,7 +187,7 @@ test('mobile misconception curriculum remains accessible without horizontal over
   await authenticatePage(page, 'curriculummobile');
   await page.goto('./');
   await openAdvancedTool(page, 'curriculum-trigger');
-  const studio = page.getByRole('dialog', { name: /Curriculum Studio/i });
+  const studio = page.getByRole('dialog', { name: /Учебная программа/i });
   await expect(studio).toBeVisible();
   await expect(page.getByTestId('curriculum-reader')).toBeVisible();
   await expect(page.getByTestId('concept-check-panel')).toBeVisible();
