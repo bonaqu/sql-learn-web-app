@@ -1,4 +1,5 @@
 import { curriculumLessons } from '../src/data/complete-curriculum.ts';
+import { evaluationContractForTask } from '../src/data/foundation-evaluation-contracts.ts';
 import { lessonChecks } from '../src/data/lesson-checks.ts';
 import { tasks, type SqlTask } from '../src/data/course-catalog.ts';
 import { classifySqlAttempt, diagnosticForKind } from '../src/lib/attempt-diagnostics.ts';
@@ -20,6 +21,11 @@ import {
   reviewStats,
   type ReviewState
 } from '../src/lib/spaced-repetition.ts';
+import {
+  FOUNDATION_EVIDENCE_CONTRACT_VERSION,
+  TASK_EVALUATION_CONTRACT_VERSION,
+  type TaskEvaluationEvidence
+} from '../src/lib/task-evaluation-contract.ts';
 
 const failures: string[] = [];
 const assert = (condition: unknown, message: string) => { if (!condition) failures.push(message); };
@@ -33,6 +39,20 @@ function taskFor(moduleId: string): SqlTask {
 
 function blankProgress(): Progress {
   return { ...defaultProgress, taskStats: {}, completed: [], history: defaultProgress.history.map(item => ({ ...item })) };
+}
+
+function contractEvidenceFor(task: SqlTask): TaskEvaluationEvidence | undefined {
+  const contract = evaluationContractForTask(task.id);
+  if (!contract) return undefined;
+  return {
+    contractId: contract.id,
+    contractVersion: TASK_EVALUATION_CONTRACT_VERSION,
+    evidenceContractVersion: FOUNDATION_EVIDENCE_CONTRACT_VERSION,
+    fixtureIds: contract.fixtures.map(fixture => fixture.id),
+    hiddenFixtureIds: contract.fixtures
+      .filter(fixture => fixture.visibility !== 'public')
+      .map(fixture => fixture.id)
+  };
 }
 
 const selectTask = taskFor('select');
@@ -62,7 +82,10 @@ progress = recordAttempt(progress, selectTask, true, { independent: false });
 assert(!hasIndependentTaskEvidence(progress, selectTask.id), 'Guided success must not become independent evidence');
 progress = recordSolutionView(progress, selectTask.id);
 assert(progress.taskStats[selectTask.id]?.solutionViews === 1, 'Solution view must be explicit evidence');
-progress = recordAttempt(progress, selectTask, true, { independent: true });
+progress = recordAttempt(progress, selectTask, true, {
+  independent: true,
+  contractEvidence: contractEvidenceFor(selectTask)
+});
 assert(hasIndependentTaskEvidence(progress, selectTask.id), 'Later independent retry must establish mastery');
 
 const legacyProgress: Progress = {
@@ -71,12 +94,19 @@ const legacyProgress: Progress = {
   taskStats: { [selectTask.id]: { attempts: 1, incorrect: 0, hintsUsed: 0, completedAt: '2026-01-01T00:00:00.000Z' } },
   history: defaultProgress.history.map(item => ({ ...item }))
 };
-assert(hasIndependentTaskEvidence(legacyProgress, selectTask.id), 'Clean legacy one-pass completion should migrate conservatively as independent');
+assert(!hasIndependentTaskEvidence(legacyProgress, selectTask.id), 'Legacy single-fixture completion must not become contracted foundation evidence');
 const guidedLegacy: Progress = {
   ...legacyProgress,
   taskStats: { [selectTask.id]: { attempts: 2, incorrect: 1, hintsUsed: 1, completedAt: '2026-01-01T00:00:00.000Z' } }
 };
 assert(!hasIndependentTaskEvidence(guidedLegacy, selectTask.id), 'Hinted legacy completion must not be assumed independent');
+const uncontractedLegacy: Progress = {
+  ...defaultProgress,
+  completed: [joinTask.id],
+  taskStats: { [joinTask.id]: { attempts: 1, incorrect: 0, hintsUsed: 0, completedAt: '2026-01-01T00:00:00.000Z' } },
+  history: defaultProgress.history.map(item => ({ ...item }))
+};
+assert(hasIndependentTaskEvidence(uncontractedLegacy, joinTask.id), 'Uncontracted legacy modules must retain their compatibility fallback');
 
 const schemaDiagnostic = diagnosticForKind('schema');
 const localProgress: Progress = {
@@ -135,7 +165,10 @@ assert(Boolean(remediation?.misconceptionId), 'Targeted remediation must map to 
 const practiceTask = tasks.find(item => lesson.practiceTaskIds.includes(item.id));
 assert(Boolean(practiceTask), 'Lesson must have a valid practice task');
 if (practiceTask) {
-  const appliedProgress = recordAttempt(blankProgress(), practiceTask, true, { independent: true });
+  const appliedProgress = recordAttempt(blankProgress(), practiceTask, true, {
+    independent: true,
+    contractEvidence: contractEvidenceFor(practiceTask)
+  });
   const applied = lessonMasteryState(lesson, appliedProgress, curriculum);
   assert(applied.mastered, 'Theory, all checks and independent SQL must establish applied mastery');
   assert(!applied.durableMastery && applied.nextAction === 'review', 'Applied mastery must still require retrieval review');

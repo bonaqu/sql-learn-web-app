@@ -1,5 +1,10 @@
 import { modules, SqlTask, tasks } from '../data/course-catalog';
 import type { AttemptDiagnostic, AttemptErrorKind } from './attempt-diagnostics';
+import {
+  FOUNDATION_EVIDENCE_CONTRACT_VERSION,
+  TASK_EVALUATION_CONTRACT_VERSION,
+  type TaskEvaluationEvidence
+} from './task-evaluation-types';
 
 export type ActivityPoint = { day: string; solved: number };
 export type TaskStats = {
@@ -13,6 +18,11 @@ export type TaskStats = {
   lastDiagnostic?: AttemptDiagnostic;
   lastAttemptAt?: string;
   completedAt?: string;
+  evidenceContractVersion?: string;
+  evaluationContractId?: string;
+  evaluationContractVersion?: string;
+  validatedFixtureIds?: string[];
+  hiddenFixtureIds?: string[];
 };
 
 export type Progress = {
@@ -29,6 +39,7 @@ export type Progress = {
 export type AttemptEvidence = {
   diagnostic?: AttemptDiagnostic;
   independent?: boolean;
+  contractEvidence?: TaskEvaluationEvidence;
 };
 
 export const STORAGE_KEY = 'sql-academy-progress-v4';
@@ -83,13 +94,22 @@ function normalizeStats(raw: unknown): Record<string, TaskStats> {
       errorKinds: value.errorKinds && typeof value.errorKinds === 'object' ? value.errorKinds : undefined,
       lastDiagnostic: value.lastDiagnostic && typeof value.lastDiagnostic === 'object' ? value.lastDiagnostic : undefined,
       lastAttemptAt: typeof value.lastAttemptAt === 'string' ? value.lastAttemptAt : undefined,
-      completedAt: typeof value.completedAt === 'string' ? value.completedAt : undefined
+      completedAt: typeof value.completedAt === 'string' ? value.completedAt : undefined,
+      evidenceContractVersion: typeof value.evidenceContractVersion === 'string' ? value.evidenceContractVersion : undefined,
+      evaluationContractId: typeof value.evaluationContractId === 'string' ? value.evaluationContractId : undefined,
+      evaluationContractVersion: typeof value.evaluationContractVersion === 'string' ? value.evaluationContractVersion : undefined,
+      validatedFixtureIds: Array.isArray(value.validatedFixtureIds)
+        ? Array.from(new Set(value.validatedFixtureIds.filter((item): item is string => typeof item === 'string'))).sort()
+        : undefined,
+      hiddenFixtureIds: Array.isArray(value.hiddenFixtureIds)
+        ? Array.from(new Set(value.hiddenFixtureIds.filter((item): item is string => typeof item === 'string'))).sort()
+        : undefined
     };
   }
   return result;
 }
 
-function migrate(raw: unknown): Progress {
+export function migrateProgress(raw: unknown): Progress {
   if (!raw || typeof raw !== 'object') return defaultProgress;
   const value = raw as Partial<Progress> & { attempts?: Record<string, number> };
   const completed = Array.isArray(value.completed) ? value.completed.filter(item => typeof item === 'string') : [];
@@ -116,10 +136,10 @@ function migrate(raw: unknown): Progress {
 export function loadProgress(): Progress {
   try {
     const current = localStorage.getItem(STORAGE_KEY);
-    if (current) return migrate(JSON.parse(current));
+    if (current) return migrateProgress(JSON.parse(current));
     for (const key of LEGACY_KEYS) {
       const legacy = localStorage.getItem(key);
-      if (legacy) return migrate(JSON.parse(legacy));
+      if (legacy) return migrateProgress(JSON.parse(legacy));
     }
   } catch {
     return defaultProgress;
@@ -178,7 +198,22 @@ export function recordAttempt(
         errorKinds,
         lastDiagnostic: !correct && evidence.diagnostic ? evidence.diagnostic : previous.lastDiagnostic,
         lastAttemptAt: now.toISOString(),
-        completedAt: newlyCompleted ? now.toISOString() : previous.completedAt
+        completedAt: newlyCompleted ? now.toISOString() : previous.completedAt,
+        evidenceContractVersion: independentPass && evidence.contractEvidence
+          ? evidence.contractEvidence.evidenceContractVersion
+          : previous.evidenceContractVersion,
+        evaluationContractId: independentPass && evidence.contractEvidence
+          ? evidence.contractEvidence.contractId
+          : previous.evaluationContractId,
+        evaluationContractVersion: independentPass && evidence.contractEvidence
+          ? evidence.contractEvidence.contractVersion
+          : previous.evaluationContractVersion,
+        validatedFixtureIds: independentPass && evidence.contractEvidence
+          ? [...evidence.contractEvidence.fixtureIds].sort()
+          : previous.validatedFixtureIds,
+        hiddenFixtureIds: independentPass && evidence.contractEvidence
+          ? [...evidence.contractEvidence.hiddenFixtureIds].sort()
+          : previous.hiddenFixtureIds
       }
     }
   };
@@ -209,6 +244,15 @@ export function recordSolutionView(progress: Progress, taskId: string): Progress
 export function hasIndependentTaskEvidence(progress: Progress, taskId: string) {
   const stats = progress.taskStats[taskId];
   if (!stats || !progress.completed.includes(taskId)) return false;
+  const task = tasks.find(item => item.id === taskId);
+  if (task?.evaluationContractId) {
+    return (stats.independentPasses || 0) > 0
+      && stats.evidenceContractVersion === FOUNDATION_EVIDENCE_CONTRACT_VERSION
+      && stats.evaluationContractVersion === TASK_EVALUATION_CONTRACT_VERSION
+      && stats.evaluationContractId === task.evaluationContractId
+      && (stats.validatedFixtureIds?.length || 0) >= 3
+      && (stats.hiddenFixtureIds?.length || 0) >= 2;
+  }
   if ((stats.independentPasses || 0) > 0) return true;
   return stats.independentPasses === undefined
     && stats.solutionViews === undefined

@@ -101,7 +101,7 @@ test('desktop assessment waits for evidence hydration, uses an adaptive form and
 
   await replaceEditorSql(page, firstTask!.solution);
   await page.getByRole('button', { name: 'Проверить SQL' }).click();
-  await expect(page.locator('.assessment-feedback.success')).toContainText('Результат совпал');
+  await expect(page.locator('.assessment-feedback.success')).toContainText('скрытые проверки пройдены');
   await expect(page.getByTestId('assessment-result')).toBeVisible();
 
   await expect.poll(() => page.evaluate(key => Boolean(localStorage.getItem(key)), sessionKey)).toBe(true);

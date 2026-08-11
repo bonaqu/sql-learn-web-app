@@ -1,6 +1,7 @@
 import { modules as coreModules } from './course';
 import type { SqlTask } from './course';
 import type { CurriculumCheckpoint, CurriculumLesson } from './curriculum';
+import { foundationCheckpointTaskIds } from './checkpoint-task-bank';
 
 const coreModuleIds = new Set<string>(coreModules.map(([id]) => id));
 
@@ -32,13 +33,18 @@ export function applyCoreCheckpointTaskLinks(
   checkpoints: readonly CurriculumCheckpoint[],
   tasks: readonly SqlTask[]
 ): CurriculumCheckpoint[] {
-  return checkpoints.map(checkpoint => ({
-    ...checkpoint,
-    taskIds: checkpoint.moduleIds.map(moduleId => {
-      const practices = moduleTasks(tasks, moduleId).filter(task => task.mode === 'practice');
-      const checkpointTask = practices.at(-1);
-      if (!checkpointTask) throw new Error(`${checkpoint.id}: ${moduleId} has no independent practice for checkpoint evidence`);
-      return checkpointTask.id;
-    })
-  }));
+  return checkpoints.map(checkpoint => {
+    if (checkpoint.id === 'checkpoint-foundation') {
+      return { ...checkpoint, taskIds: [...foundationCheckpointTaskIds] };
+    }
+    return {
+      ...checkpoint,
+      taskIds: checkpoint.moduleIds.map(moduleId => {
+        const practices = moduleTasks(tasks, moduleId).filter(task => task.mode === 'practice');
+        const checkpointTask = practices.at(-1);
+        if (!checkpointTask) throw new Error(`${checkpoint.id}: ${moduleId} has no independent practice for checkpoint evidence`);
+        return checkpointTask.id;
+      })
+    };
+  });
 }

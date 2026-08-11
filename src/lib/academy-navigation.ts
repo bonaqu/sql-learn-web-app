@@ -6,9 +6,9 @@ const CHECKPOINT_REQUEST_KEY = 'sql-academy-checkpoint-open-request';
 const OPEN_CHECKPOINT_EVENT = 'sql-academy-open-checkpoint';
 
 function navLabel(task: SqlTask) {
-  if (task.mode === 'interview') return 'Interview';
-  if (task.mode === 'puzzle') return 'SQL Puzzle';
-  return 'Practice';
+  if (task.mode === 'interview') return 'Интервью';
+  if (task.mode === 'puzzle') return 'SQL-головоломки';
+  return 'Практика';
 }
 
 export function openAcademyTask(taskId: string) {

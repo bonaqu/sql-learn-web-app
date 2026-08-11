@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { QueryExecResult, SqlJsStatic } from 'sql.js';
+import type { SqlJsStatic } from 'sql.js';
 import {
   ArrowLeft,
   Award,
@@ -42,7 +42,6 @@ import {
   X
 } from 'lucide-react';
 import { achievements, modules, SqlTask, tasks } from './data/course-catalog';
-import { trainingSeedSql } from './data/training-dataset';
 import { openJourneyDestination } from './lib/academy-navigation';
 import { classifySqlAttempt, type AttemptDiagnostic } from './lib/attempt-diagnostics';
 import { localMentor, MentorMode } from './lib/mentor';
@@ -90,23 +89,6 @@ function normalize(value: unknown) {
     ? String(value)
     : value.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
   return String(value);
-}
-
-function comparable(results: QueryExecResult[]) {
-  return JSON.stringify(results.map(block => ({
-    columns: block.columns.map(column => column.toLowerCase()),
-    values: block.values.map(row => row.map(normalize))
-  })));
-}
-
-function execute(engine: SqlEngine, source: string) {
-  const database = new engine.Database();
-  try {
-    database.run(trainingSeedSql);
-    return database.exec(source);
-  } finally {
-    database.close();
-  }
 }
 
 function workspaceModeForTask(task: SqlTask, view: View): WorkspaceMode {
@@ -294,7 +276,7 @@ function App() {
     }
   };
 
-  const runSql = useCallback(() => {
+  const runSql = useCallback(async () => {
     if (!selectedReviewTaskIsDue) {
       setStatus('idle');
       setMessage('Эта задача уже не входит в очередь повторения. Открой актуальный следующий шаг.');
@@ -307,16 +289,14 @@ function App() {
     }
     if (!engine) return;
     try {
-      const output = execute(engine, sql);
-      const expected = execute(engine, selected.solution);
-      const correct = comparable(output) === comparable(expected);
+      const { evaluateTaskSql } = await import('./lib/task-evaluation-contract');
+      const evaluation = evaluateTaskSql(engine, selected, sql, 'practice');
+      const output = evaluation.output;
+      const correct = evaluation.correct;
       const independent = correct && visibleHints === 0 && !solutionViewedThisSession;
-      const diagnostic = correct ? null : classifySqlAttempt({
-        task: selected,
-        sql,
-        actual: output,
-        expected
-      });
+      const diagnostic = correct
+        ? null
+        : evaluation.diagnostic || classifySqlAttempt({ task: selected, sql, actual: output });
       setResult(output as SqlTable[]);
       setStatus(correct ? 'success' : 'error');
       setAttemptDiagnostic(diagnostic);
@@ -327,7 +307,8 @@ function App() {
         : `${diagnostic?.title || 'Результат отличается'}. ${diagnostic?.nextStep || 'Сравни контракт результата.'}`);
       setProgress(current => recordAttempt(current, selected, correct, {
         diagnostic: diagnostic || undefined,
-        independent
+        independent,
+        contractEvidence: evaluation.evidence || undefined
       }));
       if (!correct) {
         setMentorMode('debug');

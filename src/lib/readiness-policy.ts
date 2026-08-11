@@ -117,6 +117,8 @@ export type PrerequisiteEvidenceInput = {
   legacyCheckpointPassed: boolean;
   diagnosticModuleScore: number;
   diagnosticGlobalScore: number;
+  independentContracts: number;
+  requiredIndependentContracts: number;
 };
 
 export type PrerequisiteEvidenceSource =
@@ -132,10 +134,9 @@ export function prerequisiteEvidenceSource(
   input: PrerequisiteEvidenceInput
 ): PrerequisiteEvidenceSource {
   const thresholds = READINESS_POLICY.thresholds;
-  if (input.taskMastery >= thresholds.curriculumPrerequisite) return 'tasks';
-  if (input.lessonCompleted) return 'lessons';
+  if (input.requiredIndependentContracts >= 2
+    && input.independentContracts >= input.requiredIndependentContracts) return 'tasks';
   if (input.checkpointReportPassed) return 'checkpoint-report';
-  if (input.legacyCheckpointPassed) return 'checkpoint-legacy';
   if (input.diagnosticModuleScore >= thresholds.diagnosticModuleBypass) return 'diagnostic-module';
   if (input.diagnosticGlobalScore >= thresholds.diagnosticGlobalBypass) return 'diagnostic-global';
   return 'missing';

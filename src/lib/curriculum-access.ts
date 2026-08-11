@@ -14,6 +14,8 @@ import {
 import type { CurriculumProgressV1 } from './curriculum-progress';
 import { moduleMastery } from './learning-path';
 import type { Progress } from './progress';
+import { hasIndependentTaskEvidence } from './progress';
+import { tasks } from '../data/course-catalog';
 import {
   completedAssessmentReports,
   prerequisiteEvidenceSource,
@@ -36,6 +38,8 @@ export type ModuleAccessEvidence = {
   diagnosticModuleScore: number;
   diagnosticGlobalScore: number;
   source: PrerequisiteEvidenceSource;
+  independentContracts: number;
+  requiredIndependentContracts: number;
 };
 
 export type LessonAccess = {
@@ -62,6 +66,12 @@ export function moduleAccessEvidence(
   checkpointReports: CheckpointReport[] = browserCheckpointReports()
 ): ModuleAccessEvidence {
   const mastery = moduleMastery(progress).find(item => item.id === moduleId)?.mastery || 0;
+  const requiredContracts = tasks.filter(task =>
+    task.module === moduleId && (task.mode === 'lesson' || task.mode === 'practice')
+  );
+  const independentContracts = requiredContracts.filter(task =>
+    hasIndependentTaskEvidence(progress, task.id)
+  ).length;
   const lessons = curriculumLessons.filter(lesson => lesson.module === moduleId);
   const lessonsCompleted = lessons.filter(lesson => curriculum.completedLessons.includes(lesson.id)).length;
   const diagnostics = bestDiagnosticReports(reports);
@@ -87,7 +97,9 @@ export function moduleAccessEvidence(
     checkpointReportPassed,
     legacyCheckpointPassed: checkpointLegacyPassed,
     diagnosticModuleScore,
-    diagnosticGlobalScore
+    diagnosticGlobalScore,
+    independentContracts,
+    requiredIndependentContracts: requiredContracts.length
   });
   const source: PrerequisiteEvidenceSource = candidateSource === 'diagnostic-global'
     ? 'missing'
@@ -103,7 +115,9 @@ export function moduleAccessEvidence(
     checkpointLegacyPassed,
     diagnosticModuleScore,
     diagnosticGlobalScore,
-    source
+    source,
+    independentContracts,
+    requiredIndependentContracts: requiredContracts.length
   };
 }
 

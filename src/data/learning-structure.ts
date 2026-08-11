@@ -5,7 +5,7 @@ export const phaseDefinitions = [
     id: 'foundation',
     title: 'I. Надёжная база',
     subtitle: 'Контракт результата, фильтры, сортировка и агрегаты',
-    moduleIds: ['sql-thinking', 'select', 'filtering', 'sorting', 'aggregates', 'grouping']
+    moduleIds: ['sql-thinking', 'filtering', 'select', 'sorting', 'aggregates', 'grouping']
   },
   {
     id: 'composition',

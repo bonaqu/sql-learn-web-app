@@ -344,6 +344,9 @@ function mergeTaskStats(
   left: TaskStats = { attempts: 0, incorrect: 0, hintsUsed: 0 },
   right: TaskStats = { attempts: 0, incorrect: 0, hintsUsed: 0 }
 ): TaskStats {
+  const evidenceSource = [left, right]
+    .filter(stats => stats.evidenceContractVersion && stats.evaluationContractId && stats.evaluationContractVersion)
+    .sort((a, b) => (b.validatedFixtureIds?.length || 0) - (a.validatedFixtureIds?.length || 0))[0];
   return {
     attempts: Math.max(left.attempts, right.attempts),
     incorrect: Math.max(left.incorrect, right.incorrect),
@@ -358,7 +361,16 @@ function mergeTaskStats(
     errorKinds: mergeCounters<AttemptErrorKind>(left.errorKinds, right.errorKinds),
     lastDiagnostic: latestDiagnostic(left, right),
     lastAttemptAt: latestTimestamp(left.lastAttemptAt, right.lastAttemptAt),
-    completedAt: earliestTimestamp(left.completedAt, right.completedAt)
+    completedAt: earliestTimestamp(left.completedAt, right.completedAt),
+    evidenceContractVersion: evidenceSource?.evidenceContractVersion,
+    evaluationContractId: evidenceSource?.evaluationContractId,
+    evaluationContractVersion: evidenceSource?.evaluationContractVersion,
+    validatedFixtureIds: evidenceSource?.validatedFixtureIds
+      ? [...new Set(evidenceSource.validatedFixtureIds)].sort()
+      : undefined,
+    hiddenFixtureIds: evidenceSource?.hiddenFixtureIds
+      ? [...new Set(evidenceSource.hiddenFixtureIds)].sort()
+      : undefined
   };
 }
 

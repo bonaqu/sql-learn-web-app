@@ -93,40 +93,40 @@ type Blueprint = {
 const blueprints: Record<CoreModuleId, Blueprint> = {
   'sql-thinking': {
     prerequisites: [],
-    objectives: ['Формулировать форму результата до написания SQL', 'Выбирать сущность одной строки', 'Добавлять проверяемую сортировку'],
+    objectives: ['Формулировать форму результата до написания SQL', 'Выбирать сущность одной строки', 'Выбирать явные столбцы и источник без преждевременной фильтрации'],
     glossary: [
       { term: 'Гранулярность', definition: 'Что именно представляет одна строка результата.' },
       { term: 'Контракт результата', definition: 'Набор столбцов, строк, порядка и правил NULL, который должен вернуть запрос.' }
     ],
-    exampleSql: "SELECT ticket_id, service, status FROM tickets WHERE service = 'VPN' ORDER BY ticket_id;",
-    exampleDescription: 'Запрос сначала фиксирует гранулярность «одно обращение — одна строка», затем ограничивает сервис и задаёт стабильный порядок.',
+    exampleSql: 'SELECT ticket_id, service, status FROM tickets;',
+    exampleDescription: 'Запрос фиксирует гранулярность «одно обращение — одна строка» и явный набор исходных столбцов. Фильтр и порядок появятся после их введения.',
     question: 'Что полезнее сделать до первого ключевого слова SELECT?',
     options: ['Выбрать индекс', 'Описать одну строку и столбцы результата', 'Добавить LIMIT', 'Сразу открыть EXPLAIN'],
     correctIndex: 1,
     explanation: 'Сначала фиксируется контракт результата. Остальные конструкции выбираются уже под него.'
   },
   select: {
-    prerequisites: ['sql-thinking'],
+    prerequisites: ['filtering'],
     objectives: ['Выбирать только нужные поля', 'Создавать вычисляемые столбцы', 'Давать выражениям понятные алиасы'],
     glossary: [
       { term: 'Проекция', definition: 'Выбор столбцов и выражений, которые попадут в результат.' },
       { term: 'Алиас', definition: 'Имя столбца или таблицы внутри запроса.' }
     ],
-    exampleSql: 'SELECT ticket_id, resolution_minutes, sla_minutes, resolution_minutes - sla_minutes AS delta_minutes FROM tickets WHERE resolution_minutes IS NOT NULL ORDER BY ticket_id;',
-    exampleDescription: 'Вычисляемое поле превращает два исходных значения в операционный показатель отклонения от SLA.',
+    exampleSql: "SELECT ticket_id, resolution_minutes, sla_minutes, resolution_minutes - sla_minutes AS delta_minutes FROM tickets WHERE status = 'Closed';",
+    exampleDescription: 'После уже изученного фильтра вычисляемое поле превращает два исходных значения в операционный показатель отклонения от SLA.',
     question: 'Зачем задавать AS для вычисляемого выражения?',
     options: ['Чтобы ускорить запрос', 'Чтобы результат имел понятный контракт', 'Чтобы исключить NULL', 'Чтобы включить DISTINCT'],
     correctIndex: 1,
     explanation: 'Алиас не ускоряет вычисление, но делает результат стабильным и понятным потребителю.'
   },
   filtering: {
-    prerequisites: ['select'],
+    prerequisites: ['sql-thinking'],
     objectives: ['Разделять условия на независимые предикаты', 'Корректно работать с NULL', 'Контролировать приоритет AND и OR'],
     glossary: [
       { term: 'Предикат', definition: 'Условие, которое для строки даёт TRUE, FALSE или UNKNOWN.' },
       { term: 'Трёхзначная логика', definition: 'Логика SQL, где NULL приводит к состоянию UNKNOWN.' }
     ],
-    exampleSql: "SELECT ticket_id, priority, status FROM tickets WHERE status = 'Closed' AND (priority = 'Critical' OR priority = 'High') ORDER BY ticket_id;",
+    exampleSql: "SELECT ticket_id, priority, status FROM tickets WHERE status = 'Closed' AND (priority = 'Critical' OR priority = 'High');",
     exampleDescription: 'Скобки делают бизнес-условие явным: закрытое обращение и один из двух срочных приоритетов.',
     question: 'Как правильно проверить отсутствие значения?',
     options: ['column = NULL', 'column <> NULL', 'column IS NULL', 'NULL(column)'],
@@ -134,7 +134,7 @@ const blueprints: Record<CoreModuleId, Blueprint> = {
     explanation: 'NULL не равен даже самому себе, поэтому используются IS NULL и IS NOT NULL.'
   },
   sorting: {
-    prerequisites: ['filtering'],
+    prerequisites: ['select'],
     objectives: ['Задавать главный ключ сортировки', 'Добавлять tie-breaker', 'Использовать LIMIT только после ORDER BY'],
     glossary: [
       { term: 'Tie-breaker', definition: 'Дополнительный ключ, который делает порядок стабильным при равенстве основного.' },
@@ -438,7 +438,7 @@ export const curriculumCheckpoints: CurriculumCheckpoint[] = [
     id: 'checkpoint-foundation',
     title: 'Checkpoint · Надёжная база',
     description: 'Контракт результата, фильтрация, порядок и базовые метрики.',
-    moduleIds: ['sql-thinking', 'select', 'filtering', 'sorting', 'aggregates'],
+    moduleIds: ['sql-thinking', 'filtering', 'select', 'sorting', 'aggregates'],
     taskIds: ['task-001', 'task-007', 'task-013', 'task-019', 'task-025'],
     passingScore: 70,
     criteria: ['Форма результата совпадает', 'NULL обработан явно', 'Порядок детерминирован', 'Метрики названы']

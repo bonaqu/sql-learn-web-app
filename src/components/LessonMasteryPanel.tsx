@@ -28,6 +28,7 @@ export default function LessonMasteryPanel({
   progress,
   curriculum,
   reviewState,
+  onProgress,
   onOpenTask,
   onOpenReview
 }: {
@@ -35,6 +36,7 @@ export default function LessonMasteryPanel({
   progress: Progress;
   curriculum: CurriculumProgressV1;
   reviewState: ReviewState;
+  onProgress: (progress: CurriculumProgressV1) => void;
   onOpenTask: (taskId: string) => void;
   onOpenReview: () => void;
 }) {
@@ -49,6 +51,10 @@ export default function LessonMasteryPanel({
 
   const mastery = lessonMasteryState(lesson, progress, currentCurriculum, reviewState);
   const remediation = lessonRemediation(progress, lesson);
+  const updateCurriculum = (next: CurriculumProgressV1) => {
+    setCurrentCurriculum(next);
+    onProgress(next);
+  };
   const nextPracticeTaskId = mastery.nextTaskId;
   const steps = [
     { id: 'study', title: 'Понять модель', detail: `${mastery.sectionsCompleted}/${mastery.sectionsTotal} раздела`, done: mastery.theoryComplete, icon: <BookOpen /> },
@@ -58,7 +64,7 @@ export default function LessonMasteryPanel({
   ];
 
   return <>
-    <ConceptCheckPanel lesson={lesson} curriculum={currentCurriculum} onProgress={setCurrentCurriculum} />
+    <ConceptCheckPanel lesson={lesson} curriculum={currentCurriculum} onProgress={updateCurriculum} />
     <section className="lesson-mastery-loop" data-testid="lesson-mastery-loop">
       <header><div><small>Mastery Loop 1.1</small><h2>Узнавание ответа недостаточно</h2><p>Applied mastery требует всех concept checks, самостоятельного SQL и последующего retrieval review. Один старый MCQ больше не завершает урок.</p></div><span className={mastery.durableMastery ? 'durable' : mastery.mastered ? 'applied' : ''}>{mastery.durableMastery ? 'Durable' : mastery.mastered ? 'Applied' : 'In progress'}</span></header>
       <div className="lesson-mastery-steps">{steps.map((step, index) => <article className={step.done ? 'done' : mastery.nextAction === step.id ? 'current' : ''} key={step.id}><span>{step.done ? <CheckCircle2 /> : step.icon || <Circle />}</span><div><small>0{index + 1}</small><strong>{step.title}</strong><p>{step.detail}</p></div></article>)}</div>

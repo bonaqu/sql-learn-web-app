@@ -1,6 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { curriculumCheckpoints, curriculumLessons, capstoneProjects } from '../src/data/complete-curriculum';
 import { modules, tasks } from '../src/data/course-catalog';
+import { checkpointTaskList } from '../src/data/checkpoint-task-bank';
+import { evaluationContractForTask } from '../src/data/foundation-evaluation-contracts';
+import { FOUNDATION_EVIDENCE_CONTRACT_VERSION, TASK_EVALUATION_CONTRACT_VERSION } from '../src/lib/task-evaluation-contract';
 import {
   buildCheckpointReport,
   checkpointDurationMinutes,
@@ -18,7 +21,7 @@ const assert = (condition: unknown, message: string) => {
   if (!condition) errors.push(message);
 };
 const unique = (values: string[]) => new Set(values).size === values.length;
-const taskById = new Map(tasks.map(task => [task.id, task]));
+const taskById = new Map([...tasks, ...checkpointTaskList()].map(task => [task.id, task]));
 const moduleIds = new Set(modules.map(([id]) => id));
 
 assert(curriculumCheckpoints.length === 8, `Expected 8 checkpoints, got ${curriculumCheckpoints.length}`);
@@ -59,7 +62,15 @@ const fullProgress: Progress = {
     incorrect: 0,
     hintsUsed: 0,
     lastAttemptAt: '2026-07-25T10:00:00.000Z',
-    completedAt: '2026-07-25T10:00:00.000Z'
+    completedAt: '2026-07-25T10:00:00.000Z',
+    ...(task.evaluationContractId ? {
+      independentPasses: 1,
+      evidenceContractVersion: FOUNDATION_EVIDENCE_CONTRACT_VERSION,
+      evaluationContractId: task.evaluationContractId,
+      evaluationContractVersion: TASK_EVALUATION_CONTRACT_VERSION,
+      validatedFixtureIds: evaluationContractForTask(task.id)?.fixtures.map(fixture => fixture.id),
+      hiddenFixtureIds: evaluationContractForTask(task.id)?.fixtures.filter(fixture => fixture.visibility !== 'public').map(fixture => fixture.id)
+    } : {})
   }])),
   xp: tasks.reduce((sum, task) => sum + task.xp, 0),
   streak: 1,

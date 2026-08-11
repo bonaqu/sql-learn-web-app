@@ -284,7 +284,12 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
     if (!session || !activeTask || !activeAnswer || !engine) return;
     const started = Date.now();
     try {
-      const evaluation = evaluateAssessmentSql(engine, editorSql, activeTask.solution);
+      const evaluation = evaluateAssessmentSql(
+        engine,
+        editorSql,
+        activeTask,
+        session.mode === 'diagnostic' ? 'placement' : 'assessment'
+      );
       const attempts = activeAnswer.attempts + 1;
       const next = updateAssessmentAnswer(session, activeTask.id, {
         sql: editorSql,
@@ -299,8 +304,8 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
       setResult(evaluation.output);
       setRunState(evaluation.correct ? 'success' : 'error');
       setMessage(evaluation.correct
-        ? 'Результат совпал. Ответ зафиксирован в assessment.'
-        : 'SQL выполнился, но результат не совпал. Проверь контракт результата и попробуй ещё раз.');
+        ? 'Контракт результата и скрытые проверки пройдены. Ответ зафиксирован в assessment.'
+        : `${evaluation.diagnostic?.title || 'Результат не совпал'}. ${evaluation.diagnostic?.nextStep || 'Проверь контракт результата.'}`);
     } catch (error) {
       const technical = error instanceof AssessmentSqlExecutionError && error.kind === 'technical';
       const next = updateAssessmentAnswer(session, activeTask.id, technical ? {

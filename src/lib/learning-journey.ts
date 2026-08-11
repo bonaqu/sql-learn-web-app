@@ -169,7 +169,6 @@ function taskAction(task: SqlTask, stage: JourneyStage, description: string, cta
 }
 
 function taskSatisfied(task: SqlTask, progress: Progress) {
-  if (task.mode === 'lesson') return progress.completed.includes(task.id);
   return hasIndependentTaskEvidence(progress, task.id);
 }
 

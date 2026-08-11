@@ -6,6 +6,7 @@ import {
 } from '../src/data/complete-curriculum.ts';
 import { lessonChecks } from '../src/data/lesson-checks.ts';
 import { modules, tasks } from '../src/data/course-catalog.ts';
+import { evaluationContractForTask } from '../src/data/foundation-evaluation-contracts.ts';
 import type { AssessmentMode, AssessmentReport, AssessmentStatus } from '../src/lib/assessment.ts';
 import type { CapstoneReport } from '../src/lib/capstone-evaluator.ts';
 import { CHECKPOINT_PHASE_READINESS, type CheckpointReport, type CheckpointStatus } from '../src/lib/checkpoints.ts';
@@ -20,6 +21,10 @@ import { emptyCurriculumProgress } from '../src/lib/curriculum-progress.ts';
 import type { Progress } from '../src/lib/progress.ts';
 import { normalizedEvidenceScore, READINESS_POLICY } from '../src/lib/readiness-policy.ts';
 import { buildSkillEvidenceGraph } from '../src/lib/skill-evidence.ts';
+import {
+  FOUNDATION_EVIDENCE_CONTRACT_VERSION,
+  TASK_EVALUATION_CONTRACT_VERSION
+} from '../src/lib/task-evaluation-contract.ts';
 
 const failures: string[] = [];
 const assert = (condition: unknown, message: string) => { if (!condition) failures.push(message); };
@@ -30,13 +35,27 @@ function progressFor(taskIds: string[]): Progress {
   return {
     version: 4,
     completed: [...taskIds],
-    taskStats: Object.fromEntries(taskIds.map(taskId => [taskId, {
-      attempts: 1,
-      incorrect: 0,
-      hintsUsed: 0,
-      completedAt: now,
-      lastAttemptAt: now
-    }])),
+    taskStats: Object.fromEntries(taskIds.map(taskId => {
+      const contract = evaluationContractForTask(taskId);
+      const fixtureIds = contract?.fixtures.map(fixture => fixture.id) || [];
+      return [taskId, {
+        attempts: 1,
+        incorrect: 0,
+        hintsUsed: 0,
+        independentPasses: 1,
+        completedAt: now,
+        lastAttemptAt: now,
+        ...(contract ? {
+          evidenceContractVersion: FOUNDATION_EVIDENCE_CONTRACT_VERSION,
+          evaluationContractId: contract.id,
+          evaluationContractVersion: TASK_EVALUATION_CONTRACT_VERSION,
+          validatedFixtureIds: fixtureIds,
+          hiddenFixtureIds: contract.fixtures
+            .filter(fixture => fixture.visibility !== 'public')
+            .map(fixture => fixture.id)
+        } : {})
+      }];
+    })),
     xp: tasks.filter(task => taskIds.includes(task.id)).reduce((sum, task) => sum + task.xp, 0),
     streak: taskIds.length ? 1 : 0,
     history: days.map(day => ({ day, solved: 0 }))

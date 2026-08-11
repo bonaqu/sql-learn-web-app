@@ -1,14 +1,33 @@
 import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { checkpointTaskById } from '../../src/data/checkpoint-task-bank';
 import { curriculumCheckpoints, curriculumLessons } from '../../src/data/complete-curriculum';
 import { tasks } from '../../src/data/course-catalog';
+import { evaluationContractForTask } from '../../src/data/foundation-evaluation-contracts';
 import { lessonChecks } from '../../src/data/lesson-checks';
 import { phaseDefinitions } from '../../src/data/learning-structure';
 import { foundationTasksForModule } from '../../src/lib/learning-journey';
+import {
+  FOUNDATION_EVIDENCE_CONTRACT_VERSION,
+  TASK_EVALUATION_CONTRACT_VERSION
+} from '../../src/lib/task-evaluation-types';
 import { authenticatePage } from './auth-helper';
 
 const CHECKPOINT_EVENT = 'sql-academy-checkpoint-reports-changed';
 const PROGRESS_EVENT = 'sql-academy-progress-changed';
+
+function foundationEvidence(taskId: string) {
+  const contract = evaluationContractForTask(taskId);
+  return contract ? {
+    evidenceContractVersion: FOUNDATION_EVIDENCE_CONTRACT_VERSION,
+    evaluationContractId: contract.id,
+    evaluationContractVersion: TASK_EVALUATION_CONTRACT_VERSION,
+    validatedFixtureIds: contract.fixtures.map(fixture => fixture.id),
+    hiddenFixtureIds: contract.fixtures
+      .filter(fixture => fixture.visibility !== 'public')
+      .map(fixture => fixture.id)
+  } : {};
+}
 
 function phaseCheckpointFixture() {
   const result = phaseDefinitions.flatMap((phase, phaseIndex) => {
@@ -51,7 +70,7 @@ function checkpointReport(
     firstAttemptRate: 100,
     independence: 100,
     taskScores: checkpoint.taskIds.map(taskId => {
-      const task = tasks.find(item => item.id === taskId);
+      const task = checkpointTaskById(taskId) || tasks.find(item => item.id === taskId);
       return {
         taskId,
         title: task?.title || taskId,
@@ -100,7 +119,8 @@ function fixture(userId: string) {
     independentPasses: 1,
     lastIndependentAt: beforeFailure,
     completedAt: beforeFailure,
-    lastAttemptAt: beforeFailure
+    lastAttemptAt: beforeFailure,
+    ...foundationEvidence(task.id)
   }]));
   const progress = {
     version: 4,
@@ -235,7 +255,8 @@ async function expectRemediationAccessible(page: Page) {
 
 async function repairTargetedTasks(page: Page, userId: string, value: ReturnType<typeof fixture>) {
   const repairedAt = new Date(Date.parse(value.failedAt) + 30_000).toISOString();
-  await page.evaluate(({ ids, when, eventName }) => {
+  const evidenceByTaskId = Object.fromEntries(value.targetedTaskIds.map(taskId => [taskId, foundationEvidence(taskId)]));
+  await page.evaluate(({ ids, evidence, when, eventName }) => {
     const raw = localStorage.getItem('sql-academy-progress-v4');
     const progress = raw ? JSON.parse(raw) : null;
     if (!progress) throw new Error('Missing progress fixture.');
@@ -248,13 +269,14 @@ async function repairTargetedTasks(page: Page, userId: string, value: ReturnType
         independentPasses: Math.max(1, previous.independentPasses || 0) + 1,
         lastIndependentAt: when,
         completedAt: previous.completedAt || when,
-        lastAttemptAt: when
+        lastAttemptAt: when,
+        ...evidence[taskId]
       };
       if (!progress.completed.includes(taskId)) progress.completed.push(taskId);
     }
     localStorage.setItem('sql-academy-progress-v4', JSON.stringify(progress));
     window.dispatchEvent(new CustomEvent(eventName, { detail: progress }));
-  }, { id: userId, ids: value.targetedTaskIds, when: repairedAt, eventName: PROGRESS_EVENT });
+  }, { id: userId, ids: value.targetedTaskIds, evidence: evidenceByTaskId, when: repairedAt, eventName: PROGRESS_EVENT });
 }
 
 async function appendPassedReport(page: Page, userId: string, value: ReturnType<typeof fixture>) {
