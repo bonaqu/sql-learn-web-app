@@ -2,7 +2,7 @@ import { expect, test, type Locator } from '@playwright/test';
 import { authenticatePage } from './auth-helper';
 import { openAdvancedTool, seedFirstLessonEvidence } from './navigation-helper';
 
-const FIRST_SOLUTION = "SELECT ticket_id, service, status FROM tickets WHERE service = 'VPN' ORDER BY ticket_id;";
+const FIRST_SOLUTION = 'SELECT ticket_id, service FROM tickets;';
 
 async function replaceEditorSql(page: import('@playwright/test').Page, sql: string) {
   const editor = page.locator('.editor-panel .monaco-editor');
@@ -47,8 +47,8 @@ test('desktop mastery loop distinguishes guided success, independent retry and r
   await expect(page.getByRole('heading', { name: 'Практика' })).toBeVisible();
   await replaceEditorSql(page, 'SELECT, FROM tickets;');
   await page.getByRole('button', { name: /Проверить SQL/i }).click();
-  await expect(page.getByTestId('attempt-diagnostic')).toContainText('Синтаксис не разобран');
-  await expect(page.getByTestId('attempt-diagnostic')).toContainText('минимального SELECT');
+  await expect(page.getByTestId('attempt-diagnostic')).toContainText('Синтаксическая ошибка');
+  await expect(page.getByTestId('attempt-diagnostic')).toContainText('Проверь ключевые слова');
 
   await page.getByRole('button', { name: 'Следующая подсказка' }).click();
   await replaceEditorSql(page, FIRST_SOLUTION);
@@ -56,8 +56,8 @@ test('desktop mastery loop distinguishes guided success, independent retry and r
   await expect(page.locator('.feedback.success')).toContainText('guided');
   await expect(page.locator('.feedback.success')).toContainText('Independent: 0');
 
-  await page.getByRole('button', { name: /Контракт результата: LMS/ }).click();
-  await page.getByRole('button', { name: /Контракт результата: VPN/ }).click();
+  await page.getByRole('button', { name: /002 Форма результата: обращение и состояние/ }).click();
+  await page.getByRole('button', { name: /001 Форма результата: обращение и сервис/ }).click();
   await replaceEditorSql(page, FIRST_SOLUTION);
   await page.getByRole('button', { name: /Проверить SQL/i }).click();
   await expect(page.locator('.feedback.success')).toContainText('Independent mastery подтверждён');
@@ -89,7 +89,7 @@ test('mobile mastery diagnostics remain readable without horizontal overflow', a
     .click();
   await expect(page.getByRole('heading', { name: 'Практика' })).toBeVisible();
   await seedFirstLessonEvidence(page);
-  const firstTask = page.getByRole('button', { name: /001 Контракт результата: VPN/ });
+  const firstTask = page.getByRole('button', { name: /001 Форма результата: обращение и сервис/ });
   await expect(firstTask).toContainText('Текущий шаг маршрута');
   await firstTask.click();
   await replaceEditorSql(page, 'SELECT missing_column FROM tickets;');
@@ -98,7 +98,8 @@ test('mobile mastery diagnostics remain readable without horizontal overflow', a
   await runButton.click();
   const diagnostic = page.getByTestId('attempt-diagnostic');
   await expect(diagnostic).toBeVisible();
-  await expect(diagnostic).toContainText('Запрос не совпадает со схемой');
+  await expect(diagnostic).toContainText('Ошибка выполнения');
+  await expect(diagnostic).toContainText('Проверь имена таблиц');
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(overflow).toBe(false);
   await page.screenshot({ path: testInfo.outputPath('mobile-mastery-diagnostic.png'), fullPage: true });

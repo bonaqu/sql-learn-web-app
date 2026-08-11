@@ -74,7 +74,7 @@ test('desktop academy workflow is usable and shares the authenticated Cloudflare
   const runButton = page.getByRole('button', { name: /Проверить SQL/ });
   await expect(runButton).toBeEnabled();
 
-  await replaceEditorSql(page, "SELECT ticket_id, service, status FROM tickets WHERE service = 'VPN' ORDER BY ticket_id;");
+  await replaceEditorSql(page, 'SELECT ticket_id, service FROM tickets;');
   await runButton.click();
   await expect(page.locator('.feedback.success')).toContainText('Верно');
   await expect(page.locator('.result-table-wrap')).toBeVisible();

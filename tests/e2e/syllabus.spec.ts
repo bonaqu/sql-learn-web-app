@@ -1,11 +1,18 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
+import { evaluationContractForTask } from '../../src/data/foundation-evaluation-contracts';
+import {
+  FOUNDATION_EVIDENCE_CONTRACT_VERSION,
+  TASK_EVALUATION_CONTRACT_VERSION
+} from '../../src/lib/task-evaluation-types';
 import { authenticatePage } from './auth-helper';
 import { openAdvancedTool } from './navigation-helper';
 
 const PROGRESS_KEY = 'sql-academy-progress-v4';
 
 function oneTopicEvidence() {
+  const contract = evaluationContractForTask('task-001');
+  if (!contract) throw new Error('Expected a foundation evaluation contract for task-001.');
   return {
     version: 4,
     completed: ['task-001'],
@@ -17,7 +24,14 @@ function oneTopicEvidence() {
         independentPasses: 1,
         lastIndependentAt: '2026-01-01T00:00:00.000Z',
         completedAt: '2026-01-01T00:00:00.000Z',
-        lastAttemptAt: '2026-01-01T00:00:00.000Z'
+        lastAttemptAt: '2026-01-01T00:00:00.000Z',
+        evidenceContractVersion: FOUNDATION_EVIDENCE_CONTRACT_VERSION,
+        evaluationContractId: contract.id,
+        evaluationContractVersion: TASK_EVALUATION_CONTRACT_VERSION,
+        validatedFixtureIds: contract.fixtures.map(fixture => fixture.id),
+        hiddenFixtureIds: contract.fixtures
+          .filter(fixture => fixture.visibility !== 'public')
+          .map(fixture => fixture.id)
       }
     },
     xp: 60,

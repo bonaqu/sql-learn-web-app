@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test, type APIResponse, type BrowserContext, type Page } from '@playwright/test';
+import { checkpointTaskById } from '../../src/data/checkpoint-task-bank';
 import { curriculumCheckpoints } from '../../src/data/complete-curriculum';
 import { tasks } from '../../src/data/course-catalog';
 import { authenticatePage, loginPage } from './auth-helper';
@@ -53,7 +54,7 @@ function scoredReport(
     firstAttemptRate: score,
     independence: score,
     taskScores: checkpoint.taskIds.map(taskId => {
-      const task = tasks.find(item => item.id === taskId);
+      const task = checkpointTaskById(taskId) || tasks.find(item => item.id === taskId);
       return {
         taskId,
         title: task?.title || taskId,

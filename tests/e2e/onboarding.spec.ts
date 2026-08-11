@@ -2,13 +2,31 @@ import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { curriculumCheckpoints } from '../../src/data/complete-curriculum';
 import { modules, tasks } from '../../src/data/course-catalog';
+import { evaluationContractForTask } from '../../src/data/foundation-evaluation-contracts';
 import { phaseDefinitions } from '../../src/data/learning-structure';
 import { goalModuleRoute, SHARED_FOUNDATION_MODULE_IDS } from '../../src/lib/goal-aware-route';
 import type { LearnerGoal } from '../../src/lib/learner-onboarding';
+import {
+  FOUNDATION_EVIDENCE_CONTRACT_VERSION,
+  TASK_EVALUATION_CONTRACT_VERSION
+} from '../../src/lib/task-evaluation-types';
 import { authenticatePage, loginPage } from './auth-helper';
 import { openAdvancedTool } from './navigation-helper';
 
 const ASSESSMENT_REPORTS_CHANGED_EVENT = 'sql-academy-assessment-reports-changed';
+
+function foundationEvidence(taskId: string) {
+  const contract = evaluationContractForTask(taskId);
+  return contract ? {
+    evidenceContractVersion: FOUNDATION_EVIDENCE_CONTRACT_VERSION,
+    evaluationContractId: contract.id,
+    evaluationContractVersion: TASK_EVALUATION_CONTRACT_VERSION,
+    validatedFixtureIds: contract.fixtures.map(fixture => fixture.id),
+    hiddenFixtureIds: contract.fixtures
+      .filter(fixture => fixture.visibility !== 'public')
+      .map(fixture => fixture.id)
+  } : {};
+}
 
 function firstRouteDifference(left: readonly string[], right: readonly string[]) {
   const length = Math.min(left.length, right.length);
@@ -144,7 +162,8 @@ function advancedFrontierFixture(userId: string, goal: LearnerGoal, prefixLength
       independentPasses: 1,
       lastIndependentAt: completedAt,
       completedAt,
-      lastAttemptAt: completedAt
+      lastAttemptAt: completedAt,
+      ...foundationEvidence(task.id)
     }])),
     xp: transferTasks.reduce((sum, task) => sum + task.xp, 0),
     streak: 1,

@@ -55,7 +55,7 @@ test('desktop password account requires login and syncs progress across two devi
   const firstTask = page.locator('.task-row').first();
   await expect(firstTask).toContainText('Текущий шаг маршрута');
   await firstTask.click();
-  await replaceEditorSql(page, "SELECT ticket_id, service, status FROM tickets WHERE service = 'VPN' ORDER BY ticket_id;");
+  await replaceEditorSql(page, 'SELECT ticket_id, service FROM tickets;');
   const runButton = page.getByRole('button', { name: /Проверить SQL/ });
   await expect(runButton).toBeEnabled();
   await runButton.click();

@@ -352,6 +352,10 @@ for (const marker of [
 ]) {
   assert.ok(worker.includes(marker), `Provisional adoption Worker is missing ${marker}.`);
 }
+assert.ok(
+  worker.includes("const TASK_ID_PATTERN = /^(?:task-[0-9]{3}|checkpoint-[a-z0-9-]{1,80})$/;"),
+  'Provisional adoption must accept the same bounded unseen checkpoint task IDs as the canonical report endpoint.'
+);
 assert.match(checkpointWorker, /LEFT JOIN checkpoint_provisional_adoptions/,
   'Checkpoint GET must project adopted reports from server allocation metadata.');
 assert.match(checkpointWorker, /coordination === 'provisional' \|\| coordination === 'adopted'/,

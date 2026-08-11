@@ -38,7 +38,7 @@ type ActiveReservationRow = {
   reservation_id: string;
 };
 
-const TASK_ID_PATTERN = /^task-[0-9]{3}$/;
+const TASK_ID_PATTERN = /^(?:task-[0-9]{3}|checkpoint-[a-z0-9-]{1,80})$/;
 const MODULE_ID_PATTERN = /^[a-z0-9-]{2,64}$/;
 const DIGEST_PATTERN = /^[a-f0-9]{64}$/i;
 const MAX_REPORT_BYTES = 120_000;
