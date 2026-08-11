@@ -261,7 +261,7 @@ Unique bundled notice/license texts: **200**
 - `define-properties@1.2.1` — MIT — transitive — https://github.com/ljharb/define-properties
 - `detect-libc@2.1.2` — Apache-2.0 — transitive — https://github.com/lovell/detect-libc
 - `detect-node-es@1.1.0` — MIT — transitive — https://github.com/thekashey/detect-node
-- `dompurify@3.4.8` — (MPL-2.0 OR Apache-2.0) — transitive — https://github.com/cure53/DOMPurify
+- `dompurify@3.4.13` — (MPL-2.0 OR Apache-2.0) — transitive — https://github.com/cure53/DOMPurify
 - `dunder-proto@1.0.1` — MIT — transitive — https://github.com/es-shims/dunder-proto
 - `ejs@3.1.10` — Apache-2.0 — transitive — https://github.com/mde/ejs
 - `electron-to-chromium@1.5.401` — ISC — transitive — https://github.com/Kilian/electron-to-chromium
@@ -1443,7 +1443,7 @@ SOFTWARE.
 
 ### SHA-256 `283ea6cc2997a1a70da0049e09adf9317bb60ca1b51279b65196b83a69e1996b`
 
-Applies to: `baseline-browser-mapping@2.11.12 (LICENSE.txt)`, `dompurify@3.4.8 (LICENSE)`, `ejs@3.1.10 (LICENSE)`
+Applies to: `baseline-browser-mapping@2.11.12 (LICENSE.txt)`, `dompurify@3.4.13 (LICENSE)`, `ejs@3.1.10 (LICENSE)`
 
 ```text
 Apache License
@@ -10855,7 +10855,7 @@ SOFTWARE.
 
 ### SHA-256 `c76f740d1521b9bed9ca7a04ad526c310493c62621b1341d623b431736533b30`
 
-Applies to: `dompurify@3.4.8 (LICENSE-MPL)`
+Applies to: `dompurify@3.4.13 (LICENSE-MPL)`
 
 ```text
 Mozilla Public License Version 2.0

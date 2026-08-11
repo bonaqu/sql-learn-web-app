@@ -2987,7 +2987,7 @@
     },
     {
       "name": "dompurify",
-      "version": "3.4.8",
+      "version": "3.4.13",
       "kind": "transitive",
       "license": "(MPL-2.0 OR Apache-2.0)",
       "repository": "https://github.com/cure53/DOMPurify",
