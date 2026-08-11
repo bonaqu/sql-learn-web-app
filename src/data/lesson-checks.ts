@@ -89,7 +89,7 @@ function shuffledCheck(input: {
 }
 
 function misconceptionFeedback(item: CurriculumMisconception) {
-  return `Это соответствует misconception «${item.label}». ${item.explanation} ${item.remediation}`;
+  return `Это похоже на заблуждение «${item.label}». ${item.explanation} ${item.remediation}`;
 }
 
 function enhancedOriginalCheck(lesson: CurriculumLesson, concept: CurriculumConcept): DiagnosticKnowledgeCheck {
@@ -110,7 +110,7 @@ function enhancedOriginalCheck(lesson: CurriculumLesson, concept: CurriculumConc
       };
     }),
     explanation: lesson.check.explanation,
-    remediation: `Вернись к mental model «${concept.title}»: ${concept.mentalModel}`
+    remediation: `Вернись к модели «${concept.title}»: ${concept.mentalModel}`
   });
 }
 
@@ -120,14 +120,14 @@ function diagnosisCheck(lesson: CurriculumLesson, concept: CurriculumConcept): D
     id: `${lesson.id}-diagnosis-${target.id}`,
     kind: 'diagnosis',
     concept,
-    question: `В уроке «${lesson.title}»: какой вывод точнее диагностирует заблуждение «${target.label}»?`,
+    question: `В уроке «${lesson.title}»: какой вывод точнее объясняет заблуждение «${target.label}»?`,
     correct: { text: target.explanation, feedback: `Верно. ${target.remediation}` },
     distractors: [
       { text: alternate.explanation, feedback: misconceptionFeedback(alternate), misconceptionId: alternate.id },
       { text: third.explanation, feedback: misconceptionFeedback(third), misconceptionId: third.id },
       {
         text: 'Проблемы нет: если SQL выполнился без exception, результат автоматически корректен.',
-        feedback: `Успешное выполнение доказывает только допустимость SQL, но не mental model и не контракт результата. ${target.remediation}`,
+        feedback: `Успешное выполнение доказывает только допустимость SQL, но не правильность модели и контракта результата. ${target.remediation}`,
         misconceptionId: target.id
       }
     ],
@@ -142,12 +142,12 @@ function transferCheck(lesson: CurriculumLesson, concept: CurriculumConcept): Di
     id: `${lesson.id}-transfer-${concept.id}`,
     kind: 'transfer',
     concept,
-    question: `В уроке «${lesson.title}»: какое evidence лучше всего подтверждает mental model «${concept.title}» в новой задаче?`,
-    correct: { text: concept.evidence, feedback: 'Верно: это проверяет перенос модели, а не узнавание формулировки.' },
+    question: `В уроке «${lesson.title}»: что лучше всего подтверждает понимание модели «${concept.title}» в новой задаче?`,
+    correct: { text: concept.evidence, feedback: 'Верно: это проверяет применение модели, а не узнавание формулировки.' },
     distractors: [
       {
         text: 'Запрос выполнился без ошибки один раз на текущих данных.',
-        feedback: `Это слабое evidence: логическая ошибка может не проявиться на текущем наборе. ${first.remediation}`,
+        feedback: `Это слабое подтверждение: логическая ошибка может не проявиться на текущем наборе. ${first.remediation}`,
         misconceptionId: first.id
       },
       {
@@ -161,7 +161,7 @@ function transferCheck(lesson: CurriculumLesson, concept: CurriculumConcept): Di
         misconceptionId: third.id
       }
     ],
-    explanation: `Transfer подтверждается наблюдаемым evidence: ${concept.evidence}`,
+    explanation: `Перенос подтверждается наблюдаемым результатом: ${concept.evidence}`,
     remediation: 'Сформулируй проверку своими словами и воспроизведи её на другом наборе данных.'
   });
 }
@@ -192,7 +192,7 @@ function predictionCheck(lesson: CurriculumLesson, concept: CurriculumConcept, i
       },
       {
         text: 'Правильный ответ нельзя предсказать до запуска SQL.',
-        feedback: `Prediction — обязательная часть проверки mental model. ${item.remediation}`,
+        feedback: `Прогноз — обязательная часть проверки модели. ${item.remediation}`,
         misconceptionId: item.id
       }
     ],
@@ -211,7 +211,7 @@ export function lessonChecks(lesson: CurriculumLesson): DiagnosticKnowledgeCheck
       required: true,
       optionFeedback: lesson.check.options.map((_, index) => index === lesson.check.correctIndex
         ? lesson.check.explanation
-        : 'Ответ не объясняет проверяемый mental model.'),
+        : 'Ответ не объясняет проверяемую модель.'),
       misconceptionIds: lesson.check.options.map(() => null),
       remediation: lesson.check.explanation
     }];

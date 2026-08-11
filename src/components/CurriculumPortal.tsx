@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import CurriculumSyncButton from './CurriculumSyncButton';
 import LessonMasteryPanel from './LessonMasteryPanel';
+import BeginnerLessonLoop from './BeginnerLessonLoop';
 import type { QueryExecResult, SqlJsStatic } from 'sql.js';
 import {
   ArrowLeft,
@@ -57,6 +58,7 @@ import {
 import { useDialogFocus } from '../lib/dialog-focus';
 import { openDeferredFeature } from '../lib/deferred-features';
 import { lessonMasteryState } from '../lib/mastery-loop';
+import initSqlJs from '../lib/sql-browser';
 import { loadProgress, PROGRESS_CHANGED_EVENT } from '../lib/progress';
 import { loadReviewState, REVIEW_CHANGED_EVENT } from '../lib/spaced-repetition';
 import '../styles-curriculum.css';
@@ -221,8 +223,7 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
     try {
       let sqlEngine = engine;
       if (!sqlEngine) {
-        const module = await import('sql.js');
-        sqlEngine = await module.default({ locateFile: file => `https://sql.js.org/dist/${file}` });
+        sqlEngine = await initSqlJs();
         setEngine(sqlEngine);
       }
       const database = new sqlEngine.Database();
@@ -276,24 +277,30 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
 
   const lessonBody = !access.unlocked ? <section className="curriculum-access-gate" data-testid="curriculum-access-gate">
     <div className="curriculum-access-icon"><LockKeyhole /></div>
-    <small>Prerequisite readiness</small>
-    <h2>Эта advanced-тема пока закрыта</h2>
-    <p>Доступ открывается не по клику, а после подтверждённого понимания базовых модулей. Для каждого prerequisite подходит один из путей: task mastery, applied lesson, checkpoint или сильная диагностика.</p>
+    <small>Готовность к теме</small>
+    <h2>Эта тема пока закрыта</h2>
+    <p>Сначала подтверди базовые навыки: реши связанные задачи, заверши урок или пройди проверку знаний.</p>
     <div className="curriculum-access-thresholds">
-      <span><strong>{PREREQUISITE_MASTERY}%</strong><small>task mastery</small></span>
-      <span><strong>{DIAGNOSTIC_MODULE_BYPASS}%</strong><small>score по модулю</small></span>
-      <span><strong>{DIAGNOSTIC_GLOBAL_BYPASS}%</strong><small>общая диагностика</small></span>
+      <span><strong>{PREREQUISITE_MASTERY}%</strong><small>самостоятельных решений</small></span>
+      <span><strong>{DIAGNOSTIC_MODULE_BYPASS}%</strong><small>по теме</small></span>
+      <span><strong>{DIAGNOSTIC_GLOBAL_BYPASS}%</strong><small>по всей проверке</small></span>
     </div>
     <div className="curriculum-missing-list">{access.missing.map(item => <article key={item.moduleId}>
       <LockKeyhole />
-      <div><strong>{moduleTitle(item.moduleId)}</strong><small>Mastery {item.taskMastery}% · уроки {item.lessonsCompleted}/{item.lessonsTotal} · diagnostic {item.diagnosticModuleScore || '—'}%</small></div>
+      <div><strong>{moduleTitle(item.moduleId)}</strong><small>Решения {item.taskMastery}% · уроки {item.lessonsCompleted}/{item.lessonsTotal} · проверка {item.diagnosticModuleScore || '—'}%</small></div>
     </article>)}</div>
     <div className="curriculum-access-actions">
-      <button onClick={() => selectLesson(lessonForModule(access.missing[0]?.moduleId || '')?.id || curriculumLessons[0].id)}><BookOpen />Открыть первый prerequisite</button>
-      <button onClick={openDiagnostic}><ClipboardCheck />Открыть Diagnostic SQL Check ({diagnosticPassingScore()}% passing)</button>
+      <button onClick={() => selectLesson(lessonForModule(access.missing[0]?.moduleId || '')?.id || curriculumLessons[0].id)}><BookOpen />Открыть нужный урок</button>
+      <button onClick={openDiagnostic}><ClipboardCheck />Проверить SQL-знания (проходной балл {diagnosticPassingScore()}%)</button>
     </div>
-    <p className="curriculum-access-note">Диагностика не даёт безусловный skip: слабый общий результат не разблокирует темы, а сильный score может подтвердить уже имеющийся навык.</p>
+    <p className="curriculum-access-note">Проверка не пропускает базу автоматически: высокий результат подтверждает уже сформированный навык.</p>
   </section> : <>
+    {lesson.beginnerCycle && <BeginnerLessonLoop
+      lesson={lesson}
+      onStageComplete={sectionId => setProgress(current => markCurriculumSection(current, lesson.id, sectionId))}
+      onOpenTask={openMasteryTask}
+      onRevisit={scrollToSection}
+    />}
     <nav className="curriculum-section-nav" aria-label="Разделы текущего урока">
       {lesson.sections.map((section, index) => <button key={section.id} onClick={() => scrollToSection(section.id)}>
         {completedSections.has(section.id) ? <CheckCircle2 /> : <span>{index + 1}</span>}{section.title}
@@ -308,15 +315,15 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
       <p className="curriculum-lead">{section.lead}</p>
       {section.paragraphs.map(paragraph => <p key={paragraph}>{paragraph}</p>)}
       <ul>{section.bullets.map(item => <li key={item}>{item}</li>)}</ul>
-      <button
+      {!lesson.beginnerCycle && <button
         type="button"
         className={completedSections.has(section.id) ? 'curriculum-complete-button done' : 'curriculum-complete-button'}
         onClick={() => setProgress(current => markCurriculumSection(current, lesson.id, section.id))}
-      >{completedSections.has(section.id) ? <CheckCircle2 /> : <Circle />}{completedSections.has(section.id) ? 'Раздел изучен' : 'Отметить раздел изученным'}</button>
+      >{completedSections.has(section.id) ? <CheckCircle2 /> : <Circle />}{completedSections.has(section.id) ? 'Раздел изучен' : 'Отметить раздел изученным'}</button>}
     </section>)}
 
-    <section className="curriculum-example" aria-labelledby={`example-title-${lesson.id}`}>
-      <div className="curriculum-section-heading"><span><Code2 /></span><div><small>Runnable example</small><h2 id={`example-title-${lesson.id}`}>{lesson.example.title}</h2></div></div>
+    {!lesson.beginnerCycle && <section className="curriculum-example" aria-labelledby={`example-title-${lesson.id}`}>
+      <div className="curriculum-section-heading"><span><Code2 /></span><div><small>Пример с запуском</small><h2 id={`example-title-${lesson.id}`}>{lesson.example.title}</h2></div></div>
       <p>{lesson.example.description}</p>
       <pre><code>{lesson.example.sql}</code></pre>
       <div className="curriculum-example-actions">
@@ -326,15 +333,15 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
       {!!result.length && <div className="curriculum-results" data-testid="curriculum-example-result">
         {result.map((block, blockIndex) => <div className="result-table-wrap" key={blockIndex}><table><caption className="sr-only">Результат примера {lesson.title}</caption><thead><tr>{block.columns.map(column => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{block.values.map((row, rowIndex) => <tr key={rowIndex}>{row.map((value, columnIndex) => <td key={columnIndex}>{formatValue(value)}</td>)}</tr>)}</tbody></table></div>)}
       </div>}
-    </section>
+    </section>}
 
     <section className="curriculum-glossary">
       <div className="curriculum-section-heading"><span><BookMarked /></span><div><small>Словарь</small><h2>Термины урока</h2></div></div>
       <dl>{lesson.glossary.map(entry => <div key={entry.term}><dt>{entry.term}</dt><dd>{entry.definition}</dd></div>)}</dl>
     </section>
 
-    <section className="curriculum-check" data-testid="curriculum-check">
-      <div className="curriculum-section-heading"><span><ClipboardCheck /></span><div><small>Knowledge check</small><h2>Проверь понимание</h2></div></div>
+    {!lesson.beginnerCycle && <section className="curriculum-check" data-testid="curriculum-check">
+      <div className="curriculum-section-heading"><span><ClipboardCheck /></span><div><small>Проверка понимания</small><h2>Проверь понимание</h2></div></div>
       <fieldset>
         <legend>{lesson.check.question}</legend>
         {lesson.check.options.map((option, index) => <label key={option} className={choice === index ? 'selected' : ''}>
@@ -347,7 +354,7 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
         {progress.answers[lesson.check.id].correct ? <CheckCircle2 /> : <Target />}
         <div><strong>{progress.answers[lesson.check.id].correct ? 'Верно' : 'Пока неверно'}</strong><p>{lesson.check.explanation}</p></div>
       </div>}
-    </section>
+    </section>}
 
     <LessonMasteryPanel
       lesson={lesson}
@@ -360,11 +367,11 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
     />
 
     <section className="curriculum-practice-links">
-      <div><small>Закрепление</small><h2>Связанные задачи</h2><p>Зелёная галочка означает completion. Applied mastery требует хотя бы одного решения без подсказки и эталона.</p></div>
+      <div><small>Закрепление</small><h2>Связанные задачи</h2><p>Зелёная галочка означает завершённую задачу. Для уверенного навыка реши хотя бы одну задачу без подсказки и эталона.</p></div>
       <div>{lesson.practiceTaskIds.map(taskId => {
         const task = tasks.find(item => item.id === taskId);
         const independent = taskProgress.taskStats[taskId]?.independentPasses || 0;
-        return task ? <button key={taskId} onClick={() => openMasteryTask(taskId)}><Play /><span><strong>{task.title}</strong><small>{task.difficulty} · {task.xp} XP{independent ? ' · independent ✓' : ''}</small></span><ChevronRight /></button> : null;
+        return task ? <button key={taskId} onClick={() => openMasteryTask(taskId)}><Play /><span><strong>{task.title}</strong><small>{task.difficulty} · {task.xp} XP{independent ? ' · самостоятельно ✓' : ''}</small></span><ChevronRight /></button> : null;
       })}</div>
     </section>
 
@@ -387,9 +394,9 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
           const itemMastery = masteryByLesson.get(item.id);
           const locked = itemAccess && !itemAccess.unlocked;
           const status = itemMastery?.durableMastery
-            ? 'durable mastery'
+            ? 'навык сохранён'
             : itemMastery?.mastered
-              ? 'applied mastery'
+              ? 'получилось самостоятельно'
               : completedLessons.has(item.id)
                 ? 'теория пройдена'
                 : `${item.minutes} мин · ${item.sections.length} раздела`;
@@ -399,10 +406,10 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
             className={`${item.id === lesson.id ? 'active' : ''}${locked ? ' locked' : ''}`}
             onClick={() => selectLesson(item.id)}
             aria-current={item.id === lesson.id ? 'page' : undefined}
-            aria-label={`${item.title}${locked ? ', закрыто: нужны prerequisites' : ''}`}
+            aria-label={`${item.title}${locked ? ', закрыто: сначала пройди предыдущие темы' : ''}`}
           >
             <span>{String(curriculumLessons.indexOf(item) + 1).padStart(2, '0')}</span>
-            <div><strong>{item.title}</strong><small>{locked ? `${itemAccess.missing.length} prerequisite` : status}</small></div>
+            <div><strong>{item.title}</strong><small>{locked ? `${itemAccess.missing.length} тем перед этим` : status}</small></div>
             {locked ? <LockKeyhole className="locked-icon" /> : itemMastery?.mastered ? <CheckCircle2 className="complete" /> : <ChevronRight />}
           </button>;
         })}
@@ -420,13 +427,13 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
           <span><Target />{lesson.objectives.length} результата</span>
           <span className={currentMastery?.mastered ? 'done' : ''}>{access.unlocked ? <CheckCircle2 /> : <LockKeyhole />}{access.unlocked
             ? currentMastery?.durableMastery
-              ? 'Durable mastery'
+              ? 'Навык сохранён'
               : currentMastery?.mastered
-                ? 'Applied mastery'
+                ? 'Получилось самостоятельно'
                 : completedLessons.has(lesson.id)
                   ? 'Теория пройдена · нужна практика'
                   : `${lesson.sections.filter(section => completedSections.has(section.id)).length}/${lesson.sections.length} раздела`
-            : 'Закрыто prerequisites'}</span>
+            : 'Сначала пройди предыдущие темы'}</span>
         </div>
         <div className="curriculum-objectives">
           <strong>После урока ты сможешь</strong>
@@ -439,7 +446,7 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
             return prerequisite ? <button key={moduleId} className={evidence ? 'missing' : 'ready'} onClick={() => selectLesson(prerequisite.id)}>{evidence ? <LockKeyhole /> : <CheckCircle2 />}{prerequisite.title}</button> : null;
           })}
         </div>}
-        {!!access.bypassed.length && <div className="curriculum-diagnostic-bypass"><ClipboardCheck /><span><strong>Diagnostic bypass подтверждён</strong><small>{access.bypassed.map(item => moduleTitle(item.moduleId)).join(', ')}</small></span></div>}
+        {!!access.bypassed.length && <div className="curriculum-diagnostic-bypass"><ClipboardCheck /><span><strong>Навык подтверждён проверкой</strong><small>{access.bypassed.map(item => moduleTitle(item.moduleId)).join(', ')}</small></span></div>}
       </header>
       {lessonBody}
     </article>
@@ -502,12 +509,12 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
 
   const shell = <div ref={shellRef} tabIndex={-1} className="curriculum-shell" role="dialog" aria-modal="true" aria-labelledby="curriculum-dialog-title" data-testid="curriculum-studio">
     <header className="curriculum-topbar">
-      <div className="curriculum-brand"><span><GraduationCap /></span><div><strong id="curriculum-dialog-title">Curriculum Studio</strong><small>Теория, independent practice и capstone-проекты</small></div></div>
-      <div className="curriculum-tabs" role="tablist" aria-label="Режим Curriculum Studio">
+      <div className="curriculum-brand"><span><GraduationCap /></span><div><strong id="curriculum-dialog-title">Учебная программа</strong><small>Уроки, самостоятельная практика и итоговые проекты</small></div></div>
+      <div className="curriculum-tabs" role="tablist" aria-label="Раздел учебной программы">
         <button role="tab" aria-selected={tab === 'lessons'} className={tab === 'lessons' ? 'active' : ''} onClick={() => switchTab('lessons')}><BookOpen />Уроки</button>
         <button role="tab" aria-selected={tab === 'projects'} className={tab === 'projects' ? 'active' : ''} onClick={() => switchTab('projects')}><Sparkles />Project Lab</button>
       </div>
-      <div className="curriculum-top-actions"><CurriculumSyncButton onProgress={setProgress} /><span><strong>{completion}%</strong><small>curriculum</small></span><button data-autofocus onClick={close} aria-label="Закрыть Curriculum Studio"><X /></button></div>
+      <div className="curriculum-top-actions"><CurriculumSyncButton onProgress={setProgress} /><span><strong>{completion}%</strong><small>программы</small></span><button data-autofocus onClick={close} aria-label="Закрыть учебную программу"><X /></button></div>
     </header>
     {tab === 'lessons' ? lessonContent : projectContent}
   </div>;

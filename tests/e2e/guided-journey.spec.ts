@@ -54,7 +54,7 @@ test('desktop guided journey turns a first goal into one canonical primary actio
   await expect(curriculum.getByText('Урок 01 / 44')).toBeVisible();
   await expect(curriculum.getByRole('heading', { name: 'SQL-мышление', exact: true })).toBeVisible();
   await expect(curriculum).toContainText(/Как читать схему и превращать вопрос в запрос/i);
-  await page.getByRole('button', { name: 'Закрыть Curriculum Studio' }).click();
+  await page.getByRole('button', { name: 'Закрыть учебную программу' }).click();
 
   await openAllTools(page);
   await expect(page.getByTestId('curriculum-trigger')).toBeVisible();

@@ -20,7 +20,7 @@ async function expectNoSeriousAxeViolations(page: import('@playwright/test').Pag
 
 async function openProjectLab(page: import('@playwright/test').Page) {
   await openAdvancedTool(page, 'curriculum-trigger');
-  const studio = page.getByRole('dialog', { name: /Curriculum Studio/i });
+  const studio = page.getByRole('dialog', { name: /Учебная программа/i });
   await expect(studio).toBeVisible();
   await studio.getByRole('tab', { name: /Project Lab/i }).click();
   await expect(page.getByTestId('project-lab')).toBeVisible();

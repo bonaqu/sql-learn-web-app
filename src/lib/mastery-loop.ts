@@ -63,15 +63,15 @@ export function lessonMasteryState(
     blocker = `Изучи все разделы урока (${sectionsCompleted}/${lesson.sections.length}).`;
   } else if (!checkCorrect) {
     nextAction = 'check';
-    blocker = `Пройди concept checks без угадывания (${checks.completed}/${checks.total}).`;
+    blocker = `Ответь на вопросы по модели без угадывания (${checks.completed}/${checks.total}).`;
   } else if (!applied) {
     nextAction = 'practice';
     blocker = 'Реши связанную SQL-задачу без подсказки и открытого решения.';
   } else if (!retained) {
     nextAction = 'review';
     blocker = reviewIntroduced
-      ? 'Закрепи модель в Review Deck, когда карточка станет due.'
-      : 'Retrieval card будет введена после синхронизации evidence.';
+      ? 'Закрепи модель в повторении, когда карточка появится в расписании.'
+      : 'Карточка для повторения появится после синхронизации самостоятельного решения.';
   }
 
   return {

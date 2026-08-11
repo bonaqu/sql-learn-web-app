@@ -150,14 +150,14 @@ function App() {
     if (!workspaceActive || engine) return;
     let cancelled = false;
     setMessage('SQLite загружается…');
-    import('sql.js')
-      .then(module => module.default({ locateFile: file => `https://sql.js.org/dist/${file}` }))
+    import('./lib/sql-browser')
+      .then(module => module.default())
       .then(sqlEngine => {
         if (cancelled) return;
         setEngine(sqlEngine);
         setMessage('SQLite готов. Выполни запрос.');
       })
-      .catch(() => { if (!cancelled) setMessage('Не удалось загрузить SQLite WASM. Проверь сеть.'); });
+      .catch(() => { if (!cancelled) setMessage('Не удалось запустить локальный SQLite. Перезагрузи приложение.'); });
     return () => { cancelled = true; };
   }, [engine, workspaceActive]);
 

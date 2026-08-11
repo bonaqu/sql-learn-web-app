@@ -15,6 +15,7 @@ import {
 } from './core-curriculum-progression';
 import { moduleOrderIndex, phaseDefinitions } from './learning-structure';
 import { applySyntaxFrontierLessonOverrides } from './syntax-frontier-content';
+import { beginnerLessonCycle } from './beginner-lesson-cycles';
 
 export type {
   CapstoneProject,
@@ -36,7 +37,7 @@ const normalizedCoreLessons = applyCoreLessonTaskLinks(
     ? { ...lesson, title: 'CTE и этапы запроса' }
     : lesson),
   tasks
-);
+).map(lesson => ({ ...lesson, beginnerCycle: beginnerLessonCycle(lesson.module) }));
 const normalizedCoreCheckpoints = applyCoreCheckpointTaskLinks(coreCheckpoints, tasks);
 
 function diversifyAdvancedLesson(lesson: CurriculumLesson): CurriculumLesson {

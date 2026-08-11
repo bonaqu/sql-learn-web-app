@@ -14,6 +14,7 @@ import { conceptsForModule, misconceptionById, type RunnableCounterexample } fro
 import { lessonCheckProgress, lessonChecks } from '../data/lesson-checks';
 import { trainingSeedSql } from '../data/training-dataset';
 import { answerCurriculumCheck, type CurriculumProgressV1 } from '../lib/curriculum-progress';
+import initSqlJs from '../lib/sql-browser';
 
 const kindLabels = { prediction: 'Предсказание', explanation: 'Объяснение', diagnosis: 'Диагностика', transfer: 'Перенос' } as const;
 type SqlTable = { columns: string[]; values: unknown[][] };
@@ -65,8 +66,7 @@ export default function ConceptCheckPanel({ lesson, curriculum, onProgress }: {
     try {
       let sqlEngine = engine;
       if (!sqlEngine) {
-        const module = await import('sql.js');
-        sqlEngine = await module.default({ locateFile: file => `https://sql.js.org/dist/${file}` });
+        sqlEngine = await initSqlJs();
         setEngine(sqlEngine);
       }
       const database = new sqlEngine.Database();
@@ -77,13 +77,13 @@ export default function ConceptCheckPanel({ lesson, curriculum, onProgress }: {
         setCounterexampleResults(current => ({ ...current, [id]: { wrong: wrong as SqlTable[], correct: correct as SqlTable[], message: example.explanation } }));
       } finally { database.close(); }
     } catch (reason) {
-      setCounterexampleResults(current => ({ ...current, [id]: { wrong: [], correct: [], message: `SQLite error: ${reason instanceof Error ? reason.message : String(reason)}` } }));
+      setCounterexampleResults(current => ({ ...current, [id]: { wrong: [], correct: [], message: `Ошибка SQLite: ${reason instanceof Error ? reason.message : String(reason)}` } }));
     } finally { setRunningId(null); }
   };
 
   return <section className="concept-check-panel" data-testid="concept-check-panel">
-    <header className="concept-check-header"><div><small>Concept inventory</small><h2>{concept?.title || 'Проверяемая модель'}</h2><p>{concept?.mentalModel || lesson.subtitle}</p></div><span className={progress.complete ? 'complete' : ''}><strong>{progress.completed}/{progress.total}</strong><small>обязательных checks</small></span></header>
-    {concept && <div className="concept-evidence"><Lightbulb /><div><strong>Что считается evidence</strong><p>{concept.evidence}</p></div></div>}
+    <header className="concept-check-header"><div><small>Проверка понимания</small><h2>{concept?.title || 'Проверяемая модель'}</h2><p>{concept?.mentalModel || lesson.subtitle}</p></div><span className={progress.complete ? 'complete' : ''}><strong>{progress.completed}/{progress.total}</strong><small>обязательных вопросов</small></span></header>
+    {concept && <div className="concept-evidence"><Lightbulb /><div><strong>Как подтвердить понимание</strong><p>{concept.evidence}</p></div></div>}
     <div className="concept-check-list">{checks.map((check, checkIndex) => {
       const answer = curriculum.answers[check.id];
       const selected = selections[check.id];
@@ -92,14 +92,14 @@ export default function ConceptCheckPanel({ lesson, curriculum, onProgress }: {
       return <article className={`concept-check-card ${answer?.correct ? 'correct' : answer ? 'incorrect' : ''}`} key={check.id} data-testid={`concept-check-${check.kind}`}>
         <div className="concept-check-title"><span>{String(checkIndex + 1).padStart(2, '0')}</span><div><small>{kindLabels[check.kind]}</small><strong>{check.question}</strong></div>{answer?.correct ? <CheckCircle2 /> : <ShieldQuestion />}</div>
         <fieldset><legend className="sr-only">{check.question}</legend>{check.options.map((option, optionIndex) => <label className={selected === optionIndex ? 'selected' : ''} key={`${check.id}-${optionIndex}`}><input type="radio" name={check.id} checked={selected === optionIndex} onChange={() => setSelections(current => ({ ...current, [check.id]: optionIndex }))}/><span>{String.fromCharCode(65 + optionIndex)}</span><b>{option}</b></label>)}</fieldset>
-        <button className="concept-check-submit" onClick={() => submit(check.id)} disabled={selected === null || selected === undefined}>{answer ? <RefreshCw /> : <ShieldQuestion />}{answer ? 'Проверить ещё раз' : 'Проверить reasoning'}</button>
-        {answer && <div className={`concept-option-feedback ${answer.correct ? 'success' : 'error'}`} role="status" aria-live="polite">{answer.correct ? <CheckCircle2 /> : <AlertTriangle />}<div><strong>{answer.correct ? 'Mental model подтверждён' : misconception ? `Заблуждение: ${misconception.label}` : 'Ответ требует remediation'}</strong><p>{check.optionFeedback[answer.optionIndex]}</p>{!answer.correct && <b>{misconception?.remediation || check.remediation}</b>}</div></div>}
+        <button className="concept-check-submit" onClick={() => submit(check.id)} disabled={selected === null || selected === undefined}>{answer ? <RefreshCw /> : <ShieldQuestion />}{answer ? 'Проверить ещё раз' : 'Проверить рассуждение'}</button>
+        {answer && <div className={`concept-option-feedback ${answer.correct ? 'success' : 'error'}`} role="status" aria-live="polite">{answer.correct ? <CheckCircle2 /> : <AlertTriangle />}<div><strong>{answer.correct ? 'Модель подтверждена' : misconception ? `Заблуждение: ${misconception.label}` : 'Нужно вернуться к объяснению'}</strong><p>{check.optionFeedback[answer.optionIndex]}</p>{!answer.correct && <b>{misconception?.remediation || check.remediation}</b>}</div></div>}
       </article>;
     })}</div>
-    {concept?.misconceptions.some(item => item.counterexample) && <div className="counterexample-lab" data-testid="counterexample-lab"><div className="counterexample-lab-heading"><FlaskConical /><div><small>Executable counterexamples</small><h3>Сначала предскажи, потом сравни</h3><p>Оба запроса выполняются на одном локальном SQLite seed. Рабочие данные не отправляются.</p></div></div>{concept.misconceptions.filter(item => item.counterexample).map(item => {
+    {concept?.misconceptions.some(item => item.counterexample) && <div className="counterexample-lab" data-testid="counterexample-lab"><div className="counterexample-lab-heading"><FlaskConical /><div><small>Контрпримеры с запуском</small><h3>Сначала предскажи, потом сравни</h3><p>Оба запроса выполняются на одних учебных данных в локальном SQLite. Данные не отправляются в сеть.</p></div></div>{concept.misconceptions.filter(item => item.counterexample).map(item => {
       const example = item.counterexample!;
       const output = counterexampleResults[item.id];
-      return <article key={item.id}><header><div><strong>{item.label}</strong><p>{example.prediction}</p></div><button onClick={() => void runCounterexample(item.id, example)} disabled={runningId === item.id}><Play />{runningId === item.id ? 'Выполняю…' : 'Сравнить SQL'}</button></header><div className="counterexample-code-grid"><div><small>Misconception SQL</small><pre><code>{example.wrongSql}</code></pre></div><div><small>Corrected SQL</small><pre><code>{example.correctSql}</code></pre></div></div>{output && <div className="counterexample-output" role="status"><div><small>Неверная модель</small><p>{resultSummary(output.wrong)}</p></div><div><small>Исправленная модель</small><p>{resultSummary(output.correct)}</p></div><b>{output.message}</b></div>}</article>;
+      return <article key={item.id}><header><div><strong>{item.label}</strong><p>{example.prediction}</p></div><button onClick={() => void runCounterexample(item.id, example)} disabled={runningId === item.id}><Play />{runningId === item.id ? 'Выполняю…' : 'Сравнить SQL'}</button></header><div className="counterexample-code-grid"><div><small>SQL с ошибочной моделью</small><pre><code>{example.wrongSql}</code></pre></div><div><small>Исправленный SQL</small><pre><code>{example.correctSql}</code></pre></div></div>{output && <div className="counterexample-output" role="status"><div><small>Неверная модель</small><p>{resultSummary(output.wrong)}</p></div><div><small>Исправленная модель</small><p>{resultSummary(output.correct)}</p></div><b>{output.message}</b></div>}</article>;
     })}</div>}
   </section>;
 }
