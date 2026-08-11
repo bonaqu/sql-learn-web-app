@@ -162,4 +162,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Evidence sync validated: ${merged.length} deterministic reports, ${upload.length} uploads, CAS timeline ${timeline.join(' | ')}, fail-closed legacy PUT and stable offline evidence.`);
+process.stdout.write(`Evidence sync validated: ${merged.length} deterministic reports, ${upload.length} uploads, CAS timeline ${timeline.join(' | ')}, fail-closed legacy PUT and stable offline evidence.\n`);

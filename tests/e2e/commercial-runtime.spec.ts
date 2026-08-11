@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-const worker = 'http://127.0.0.1:8787';
+const worker = process.env.PLAYWRIGHT_WORKER_URL || `http://127.0.0.1:${process.env.PLAYWRIGHT_WORKER_PORT || '8792'}`;
 
 function smokeIdentity() {
   const suffix = `${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;

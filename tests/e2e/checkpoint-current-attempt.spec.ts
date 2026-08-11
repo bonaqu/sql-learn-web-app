@@ -5,7 +5,7 @@ import { tasks } from '../../src/data/course-catalog';
 import { authenticatePage, loginPage } from './auth-helper';
 import { openAdvancedTool } from './navigation-helper';
 
-const WORKER_URL = 'http://127.0.0.1:8787';
+const WORKER_URL = process.env.PLAYWRIGHT_WORKER_URL || `http://127.0.0.1:${process.env.PLAYWRIGHT_WORKER_PORT || '8792'}`;
 const checkpoint = curriculumCheckpoints[0];
 if (!checkpoint) throw new Error('Checkpoint current-attempt browser contract requires one checkpoint.');
 

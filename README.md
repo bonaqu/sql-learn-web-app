@@ -210,8 +210,22 @@ npm run dev
 npm run check
 npm run build
 npm run validate:bundle
+npm audit --omit=dev
+npm run deploy:cloudflare:dry
 npm run test:e2e
 ```
+
+На Windows `npm run test:e2e` и файловые запуски через `npm run test:ui -- <аргументы Playwright>` автоматически выбирают свободный Worker-порт из диапазона `8792–8891`. Production preview проксирует `/api` в тот же runtime-порт, поэтому свежий `dist`, direct Playwright и PR Quality используют один маршрут без compile-time hardcode. Порт `8787`, занятый постоянным локальным сервисом Codex, не переиспользуется и его процесс не завершается. Явный изолированный запуск:
+
+```powershell
+$env:PLAYWRIGHT_WORKER_PORT = '8792'
+npm run test:ui -- --project=desktop-foundation tests/e2e/academy.spec.ts
+Remove-Item Env:PLAYWRIGHT_WORKER_PORT
+```
+
+Bundle gate сначала измеряет production `dist`, затем копирует его во временную папку с пробелами, искусственно превышает raw entry budget и требует точную ошибку. Поэтому зелёный результат доказывает и Windows path handling, и реальное применение лимита. Сгенерированные Worker types, TypeScript build-info и локальные Wrangler-логи игнорируются как воспроизводимые артефакты.
+
+`monaco-editor@0.56.0` фиксирует `dompurify@3.4.8`, поэтому корневой npm override удерживает исправленный `dompurify@3.4.13`. PR Quality запускает `npm audit --omit=dev`; высокий/критический advisory блокирует merge, а редактор и PWA проверяются Playwright после каждого изменения lockfile.
 
 `npm run check` валидирует TypeScript/Worker types, 240 task contracts, curriculum DAG, lessons, checkpoints, tracks, exams, 11×3 dialect cases, learning analytics privacy/effectiveness contracts, deployment smoke и D1 cascade invariants.
 
