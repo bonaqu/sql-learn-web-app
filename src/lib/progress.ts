@@ -12,6 +12,8 @@ export type TaskStats = {
   incorrect: number;
   hintsUsed: number;
   solutionViews?: number;
+  solutionViewedAt?: string;
+  retrievalDueAt?: string;
   independentPasses?: number;
   lastIndependentAt?: string;
   errorKinds?: Partial<Record<AttemptErrorKind, number>>;
@@ -89,6 +91,8 @@ function normalizeStats(raw: unknown): Record<string, TaskStats> {
       incorrect: Math.max(0, Number(value.incorrect) || 0),
       hintsUsed: Math.max(0, Number(value.hintsUsed) || 0),
       solutionViews: value.solutionViews === undefined ? undefined : Math.max(0, Number(value.solutionViews) || 0),
+      solutionViewedAt: typeof value.solutionViewedAt === 'string' ? value.solutionViewedAt : undefined,
+      retrievalDueAt: typeof value.retrievalDueAt === 'string' ? value.retrievalDueAt : undefined,
       independentPasses: value.independentPasses === undefined ? undefined : Math.max(0, Number(value.independentPasses) || 0),
       lastIndependentAt: typeof value.lastIndependentAt === 'string' ? value.lastIndependentAt : undefined,
       errorKinds: value.errorKinds && typeof value.errorKinds === 'object' ? value.errorKinds : undefined,
@@ -163,7 +167,8 @@ export function recordAttempt(
   const previous = progress.taskStats[task.id] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
   const alreadyCompleted = progress.completed.includes(task.id);
   const newlyCompleted = correct && !alreadyCompleted;
-  const independentPass = Boolean(correct && evidence.independent);
+  const retrievalReady = !previous.retrievalDueAt || Date.parse(previous.retrievalDueAt) <= now.getTime();
+  const independentPass = Boolean(correct && evidence.independent && retrievalReady);
   const weekdayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1;
   const streak = newlyCompleted
     ? progress.lastStudyDate === today
@@ -195,6 +200,7 @@ export function recordAttempt(
         incorrect: previous.incorrect + (correct ? 0 : 1),
         independentPasses: (previous.independentPasses || 0) + (independentPass ? 1 : 0),
         lastIndependentAt: independentPass ? now.toISOString() : previous.lastIndependentAt,
+        retrievalDueAt: independentPass ? undefined : previous.retrievalDueAt,
         errorKinds,
         lastDiagnostic: !correct && evidence.diagnostic ? evidence.diagnostic : previous.lastDiagnostic,
         lastAttemptAt: now.toISOString(),
@@ -232,11 +238,17 @@ export function recordHint(progress: Progress, taskId: string): Progress {
 
 export function recordSolutionView(progress: Progress, taskId: string): Progress {
   const previous = progress.taskStats[taskId] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
+  const now = new Date();
   return {
     ...progress,
     taskStats: {
       ...progress.taskStats,
-      [taskId]: { ...previous, solutionViews: (previous.solutionViews || 0) + 1 }
+      [taskId]: {
+        ...previous,
+        solutionViews: (previous.solutionViews || 0) + 1,
+        solutionViewedAt: now.toISOString(),
+        retrievalDueAt: new Date(now.getTime() + 10 * 60_000).toISOString()
+      }
     }
   };
 }
@@ -244,6 +256,7 @@ export function recordSolutionView(progress: Progress, taskId: string): Progress
 export function hasIndependentTaskEvidence(progress: Progress, taskId: string) {
   const stats = progress.taskStats[taskId];
   if (!stats || !progress.completed.includes(taskId)) return false;
+  if (stats.retrievalDueAt) return false;
   const task = tasks.find(item => item.id === taskId);
   if (task?.evaluationContractId) {
     return (stats.independentPasses || 0) > 0
@@ -295,7 +308,10 @@ export function reviewQueue(progress: Progress, limit = 24): SqlTask[] {
         ? 0
         : Math.max(0, (Date.now() - ageAnchor) / 86_400_000);
       const diagnosed = Object.values(stats.errorKinds || {}).reduce((sum, count) => sum + (count || 0), 0);
-      const independentGap = completed && !independent ? 4 : 0;
+      const retrievalDue = timestamp(stats.retrievalDueAt);
+      const retrievalWaiting = retrievalDue !== null && retrievalDue > Date.now();
+      const solutionRetrieval = retrievalDue !== null && retrievalDue <= Date.now() ? 12 : 0;
+      const independentGap = completed && !independent && !retrievalWaiting ? 4 : 0;
       const unresolvedRemediation = latestAttemptWasIndependent
         ? 0
         : stats.incorrect * 5 + stats.hintsUsed * 2 + diagnosed + independentGap;
@@ -307,7 +323,7 @@ export function reviewQueue(progress: Progress, limit = 24): SqlTask[] {
         && ageDays >= CLEAN_REVIEW_INTERVAL_DAYS
         ? 1 + Math.min((ageDays - CLEAN_REVIEW_INTERVAL_DAYS) / CLEAN_REVIEW_INTERVAL_DAYS, 3)
         : 0;
-      return { task, score: unresolvedRemediation + unfinishedAttempt + spacedReview };
+      return { task, score: solutionRetrieval + unresolvedRemediation + unfinishedAttempt + spacedReview };
     })
     .filter(item => item.score > 0)
     .sort((a, b) => b.score - a.score || a.task.id.localeCompare(b.task.id))

@@ -5,6 +5,7 @@ import type {
   TaskEvaluationFixture,
   TaskOrderPolicy
 } from '../lib/task-evaluation-contract';
+import { coreAuthoredEvaluationContracts } from './core-authored-tasks';
 
 const publicFixture: TaskEvaluationFixture = {
   id: 'public-base',
@@ -127,7 +128,8 @@ const checkpointContracts = [
 
 export const taskEvaluationContracts: readonly TaskEvaluationContract[] = [
   ...corridorContracts,
-  ...checkpointContracts
+  ...checkpointContracts,
+  ...coreAuthoredEvaluationContracts
 ];
 
 const contractsById = new Map(taskEvaluationContracts.map(item => [item.id, item]));

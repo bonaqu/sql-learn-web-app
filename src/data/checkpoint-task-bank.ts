@@ -1,6 +1,7 @@
 import { moduleGuides, type SqlTask } from './course';
+import { coreCheckpointAuthoredTaskBlueprints } from './core-authored-tasks';
 
-const checkpointTasks: SqlTask[] = [
+const foundationCheckpointTasks: SqlTask[] = [
   {
     id: 'checkpoint-foundation-thinking', module: 'sql-thinking', topic: 'SQL-мышление', difficulty: 'База', mode: 'practice', xp: 0,
     title: 'Checkpoint: контракт обращения для передачи',
@@ -14,7 +15,7 @@ const checkpointTasks: SqlTask[] = [
     title: 'Checkpoint: открытые High-обращения',
     description: 'Верни ticket_id, priority и status для Open-обращений с priority High.',
     starter: 'SELECT ticket_id, priority, status\nFROM tickets\nWHERE ' ,
-    solution: "SELECT ticket_id, priority, status FROM tickets WHERE status = 'Open' AND priority = 'High';",
+    solution: "SELECT ticket_id, priority, status FROM tickets WHERE status = 'Open' INTERSECT SELECT ticket_id, priority, status FROM tickets WHERE priority = 'High';",
     hints: [], guide: moduleGuides.filtering, evaluationContractId: 'foundation:checkpoint-foundation-filtering'
   },
   {
@@ -30,7 +31,7 @@ const checkpointTasks: SqlTask[] = [
     title: 'Checkpoint: три самых строгих SLA',
     description: 'Верни три обращения с наименьшим sla_minutes. При равенстве раньше идёт меньший ticket_id.',
     starter: 'SELECT ticket_id, sla_minutes\nFROM tickets\nORDER BY ' ,
-    solution: 'SELECT ticket_id, sla_minutes FROM tickets ORDER BY sla_minutes ASC, ticket_id ASC LIMIT 3;',
+    solution: 'WITH ranked AS (SELECT ticket_id, sla_minutes, ROW_NUMBER() OVER (ORDER BY sla_minutes, ticket_id) AS rn FROM tickets) SELECT ticket_id, sla_minutes FROM ranked WHERE rn <= 3 ORDER BY rn;',
     hints: [], guide: moduleGuides.sorting, evaluationContractId: 'foundation:checkpoint-foundation-sorting'
   },
   {
@@ -43,9 +44,21 @@ const checkpointTasks: SqlTask[] = [
   }
 ];
 
+const coreAuthoredCheckpointTasks: SqlTask[] = coreCheckpointAuthoredTaskBlueprints.map(blueprint => ({
+  ...blueprint,
+  module: blueprint.module,
+  topic: moduleGuides[blueprint.module].summary,
+  difficulty: 'Рабочий',
+  mode: 'practice',
+  xp: 0,
+  guide: moduleGuides[blueprint.module]
+} as SqlTask));
+const checkpointTasks = [...foundationCheckpointTasks, ...coreAuthoredCheckpointTasks];
+
 const checkpointTasksById = new Map(checkpointTasks.map(task => [task.id, task]));
 
-export const foundationCheckpointTaskIds = checkpointTasks.map(task => task.id);
+export const foundationCheckpointTaskIds = foundationCheckpointTasks.map(task => task.id);
+export const coreCheckpointTaskIds = coreAuthoredCheckpointTasks.map(task => task.id);
 
 export function checkpointTaskById(taskId: string) {
   return checkpointTasksById.get(taskId) || null;

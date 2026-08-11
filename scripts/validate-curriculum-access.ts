@@ -11,6 +11,8 @@ import {
 } from '../src/lib/curriculum-access.ts';
 import { emptyCurriculumProgress } from '../src/lib/curriculum-progress.ts';
 import type { Progress } from '../src/lib/progress.ts';
+import { evaluationContractForTask } from '../src/data/foundation-evaluation-contracts.ts';
+import { FOUNDATION_EVIDENCE_CONTRACT_VERSION, TASK_EVALUATION_CONTRACT_VERSION } from '../src/lib/task-evaluation-contract.ts';
 
 const failures: string[] = [];
 const assert = (condition: unknown, message: string) => { if (!condition) failures.push(message); };
@@ -75,7 +77,12 @@ if (dmlLesson && coreLesson) {
       independentPasses: 1,
       lastIndependentAt: answeredAt,
       lastAttemptAt: answeredAt,
-      completedAt: answeredAt
+      completedAt: answeredAt,
+      evidenceContractVersion: FOUNDATION_EVIDENCE_CONTRACT_VERSION,
+      evaluationContractId: task.evaluationContractId,
+      evaluationContractVersion: TASK_EVALUATION_CONTRACT_VERSION,
+      validatedFixtureIds: evaluationContractForTask(task.id)?.fixtures.map(fixture => fixture.id),
+      hiddenFixtureIds: evaluationContractForTask(task.id)?.fixtures.filter(fixture => fixture.visibility !== 'public').map(fixture => fixture.id)
     }]))
   };
   const taskAccess = lessonAccess(dmlLesson, taskReady, emptyCurriculum, []);

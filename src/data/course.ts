@@ -9,6 +9,17 @@ export interface ModuleGuide {
   commonMistakes: string[];
 }
 
+export interface LearningTaskContract {
+  problemContract: string;
+  contextId: string;
+  solutionFamily: string;
+  expectedGrain: string;
+  stateRules: string[];
+  adversarialCases: string[];
+  remediationConcepts: string[];
+  transferFromTaskIds: string[];
+}
+
 export interface SqlTask {
   id: string;
   module: string;
@@ -23,6 +34,7 @@ export interface SqlTask {
   hints: string[];
   guide: ModuleGuide;
   evaluationContractId?: string;
+  learningContract?: LearningTaskContract;
 }
 
 export const modules = [

@@ -95,4 +95,4 @@ assert.match(cssSource, /@media \(max-width: 520px\)/, 'Phone layout missing');
 assert.match(cssSource, /prefers-reduced-motion/, 'Reduced-motion support missing');
 assert.match(cssSource, /min-height:\s*2\.75rem/, 'Touch targets smaller than 44px');
 
-console.log(`Beginner lesson loop validated: ${expectedModules.length} lessons, ${allCoveredTaskIds.length} mapped tasks, 5 stage mutations per lesson.`);
+process.stdout.write(`Beginner lesson loop validated: ${expectedModules.length} lessons, ${allCoveredTaskIds.length} mapped tasks, 5 stage mutations per lesson.\n`);
