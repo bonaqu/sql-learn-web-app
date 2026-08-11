@@ -29,6 +29,10 @@ export type TaskEvaluationFixture = {
   setupSql: string;
 };
 
+export type TaskStatementPolicy =
+  | { readOnly: true; singleStatement: true; allowExplain?: boolean }
+  | { readOnly: false; singleStatement: false; sandbox: 'transaction-rollback' | 'schema-lab' };
+
 export type FoundationConcept =
   | 'result-grain'
   | 'select-list'
@@ -50,7 +54,7 @@ export type TaskEvaluationContract = {
   duplicatePolicy: 'preserve' | 'distinct';
   nullPolicy: 'preserve';
   order: TaskOrderPolicy;
-  statementPolicy: { readOnly: true; singleStatement: true };
+  statementPolicy: TaskStatementPolicy;
   postState: { tablesUnchanged: string[] };
   fixtures: TaskEvaluationFixture[];
   requiredConcepts: FoundationConcept[];

@@ -35,7 +35,6 @@ function progressionInvariant(task: SqlTask) {
     topic: task.topic,
     difficulty: task.difficulty,
     xp: task.xp,
-    solution: task.solution,
     guide: task.guide
   };
 }
@@ -113,17 +112,14 @@ for (const moduleId of coreModuleIds) {
     totalModes[task.mode] += 1;
     const raw = rawById.get(task.id);
     assert.ok(raw, `${task.id}: missing raw core contract`);
-    if (foundationCorridorTaskIds.includes(task.id)) {
-      assert.equal(task.evaluationContractId, evaluationContractForTask(task.id)?.id, `${task.id}: foundation contract link drifted`);
-      assert.equal(task.xp, raw!.xp, `${task.id}: persisted XP changed`);
-      assert.equal(task.module, raw!.module, `${task.id}: persisted module changed`);
-    } else {
-      assert.deepEqual(
-        progressionInvariant(task),
-        progressionInvariant(raw!),
-        `${task.id}: core progression changed SQL, XP, difficulty, guide or persisted identity`
-      );
-    }
+    assert.deepEqual(
+      progressionInvariant(task),
+      progressionInvariant(raw!),
+      `${task.id}: core progression changed XP, difficulty, guide or persisted identity`
+    );
+    assert.equal(task.evaluationContractId, evaluationContractForTask(task.id)?.id, `${task.id}: semantic evaluation contract link drifted`);
+    assert.ok(task.learningContract, `${task.id}: missing explicit learning contract`);
+    assert.ok((task.learningContract?.adversarialCases.length || 0) >= 2, `${task.id}: adversarial contract is too shallow`);
   }
   assert.deepEqual(counts, expectedModeCounts, `${moduleId}: expected 1 guided, 3 practice, 1 interview and 1 puzzle task`);
 
@@ -135,16 +131,11 @@ for (const moduleId of coreModuleIds) {
   assert.ok(checkpoint, `${moduleId}: missing phase checkpoint`);
   const checkpointTaskIndex = checkpoint?.moduleIds.findIndex(id => id === moduleId) ?? -1;
   const checkpointTaskId = checkpointTaskIndex >= 0 ? checkpoint?.taskIds[checkpointTaskIndex] : undefined;
-  const practices = moduleTasks.filter(task => task.mode === 'practice');
-  if (checkpoint?.id === 'checkpoint-foundation') {
-    assert.equal(
-      checkpointTaskId,
-      checkpointTaskList().find(task => task.module === moduleId)?.id,
-      `${moduleId}: foundation checkpoint must use its unseen task bank`
-    );
-  } else {
-    assert.equal(checkpointTaskId, practices.at(-1)?.id, `${moduleId}: checkpoint must use the last independent practice, not guided or transfer evidence`);
-  }
+  assert.equal(
+    checkpointTaskId,
+    checkpointTaskList().find(task => task.module === moduleId)?.id,
+    `${moduleId}: checkpoint must use its unseen task bank`
+  );
 
   const foundation = foundationTasksForModule(moduleId);
   const transfer = transferTasksForModule(moduleId);

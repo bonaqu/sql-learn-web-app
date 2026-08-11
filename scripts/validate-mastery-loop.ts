@@ -59,6 +59,7 @@ const selectTask = taskFor('select');
 const filteringTask = taskFor('filtering');
 const aggregateTask = taskFor('aggregates');
 const joinTask = taskFor('joins');
+const uncontractedTask = taskFor('dml');
 const expected = [{ columns: ['id', 'name'], values: [[1, 'A'], [2, 'B']] }];
 
 assert(classifySqlAttempt({ task: selectTask, sql: 'SELECT,', errorMessage: 'near "FROM": syntax error' }).kind === 'syntax', 'Syntax errors must be classified');
@@ -82,6 +83,7 @@ progress = recordAttempt(progress, selectTask, true, { independent: false });
 assert(!hasIndependentTaskEvidence(progress, selectTask.id), 'Guided success must not become independent evidence');
 progress = recordSolutionView(progress, selectTask.id);
 assert(progress.taskStats[selectTask.id]?.solutionViews === 1, 'Solution view must be explicit evidence');
+progress.taskStats[selectTask.id].retrievalDueAt = '2000-01-01T00:00:00.000Z';
 progress = recordAttempt(progress, selectTask, true, {
   independent: true,
   contractEvidence: contractEvidenceFor(selectTask)
@@ -102,11 +104,11 @@ const guidedLegacy: Progress = {
 assert(!hasIndependentTaskEvidence(guidedLegacy, selectTask.id), 'Hinted legacy completion must not be assumed independent');
 const uncontractedLegacy: Progress = {
   ...defaultProgress,
-  completed: [joinTask.id],
-  taskStats: { [joinTask.id]: { attempts: 1, incorrect: 0, hintsUsed: 0, completedAt: '2026-01-01T00:00:00.000Z' } },
+  completed: [uncontractedTask.id],
+  taskStats: { [uncontractedTask.id]: { attempts: 1, incorrect: 0, hintsUsed: 0, completedAt: '2026-01-01T00:00:00.000Z' } },
   history: defaultProgress.history.map(item => ({ ...item }))
 };
-assert(hasIndependentTaskEvidence(uncontractedLegacy, joinTask.id), 'Uncontracted legacy modules must retain their compatibility fallback');
+assert(hasIndependentTaskEvidence(uncontractedLegacy, uncontractedTask.id), 'Uncontracted legacy modules must retain their compatibility fallback');
 
 const schemaDiagnostic = diagnosticForKind('schema');
 const localProgress: Progress = {

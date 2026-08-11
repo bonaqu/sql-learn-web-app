@@ -131,10 +131,11 @@ for (const task of checkpointTasks) {
 
 const legacy: Progress = {
   version: 4,
-  completed: ['task-001', 'task-100'],
+  completed: ['task-001', 'task-100', 'task-121'],
   taskStats: {
     'task-001': { attempts: 1, incorrect: 0, hintsUsed: 0, independentPasses: 1, completedAt: '2026-01-01T00:00:00.000Z' },
-    'task-100': { attempts: 3, incorrect: 2, hintsUsed: 1, independentPasses: 1, errorKinds: { values: 2 }, completedAt: '2026-01-02T00:00:00.000Z' }
+    'task-100': { attempts: 3, incorrect: 2, hintsUsed: 1, independentPasses: 1, errorKinds: { values: 2 }, completedAt: '2026-01-02T00:00:00.000Z' },
+    'task-121': { attempts: 1, incorrect: 0, hintsUsed: 0, independentPasses: 1, completedAt: '2026-01-02T00:00:00.000Z' }
   },
   xp: 777,
   streak: 9,
@@ -146,7 +147,8 @@ const migratedA = migrateProgress(legacy);
 const migratedB = migrateProgress(JSON.parse(JSON.stringify(legacy)));
 assert.deepEqual(migratedA, migratedB, 'Saved-state migration must be deterministic');
 assert.equal(hasIndependentTaskEvidence(migratedA, 'task-001'), false, 'Legacy single-seed evidence must not unlock the versioned corridor');
-assert.equal(hasIndependentTaskEvidence(migratedA, 'task-100'), true, 'Unrelated valid progress must remain usable');
+assert.equal(hasIndependentTaskEvidence(migratedA, 'task-100'), false, 'Legacy single-seed evidence must not unlock a converted core contract');
+assert.equal(hasIndependentTaskEvidence(migratedA, 'task-121'), true, 'Unrelated non-converted progress must remain usable');
 assert.deepEqual(
   JSON.parse(JSON.stringify(migratedA.taskStats['task-100'])),
   legacy.taskStats['task-100'],

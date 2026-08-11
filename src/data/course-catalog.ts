@@ -9,6 +9,7 @@ import { applyAdvancedTaskProgression } from './advanced-task-progression';
 import { applyAdvancedTransferContracts } from './advanced-transfer-contracts';
 import { applyCoreTaskProgression } from './core-task-progression';
 import { applyCoreTransferContracts } from './core-transfer-contracts';
+import { applyCoreAuthoredTasks } from './core-authored-tasks';
 import { applyFoundationCorridorOverrides } from './foundation-corridor';
 import {
   moduleOrderIndex,
@@ -29,7 +30,8 @@ const sourceModules: readonly (readonly [string, string, string])[] = [
   ...advancedModules
 ];
 const sourceTasks = applyAdvancedTransferContracts(
-  applyCoreTransferContracts(
+  applyCoreAuthoredTasks(
+    applyCoreTransferContracts(
     applyAdvancedTaskProgression(
       applyCoreTaskProgression(
         applyFoundationCorridorOverrides(
@@ -38,6 +40,7 @@ const sourceTasks = applyAdvancedTransferContracts(
           )
         )
       )
+    )
     )
   )
 );

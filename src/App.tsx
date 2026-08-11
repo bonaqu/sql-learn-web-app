@@ -43,7 +43,7 @@ import {
 } from 'lucide-react';
 import { achievements, modules, SqlTask, tasks } from './data/course-catalog';
 import { openJourneyDestination } from './lib/academy-navigation';
-import { classifySqlAttempt, type AttemptDiagnostic } from './lib/attempt-diagnostics';
+import { classifySqlAttempt, type AttemptDiagnostic, type AttemptErrorKind } from './lib/attempt-diagnostics';
 import { localMentor, MentorMode } from './lib/mentor';
 import { syncUserProgress } from './lib/auth';
 import { productIdentity } from './generated/product-identity';
@@ -74,6 +74,16 @@ type RunStatus = 'idle' | 'success' | 'error';
 type WeakTopic = ReturnType<typeof calculateWeakTopics>[number];
 
 const PROFILE_KEY = 'sql-academy-profile-id';
+const diagnosticConfidenceLabel = {
+  certain: 'Подтверждено контрактом',
+  likely: 'Вероятная причина',
+  possible: 'Возможная гипотеза'
+} as const;
+const diagnosticKindLabel: Record<AttemptErrorKind, string> = {
+  syntax: 'синтаксис', schema: 'схема', runtime: 'выполнение', 'result-shape': 'форма результата',
+  'row-set': 'набор строк', ordering: 'порядок', values: 'значения', 'null-filter': 'NULL и фильтр',
+  aggregation: 'агрегация', 'join-cardinality': 'кратность JOIN'
+};
 
 function profileId() {
   const saved = localStorage.getItem(PROFILE_KEY);
@@ -293,7 +303,8 @@ function App() {
       const evaluation = evaluateTaskSql(engine, selected, sql, 'practice');
       const output = evaluation.output;
       const correct = evaluation.correct;
-      const independent = correct && visibleHints === 0 && !solutionViewedThisSession;
+      const retrievalReady = !currentStats.retrievalDueAt || Date.parse(currentStats.retrievalDueAt) <= Date.now();
+      const independent = correct && visibleHints === 0 && !solutionViewedThisSession && retrievalReady;
       const diagnostic = correct
         ? null
         : evaluation.diagnostic || classifySqlAttempt({ task: selected, sql, actual: output });
@@ -339,7 +350,7 @@ function App() {
         hintsUsed: visibleHints
       }));
     }
-  }, [currentStats.attempts, engine, selected, selectedReadiness, selectedReviewTaskIsDue, solutionViewedThisSession, sql, visibleHints]);
+  }, [currentStats.attempts, currentStats.retrievalDueAt, engine, selected, selectedReadiness, selectedReviewTaskIsDue, solutionViewedThisSession, sql, visibleHints]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -391,6 +402,7 @@ function App() {
     if (opening && !solutionViewedThisSession) {
       setSolutionViewedThisSession(true);
       setProgress(current => recordSolutionView(current, selected.id));
+      setMessage('Эталон открыт. Текущий результат не считается самостоятельным; через 10 минут задача появится для чистого повторения без подсказок.');
     }
     setShowSolution(opening);
   };
@@ -700,7 +712,7 @@ function App() {
             </section>}
             {attemptDiagnostic && <section className="attempt-diagnostic" data-testid="attempt-diagnostic" aria-label="Диагностика попытки">
               <Bug />
-              <div><small>Диагностика попытки · {attemptDiagnostic.kind}</small><h3>{attemptDiagnostic.title}</h3><p>{attemptDiagnostic.explanation}</p><strong>Следующий шаг: {attemptDiagnostic.nextStep}</strong></div>
+              <div><small>{diagnosticConfidenceLabel[attemptDiagnostic.confidence]} · {diagnosticKindLabel[attemptDiagnostic.kind]}</small><h3>{attemptDiagnostic.title}</h3><p>{attemptDiagnostic.explanation}</p>{attemptDiagnostic.alternatives?.length ? <p>Также проверь: {attemptDiagnostic.alternatives.map(kind => diagnosticKindLabel[kind]).join(', ')}.</p> : null}<strong>Следующий шаг: {attemptDiagnostic.nextStep}</strong></div>
             </section>}
 
             <div className="output-mentor-grid">

@@ -65,17 +65,37 @@ function statements(source: string) {
   return result;
 }
 
-function readOnlyViolation(source: string) {
-  const parsed = statements(source);
-  if (parsed.length !== 1) return 'Отправь ровно один SELECT-запрос.';
-  const withoutComments = parsed[0]
+function statementPolicyViolation(source: string, contract: TaskEvaluationContract) {
+  const cleaned = statements(source).map(statement => statement
     .replace(/--[^\r\n]*/g, ' ')
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .trim();
-  if (!/^(?:SELECT|WITH)\b/i.test(withoutComments)) return 'В этой задаче разрешён только SELECT или WITH … SELECT.';
-  const withoutStrings = withoutComments.replace(/'(?:''|[^'])*'|"(?:""|[^"])*"/g, ' ');
-  if (/\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|REPLACE|ATTACH|DETACH|PRAGMA|VACUUM|REINDEX)\b/i.test(withoutStrings)) {
-    return 'Запрос пытается изменить состояние учебной базы.';
+    .trim()).filter(Boolean);
+  if (contract.statementPolicy.readOnly) {
+    if (cleaned.length !== 1) return 'Отправь ровно один читающий запрос.';
+    const allowed = contract.statementPolicy.allowExplain
+      ? /^(?:SELECT|WITH|EXPLAIN\s+QUERY\s+PLAN\s+(?:SELECT|WITH))\b/i
+      : /^(?:SELECT|WITH)\b/i;
+    if (!allowed.test(cleaned[0])) return contract.statementPolicy.allowExplain
+      ? 'В этой задаче разрешены SELECT, WITH … SELECT или EXPLAIN QUERY PLAN.'
+      : 'В этой задаче разрешён только SELECT или WITH … SELECT.';
+    const withoutStrings = cleaned[0].replace(/'(?:''|[^'])*'|"(?:""|[^"])*"/g, ' ');
+    if (/\b(?:INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|ATTACH|DETACH|PRAGMA|VACUUM|REINDEX)\b/i.test(withoutStrings)
+      || /\bREPLACE\s+INTO\b/i.test(withoutStrings)) {
+      return 'Запрос пытается изменить состояние учебной базы.';
+    }
+    return null;
+  }
+  const joined = cleaned.join('; ');
+  if (/\b(?:ATTACH|DETACH|VACUUM|REINDEX|DROP)\b/i.test(joined)) return 'Команда выходит за границы одноразовой лаборатории.';
+  if (contract.statementPolicy.sandbox === 'transaction-rollback') {
+    if (cleaned.length < 4 || !/^BEGIN\b/i.test(cleaned[0]) || !/^ROLLBACK\b/i.test(cleaned.at(-1) || '')) {
+      return 'Транзакционная лаборатория требует BEGIN, изменение, контрольный SELECT и завершающий ROLLBACK.';
+    }
+    if (!cleaned.some(statement => /^(?:INSERT|UPDATE|DELETE)\b/i.test(statement))) {
+      return 'Между BEGIN и ROLLBACK должно быть явное изменение данных.';
+    }
+  } else if (cleaned.length < 2 || !/^CREATE\s+(?:TABLE|INDEX)\b/i.test(cleaned[0])) {
+    return 'Лаборатория схемы требует CREATE TABLE/INDEX и отдельный проверочный запрос.';
   }
   return null;
 }
@@ -88,7 +108,7 @@ function diagnostic(
   nextStep: string,
   kind: AttemptDiagnostic['kind']
 ): TaskEvaluationDiagnostic {
-  return { contractCode, fixtureId, title, explanation, nextStep, kind };
+  return { contractCode, fixtureId, title, explanation, nextStep, kind, confidence: 'certain' };
 }
 
 function executeOnFixture(
@@ -115,7 +135,7 @@ function executeOnFixture(
       database.exec(`SELECT COUNT(*) AS row_count FROM "${table.replace(/"/g, '""')}";`)
     ));
     try {
-      database.run('PRAGMA query_only = ON;');
+      if (contract.statementPolicy.readOnly) database.run('PRAGMA query_only = ON;');
       const output = database.exec(source);
       const after = JSON.stringify(contract.postState.tablesUnchanged.map(table =>
         database.exec(`SELECT COUNT(*) AS row_count FROM "${table.replace(/"/g, '""')}";`)
@@ -266,7 +286,7 @@ export function evaluateTaskSql(
     const expected = executeTaskSql(engine, task.solution, 'reference');
     return { correct: comparableFallback(output) === comparableFallback(expected), output, diagnostic: null, evidence: null };
   }
-  const policyViolation = readOnlyViolation(source);
+  const policyViolation = statementPolicyViolation(source, contract);
   if (policyViolation) {
     return {
       correct: false,

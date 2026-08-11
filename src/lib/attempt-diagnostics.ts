@@ -23,6 +23,8 @@ export type AttemptDiagnostic = {
   explanation: string;
   nextStep: string;
   atlasId?: string;
+  confidence: 'certain' | 'likely' | 'possible';
+  alternatives?: AttemptErrorKind[];
 };
 
 const JOIN_MODULES = new Set(['joins', 'advanced-joins']);
@@ -35,66 +37,76 @@ const diagnosticCatalog: Record<AttemptErrorKind, AttemptDiagnostic> = {
     title: 'Синтаксис не разобран',
     explanation: 'SQLite не смог построить выражение. Обычно причина находится рядом с указанным token или перед ним.',
     nextStep: 'Разнеси clauses по строкам, проверь запятые и сократи запрос до минимального SELECT.',
-    atlasId: 'syntax-clause-order'
+    atlasId: 'syntax-clause-order',
+    confidence: 'likely'
   },
   schema: {
     kind: 'schema',
     title: 'Запрос не совпадает со схемой',
     explanation: 'SQL распарсился, но таблица, столбец или alias не найдены либо неоднозначны.',
     nextStep: 'Открой Schema Explorer, проверь реальные имена и квалифицируй поле через alias.column.',
-    atlasId: 'runtime-unknown-column'
+    atlasId: 'runtime-unknown-column',
+    confidence: 'likely'
   },
   runtime: {
     kind: 'runtime',
     title: 'Ошибка выполнения',
     explanation: 'Запрос синтаксически допустим, но не может быть выполнен на текущих данных или в текущем состоянии базы.',
-    nextStep: 'Запусти минимальную часть запроса, проверь типы, функции и входные значения.'
+    nextStep: 'Запусти минимальную часть запроса, проверь типы, функции и входные значения.',
+    confidence: 'possible'
   },
   'result-shape': {
     kind: 'result-shape',
     title: 'Неверный контракт результата',
     explanation: 'Количество result sets или набор и порядок столбцов отличаются от ожидаемого результата.',
     nextStep: 'Сначала перечисли нужные столбцы и алиасы, затем сравни их порядок с условием задачи.',
-    atlasId: 'performance-select-star'
+    atlasId: 'performance-select-star',
+    confidence: 'certain'
   },
   'row-set': {
     kind: 'row-set',
     title: 'Выбран неверный набор строк',
     explanation: 'Форма таблицы совпадает, но запрос возвращает лишние строки или теряет нужные.',
-    nextStep: 'Запусти базовый SELECT без части условий и добавляй WHERE/JOIN по одному, сверяя COUNT и идентификаторы.'
+    nextStep: 'Запусти базовый SELECT без части условий и добавляй WHERE/JOIN по одному, сверяя COUNT и идентификаторы.',
+    confidence: 'likely'
   },
   ordering: {
     kind: 'ordering',
     title: 'Строки верные, порядок нет',
     explanation: 'Набор строк совпадает, но ORDER BY не задаёт ожидаемую последовательность или полный tie-breaker.',
     nextStep: 'Проверь направление каждого sort key и добавь уникальный последний ключ.',
-    atlasId: 'logical-unstable-limit'
+    atlasId: 'logical-unstable-limit',
+    confidence: 'certain'
   },
   values: {
     kind: 'values',
     title: 'Значения рассчитаны неверно',
     explanation: 'Столбцы и количество строк совпадают, но хотя бы одно вычисленное или выбранное значение отличается.',
-    nextStep: 'Добавь промежуточные выражения в SELECT и проверь одну строку вручную до финального расчёта.'
+    nextStep: 'Добавь промежуточные выражения в SELECT и проверь одну строку вручную до финального расчёта.',
+    confidence: 'possible'
   },
   'null-filter': {
     kind: 'null-filter',
     title: 'Проверь NULL и логику фильтра',
     explanation: 'Результат похож на ошибку трёхзначной логики, nullable-источника или условия, применённого не на том этапе.',
     nextStep: 'Посчитай NULL отдельно, используй IS NULL/IS NOT NULL и проверь подзапрос или правую сторону JOIN.',
-    atlasId: 'logical-not-in-null'
+    atlasId: 'logical-not-in-null',
+    confidence: 'possible'
   },
   aggregation: {
     kind: 'aggregation',
     title: 'Нарушена гранулярность агрегата',
     explanation: 'Группы, denominator или момент фильтрации не совпадают с бизнес-вопросом.',
-    nextStep: 'Назови одну строку результата, проверь GROUP BY и раздели row filter (WHERE) от group filter (HAVING).'
+    nextStep: 'Назови одну строку результата, проверь GROUP BY и раздели row filter (WHERE) от group filter (HAVING).',
+    confidence: 'possible'
   },
   'join-cardinality': {
     kind: 'join-cardinality',
     title: 'JOIN размножил или потерял строки',
     explanation: 'Кардинальность связи не соответствует ожидаемой гранулярности результата.',
     nextStep: 'Посчитай строки на join key с обеих сторон и реши, нужна ли предагрегация, EXISTS или другое условие ON.',
-    atlasId: 'logical-join-multiplication'
+    atlasId: 'logical-join-multiplication',
+    confidence: 'possible'
   }
 };
 
@@ -125,7 +137,11 @@ function rowCount(blocks: AttemptResultBlock[]) {
 }
 
 export function diagnosticForKind(kind: AttemptErrorKind): AttemptDiagnostic {
-  return diagnosticCatalog[kind];
+  return { ...diagnosticCatalog[kind] };
+}
+
+function possible(kind: AttemptErrorKind, alternatives: AttemptErrorKind[] = []) {
+  return { ...diagnosticForKind(kind), confidence: 'possible' as const, alternatives };
 }
 
 export function classifySqlAttempt(input: {
@@ -157,13 +173,13 @@ export function classifySqlAttempt(input: {
   const expectedCount = rowCount(expected);
   if (actualCount !== expectedCount) {
     if (JOIN_MODULES.has(input.task.module) && actualCount > expectedCount) {
-      return diagnosticForKind('join-cardinality');
+      return { ...diagnosticForKind('join-cardinality'), confidence: 'likely' };
     }
     if (NULL_MODULES.has(input.task.module) && actualCount === 0 && expectedCount > 0) {
-      return diagnosticForKind('null-filter');
+      return { ...diagnosticForKind('null-filter'), confidence: 'likely' };
     }
     if (AGGREGATE_MODULES.has(input.task.module)) {
-      return diagnosticForKind('aggregation');
+      return { ...diagnosticForKind('aggregation'), confidence: 'likely' };
     }
     return diagnosticForKind('row-set');
   }
@@ -176,13 +192,13 @@ export function classifySqlAttempt(input: {
   }
 
   if (NULL_MODULES.has(input.task.module) || /\bnull\b|\bnot\s+in\b/i.test(input.sql)) {
-    return diagnosticForKind('null-filter');
+    return possible('null-filter', ['values', 'row-set']);
   }
   if (JOIN_MODULES.has(input.task.module) || /\bjoin\b/i.test(input.sql)) {
-    return diagnosticForKind('join-cardinality');
+    return possible('join-cardinality', ['values', 'row-set']);
   }
   if (AGGREGATE_MODULES.has(input.task.module) || /\b(group\s+by|having|count|sum|avg|min|max)\b/i.test(input.sql)) {
-    return diagnosticForKind('aggregation');
+    return possible('aggregation', ['values', 'row-set']);
   }
-  return diagnosticForKind('values');
+  return possible('values', ['row-set']);
 }

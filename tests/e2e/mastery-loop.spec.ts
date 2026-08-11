@@ -88,6 +88,48 @@ test('desktop mastery loop distinguishes guided success, independent retry and r
   await expect(syllabus.getByTestId('spaced-review')).toContainText('тем ещё не изучено');
 });
 
+test('desktop mastery solution exposure schedules a delayed clean retrieval', async ({ page }) => {
+  await authenticatePage(page, 'solutiondebt');
+  await page.goto('./');
+  await page.getByRole('button', { name: 'Практика', exact: true }).click();
+  await seedFirstLessonEvidence(page);
+  await page.getByRole('button', { name: /001 Форма результата: обращение и сервис/ }).click();
+
+  for (let index = 0; index < 3; index += 1) {
+    await page.getByRole('button', { name: 'Следующая подсказка' }).click();
+  }
+  await page.getByRole('button', { name: 'Показать решение' }).click();
+  await expect(page.locator('.solution-card')).toContainText(FIRST_SOLUTION);
+  await expect(page.locator('.feedback')).toContainText('через 10 минут задача появится для чистого повторения');
+
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('sql-academy-progress-v4') || '{}');
+    const stats = state.taskStats?.['task-001'];
+    return { solutionViews: stats?.solutionViews, due: Boolean(stats?.retrievalDueAt), independent: stats?.independentPasses || 0 };
+  })).toEqual({ solutionViews: 1, due: true, independent: 0 });
+
+  await replaceEditorSql(page, FIRST_SOLUTION);
+  await page.getByRole('button', { name: /Проверить SQL/i }).click();
+  await expect(page.locator('.feedback.success')).toContainText('использовалась помощь');
+
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('sql-academy-progress-v4') || '{}');
+    state.taskStats['task-001'].retrievalDueAt = '2000-01-01T00:00:00.000Z';
+    localStorage.setItem('sql-academy-progress-v4', JSON.stringify(state));
+  });
+  await page.reload();
+  await page.getByRole('button', { name: 'Практика', exact: true }).click();
+  await page.getByRole('button', { name: /001 Форма результата: обращение и сервис/ }).click();
+  await replaceEditorSql(page, FIRST_SOLUTION);
+  await page.getByRole('button', { name: /Проверить SQL/i }).click();
+  await expect(page.locator('.feedback.success')).toContainText('Самостоятельное решение подтверждено');
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('sql-academy-progress-v4') || '{}');
+    const stats = state.taskStats?.['task-001'];
+    return { due: Boolean(stats?.retrievalDueAt), independent: stats?.independentPasses || 0 };
+  })).toEqual({ due: false, independent: 1 });
+});
+
 test('mobile mastery diagnostics remain readable without horizontal overflow', async ({ page }, testInfo) => {
   await authenticatePage(page, 'mobilemastery');
   await page.goto('./');
