@@ -363,7 +363,7 @@ function App() {
       return;
     }
     if (!selectedReadiness.canRun) {
-      setMessage(`Подсказки недоступны в preview: ${selectedReadiness.reason}`);
+      setMessage(`Подсказки недоступны в режиме предпросмотра: ${selectedReadiness.reason}`);
       return;
     }
     if (visibleHints >= selected.hints.length) return;
@@ -378,7 +378,7 @@ function App() {
       return;
     }
     if (!selectedReadiness.canRun) {
-      setMessage(`Эталон недоступен в preview: ${selectedReadiness.reason}`);
+      setMessage(`Эталон недоступен в режиме предпросмотра: ${selectedReadiness.reason}`);
       setStatus('idle');
       return;
     }
@@ -586,7 +586,7 @@ function App() {
             <div className="section-heading">
               <div>
                 <h1>{workspaceTitle}</h1>
-                <p>{view === 'review' ? `${queue.length} задач в адаптивной очереди` : `${filteredTasks.length} задач · ready запускаются, preview показывает будущий этап`}</p>
+                <p>{view === 'review' ? `${queue.length} задач в адаптивной очереди` : `${filteredTasks.length} задач · доступные можно запускать, остальные показывают будущий этап`}</p>
               </div>
               <select value={moduleFilter} onChange={event => setModuleFilter(event.target.value)} aria-label="Фильтр по модулю">
                 <option value="all">Все модули</option>
@@ -608,7 +608,7 @@ function App() {
                   <span className="task-number">{task.id.replace('task-', '')}</span>
                   <span>
                     <strong>{task.title}</strong>
-                    <small>{task.difficulty} · {workspaceStageLabel(task)} · {readiness?.label || 'Сверяю маршрут'} · {task.xp} XP{stats?.incorrect ? ` · ошибок ${stats.incorrect}` : ''}{stats?.independentPasses ? ' · independent ✓' : ''}</small>
+                    <small>{task.difficulty} · {workspaceStageLabel(task)} · {readiness?.label || 'Сверяю маршрут'} · {task.xp} XP{stats?.incorrect ? ` · ошибок ${stats.incorrect}` : ''}{stats?.independentPasses ? ' · самостоятельно ✓' : ''}</small>
                   </span>
                   {preview ? <LockKeyhole className="preview-lock" /> : completed.has(task.id) ? <CheckCircle2 className="done" /> : <ChevronRight />}
                 </button>;
@@ -645,7 +645,7 @@ function App() {
                 <summary><GraduationCap /> Разбор темы</summary>
                 <div className="lesson-content">
                   <p><strong>Суть:</strong> {selected.guide.summary}</p>
-                  <p><strong>Mental model:</strong> {selected.guide.mentalModel}</p>
+                  <p><strong>Как рассуждать:</strong> {selected.guide.mentalModel}</p>
                   <pre><code>{selected.guide.example}</code></pre>
                   <div className="lesson-columns">
                     <div><h4>Чек-лист</h4><ul>{selected.guide.checklist.map(item => <li key={item}>{item}</li>)}</ul></div>

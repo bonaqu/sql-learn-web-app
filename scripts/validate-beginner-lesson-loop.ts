@@ -6,7 +6,7 @@ import { foundationCorridorTaskIds } from '../src/data/foundation-evaluation-con
 import { tasks } from '../src/data/course-catalog';
 
 const expectedModules = ['sql-thinking', 'filtering', 'select'] as const;
-const forbiddenVisibleTerms = /\b(mastery|frontier|foundation|evidence|placement)\b/i;
+const forbiddenVisibleTerms = /\b(mastery|frontier|foundation|evidence|placement|independent|guided|preview|mental model)\b/i;
 
 const noviceJourneySources = [
   '../src/App.tsx',
@@ -22,11 +22,11 @@ function learnerCopyLeaks(source: string) {
   const candidates: string[] = [];
   for (const line of source.split(/\r?\n/)) {
     for (const match of line.matchAll(/(['"`])((?:\\.|(?!\1).)*)\1/g)) {
-      candidates.push(match[2].replace(/\$\{[^}]+\}/g, ''));
+      candidates.push(match[2].replace(/\$\{[^{}]+\}/g, '').replace(/\$\{.*$/, ''));
     }
     for (const match of line.matchAll(/>([^<>{}]*)</g)) candidates.push(match[1]);
   }
-  return candidates.filter(copy => /[А-Яа-яЁё]/.test(copy) && forbiddenVisibleTerms.test(copy));
+  return candidates.filter(copy => forbiddenVisibleTerms.test(copy) && (/[А-Яа-яЁё]/.test(copy) || copy.includes('✓') || /mental model\s*:/i.test(copy)));
 }
 
 function violations(cycle: Partial<BeginnerLessonCycle>) {
