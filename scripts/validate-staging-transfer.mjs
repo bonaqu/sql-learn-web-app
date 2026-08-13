@@ -43,7 +43,8 @@ for (const flag of [
   'FEATURE_SMS_VERIFICATION',
   'FEATURE_TURNSTILE',
   'FEATURE_ADMIN_CONSOLE',
-  'FEATURE_ADMIN_ALERTS'
+  'FEATURE_ADMIN_ALERTS',
+  'AI_MENTOR_ENABLED'
 ]) assert.equal(contract.safeDefaults[flag], 'off', `${flag} must default off in app staging`);
 
 assert.equal(template.name, contract.resources.workerName);
@@ -134,6 +135,7 @@ try {
     STAGING_FEATURE_TURNSTILE: 'on',
     STAGING_FEATURE_ADMIN_CONSOLE: 'on',
     STAGING_FEATURE_ADMIN_ALERTS: 'on',
+    STAGING_AI_MENTOR_ENABLED: 'on',
     STAGING_TURNSTILE_EXPECTED_HOSTNAMES: 'staging.example.com,review.example.com',
     STAGING_ADMIN_ALLOWED_USER_IDS: 'operator_test_01',
     STAGING_ADMIN_ALERT_CRON: '*/15 * * * *',
@@ -144,6 +146,7 @@ try {
   const enabledMetadata = JSON.parse(readFileSync(enabledRender.metadataOutput, 'utf8'));
   assert.deepEqual(enabled.triggers.crons, ['*/15 * * * *']);
   assert.equal(enabled.vars.CONTACT_REGISTRATION_POLICY, 'required-for-new-registration');
+  assert.equal(enabled.vars.AI_MENTOR_ENABLED, 'on');
   assert.equal(enabled.vars.TURNSTILE_EXPECTED_HOSTNAMES, 'staging.example.com,review.example.com');
   assert.equal(enabled.vars.ADMIN_ALLOWED_USER_IDS, 'operator_test_01');
   assert.equal(enabled.secrets, undefined);
