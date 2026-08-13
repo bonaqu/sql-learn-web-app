@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const watchdog = readFileSync(new URL('./playwright-worker-watchdog.mjs', import.meta.url), 'utf8');
 const runner = readFileSync(new URL('./playwright-runner.mjs', import.meta.url), 'utf8');
+const fullSuite = readFileSync(new URL('./playwright-full-suite.mjs', import.meta.url), 'utf8');
 const config = readFileSync(new URL('../playwright.config.ts', import.meta.url), 'utf8');
 const auth = readFileSync(new URL('../tests/e2e/auth-helper.ts', import.meta.url), 'utf8');
 const vite = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8');
@@ -24,6 +25,12 @@ assert.ok(config.includes("process.env.PLAYWRIGHT_WORKER_PORT || '8792'"), 'Dire
 assert.ok(runner.includes('FIRST_PROJECT_PORT = 8792'), 'Canonical Playwright runner does not start in the project-owned port range');
 assert.ok(runner.includes('LAST_PROJECT_PORT = 8891'), 'Canonical Playwright runner has no bounded project-owned port range');
 assert.ok(runner.includes('exclusive: true'), 'Canonical Playwright runner does not prove exclusive port availability');
+assert.ok(fullSuite.includes("'desktop-foundation'"), 'Full E2E suite lost the desktop foundation project');
+assert.ok(fullSuite.includes("'desktop-learning'"), 'Full E2E suite lost the desktop learning project');
+assert.ok(fullSuite.includes("'mobile-foundation'"), 'Full E2E suite lost the mobile foundation project');
+assert.ok(fullSuite.includes("'mobile-learning'"), 'Full E2E suite lost the mobile learning project');
+assert.ok(fullSuite.includes("['1/2', '2/2']"), 'Full E2E suite no longer bounds preview and Worker session duration with two shards');
+assert.ok(fullSuite.includes('await runPlaywright'), 'Full E2E shards bypass the canonical isolated runner');
 assert.ok(vite.includes("target: `http://127.0.0.1:${process.env.PLAYWRIGHT_WORKER_PORT || '8792'}`"), 'Production preview does not proxy API calls to the selected Worker port');
 assert.ok(!workflow.includes('VITE_API_BASE: http://127.0.0.1:8787'), 'PR Quality still compiles a fixed local Worker port into dist');
 assert.ok(!e2eSources.includes('http://127.0.0.1:8787'), 'An E2E fixture still bypasses the selected Worker port');
