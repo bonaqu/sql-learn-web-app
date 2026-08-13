@@ -38,7 +38,7 @@ const normalizedCoreLessons = applyCoreLessonTaskLinks(
     : lesson),
   tasks
 ).map(lesson => ({ ...lesson, beginnerCycle: beginnerLessonCycle(lesson.module) }));
-const normalizedCoreCheckpoints = applyCoreCheckpointTaskLinks(coreCheckpoints, tasks);
+const normalizedCoreCheckpoints = applyCoreCheckpointTaskLinks(coreCheckpoints);
 
 function diversifyAdvancedLesson(lesson: CurriculumLesson): CurriculumLesson {
   return {

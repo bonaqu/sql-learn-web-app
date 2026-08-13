@@ -24,7 +24,6 @@ import {
   Trophy,
   X
 } from 'lucide-react';
-import { tasks } from '../data/course-catalog';
 import {
   advanceAssessment,
   assessmentEligibility,
@@ -39,7 +38,6 @@ import {
   loadAssessmentSession,
   loadLocalAssessmentReports,
   remainingSeconds,
-  saveAssessmentSession,
   saveLocalAssessmentReport,
   updateAssessmentAnswer
 } from '../lib/assessment';

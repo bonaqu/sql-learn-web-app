@@ -15,7 +15,6 @@ import {
   MonitorSmartphone,
   RefreshCw,
   Save,
-  Settings,
   ShieldCheck,
   Trash2,
   Unplug,

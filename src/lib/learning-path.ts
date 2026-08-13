@@ -4,7 +4,6 @@ import { phaseDefinitions, phaseForModule } from '../data/learning-structure';
 import type { CheckpointRemediationState } from './checkpoint-remediation';
 import {
   buildJourneyFrontier,
-  foundationTasksForModule,
   transferTasksForModule,
   type JourneyAction,
   type JourneyFrontier

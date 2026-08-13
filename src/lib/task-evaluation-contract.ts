@@ -6,7 +6,6 @@ import type { AttemptDiagnostic } from './attempt-diagnostics';
 import {
   FOUNDATION_EVIDENCE_CONTRACT_VERSION,
   TASK_EVALUATION_CONTRACT_VERSION,
-  type SqlResultType,
   type TaskEvaluationColumn,
   type TaskEvaluationContract,
   type TaskEvaluationDiagnostic,
