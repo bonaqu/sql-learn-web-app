@@ -22,6 +22,7 @@ import {
   LockKeyhole,
   Play,
   Search,
+  ShieldCheck,
   Sparkles,
   Target,
   Trophy,
@@ -36,6 +37,7 @@ import {
 } from '../data/complete-curriculum';
 import { modules, tasks } from '../data/course-catalog';
 import { trainingSeedSql } from '../data/training-dataset';
+import { professionalTrack } from '../data/role-track-matrices';
 import { openAcademyTask } from '../lib/academy-navigation';
 import { loadLocalAssessmentReports } from '../lib/assessment';
 import {
@@ -127,6 +129,7 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
 
   const lesson = lessonById(lessonId) || curriculumLessons[0];
   const project = capstoneProjects.find(item => item.id === projectId) || capstoneProjects[0];
+  const projectTrack = professionalTrack(project.trackId);
   const filteredLessons = useMemo(() => curriculumSearch(query), [query]);
   const accessByLesson = useMemo(() => new Map(curriculumLessons.map(item => [
     item.id,
@@ -454,7 +457,7 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
 
   const projectContent = <div className="project-lab-layout">
     <aside className="project-catalog" aria-label="Каталог проектов">
-      <div className="project-catalog-heading"><Sparkles /><span><strong>Project Lab</strong><small>3 production-like кейса</small></span></div>
+      <div className="project-catalog-heading"><Sparkles /><span><strong>Project Lab</strong><small>{capstoneProjects.length} ролевых capstone</small></span></div>
       {capstoneProjects.map(item => <button key={item.id} className={item.id === project.id ? 'active' : ''} onClick={() => setProjectId(item.id)} aria-current={item.id === project.id ? 'page' : undefined}>
         <span>{completedProjects.has(item.id) ? <CheckCircle2 /> : <FileText />}</span>
         <div><strong>{item.title}</strong><small>{item.estimatedMinutes} мин · {item.deliverables.length} deliverables</small></div>
@@ -469,6 +472,15 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
         <span className={completedProjects.has(project.id) ? 'project-status done' : 'project-status'}>{completedProjects.has(project.id) ? <CheckCircle2 /> : <Target />}{completedProjects.has(project.id) ? 'Завершён' : `${activeDraft.completedDeliverables.length}/${project.deliverables.length} этапа`}</span>
       </header>
       <section className="project-scenario"><strong>Сценарий</strong><p>{project.scenario}</p><div>{project.moduleIds.map(moduleId => <span key={moduleId}>{lessonForModule(moduleId)?.title || moduleId}</span>)}</div></section>
+
+      {projectTrack && <section className="project-track-contract" data-testid="project-track-contract">
+        <header><div><small>Ролевой трек</small><h2>{projectTrack.title}</h2></div><span>Общая база · {projectTrack.sharedPrerequisiteModuleIds.length} модулей</span></header>
+        <p>{projectTrack.outcome}</p>
+        <div>{projectTrack.jobTasks.map(task => <article key={task.id}><strong>{task.title}</strong><small>{task.evidence}</small></article>)}</div>
+        <footer><b>Portfolio outcome</b><span>{project.portfolioOutcome}</span></footer>
+      </section>}
+
+      <section className="project-originality" data-testid="project-originality"><ShieldCheck /><div><strong>Оригинальный безопасный кейс</strong><p>{project.originalityNote}</p></div></section>
 
       <section className="project-deliverables">
         <div className="project-section-title"><span>01</span><div><small>План работы</small><h2>Deliverables</h2></div></div>

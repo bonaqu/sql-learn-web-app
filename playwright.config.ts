@@ -40,22 +40,22 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop-foundation',
-      grep: /desktop academy|desktop accessibility|desktop password|desktop capstone|desktop checkpoint|desktop commercial runtime|desktop verified contact/,
+      grep: /desktop academy|desktop accessibility|desktop password|desktop checkpoint|desktop commercial runtime|desktop verified contact/,
       use: desktop
     },
     {
       name: 'desktop-learning',
-      grep: /desktop curriculum|desktop guided journey|desktop adaptive learning|desktop mastery|desktop onboarding|desktop assessment|desktop diagnostic exam|desktop syllabus|desktop keeps SQLite|desktop analytics|desktop failed checkpoint/,
+      grep: /desktop curriculum|desktop guided journey|desktop adaptive learning|desktop goal|desktop mastery|desktop onboarding|desktop assessment|desktop diagnostic exam|desktop syllabus|desktop keeps SQLite|desktop analytics|desktop failed checkpoint|desktop capstone/,
       use: desktop
     },
     {
       name: 'mobile-foundation',
-      grep: /mobile task flow|mobile password|mobile assessment|mobile checkpoint|mobile accessibility|mobile capstone|mobile verified contact/,
+      grep: /mobile task flow|mobile password|mobile assessment|mobile checkpoint|mobile accessibility|mobile verified contact/,
       use: mobile
     },
     {
       name: 'mobile-learning',
-      grep: /mobile misconception|mobile guided journey|mobile adaptive learning|mobile mastery|mobile onboarding|mobile syllabus|mobile blocks unsafe|mobile analytics|mobile failed checkpoint/,
+      grep: /mobile misconception|mobile guided journey|mobile adaptive learning|mobile goal|mobile mastery|mobile onboarding|mobile syllabus|mobile blocks unsafe|mobile analytics|mobile failed checkpoint|mobile capstone/,
       use: mobile
     }
   ]

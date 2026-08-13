@@ -216,7 +216,7 @@ const afterFailure = progressWithIndependentAt('2026-08-03T18:30:00.000Z');
 assert.deepEqual(unresolvedCheckpointRemediationModules(state, afterFailure), [],
   'Fresh independent evidence after the report must repair targeted tasks.');
 
-const goals: LearnerGoal[] = ['support', 'analyst', 'backend', 'interview', 'full'];
+const goals: LearnerGoal[] = ['support', 'analyst', 'backend', 'data-engineering', 'interview', 'full'];
 const remediationActions = goals.map(goal => buildJourneyFrontier(emptyProgress(), emptyCurriculumProgress(), {
   includeReview: false,
   goal,

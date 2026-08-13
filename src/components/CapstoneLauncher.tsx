@@ -9,7 +9,9 @@ const DEFAULT_PROJECT = 'project-incident-command';
 const PROJECT_BY_TITLE: Record<string, string> = {
   'Incident Command Dashboard': 'project-incident-command',
   'Customer Data Trust Audit': 'project-data-trust',
-  'T-Bonk SLA Executive Mart': 'project-executive-mart'
+  'T-Bonk SLA Executive Mart': 'project-executive-mart',
+  'Learning Activation Decision': 'project-analytics-decision',
+  'Safe Ticket State Migration': 'project-backend-integrity'
 };
 
 function selectedProjectId() {

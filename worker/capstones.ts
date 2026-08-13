@@ -1,7 +1,7 @@
 type CapstoneStatus = 'passed' | 'failed';
 type CapstoneProvenance = 'independent' | 'guided' | 'solution-assisted';
-type CapstoneFileKind = 'query' | 'schema' | 'plan';
-type CapstoneCheckKind = 'result-contract' | 'hidden-data' | 'schema-invariant' | 'plan-shape' | 'reflection';
+type CapstoneFileKind = 'query' | 'schema' | 'mutation' | 'plan';
+type CapstoneCheckKind = 'result-contract' | 'hidden-data' | 'schema-invariant' | 'state-invariant' | 'plan-shape' | 'reflection';
 
 type CapstoneFileEvidence = {
   fileId: string;
@@ -57,7 +57,9 @@ type StoredReport = { user_id: string; payload: string };
 const PROJECT_FILES: Record<string, string[]> = {
   'project-incident-command': ['incident-base.sql', 'incident-metrics.sql', 'incident-ranking.sql'],
   'project-data-trust': ['trust-profile.sql', 'trust-normalize.sql', 'trust-schema.sql'],
-  'project-executive-mart': ['mart-pipeline.sql', 'mart-trend.sql', 'mart-plan.sql']
+  'project-executive-mart': ['mart-pipeline.sql', 'mart-trend.sql', 'mart-plan.sql'],
+  'project-analytics-decision': ['analytics-cohort.sql', 'analytics-funnel.sql', 'analytics-trend.sql'],
+  'project-backend-integrity': ['backend-mutation.sql', 'backend-schema.sql', 'backend-plan.sql']
 };
 const REPORT_ID_PATTERN = /^[a-f0-9-]{16,64}$/i;
 const USER_ID_PATTERN = /^[a-f0-9-]{16,80}$/i;
@@ -119,7 +121,7 @@ function validFileEvidence(value: unknown, allowedFiles: Set<string>): value is 
   return typeof file.fileId === 'string'
     && allowedFiles.has(file.fileId)
     && shortText(file.title, 180)
-    && (file.kind === 'query' || file.kind === 'schema' || file.kind === 'plan')
+    && (file.kind === 'query' || file.kind === 'schema' || file.kind === 'mutation' || file.kind === 'plan')
     && typeof file.passed === 'boolean'
     && boundedInteger(file.score, 0, 100)
     && boundedInteger(file.maxScore, 1, 100)
@@ -143,6 +145,7 @@ function validCheck(value: unknown, allowedFiles: Set<string>): value is Capston
     && (check.kind === 'result-contract'
       || check.kind === 'hidden-data'
       || check.kind === 'schema-invariant'
+      || check.kind === 'state-invariant'
       || check.kind === 'plan-shape'
       || check.kind === 'reflection')
     && shortText(check.title, 240)

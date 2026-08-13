@@ -14,6 +14,17 @@ function focusableElements(container: HTMLElement) {
     .filter(element => !element.hidden && element.getAttribute('aria-hidden') !== 'true' && element.getClientRects().length > 0);
 }
 
+function topmostModalDialog() {
+  const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][aria-modal="true"]'))
+    .filter(dialog => dialog.getClientRects().length > 0);
+  return dialogs.reduce<HTMLElement | null>((topmost, candidate) => {
+    if (!topmost) return candidate;
+    const topmostZ = Number.parseInt(getComputedStyle(topmost).zIndex, 10) || 0;
+    const candidateZ = Number.parseInt(getComputedStyle(candidate).zIndex, 10) || 0;
+    return candidateZ >= topmostZ ? candidate : topmost;
+  }, null);
+}
+
 export function useDialogFocus(
   open: boolean,
   containerRef: RefObject<HTMLElement | null>,
@@ -46,6 +57,7 @@ export function useDialogFocus(
     const animationFrame = requestAnimationFrame(focusInitial);
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (topmostModalDialog() !== container) return;
       if (event.key === 'Escape' && closeOnEscape) {
         event.preventDefault();
         closeRef.current();

@@ -1,4 +1,4 @@
-type LearnerGoal = 'support' | 'analyst' | 'backend' | 'interview' | 'full';
+type LearnerGoal = 'support' | 'analyst' | 'backend' | 'data-engineering' | 'interview' | 'full';
 type ExperienceLevel = 'none' | 'basics' | 'regular' | 'advanced';
 type ProgrammingExperience = 'none' | 'some' | 'professional';
 type PriorSqlExperience = 'none' | 'course' | 'work';
@@ -8,7 +8,7 @@ type StudyPace = 'gentle' | 'steady' | 'intensive';
 type StudyDay = 'MO' | 'TU' | 'WE' | 'TH' | 'FR' | 'SA' | 'SU';
 type PlacementStatus = 'not-started' | 'pending' | 'completed' | 'deferred';
 type PlacementLevel = 'foundation' | 'developing' | 'working' | 'advanced';
-type RecommendedTrack = 'fundamentals' | 'analytics' | 'support' | 'performance' | 'interview';
+type RecommendedTrack = 'fundamentals' | 'analytics' | 'support' | 'performance' | 'data-engineering' | 'interview';
 
 type WeekPlanItem = {
   id: string;
@@ -52,7 +52,7 @@ type LearnerOnboardingProfile = {
 };
 
 const MAX_BYTES = 40_000;
-const goals = new Set<LearnerGoal>(['support', 'analyst', 'backend', 'interview', 'full']);
+const goals = new Set<LearnerGoal>(['support', 'analyst', 'backend', 'data-engineering', 'interview', 'full']);
 const experience = new Set<ExperienceLevel>(['none', 'basics', 'regular', 'advanced']);
 const programmingExperience = new Set<ProgrammingExperience>(['none', 'some', 'professional']);
 const priorSqlExperience = new Set<PriorSqlExperience>(['none', 'course', 'work']);
@@ -62,7 +62,7 @@ const paces = new Set<StudyPace>(['gentle', 'steady', 'intensive']);
 const days = new Set<StudyDay>(['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']);
 const placementStatuses = new Set<PlacementStatus>(['not-started', 'pending', 'completed', 'deferred']);
 const placementLevels = new Set<PlacementLevel>(['foundation', 'developing', 'working', 'advanced']);
-const tracks = new Set<RecommendedTrack>(['fundamentals', 'analytics', 'support', 'performance', 'interview']);
+const tracks = new Set<RecommendedTrack>(['fundamentals', 'analytics', 'support', 'performance', 'data-engineering', 'interview']);
 const planKinds = new Set<WeekPlanItem['kind']>(['orientation', 'lesson', 'practice', 'review', 'placement']);
 
 const json = (data: unknown, status = 200, headers: Record<string, string> = {}) => new Response(JSON.stringify(data), {

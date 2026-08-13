@@ -79,10 +79,10 @@ const empty = emptyOnboardingProfile();
 assert(!onboardingReady(empty), 'Empty profile must not complete onboarding');
 assert(empty.studyDays.length >= 2, 'Default study contract needs at least two days');
 assert(Object.keys(placementLevelLabels).length === 4, 'Every persisted placement level needs a learner-facing label');
-assert(Object.keys(recommendedTrackLabels).length === 5, 'Every persisted recommended track needs a learner-facing label');
+assert(Object.keys(recommendedTrackLabels).length === 6, 'Every persisted recommended track needs a learner-facing label');
 assert(Object.keys(weekPlanKindLabels).length === 5, 'Every persisted week-plan kind needs a learner-facing label');
 assert(new Set(Object.values(placementLevelLabels)).size === 4, 'Placement labels must remain distinct');
-assert(new Set(Object.values(recommendedTrackLabels)).size === 5, 'Track labels must remain distinct');
+assert(new Set(Object.values(recommendedTrackLabels)).size === 6, 'Track labels must remain distinct');
 assert(new Set(Object.values(weekPlanKindLabels)).size === 5, 'Week-plan labels must remain distinct');
 assert(empty.dialect === 'unknown', 'Unknown dialect must be a first-class safe onboarding choice');
 assert(empty.routePreference === 'full', 'A new learner must default to the full explanatory route');
@@ -240,7 +240,7 @@ function advancedProfile(goal: LearnerGoal, prefixLength: number) {
     status: 'completed' as const,
     score: 95,
     level: 'advanced' as const,
-    recommendedTrack: goal === 'analyst' ? 'analytics' as const : goal === 'backend' ? 'performance' as const : 'fundamentals' as const,
+    recommendedTrack: goal === 'analyst' ? 'analytics' as const : goal === 'backend' ? 'performance' as const : goal === 'data-engineering' ? 'data-engineering' as const : 'fundamentals' as const,
     strongModuleIds: route.slice(0, safePrefixLength),
     focusModuleIds: [],
     completedAt: now

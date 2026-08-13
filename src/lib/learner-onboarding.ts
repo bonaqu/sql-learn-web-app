@@ -2,7 +2,7 @@ import { onboardingModuleTitle } from '../data/onboarding-module-titles';
 import type { AssessmentReport } from './assessment';
 import { goalModuleRoute, safeDiagnosticBypass, SHARED_FOUNDATION_MODULE_IDS } from './goal-aware-route';
 
-export type LearnerGoal = 'support' | 'analyst' | 'backend' | 'interview' | 'full';
+export type LearnerGoal = 'support' | 'analyst' | 'backend' | 'data-engineering' | 'interview' | 'full';
 export type ExperienceLevel = 'none' | 'basics' | 'regular' | 'advanced';
 export type ProgrammingExperience = 'none' | 'some' | 'professional';
 export type PriorSqlExperience = 'none' | 'course' | 'work';
@@ -12,7 +12,7 @@ export type StudyPace = 'gentle' | 'steady' | 'intensive';
 export type StudyDay = 'MO' | 'TU' | 'WE' | 'TH' | 'FR' | 'SA' | 'SU';
 export type PlacementStatus = 'not-started' | 'pending' | 'completed' | 'deferred';
 export type PlacementLevel = 'foundation' | 'developing' | 'working' | 'advanced';
-export type RecommendedTrack = 'fundamentals' | 'analytics' | 'support' | 'performance' | 'interview';
+export type RecommendedTrack = 'fundamentals' | 'analytics' | 'support' | 'performance' | 'data-engineering' | 'interview';
 
 export type PlacementResult = {
   status: PlacementStatus;
@@ -71,6 +71,7 @@ export const goalOptions: Array<{ id: LearnerGoal; title: string; description: s
   { id: 'support', title: 'SQL для поддержки', description: 'Диагностика инцидентов, SLA, очереди, качество данных и расследования.', track: 'support' },
   { id: 'analyst', title: 'Аналитика', description: 'Метрики, агрегации, окна, временные ряды и объяснимые отчёты.', track: 'analytics' },
   { id: 'backend', title: 'SQL для бэкенда', description: 'Схемы, DML, транзакции, индексы, планы и безопасные изменения.', track: 'performance' },
+  { id: 'data-engineering', title: 'Data engineering', description: 'Качество, моделирование, воспроизводимые SQL-конвейеры и контроль повторного запуска.', track: 'data-engineering' },
   { id: 'interview', title: 'Интервью', description: 'Задачи под временем, формулирование допущений и устойчивое объяснение решения.', track: 'interview' },
   { id: 'full', title: 'Полная академия', description: 'Последовательный путь от нуля до боевых задач и итоговых проектов.', track: 'fundamentals' }
 ];
@@ -91,6 +92,7 @@ export const recommendedTrackLabels: Record<RecommendedTrack, string> = {
   analytics: 'Аналитический SQL',
   support: 'Поддержка и расследования',
   performance: 'Бэкенд и производительность',
+  'data-engineering': 'Data engineering и качество',
   interview: 'Подготовка к интервью'
 };
 
@@ -129,7 +131,7 @@ const validPaces = new Set<StudyPace>(['gentle', 'steady', 'intensive']);
 const validDays = new Set<StudyDay>(dayOrder);
 const validPlacementStatuses = new Set<PlacementStatus>(['not-started', 'pending', 'completed', 'deferred']);
 const validPlacementLevels = new Set<PlacementLevel>(['foundation', 'developing', 'working', 'advanced']);
-const validTracks = new Set<RecommendedTrack>(['fundamentals', 'analytics', 'support', 'performance', 'interview']);
+const validTracks = new Set<RecommendedTrack>(['fundamentals', 'analytics', 'support', 'performance', 'data-engineering', 'interview']);
 const validPlanKinds = new Set<WeekPlanItem['kind']>(['orientation', 'lesson', 'practice', 'review', 'placement']);
 
 function now() {

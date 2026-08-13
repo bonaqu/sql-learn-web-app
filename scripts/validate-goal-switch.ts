@@ -16,7 +16,7 @@ import {
 } from '../src/lib/learner-onboarding';
 import type { Progress } from '../src/lib/progress';
 
-const goals: LearnerGoal[] = ['support', 'analyst', 'backend', 'interview', 'full'];
+const goals: LearnerGoal[] = ['support', 'analyst', 'backend', 'data-engineering', 'interview', 'full'];
 const timestamp = '2026-08-03T19:30:00.000Z';
 const history = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => ({ day, solved: 0 }));
 
@@ -163,7 +163,7 @@ for (const currentGoal of goals) {
   }
 }
 
-assert.equal(switches, 20, 'The validator must cover every ordered switch between five goals.');
+assert.equal(switches, 30, 'The validator must cover every ordered switch between six goals.');
 
 const switchDomainSource = readFileSync(new URL('../src/lib/goal-switch.ts', import.meta.url), 'utf8');
 for (const marker of [
