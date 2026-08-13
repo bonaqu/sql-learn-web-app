@@ -89,7 +89,7 @@ const PASSWORD_MIN_LENGTH = 15;
 const PASSWORD_MAX_LENGTH = 128;
 const PASSWORD_ITERATIONS = 600_000;
 const MAX_PROGRESS_BYTES = 200_000;
-const SESSION_DAYS = 30;
+const SESSION_HOURS = 12;
 const LOGIN_FAILURE_LIMIT = 5;
 const LOGIN_LOCK_MINUTES = 15;
 const RECOVERY_CODE_COUNT = 8;
@@ -417,7 +417,7 @@ function recoveryStatements(env: Cloudflare.Env, userId: string, generation: num
 
 function newSession(userId: string, deviceName: string) {
   const token = bytesToBase64Url(randomBytes(32));
-  const expires = new Date(Date.now() + SESSION_DAYS * 86_400_000);
+  const expires = new Date(Date.now() + SESSION_HOURS * 3_600_000);
   return {
     token,
     sessionId: crypto.randomUUID(),

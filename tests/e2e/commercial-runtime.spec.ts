@@ -8,12 +8,22 @@ function smokeIdentity() {
 }
 
 test('desktop commercial runtime stays default-off, hidden and fail-closed', async ({ request }) => {
+  const shell = await request.get(`${worker}/`);
+  expect(shell.status()).toBe(200);
+  for (const header of ['content-security-policy', 'x-frame-options', 'x-content-type-options', 'referrer-policy', 'permissions-policy']) {
+    expect(shell.headers()[header], `${header} missing on app shell`).toBeTruthy();
+  }
+  expect(shell.headers()['content-security-policy']).toContain("script-src 'self' 'wasm-unsafe-eval'");
+  expect(shell.headers()['content-security-policy']).not.toContain("'unsafe-eval'");
   const response = await request.get(`${worker}/api/capabilities`, { headers: { origin: 'http://127.0.0.1:4173' } });
   expect(response.status()).toBe(200);
   expect(response.headers()['access-control-allow-origin']).toBe('http://127.0.0.1:4173');
   expect(response.headers()['x-commercial-capabilities-contract']).toBe('commercial-capabilities-v1');
   expect(response.headers()['x-frame-options']).toBe('DENY');
   expect(response.headers()['content-security-policy']).toContain("frame-ancestors 'none'");
+  expect(response.headers()['x-content-type-options']).toBe('nosniff');
+  expect(response.headers()['referrer-policy']).toBe('no-referrer');
+  expect(response.headers()['permissions-policy']).toContain('camera=()');
   expect(await response.json()).toEqual({
     contract: 'commercial-capabilities-v1',
     authentication: {

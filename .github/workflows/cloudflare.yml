@@ -27,6 +27,7 @@ jobs:
       FEATURE_TURNSTILE: ${{ vars.FEATURE_TURNSTILE || 'off' }}
       FEATURE_ADMIN_CONSOLE: ${{ vars.FEATURE_ADMIN_CONSOLE || 'off' }}
       FEATURE_ADMIN_ALERTS: ${{ vars.FEATURE_ADMIN_ALERTS || 'off' }}
+      AI_MENTOR_ENABLED: ${{ vars.AI_MENTOR_ENABLED || 'on' }}
       ADMIN_ALERT_CRON: ${{ vars.ADMIN_ALERT_CRON }}
       ADMIN_ALERT_COOLDOWN_MINUTES: ${{ vars.ADMIN_ALERT_COOLDOWN_MINUTES || '60' }}
       CONTACT_REGISTRATION_POLICY: ${{ vars.CONTACT_REGISTRATION_POLICY || 'optional' }}
@@ -163,6 +164,7 @@ jobs:
               FEATURE_TURNSTILE: process.env.FEATURE_TURNSTILE,
               FEATURE_ADMIN_CONSOLE: process.env.FEATURE_ADMIN_CONSOLE,
               FEATURE_ADMIN_ALERTS: process.env.FEATURE_ADMIN_ALERTS,
+              AI_MENTOR_ENABLED: process.env.AI_MENTOR_ENABLED,
               ADMIN_ALERT_CRON: alertCron,
               ADMIN_ALERT_COOLDOWN_MINUTES: process.env.ADMIN_ALERT_COOLDOWN_MINUTES,
               CONTACT_REGISTRATION_POLICY: process.env.CONTACT_REGISTRATION_POLICY,
@@ -217,6 +219,14 @@ jobs:
           echo 'core-smoke' > cloudflare-deployment-stage.txt
           node scripts/cloudflare-production-smoke.mjs
           test -s cloudflare-smoke-stage.txt
+
+      - name: Smoke-test security headers, AI consent, redaction and revocation
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          echo 'security-ai-smoke' > cloudflare-deployment-stage.txt
+          node scripts/security-ai-production-smoke.mjs
+          test -s cloudflare-security-ai-summary.json
 
       - name: Smoke-test full misconception answer history
         env:

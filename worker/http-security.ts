@@ -2,8 +2,24 @@ const BASE_SECURITY_HEADERS: Record<string, string> = {
   'x-content-type-options': 'nosniff',
   'x-frame-options': 'DENY',
   'referrer-policy': 'no-referrer',
-  'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
-  'content-security-policy': "base-uri 'self'; object-src 'none'; frame-ancestors 'none'"
+  'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=(), interest-cohort=()',
+  'content-security-policy': [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "frame-ancestors 'none'",
+    "frame-src 'none'",
+    "form-action 'self'",
+    "script-src 'self' 'wasm-unsafe-eval'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "worker-src 'self' blob:",
+    "child-src 'self' blob:",
+    "manifest-src 'self'",
+    "media-src 'self'"
+  ].join('; ')
 };
 
 export function withSecurityHeaders(response: Response, request: Request) {

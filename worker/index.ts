@@ -85,8 +85,9 @@ function finalize(response: Response, request: Request, origin: string | null) {
 function pipelineFailure(error: unknown, pathname: string, pipeline: Pipeline) {
   const requestId = crypto.randomUUID();
   const name = error instanceof Error ? error.name.slice(0, 80) : 'UnknownError';
-  const message = error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240);
-  console.error(`${pipeline}_pipeline_unhandled`, { requestId, pathname, name, message });
+  // Exception messages may contain a D1 statement or learner input. Keep only
+  // bounded routing metadata in logs; requestId is the correlation handle.
+  console.error(`${pipeline}_pipeline_unhandled`, { requestId, pathname, name });
   const label = pipeline === 'auth'
     ? 'Authentication'
     : pipeline === 'assessment'

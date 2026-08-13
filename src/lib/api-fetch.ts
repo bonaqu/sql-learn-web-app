@@ -1,5 +1,6 @@
 const DEFAULT_CLOUD_API = 'https://sql-learn-web-app.bonaqu.workers.dev';
 const AUTH_SESSION_KEY = 'sql-academy-auth-session-v2';
+const AUTH_TOKEN_KEY = 'sql-academy-auth-token-v1';
 const AUTH_CHANGED_EVENT = 'sql-academy-auth-changed';
 const LEGACY_PROGRESS_PATH = '/api/user/progress';
 const MASTERY_PROGRESS_PATH = '/api/mastery/progress';
@@ -14,6 +15,26 @@ function apiBase() {
   if (configuredApiBase) return configuredApiBase;
   if (window.location.hostname === 'bonaqu.github.io') return DEFAULT_CLOUD_API;
   return '';
+}
+
+function trustedApiOrigins() {
+  const origins = new Set([window.location.origin]);
+  const base = apiBase();
+  if (base) {
+    try {
+      const parsed = new URL(base);
+      if (parsed.origin === base && parsed.protocol === 'https:' && !parsed.username && !parsed.password) {
+        origins.add(parsed.origin);
+      }
+    } catch {
+      // Invalid build configuration fails closed: no cross-origin credential attachment.
+    }
+  }
+  return origins;
+}
+
+function trustedApiRequest(url: URL) {
+  return url.pathname.startsWith('/api/') && trustedApiOrigins().has(url.origin);
 }
 
 function normalizedApiPath(pathname: string) {
@@ -43,8 +64,17 @@ function resolveInput(input: RequestInfo | URL): RequestInfo | URL {
 
 function authToken() {
   try {
-    const session = JSON.parse(localStorage.getItem(AUTH_SESSION_KEY) || 'null') as { token?: string } | null;
-    return session?.token || '';
+    const ephemeral = sessionStorage.getItem(AUTH_TOKEN_KEY) || '';
+    if (ephemeral) return ephemeral;
+    const session = JSON.parse(localStorage.getItem(AUTH_SESSION_KEY) || 'null') as Record<string, unknown> | null;
+    const legacy = session && typeof session['token'] === 'string' ? session['token'] : '';
+    if (legacy) {
+      sessionStorage.setItem(AUTH_TOKEN_KEY, legacy);
+      const metadata = { ...(session || {}) };
+      delete metadata['token'];
+      localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(metadata));
+    }
+    return legacy;
   } catch {
     return '';
   }
@@ -120,14 +150,16 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const headers = new Headers(input instanceof Request ? input.headers : undefined);
   if (init?.headers) new Headers(init.headers).forEach((value, name) => headers.set(name, value));
   const token = authToken();
-  if (url.pathname.startsWith('/api/') && token && !headers.has('authorization')) {
+  const isTrustedApiRequest = trustedApiRequest(url);
+  if (isTrustedApiRequest && token && !headers.has('authorization')) {
     headers.set('authorization', `Bearer ${token}`);
   }
   const method = requestMethod(input, init);
   const requestInit = { ...init, headers };
-  const response = await fetchWithTransientRecovery(resolved, requestInit, method, url.pathname.startsWith('/api/'));
-  if (response.status === 401 && url.pathname.startsWith('/api/') && !publicAuthRequest(url)) {
+  const response = await fetchWithTransientRecovery(resolved, requestInit, method, isTrustedApiRequest);
+  if (response.status === 401 && isTrustedApiRequest && !publicAuthRequest(url)) {
     localStorage.removeItem(AUTH_SESSION_KEY);
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem('sql-academy-account-session-v1');
     window.dispatchEvent(new CustomEvent(AUTH_CHANGED_EVENT, { detail: null }));
   }

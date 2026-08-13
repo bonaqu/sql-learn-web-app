@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 
 const workflow = readFileSync('.github/workflows/cloudflare.yml', 'utf8');
 const smoke = readFileSync('scripts/cloudflare-production-smoke.mjs', 'utf8');
+const securityAiSmoke = readFileSync('scripts/security-ai-production-smoke.mjs', 'utf8');
 const conceptSmoke = readFileSync('scripts/concept-progress-production-smoke.mjs', 'utf8');
 const checkpointSmoke = readFileSync('scripts/checkpoint-production-smoke.mjs', 'utf8');
 const capstoneSmoke = readFileSync('scripts/capstone-production-smoke.mjs', 'utf8');
@@ -34,6 +35,7 @@ const forbidText = (source, text, label) => {
 requireText(core, 'curriculumVersion: 1', 'health curriculum version');
 requireText(workflow, 'Deploy Cloudflare Free Stack', 'explicit free-tier workflow name');
 requireText(workflow, 'node scripts/cloudflare-production-smoke.mjs', 'production smoke entrypoint');
+requireText(workflow, 'node scripts/security-ai-production-smoke.mjs', 'security and AI smoke entrypoint');
 requireText(workflow, 'node scripts/concept-progress-production-smoke.mjs', 'concept history smoke entrypoint');
 requireText(workflow, 'node scripts/checkpoint-production-smoke.mjs', 'checkpoint smoke entrypoint');
 requireText(workflow, 'node scripts/capstone-production-smoke.mjs', 'capstone smoke entrypoint');
@@ -43,6 +45,7 @@ requireText(workflow, 'npx tsx scripts/dialect-labs-free-production-smoke.ts', '
 requireText(workflow, 'node scripts/mastery-progress-production-smoke.mjs', 'mastery smoke entrypoint');
 requireText(workflow, 'node scripts/onboarding-production-smoke.mjs', 'onboarding smoke entrypoint');
 requireText(workflow, 'cloudflare-smoke-stage.txt', 'curriculum stage diagnostics');
+requireText(workflow, 'cloudflare-security-ai-summary.json', 'security and AI diagnostics');
 requireText(workflow, 'cloudflare-concepts-stage.txt', 'concept stage diagnostics');
 requireText(workflow, 'cloudflare-checkpoint-stage.txt', 'checkpoint stage diagnostics');
 requireText(workflow, 'cloudflare-capstone-stage.txt', 'capstone stage diagnostics');
@@ -79,6 +82,12 @@ requireText(smoke, 'verifyCascade()', 'curriculum D1 cascade verification');
 requireText(smoke, 'redactRegistration', 'registration redaction');
 requireText(smoke, 'tokenPresent', 'non-secret token evidence');
 requireText(smoke, 'curriculumVersion === 1', 'deployed schema propagation check');
+requireText(securityAiSmoke, "frame-ancestors 'none'", 'production shell CSP assertion');
+requireText(securityAiSmoke, 'access-control-allow-origin', 'untrusted origin denial assertion');
+requireText(securityAiSmoke, "reason !== 'consent-required'", 'explicit AI consent assertion');
+requireText(securityAiSmoke, "source !== 'workers-ai'", 'Workers AI provider assertion');
+requireText(securityAiSmoke, 'privateLiteral', 'AI context redaction assertion');
+requireText(securityAiSmoke, 'revokedSessionRejected: true', 'session revocation summary');
 
 requireText(curriculumWorker, 'MAX_ANSWERS = 220', 'bounded curriculum answer history');
 requireText(conceptSmoke, 'curriculumProgress(144', 'full concept answer round-trip');
@@ -179,6 +188,8 @@ forbidText(workflow, 'cloudflare-register-payload.json', 'password-bearing diagn
 forbidText(workflow, 'cloudflare-delete-payload.json', 'recovery-bearing diagnostic');
 forbidText(workflow, 'cloudflare-register.json', 'token-bearing diagnostic');
 forbidText(smoke, "writeJson('cloudflare-register.json'", 'raw registration response write');
+forbidText(securityAiSmoke, 'token:', 'security AI token diagnostic write');
+forbidText(securityAiSmoke, 'recoveryCode:', 'security AI recovery diagnostic write');
 forbidText(smoke, "writeJson('cloudflare-delete-payload.json'", 'raw delete payload write');
 forbidText(conceptSmoke, 'fs.writeFile(token', 'concept token diagnostic write');
 forbidText(conceptSmoke, 'fs.writeFile(recoveryCode', 'concept recovery diagnostic write');
