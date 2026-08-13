@@ -78,10 +78,10 @@ test('desktop syllabus exposes tracks evidence-gated review tools executable dia
   const review = page.getByTestId('spaced-review');
   await expect(review).toBeVisible();
   await expect(review).toContainText('1');
-  await expect(review).toContainText('открыто по evidence');
+  await expect(review).toContainText('доступно по учебным сигналам');
   await expect(review).toContainText('31');
   await expect(review).toContainText('тем ещё не изучено');
-  await expect(review).toContainText('independent SQL evidence');
+  await expect(review).toContainText('самостоятельно выполненный SQL');
   await page.getByTestId('reveal-review-answer').click();
   await expect(page.locator('.review-answer')).toBeVisible();
   await page.getByTestId('review-grade-good').click();

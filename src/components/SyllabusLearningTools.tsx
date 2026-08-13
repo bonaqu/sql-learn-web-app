@@ -71,7 +71,7 @@ export function SpacedReview() {
 
     {card ? <section className="review-card" aria-live="polite">
       <div className="review-card-top"><span>{card.moduleTitle}</span><small>{due.length} осталось · повторений {schedule?.repetitions || 0}</small></div>
-      <div className="review-introduction-source"><CheckCircle2 /><span><strong>Почему карточка доступна</strong><small>{schedule?.introductionSource ? introductionLabels[schedule.introductionSource] : 'learning evidence'}</small></span></div>
+      <div className="review-introduction-source"><CheckCircle2 /><span><strong>Почему карточка доступна</strong><small>{schedule?.introductionSource ? introductionLabels[schedule.introductionSource] : 'учебный сигнал'}</small></span></div>
       <h2>{card.prompt}</h2>
       {!revealed ? <div className="review-recall-state">
         <CircleHelp /><p>Скажи ответ вслух или сформулируй его в голове. Пример SQL открывай только после попытки.</p>
