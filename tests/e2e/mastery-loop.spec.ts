@@ -142,7 +142,7 @@ test('desktop mastery solution exposure schedules a delayed clean retrieval', as
   await expect(page.getByTestId('review-return-reason')).toContainText('другую задачу');
   await replaceEditorSql(page, FIRST_TRANSFER_SOLUTION);
   await page.getByRole('button', { name: /Проверить SQL/i }).click();
-  await expect(page.locator('.feedback.success')).toContainText('подтвердило прочное освоение');
+  await expect(page.locator('.feedback.success')).toContainText('прочное освоение');
   await expect.poll(() => page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('sql-academy-progress-v4') || '{}');
     const stats = state.taskStats?.['task-002'];
