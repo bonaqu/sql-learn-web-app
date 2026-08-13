@@ -5,9 +5,9 @@ SQL Academy source code is governed by the repository `LICENSE`; the packages be
 
 Supported inventory platform: **linux-x64**
 Locked package entries: **609**
-Installed package entries covered below: **486**
-Uninstalled platform-optional lock entries recorded separately: **123**
-Unique bundled notice/license texts: **199**
+Installed package entries covered below: **490**
+Uninstalled platform-optional lock entries recorded separately: **119**
+Unique bundled notice/license texts: **200**
 
 ## Installed dependency inventory
 
@@ -110,12 +110,16 @@ Unique bundled notice/license texts: **199**
 - `@cloudflare/unenv-preset@2.16.1` — MIT OR Apache-2.0 — transitive — https://github.com/cloudflare/workers-sdk
 - `@cloudflare/workerd-linux-64@1.20260811.1` — Apache-2.0 — transitive — https://github.com/cloudflare/workerd
 - `@cspotcode/source-map-support@0.8.1` — MIT — transitive — https://github.com/cspotcode/node-source-map-support
+- `@emnapi/runtime@1.11.3` — MIT — transitive — https://github.com/toyobayashi/emnapi
 - `@esbuild/linux-x64@0.28.1` — MIT — transitive — https://github.com/evanw/esbuild
 - `@floating-ui/core@1.8.0` — MIT — transitive — https://github.com/floating-ui/floating-ui
 - `@floating-ui/dom@1.8.0` — MIT — transitive — https://github.com/floating-ui/floating-ui
 - `@floating-ui/react-dom@2.1.9` — MIT — transitive — https://github.com/floating-ui/floating-ui
 - `@floating-ui/utils@0.2.12` — MIT — transitive — https://github.com/floating-ui/floating-ui
 - `@img/colour@1.1.0` — MIT — transitive — https://github.com/lovell/colour
+- `@img/sharp-libvips-linux-x64@1.3.1` — LGPL-3.0-or-later — transitive — https://github.com/lovell/sharp-libvips
+- `@img/sharp-linux-x64@0.35.2` — Apache-2.0 — transitive — https://github.com/lovell/sharp
+- `@img/sharp-wasm32@0.35.2` — Apache-2.0 AND LGPL-3.0-or-later AND MIT — transitive — https://github.com/lovell/sharp
 - `@isaacs/cliui@9.0.0` — BlueOak-1.0.0 — transitive — ssh://git@github.com:isaacs/cliui
 - `@jridgewell/gen-mapping@0.3.13` — MIT — transitive — https://github.com/jridgewell/sourcemaps
 - `@jridgewell/remapping@2.3.5` — MIT — transitive — https://github.com/jridgewell/sourcemaps
@@ -506,7 +510,6 @@ These binaries are pinned by npm for other operating-system or CPU targets but a
 - `@cloudflare/workerd-darwin-arm64@1.20260811.1` — os:darwin, cpu:arm64
 - `@cloudflare/workerd-linux-arm64@1.20260811.1` — os:linux, cpu:arm64
 - `@cloudflare/workerd-windows-64@1.20260811.1` — os:win32, cpu:x64
-- `@emnapi/runtime@1.11.3`
 - `@esbuild/aix-ppc64@0.28.1` — os:aix, cpu:ppc64
 - `@esbuild/android-arm@0.28.1` — os:android, cpu:arm
 - `@esbuild/android-arm64@0.28.1` — os:android, cpu:arm64
@@ -542,7 +545,6 @@ These binaries are pinned by npm for other operating-system or CPU targets but a
 - `@img/sharp-libvips-linux-ppc64@1.3.1` — os:linux, cpu:ppc64
 - `@img/sharp-libvips-linux-riscv64@1.3.1` — os:linux, cpu:riscv64
 - `@img/sharp-libvips-linux-s390x@1.3.1` — os:linux, cpu:s390x
-- `@img/sharp-libvips-linux-x64@1.3.1` — os:linux, cpu:x64
 - `@img/sharp-libvips-linuxmusl-arm64@1.3.1` — os:linux, cpu:arm64
 - `@img/sharp-libvips-linuxmusl-x64@1.3.1` — os:linux, cpu:x64
 - `@img/sharp-linux-arm@0.35.2` — os:linux, cpu:arm
@@ -550,10 +552,8 @@ These binaries are pinned by npm for other operating-system or CPU targets but a
 - `@img/sharp-linux-ppc64@0.35.2` — os:linux, cpu:ppc64
 - `@img/sharp-linux-riscv64@0.35.2` — os:linux, cpu:riscv64
 - `@img/sharp-linux-s390x@0.35.2` — os:linux, cpu:s390x
-- `@img/sharp-linux-x64@0.35.2` — os:linux, cpu:x64
 - `@img/sharp-linuxmusl-arm64@0.35.2` — os:linux, cpu:arm64
 - `@img/sharp-linuxmusl-x64@0.35.2` — os:linux, cpu:x64
-- `@img/sharp-wasm32@0.35.2`
 - `@img/sharp-webcontainers-wasm32@0.35.2` — cpu:wasm32
 - `@img/sharp-win32-arm64@0.35.2` — os:win32, cpu:arm64
 - `@img/sharp-win32-ia32@0.35.2` — os:win32, cpu:ia32
@@ -635,6 +635,7 @@ These installed packages expose license metadata in `package.json` but do not bu
 - `@cloudflare/unenv-preset@2.16.1` — MIT OR Apache-2.0
 - `@cloudflare/workerd-linux-64@1.20260811.1` — Apache-2.0
 - `@esbuild/linux-x64@0.28.1` — MIT
+- `@img/sharp-libvips-linux-x64@1.3.1` — LGPL-3.0-or-later
 - `@napi-rs/lzma-linux-x64-gnu@1.5.1` — MIT
 - `@rolldown/binding-linux-x64-gnu@1.2.2` — MIT
 - `@rolldown/binding-linux-x64-musl@1.2.2` — MIT
@@ -9517,7 +9518,7 @@ THIS SOFTWARE.
 
 ### SHA-256 `9ff562631a04b8cb1030c53fdf461bd749c9af0655d86e4f17eb270e935a7fe2`
 
-Applies to: `sharp@0.35.2 (LICENSE)`
+Applies to: `@img/sharp-linux-x64@0.35.2 (LICENSE)`, `@img/sharp-wasm32@0.35.2 (LICENSE)`, `sharp@0.35.2 (LICENSE)`
 
 ```text
 Apache License
@@ -12091,6 +12092,34 @@ airplay, alert-circle, alert-octagon, alert-triangle, aperture, arrow-down-circl
 The MIT License (MIT) (for the icons listed above)
 
 Copyright (c) 2013-present Cole Bemis
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### SHA-256 `f2b64fe47691e3771cd3bc1cf496bcdbd9c909026cff17c8cca1c34a0232c736`
+
+Applies to: `@emnapi/runtime@1.11.3 (LICENSE)`
+
+```text
+MIT License
+
+Copyright (c) 2021-present Toyobayashi
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

@@ -49,18 +49,6 @@ jobs:
       - name: Install exact locked dependency tree
         run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Generate Linux dependency inventory repair artifact
-        run: node scripts/generate-third-party-notices.mjs
-
-      - name: Upload Linux dependency inventory repair artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase8-linux-dependency-inventory
-          path: |
-            THIRD_PARTY_NOTICES.md
-            docs/third-party-dependencies.json
-          if-no-files-found: error
-
       - name: Verify generated third-party artifacts
         run: node scripts/generate-third-party-notices.mjs --check
 
