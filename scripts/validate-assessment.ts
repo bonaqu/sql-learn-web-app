@@ -235,5 +235,10 @@ const calibrationMigration = readFileSync(new URL('../migrations/0015_assessment
 assert(/PRIMARY KEY\s*\(\s*task_id\s*,\s*blueprint_version\s*\)/i.test(calibrationMigration), 'calibration aggregate identity is missing');
 assert(/report_id\s+TEXT\s+PRIMARY KEY/i.test(calibrationMigration), 'deduplicating calibration receipt is missing');
 assert(!/sql\s+TEXT/i.test(calibrationMigration), 'calibration aggregate must not store learner SQL');
+const productionSmoke = readFileSync(new URL('./assessment-calibration-production-smoke.mjs', import.meta.url), 'utf8');
+assert(productionSmoke.includes('explanationRubric: nonInterviewRubric'), 'Production assessment smoke lost the strict explanation rubric contract');
+assert(productionSmoke.includes('hintsUsed: 0, solutionViews: 0'), 'Production assessment smoke lost assistance provenance fields');
+assert(productionSmoke.includes('assistance: { interviewerUses: 0, hintsUsed: 0, solutionViews: 0, independent: true }'), 'Production assessment smoke lost report-level assistance aggregation');
+assert(productionSmoke.includes("require.resolve('wrangler')"), 'Production assessment smoke bypasses the project-local Wrangler entrypoint');
 
 console.log(`Assessment validation passed: ${Object.keys(assessmentModes).length} modes, 3→5→7 adaptive placement, calibrated form identity, monotonic session merge, uncertainty band, telemetry exclusions and privacy-first D1 contract.`);

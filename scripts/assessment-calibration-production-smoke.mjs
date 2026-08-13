@@ -1,6 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { appendFileSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
 
 const deployUrl = process.env.DEPLOY_URL;
 if (!deployUrl) throw new Error('DEPLOY_URL is required');
@@ -72,27 +75,43 @@ function findCounts(value) {
   return result;
 }
 
+function nonInterviewRubric(deterministicSqlPassed) {
+  return {
+    deterministicSqlPassed,
+    explanationSubmitted: false,
+    alternativeSubmitted: false,
+    edgeCasesSubmitted: false,
+    complete: true,
+    reviewStatus: 'not-required',
+    proseScore: null,
+    authority: 'deterministic-sql-plus-human-prose-review'
+  };
+}
+
 function assessmentReport(userId, id = randomUUID()) {
   const completedAt = new Date().toISOString();
   const startedAt = new Date(Date.now() - 720_000).toISOString();
   const taskScores = [
     {
       taskId: 'task-001', title: 'Smoke result contract', module: 'sql-thinking', topic: 'contract',
-      correct: true, skipped: false, attempts: 1, elapsedSeconds: 120, interviewerUses: 0, score: 100,
+      correct: true, skipped: false, attempts: 1, elapsedSeconds: 120, interviewerUses: 0, hintsUsed: 0, solutionViews: 0,
+      explanationRubric: nonInterviewRubric(true), score: 100,
       technicalErrors: 0, telemetryEligible: true, telemetryExclusionReason: null,
       abilityBand: 'low', itemVersion: 'assessment-blueprint-v3', reasoningSkill: 'result-contract',
       errorClass: 'contract', expectedSeconds: 150
     },
     {
       taskId: 'task-013', title: 'Smoke aggregation', module: 'aggregates', topic: 'aggregation',
-      correct: false, skipped: false, attempts: 2, elapsedSeconds: 310, interviewerUses: 0, score: 0,
+      correct: false, skipped: false, attempts: 2, elapsedSeconds: 310, interviewerUses: 0, hintsUsed: 0, solutionViews: 0,
+      explanationRubric: nonInterviewRubric(false), score: 0,
       technicalErrors: 0, telemetryEligible: true, telemetryExclusionReason: null,
       abilityBand: 'low', itemVersion: 'assessment-blueprint-v3', reasoningSkill: 'aggregation',
       errorClass: 'aggregation-grain', expectedSeconds: 240
     },
     {
       taskId: 'task-025', title: 'Smoke technical exclusion', module: 'joins', topic: 'technical',
-      correct: false, skipped: false, attempts: 1, elapsedSeconds: 12, interviewerUses: 0, score: 0,
+      correct: false, skipped: false, attempts: 1, elapsedSeconds: 12, interviewerUses: 0, hintsUsed: 0, solutionViews: 0,
+      explanationRubric: nonInterviewRubric(false), score: 0,
       technicalErrors: 1, telemetryEligible: false, telemetryExclusionReason: 'technical-error',
       abilityBand: 'low', itemVersion: 'assessment-blueprint-v3', reasoningSkill: 'relationships',
       errorClass: 'cardinality', expectedSeconds: 240
@@ -112,6 +131,7 @@ function assessmentReport(userId, id = randomUUID()) {
     accuracy: 33,
     firstAttemptRate: 100,
     independence: 100,
+    assistance: { interviewerUses: 0, hintsUsed: 0, solutionViews: 0, independent: true },
     readinessDelta: 1,
     strengths: ['Контракт результата'],
     weaknesses: ['Агрегации'],
@@ -156,8 +176,8 @@ async function deleteSmokeAccount() {
 
 async function verifyD1Lifecycle(beforeEligible) {
   stage('assessment-calibration-d1-lifecycle');
-  const stdout = execFileSync('npx', [
-    'wrangler', 'd1', 'execute', 'sql-academy', '--remote', '--config', 'wrangler.deploy.jsonc',
+  const stdout = execFileSync(process.execPath, [
+    require.resolve('wrangler'), 'd1', 'execute', 'sql-academy', '--remote', '--config', 'wrangler.deploy.jsonc',
     '--command', `SELECT
       (SELECT COUNT(*) FROM assessment_reports WHERE user_id = '${smokeUserId}') AS reports,
       (SELECT COUNT(*) FROM assessment_calibration_receipts WHERE user_id = '${smokeUserId}') AS receipts,
