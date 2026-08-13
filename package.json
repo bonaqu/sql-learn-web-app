@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "types:worker": "wrangler types worker-configuration.d.ts --config wrangler.typegen.jsonc",
+    "notices:generate": "node scripts/generate-third-party-notices.mjs",
     "validate:course": "tsx scripts/validate-foundation-gate.ts && tsx scripts/validate-course.ts",
     "validate:foundation-gate": "tsx scripts/validate-foundation-gate.ts",
     "validate:path": "tsx scripts/validate-learning-path.ts",
@@ -99,6 +100,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.27.0",
+    "monaco-editor": "0.56.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "recharts": "^3.1.2",

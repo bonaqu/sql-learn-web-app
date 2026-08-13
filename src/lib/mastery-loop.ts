@@ -7,6 +7,7 @@ import { lessonCheckProgress } from '../data/lesson-checks';
 import type { CurriculumProgressV1 } from './curriculum-progress';
 import { diagnosticForKind, type AttemptErrorKind } from './attempt-diagnostics';
 import {
+  hasDurableTaskEvidence,
   hasIndependentTaskEvidence,
   moduleErrorSummary,
   type Progress
@@ -41,18 +42,19 @@ export function lessonMasteryState(
   lesson: CurriculumLesson,
   progress: Progress,
   curriculum: CurriculumProgressV1,
-  reviewState?: ReviewState
+  reviewState?: ReviewState,
+  now = Date.now()
 ): LessonMasteryState {
   const sectionsCompleted = lesson.sections.filter(section => curriculum.completedSections.includes(section.id)).length;
   const theoryComplete = sectionsCompleted === lesson.sections.length;
   const checks = lessonCheckProgress(lesson, curriculum.answers);
   const checkCorrect = checks.complete;
-  const independentTaskIds = lesson.practiceTaskIds.filter(taskId => hasIndependentTaskEvidence(progress, taskId));
+  const independentTaskIds = lesson.practiceTaskIds.filter(taskId => hasIndependentTaskEvidence(progress, taskId, now));
   const applied = independentTaskIds.length > 0;
   const review = reviewState?.schedules[`review-${lesson.module}`];
   const reviewIntroduced = Boolean(review?.introducedAt);
   const reviewRepetitions = review?.repetitions || 0;
-  const retained = reviewRepetitions > 0;
+  const retained = independentTaskIds.some(taskId => hasDurableTaskEvidence(progress, taskId, now));
   const mastered = theoryComplete && checkCorrect && applied;
   const durableMastery = mastered && retained;
 
@@ -70,8 +72,8 @@ export function lessonMasteryState(
   } else if (!retained) {
     nextAction = 'review';
     blocker = reviewIntroduced
-      ? 'Закрепи модель в повторении, когда карточка появится в расписании.'
-      : 'Карточка для повторения появится после синхронизации самостоятельного решения.';
+      ? 'Самооценка карточки влияет только на расписание. Для прочного освоения реши отложенную связанную SQL-задачу без помощи.'
+      : 'После самостоятельного решения появится отложенная связанная SQL-задача; только её чистое выполнение подтвердит прочное освоение.';
   }
 
   return {
@@ -92,7 +94,7 @@ export function lessonMasteryState(
     mastered,
     durableMastery,
     nextAction,
-    nextTaskId: lesson.practiceTaskIds.find(taskId => !hasIndependentTaskEvidence(progress, taskId))
+    nextTaskId: lesson.practiceTaskIds.find(taskId => !hasIndependentTaskEvidence(progress, taskId, now))
       || lesson.practiceTaskIds[0]
       || null,
     blocker

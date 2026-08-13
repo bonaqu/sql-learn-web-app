@@ -10,9 +10,11 @@ import { classifySqlAttempt } from '../src/lib/attempt-diagnostics';
 import { evaluateTaskSql } from '../src/lib/task-evaluation-contract';
 import {
   defaultProgress,
+  hasDurableTaskEvidence,
   hasIndependentTaskEvidence,
   recordAttempt,
   recordSolutionView,
+  relatedRetrievalTask,
   reviewQueue,
   type Progress
 } from '../src/lib/progress';
@@ -133,13 +135,16 @@ const completed: Progress = {
 };
 const exposed = recordSolutionView(completed, retrievalTask.id);
 assert.equal(hasIndependentTaskEvidence(exposed, retrievalTask.id), false, 'Viewing a solution must revoke independent mastery until clean retrieval');
-assert.ok(exposed.taskStats[retrievalTask.id].retrievalDueAt, 'Viewing a solution must schedule retrieval');
-assert.ok(!reviewQueue(exposed).some(task => task.id === retrievalTask.id), 'Retrieval must wait until its due time');
+const retrievalTarget = relatedRetrievalTask(retrievalTask, exposed)!;
+assert.ok(retrievalTarget && retrievalTarget.id !== retrievalTask.id, 'Viewing a solution must schedule a related non-identical retrieval');
+assert.ok(exposed.taskStats[retrievalTarget.id].retrievalDueAt, 'Viewing a solution must schedule retrieval');
+assert.ok(!reviewQueue(exposed).some(task => task.id === retrievalTarget.id), 'Retrieval must wait until its due time');
 const due = structuredClone(exposed);
-due.taskStats[retrievalTask.id].retrievalDueAt = '2000-01-01T00:00:00.000Z';
-assert.equal(reviewQueue(due, 1)[0]?.id, retrievalTask.id, 'Due solution retrieval must enter the no-hint review queue');
-const recovered = recordAttempt(due, retrievalTask, true, { independent: true, contractEvidence: evaluateTaskSql(SQL, retrievalTask, retrievalTask.solution, 'practice').evidence || undefined });
-assert.equal(recovered.taskStats[retrievalTask.id].retrievalDueAt, undefined, 'Clean independent retrieval must clear the solution debt');
+due.taskStats[retrievalTarget.id].retrievalDueAt = '2000-01-01T00:00:00.000Z';
+assert.equal(reviewQueue(due, 1)[0]?.id, retrievalTarget.id, 'Due solution retrieval must enter the no-hint review queue');
+const recovered = recordAttempt(due, retrievalTarget, true, { independent: true, contractEvidence: evaluateTaskSql(SQL, retrievalTarget, retrievalTarget.solution, 'practice').evidence || undefined });
+assert.equal(recovered.taskStats[retrievalTarget.id].lastRetrievalPassed, true, 'Clean independent retrieval must record executable transfer success');
+assert.equal(hasDurableTaskEvidence(recovered, retrievalTask.id), true, 'Clean independent transfer must establish durable evidence');
 assert.equal(hasIndependentTaskEvidence(recovered, retrievalTask.id), true, 'Clean independent retrieval must restore mastery evidence');
 
 process.stdout.write(`Core contracts validated: ${coreTasks.length} authored tasks, ${checkpointTaskList().length} unseen checkpoints, structural mutation controls, semantic fixtures, cautious diagnostics and solution-retrieval remediation.\n`);

@@ -25,6 +25,7 @@ import './commercial-identity-v2.css';
 import './learning-path.css';
 import './assessment.css';
 import './mastery-loop.css';
+import './durable-mastery.css';
 import './accessibility.css';
 import './guided-home.css';
 import './mobile-navigation.css';

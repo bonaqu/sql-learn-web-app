@@ -347,6 +347,14 @@ function mergeTaskStats(
   const evidenceSource = [left, right]
     .filter(stats => stats.evidenceContractVersion && stats.evaluationContractId && stats.evaluationContractVersion)
     .sort((a, b) => (b.validatedFixtureIds?.length || 0) - (a.validatedFixtureIds?.length || 0))[0];
+  const retrievalSource = [left, right]
+    .filter(stats => stats.retrievalEvidenceVersion && stats.retrievalSourceTaskId)
+    .sort((a, b) => {
+      const timeDifference = new Date(b.lastRetrievalAt || b.retrievalScheduledAt || 0).getTime()
+        - new Date(a.lastRetrievalAt || a.retrievalScheduledAt || 0).getTime();
+      if (timeDifference) return timeDifference;
+      return Number(b.lastRetrievalPassed === false) - Number(a.lastRetrievalPassed === false);
+    })[0];
   return {
     attempts: Math.max(left.attempts, right.attempts),
     incorrect: Math.max(left.incorrect, right.incorrect),
@@ -354,6 +362,22 @@ function mergeTaskStats(
     solutionViews: left.solutionViews === undefined && right.solutionViews === undefined
       ? undefined
       : Math.max(left.solutionViews || 0, right.solutionViews || 0),
+    solutionViewedAt: latestTimestamp(left.solutionViewedAt, right.solutionViewedAt),
+    assistedPasses: left.assistedPasses === undefined && right.assistedPasses === undefined
+      ? undefined
+      : Math.max(left.assistedPasses || 0, right.assistedPasses || 0),
+    lastAssistedAt: latestTimestamp(left.lastAssistedAt, right.lastAssistedAt),
+    retrievalDueAt: retrievalSource?.retrievalDueAt,
+    retrievalEvidenceVersion: retrievalSource?.retrievalEvidenceVersion,
+    retrievalSourceTaskId: retrievalSource?.retrievalSourceTaskId,
+    retrievalScheduledAt: retrievalSource?.retrievalScheduledAt,
+    retrievalIntervalDays: retrievalSource?.retrievalIntervalDays,
+    retrievalSuccesses: Math.max(left.retrievalSuccesses || 0, right.retrievalSuccesses || 0) || undefined,
+    retrievalLapses: Math.max(left.retrievalLapses || 0, right.retrievalLapses || 0) || undefined,
+    lastRetrievalAt: retrievalSource?.lastRetrievalAt,
+    lastRetrievalPassed: retrievalSource?.lastRetrievalPassed,
+    durableEvidenceAt: retrievalSource?.lastRetrievalPassed ? retrievalSource.durableEvidenceAt : undefined,
+    durableUntil: retrievalSource?.lastRetrievalPassed ? retrievalSource.durableUntil : undefined,
     independentPasses: left.independentPasses === undefined && right.independentPasses === undefined
       ? undefined
       : Math.max(left.independentPasses || 0, right.independentPasses || 0),

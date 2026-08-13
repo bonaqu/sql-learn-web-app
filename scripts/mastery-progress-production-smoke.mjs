@@ -50,7 +50,7 @@ const diagnostic = {
 
 const progress = {
   version: 4,
-  completed: ['task-001'],
+  completed: ['task-001', 'task-002'],
   taskStats: {
     'task-001': {
       attempts: 4,
@@ -63,6 +63,26 @@ const progress = {
       lastDiagnostic: diagnostic,
       lastAttemptAt: '2026-07-25T18:00:00.000Z',
       completedAt: '2026-07-25T17:00:00.000Z'
+    },
+    'task-002': {
+      attempts: 1,
+      incorrect: 0,
+      hintsUsed: 0,
+      independentPasses: 1,
+      lastIndependentAt: '2026-07-25T18:10:00.000Z',
+      retrievalEvidenceVersion: 'durable-mastery-v1',
+      retrievalSourceTaskId: 'task-001',
+      retrievalScheduledAt: '2026-07-25T18:00:00.000Z',
+      retrievalDueAt: '2026-07-26T18:10:00.000Z',
+      retrievalIntervalDays: 1,
+      retrievalSuccesses: 1,
+      retrievalLapses: 0,
+      lastRetrievalAt: '2026-07-25T18:10:00.000Z',
+      lastRetrievalPassed: true,
+      durableEvidenceAt: '2026-07-25T18:10:00.000Z',
+      durableUntil: '2026-07-26T18:10:00.000Z',
+      lastAttemptAt: '2026-07-25T18:10:00.000Z',
+      completedAt: '2026-07-25T18:10:00.000Z'
     }
   },
   xp: 60,
@@ -113,7 +133,10 @@ try {
     || stats?.independentPasses !== 1
     || stats?.solutionViews !== 1
     || stats?.errorKinds?.['join-cardinality'] !== 2
-    || stats?.lastDiagnostic?.kind !== 'join-cardinality') {
+    || stats?.lastDiagnostic?.kind !== 'join-cardinality'
+    || fetched.body?.progress?.taskStats?.['task-002']?.retrievalEvidenceVersion !== 'durable-mastery-v1'
+    || fetched.body?.progress?.taskStats?.['task-002']?.retrievalSourceTaskId !== 'task-001'
+    || fetched.body?.progress?.taskStats?.['task-002']?.lastRetrievalPassed !== true) {
     throw new Error(`mastery evidence round-trip mismatch: ${fetched.text}`);
   }
 
@@ -149,11 +172,23 @@ try {
   expectStatus(rejected, 400, 'invalid diagnostic');
   expectMasteryContract(rejected, 'invalid diagnostic');
 
+  await mark('reject-forged-durable-evidence');
+  const forgedDurable = structuredClone(progress);
+  forgedDurable.taskStats['task-002'].retrievalSourceTaskId = 'task-002';
+  forgedDurable.taskStats['task-002'].durableUntil = '2026-07-25T18:00:00.000Z';
+  const forgedRejected = await request(PROGRESS_PATH, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ progress: forgedDurable, baseRevision: 1 })
+  });
+  expectStatus(forgedRejected, 400, 'forged durable evidence');
+  expectMasteryContract(forgedRejected, 'forged durable evidence');
+
   await mark('reject-stale-revision');
   const secondDeviceProgress = structuredClone(progress);
-  secondDeviceProgress.completed = ['task-002'];
+  secondDeviceProgress.completed = ['task-003'];
   secondDeviceProgress.taskStats = {
-    'task-002': {
+    'task-003': {
       attempts: 1,
       incorrect: 0,
       hintsUsed: 0,
@@ -163,7 +198,7 @@ try {
       completedAt: '2026-07-25T19:00:00.000Z'
     }
   };
-  secondDeviceProgress.lastTask = 'task-002';
+  secondDeviceProgress.lastTask = 'task-003';
   const conflict = await request(PROGRESS_PATH, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
@@ -188,7 +223,8 @@ try {
   expectMasteryContract(updated, 'update mastery evidence');
   if (updated.body?.revision !== 2
     || !updated.body?.progress?.completed?.includes('task-001')
-    || !updated.body?.progress?.completed?.includes('task-002')) {
+    || !updated.body?.progress?.completed?.includes('task-002')
+    || !updated.body?.progress?.completed?.includes('task-003')) {
     throw new Error(`expected canonical merged revision 2, got ${updated.text}`);
   }
 
@@ -198,7 +234,8 @@ try {
   expectMasteryContract(verified, 'verify mastery evidence');
   if (verified.body?.revision !== 2
     || verified.body?.progress?.taskStats?.['task-001']?.independentPasses !== 1
-    || verified.body?.progress?.taskStats?.['task-002']?.independentPasses !== 1) {
+    || verified.body?.progress?.taskStats?.['task-002']?.lastRetrievalPassed !== true
+    || verified.body?.progress?.taskStats?.['task-003']?.independentPasses !== 1) {
     throw new Error(`merged two-device evidence is missing: ${verified.text}`);
   }
 
@@ -216,7 +253,7 @@ try {
   expectMasteryContract(revoked, 'revoked progress session');
 
   await mark('complete');
-  process.stdout.write('Mastery progress production smoke passed: canonical revision responses, cached-client fail-closed behavior, two-device conflict recovery and account cleanup.\n');
+  process.stdout.write('Mastery progress production smoke passed: versioned durable retrieval round-trip, canonical revisions, cached-client fail-closed behavior, two-device conflict recovery and account cleanup.\n');
 } catch (error) {
   await fs.writeFile(failureFile, `stage=${stage}\n${error instanceof Error ? error.stack || error.message : String(error)}\n`);
   throw error;

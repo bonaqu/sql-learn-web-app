@@ -4239,7 +4239,7 @@
     {
       "name": "monaco-editor",
       "version": "0.56.0",
-      "kind": "transitive",
+      "kind": "direct-runtime",
       "license": "MIT",
       "repository": "https://github.com/microsoft/monaco-editor",
       "homepage": "https://github.com/microsoft/monaco-editor",

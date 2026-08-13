@@ -8,10 +8,14 @@ import { emptyCurriculumProgress } from '../src/lib/curriculum-progress.ts';
 import { lessonMasteryState, lessonRemediation, moduleAppliedLessonScore } from '../src/lib/mastery-loop.ts';
 import {
   defaultProgress,
+  DURABLE_MASTERY_EVIDENCE_VERSION,
+  hasDurableTaskEvidence,
   hasIndependentTaskEvidence,
   recordAttempt,
   recordHint,
   recordSolutionView,
+  relatedRetrievalTask,
+  reviewQueue,
   type Progress
 } from '../src/lib/progress.ts';
 import {
@@ -83,12 +87,19 @@ progress = recordAttempt(progress, selectTask, true, { independent: false });
 assert(!hasIndependentTaskEvidence(progress, selectTask.id), 'Guided success must not become independent evidence');
 progress = recordSolutionView(progress, selectTask.id);
 assert(progress.taskStats[selectTask.id]?.solutionViews === 1, 'Solution view must be explicit evidence');
-progress.taskStats[selectTask.id].retrievalDueAt = '2000-01-01T00:00:00.000Z';
-progress = recordAttempt(progress, selectTask, true, {
+const selectRetrieval = relatedRetrievalTask(selectTask, progress);
+assert(Boolean(selectRetrieval), 'Solution exposure must select a related transfer task');
+assert(selectRetrieval?.id !== selectTask.id, 'Solution exposure must never schedule the same task as durable retrieval');
+assert(progress.taskStats[selectRetrieval?.id || '']?.retrievalSourceTaskId === selectTask.id, 'Retrieval target must preserve its source task');
+if (selectRetrieval) progress.taskStats[selectRetrieval.id].retrievalDueAt = '2000-01-01T00:00:00.000Z';
+progress = recordAttempt(progress, selectRetrieval || selectTask, true, {
   independent: true,
-  contractEvidence: contractEvidenceFor(selectTask)
+  contractEvidence: contractEvidenceFor(selectRetrieval || selectTask),
+  at: now
 });
-assert(hasIndependentTaskEvidence(progress, selectTask.id), 'Later independent retry must establish mastery');
+assert(hasIndependentTaskEvidence(progress, selectTask.id, now + 1), 'Later independent retry must establish mastery');
+assert(hasDurableTaskEvidence(progress, selectTask.id, now + 1), 'Delayed non-identical retrieval must establish durable evidence');
+assert(progress.taskStats[selectRetrieval?.id || '']?.retrievalEvidenceVersion === DURABLE_MASTERY_EVIDENCE_VERSION, 'Durable retrieval must carry an explicit evidence version');
 
 const legacyProgress: Progress = {
   ...defaultProgress,
@@ -169,9 +180,10 @@ assert(Boolean(practiceTask), 'Lesson must have a valid practice task');
 if (practiceTask) {
   const appliedProgress = recordAttempt(blankProgress(), practiceTask, true, {
     independent: true,
-    contractEvidence: contractEvidenceFor(practiceTask)
+    contractEvidence: contractEvidenceFor(practiceTask),
+    at: now
   });
-  const applied = lessonMasteryState(lesson, appliedProgress, curriculum);
+  const applied = lessonMasteryState(lesson, appliedProgress, curriculum, undefined, now);
   assert(applied.mastered, 'Theory, all checks and independent SQL must establish applied mastery');
   assert(!applied.durableMastery && applied.nextAction === 'review', 'Applied mastery must still require retrieval review');
   const moduleScore = moduleAppliedLessonScore(lesson.module, appliedProgress, curriculum);
@@ -188,6 +200,33 @@ if (practiceTask) {
   const state: ReviewState = { version: 1, schedules: { [introduced.cardId]: introduced, locked: initialReviewSchedule('locked') } };
   const stats = reviewStats(state, now);
   assert(stats.available === 1 && stats.locked === 1 && stats.due === 0, 'Review stats must separate available, locked and due cards');
+
+  const selfRatedState: ReviewState = {
+    version: 1,
+    schedules: { [introduced.cardId]: { ...introduced, repetitions: 99, intervalDays: 30 } }
+  };
+  assert(!lessonMasteryState(lesson, appliedProgress, curriculum, selfRatedState, now).durableMastery,
+    'Self-rating alone must never create durable mastery');
+
+  const transferTask = relatedRetrievalTask(practiceTask, appliedProgress);
+  assert(Boolean(transferTask), 'Independent practice must schedule a related transfer contract');
+  if (transferTask) {
+    const dueProgress = structuredClone(appliedProgress);
+    dueProgress.taskStats[transferTask.id].retrievalDueAt = new Date(now).toISOString();
+    assert(reviewQueue(dueProgress, 1)[0]?.id === transferTask.id,
+      'Due retrieval queue must select the non-identical transfer task');
+    const durableProgress = recordAttempt(dueProgress, transferTask, true, {
+      independent: true,
+      contractEvidence: contractEvidenceFor(transferTask),
+      at: now + 1
+    });
+    const durable = lessonMasteryState(lesson, durableProgress, curriculum, selfRatedState, now + 2);
+    assert(durable.durableMastery && durable.retained,
+      'Delayed independent SQL on the related contract must establish durable mastery');
+    const expiresAt = Date.parse(durableProgress.taskStats[transferTask.id].durableUntil || '');
+    assert(!lessonMasteryState(lesson, durableProgress, curriculum, selfRatedState, expiresAt + 1).durableMastery,
+      'Durable evidence must decay honestly when its deterministic interval expires');
+  }
 }
 
 if (failures.length) {

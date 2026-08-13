@@ -53,6 +53,8 @@ import {
   recordAttempt,
   recordHint,
   recordSolutionView,
+  relatedRetrievalTask,
+  reviewReason,
   reviewQueue,
   saveProgress,
   weakTopics as calculateWeakTopics
@@ -140,6 +142,7 @@ function App() {
   const [mentorAnswer, setMentorAnswer] = useState('Mentor готов дать следующий шаг, разобрать ошибку или объяснить концепт.');
   const [mentorLoading, setMentorLoading] = useState(false);
   const [workspaceJourney, setWorkspaceJourney] = useState<WorkspaceJourneyState | null>(null);
+  const [reviewClock, setReviewClock] = useState(() => Date.now());
   const searchRef = useRef<HTMLInputElement>(null);
   const workspaceActive = view === 'catalog' || view === 'practice' || view === 'review' || view === 'interview' || view === 'puzzle';
 
@@ -147,6 +150,11 @@ function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem('sql-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setReviewClock(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => saveProgress(progress), [progress]);
 
@@ -227,11 +235,12 @@ function App() {
     return () => { document.body.style.overflow = ''; };
   }, [editorFullscreen]);
 
-  const queue = useMemo(() => reviewQueue(progress), [progress]);
+  const queue = useMemo(() => reviewQueue(progress, 24, reviewClock), [progress, reviewClock]);
   const selectedReviewTaskIsDue = view !== 'review' || queue.some(task => task.id === selected.id);
   const focusTopics = useMemo(() => calculateWeakTopics(progress), [progress]);
   const completed = useMemo(() => new Set(progress.completed), [progress.completed]);
   const currentStats = progress.taskStats[selected.id] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
+  const currentReviewReason = view === 'review' ? reviewReason(progress, selected.id, reviewClock) : null;
   const solutionUnlocked = currentStats.attempts >= 3 || visibleHints >= selected.hints.length;
   const guidedSession = visibleHints > 0 || solutionViewedThisSession;
 
@@ -303,8 +312,7 @@ function App() {
       const evaluation = evaluateTaskSql(engine, selected, sql, 'practice');
       const output = evaluation.output;
       const correct = evaluation.correct;
-      const retrievalReady = !currentStats.retrievalDueAt || Date.parse(currentStats.retrievalDueAt) <= Date.now();
-      const independent = correct && visibleHints === 0 && !solutionViewedThisSession && retrievalReady;
+      const independent = correct && visibleHints === 0 && !solutionViewedThisSession;
       const diagnostic = correct
         ? null
         : evaluation.diagnostic || classifySqlAttempt({ task: selected, sql, actual: output });
@@ -313,7 +321,9 @@ function App() {
       setAttemptDiagnostic(diagnostic);
       setMessage(correct
         ? independent
-          ? 'Верно. Самостоятельное решение подтверждено: результат получен без подсказки и эталона.'
+          ? currentStats.retrievalSourceTaskId
+            ? 'Верно. Самостоятельное решение подтверждено. Отложенная другая задача подтвердила прочное освоение до следующего срока проверки.'
+            : `Верно. Самостоятельное решение подтверждено. Через 10 минут проверь перенос навыка на задаче «${relatedRetrievalTask(selected, progress)?.title || 'из того же модуля'}».`
           : 'Верно. Результат совпал, но в этой попытке использовалась помощь. Повтори позже без подсказки и эталона, чтобы закрепить самостоятельное решение.'
         : `${diagnostic?.title || 'Результат отличается'}. ${diagnostic?.nextStep || 'Сравни контракт результата.'}`);
       setProgress(current => recordAttempt(current, selected, correct, {
@@ -350,7 +360,7 @@ function App() {
         hintsUsed: visibleHints
       }));
     }
-  }, [currentStats.attempts, currentStats.retrievalDueAt, engine, selected, selectedReadiness, selectedReviewTaskIsDue, solutionViewedThisSession, sql, visibleHints]);
+  }, [currentStats.attempts, currentStats.retrievalDueAt, currentStats.retrievalSourceTaskId, engine, progress, selected, selectedReadiness, selectedReviewTaskIsDue, solutionViewedThisSession, sql, visibleHints]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -402,7 +412,7 @@ function App() {
     if (opening && !solutionViewedThisSession) {
       setSolutionViewedThisSession(true);
       setProgress(current => recordSolutionView(current, selected.id));
-      setMessage('Эталон открыт. Текущий результат не считается самостоятельным; через 10 минут задача появится для чистого повторения без подсказок.');
+      setMessage('Эталон открыт. Текущий результат не считается самостоятельным; через 10 минут появится связанная, но другая SQL-задача для чистого повторения без подсказок.');
     }
     setShowSolution(opening);
   };
@@ -645,6 +655,10 @@ function App() {
                 <LockKeyhole />
                 <div><small>{selectedReadiness.status === 'loading' ? 'Проверяю готовность' : 'Предпросмотр без зачёта'}</small><h3>{selectedReadiness.label}</h3><p>{selectedReadiness.reason}</p></div>
                 <button onClick={openCanonicalAction} disabled={!workspaceJourney}>Открыть правильный следующий этап <ChevronRight /></button>
+              </section>}
+              {currentReviewReason && <section className="review-return-reason" data-testid="review-return-reason" aria-live="polite">
+                <Repeat2 />
+                <div><small>Почему задача вернулась</small><h3>{currentReviewReason.title}</h3><p>{currentReviewReason.detail}</p></div>
               </section>}
               <div className="task-title-row">
                 <div><h2>{selected.title}</h2><p>{selected.description}</p></div>

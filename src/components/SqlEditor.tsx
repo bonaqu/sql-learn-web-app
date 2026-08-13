@@ -1,4 +1,16 @@
-import MonacoEditor, { type EditorProps } from '@monaco-editor/react';
+import MonacoEditor, { loader, type EditorProps } from '@monaco-editor/react';
+import * as monaco from 'monaco-editor/editor/editor.api';
+import 'monaco-editor/languages/definitions/sql/register';
+import EditorWorker from 'monaco-editor/editor/editor.worker?worker';
+
+type MonacoEnvironment = typeof globalThis & {
+  MonacoEnvironment?: { getWorker: () => Worker };
+};
+
+(globalThis as MonacoEnvironment).MonacoEnvironment = {
+  getWorker: () => new EditorWorker()
+};
+loader.config({ monaco });
 
 const DARK_THEME = 'sql-academy-dark';
 

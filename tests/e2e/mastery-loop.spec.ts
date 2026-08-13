@@ -3,6 +3,7 @@ import { authenticatePage } from './auth-helper';
 import { openAdvancedTool, seedFirstLessonEvidence } from './navigation-helper';
 
 const FIRST_SOLUTION = 'SELECT ticket_id, service FROM tickets;';
+const FIRST_TRANSFER_SOLUTION = 'SELECT ticket_id, status FROM tickets;';
 
 async function replaceEditorSql(page: import('@playwright/test').Page, sql: string) {
   const editor = page.locator('.editor-panel .monaco-editor');
@@ -83,12 +84,23 @@ test('desktop mastery loop distinguishes guided success, independent retry and r
   await openAdvancedTool(page, 'syllabus-trigger');
   const syllabus = page.getByRole('dialog', { name: /SQL Syllabus Center/i });
   await syllabus.getByRole('tab', { name: /Повторение/i }).click();
-  await expect(syllabus.getByTestId('spaced-review')).toContainText('открыто по evidence');
+  await expect(syllabus.getByTestId('spaced-review')).toContainText('доступно по учебным сигналам');
+  await expect(syllabus.getByTestId('spaced-review')).toContainText('Самооценка меняет только расписание карточки');
   await expect(syllabus.getByTestId('spaced-review')).toContainText('31');
   await expect(syllabus.getByTestId('spaced-review')).toContainText('тем ещё не изучено');
 });
 
 test('desktop mastery solution exposure schedules a delayed clean retrieval', async ({ page }) => {
+  const externalRequests: string[] = [];
+  await page.route(/^https?:\/\//, async route => {
+    const url = new URL(route.request().url());
+    if (url.hostname === '127.0.0.1' || url.hostname === 'localhost') {
+      await route.continue();
+      return;
+    }
+    externalRequests.push(url.href);
+    await route.abort();
+  });
   await authenticatePage(page, 'solutiondebt');
   await page.goto('./');
   await page.getByRole('button', { name: 'Практика', exact: true }).click();
@@ -100,13 +112,19 @@ test('desktop mastery solution exposure schedules a delayed clean retrieval', as
   }
   await page.getByRole('button', { name: 'Показать решение' }).click();
   await expect(page.locator('.solution-card')).toContainText(FIRST_SOLUTION);
-  await expect(page.locator('.feedback')).toContainText('через 10 минут задача появится для чистого повторения');
+  await expect(page.locator('.feedback')).toContainText('через 10 минут появится связанная, но другая SQL-задача');
 
   await expect.poll(() => page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('sql-academy-progress-v4') || '{}');
-    const stats = state.taskStats?.['task-001'];
-    return { solutionViews: stats?.solutionViews, due: Boolean(stats?.retrievalDueAt), independent: stats?.independentPasses || 0 };
-  })).toEqual({ solutionViews: 1, due: true, independent: 0 });
+    const source = state.taskStats?.['task-001'];
+    const target = state.taskStats?.['task-002'];
+    return {
+      solutionViews: source?.solutionViews,
+      source: target?.retrievalSourceTaskId,
+      due: Boolean(target?.retrievalDueAt),
+      independent: source?.independentPasses || 0
+    };
+  })).toEqual({ solutionViews: 1, source: 'task-001', due: true, independent: 0 });
 
   await replaceEditorSql(page, FIRST_SOLUTION);
   await page.getByRole('button', { name: /Проверить SQL/i }).click();
@@ -114,20 +132,62 @@ test('desktop mastery solution exposure schedules a delayed clean retrieval', as
 
   await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('sql-academy-progress-v4') || '{}');
-    state.taskStats['task-001'].retrievalDueAt = '2000-01-01T00:00:00.000Z';
+    state.taskStats['task-002'].retrievalDueAt = '2000-01-01T00:00:00.000Z';
     localStorage.setItem('sql-academy-progress-v4', JSON.stringify(state));
   });
   await page.reload();
-  await page.getByRole('button', { name: 'Практика', exact: true }).click();
+  await page.getByRole('button', { name: /Повторение/ }).click();
+  await page.getByRole('button', { name: /002 Форма результата: обращение и состояние/ }).click();
+  await expect(page.getByTestId('review-return-reason')).toContainText('Отложенная проверка');
+  await expect(page.getByTestId('review-return-reason')).toContainText('другую задачу');
+  await replaceEditorSql(page, FIRST_TRANSFER_SOLUTION);
+  await page.getByRole('button', { name: /Проверить SQL/i }).click();
+  await expect(page.locator('.feedback.success')).toContainText('прочное освоение');
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('sql-academy-progress-v4') || '{}');
+    const stats = state.taskStats?.['task-002'];
+    return {
+      durable: stats?.lastRetrievalPassed,
+      interval: stats?.retrievalIntervalDays,
+      source: stats?.retrievalSourceTaskId,
+      independent: stats?.independentPasses || 0
+    };
+  })).toEqual({ durable: true, interval: 1, source: 'task-001', independent: 1 });
+  expect(externalRequests, 'The SQL editor and mastery loop must work without any external CDN request').toEqual([]);
+});
+
+test('mobile mastery returning learner sees why a transfer task is due and can refresh evidence', async ({ page }, testInfo) => {
+  await authenticatePage(page, 'mobilereturn');
+  await page.goto('./');
+  await page.getByLabel('Мобильная навигация').getByRole('button', { name: 'Практика', exact: true }).click();
+  await seedFirstLessonEvidence(page);
   await page.getByRole('button', { name: /001 Форма результата: обращение и сервис/ }).click();
   await replaceEditorSql(page, FIRST_SOLUTION);
   await page.getByRole('button', { name: /Проверить SQL/i }).click();
-  await expect(page.locator('.feedback.success')).toContainText('Самостоятельное решение подтверждено');
+  await expect(page.locator('.feedback.success')).toContainText('Через 10 минут');
+
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('sql-academy-progress-v4') || '{}');
+    state.taskStats['task-002'].retrievalDueAt = '2000-01-01T00:00:00.000Z';
+    localStorage.setItem('sql-academy-progress-v4', JSON.stringify(state));
+  });
+  await page.reload();
+  await page.getByRole('button', { name: 'Открыть меню' }).click();
+  await page.getByRole('navigation', { name: 'Разделы академии' }).getByRole('button', { name: /Повторение/ }).click();
+  await page.getByRole('button', { name: /002 Форма результата: обращение и состояние/ }).click();
+  const reason = page.getByTestId('review-return-reason');
+  await expect(reason).toContainText('Почему задача вернулась');
+  await expect(reason).toContainText('Отложенная проверка');
+  await replaceEditorSql(page, FIRST_TRANSFER_SOLUTION);
+  await page.getByRole('button', { name: /Проверить SQL/i }).click();
   await expect.poll(() => page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('sql-academy-progress-v4') || '{}');
-    const stats = state.taskStats?.['task-001'];
-    return { due: Boolean(stats?.retrievalDueAt), independent: stats?.independentPasses || 0 };
-  })).toEqual({ due: false, independent: 1 });
+    const stats = state.taskStats?.['task-002'];
+    return { passed: stats?.lastRetrievalPassed, interval: stats?.retrievalIntervalDays, source: stats?.retrievalSourceTaskId };
+  })).toEqual({ passed: true, interval: 1, source: 'task-001' });
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
+  expect(overflow).toBe(false);
+  await page.screenshot({ path: testInfo.outputPath('mobile-returning-retrieval.png'), fullPage: true });
 });
 
 test('mobile mastery diagnostics remain readable without horizontal overflow', async ({ page }, testInfo) => {
