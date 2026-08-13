@@ -366,7 +366,7 @@ Unique bundled notice/license texts: **200**
 - `minimatch@10.2.6` — BlueOak-1.0.0 — transitive — git@github.com:isaacs/minimatch
 - `minimatch@5.1.9` — ISC — transitive — https://github.com/isaacs/minimatch
 - `minipass@7.1.3` — BlueOak-1.0.0 — transitive — https://github.com/isaacs/minipass
-- `monaco-editor@0.56.0` — MIT — transitive — https://github.com/microsoft/monaco-editor
+- `monaco-editor@0.56.0` — MIT — direct-runtime — https://github.com/microsoft/monaco-editor
 - `ms@2.1.3` — MIT — transitive — vercel/ms
 - `nanoid@3.3.17` — MIT — transitive — ai/nanoid
 - `node-releases@2.0.52` — MIT — transitive — https://github.com/chicoxyzzy/node-releases
