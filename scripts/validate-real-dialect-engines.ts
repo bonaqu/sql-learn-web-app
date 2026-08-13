@@ -108,19 +108,29 @@ function executeContract(contract: (typeof realEngineContracts)[number]) {
       ? planMatches(contract.dialect, result.output)
       : exactOutput(result.output, labCase.expected);
     if (!passed) throw new Error(`semantic output mismatch: ${JSON.stringify(result.output)}`);
-    return result.serverVersion;
+    return { serverVersion: result.serverVersion, output: result.output, kind: manifest.kind, expected: labCase.expected };
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
 }
 
 const versions = new Map<string, string>();
+const negativeExpectationProof = new Set<string>();
 for (const contract of realEngineContracts) {
   const key = `${contract.labId}:${contract.dialect}`;
   try {
-    const version = executeContract(contract);
-    versions.set(contract.dialect, version);
-    console.log(`PASS ${key} (${version})`);
+    const execution = executeContract(contract);
+    versions.set(contract.dialect, execution.serverVersion);
+    console.log(`PASS ${key} (${execution.serverVersion})`);
+    if (!negativeExpectationProof.has(contract.dialect) && execution.kind !== 'plan') {
+      const deliberatelyWrong = {
+        columns: execution.expected.columns.map((column, index) => index === 0 ? `wrong_${column}` : column),
+        rows: execution.expected.rows
+      };
+      if (exactOutput(execution.output, deliberatelyWrong)) throw new Error('deliberately wrong expectation was accepted');
+      negativeExpectationProof.add(contract.dialect);
+      console.log(`NEGATIVE PASS ${contract.dialect}: deliberately wrong column contract rejected by real-engine output.`);
+    }
   } catch (error) {
     failures.push(`${key}: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -132,4 +142,9 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Real dialect engine integration passed: ${realEngineContracts.length} isolated PostgreSQL/MySQL contracts across ${new Set(realEngineContracts.map(item => item.labId)).size} labs; PostgreSQL ${versions.get('postgresql')}, MySQL ${versions.get('mysql')}.`);
+if (negativeExpectationProof.size !== 2) {
+  console.error('Real dialect engine integration did not execute both negative expectation controls.');
+  process.exit(1);
+}
+
+console.log(`Real dialect engine integration passed: ${realEngineContracts.length} isolated PostgreSQL/MySQL contracts plus 2 deliberately wrong negative expectations across ${new Set(realEngineContracts.map(item => item.labId)).size} labs; PostgreSQL ${versions.get('postgresql')}, MySQL ${versions.get('mysql')}.`);

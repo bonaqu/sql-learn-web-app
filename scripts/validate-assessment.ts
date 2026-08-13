@@ -58,7 +58,7 @@ for (const mode of Object.keys(assessmentModes) as AssessmentMode[]) {
   assert(new Set(first.map(task => task.module)).size >= Math.min(config.taskCount, mode === 'quick' ? 3 : 4), `${mode}: insufficient module diversity`);
   assert(config.blueprintVersion === assessmentBlueprint(mode).version, `${mode}: config/blueprint version drift`);
   assert(config.thresholdVersion === assessmentBlueprint(mode).thresholdVersion, `${mode}: config/threshold version drift`);
-  if (mode === 'interview') assert(first.some(task => task.mode === 'interview'), 'interview: must include interview tasks');
+  if (mode === 'interview') assert(first.every(task => task.mode === 'interview' && task.evaluationContractId), 'interview: every task must be original Interview content with a hidden contract');
   if (mode === 'exam') assert(first.every(task => task.mode !== 'lesson' && task.mode !== 'puzzle'), 'exam: invalid task mode');
   if (config.fixedTaskIds) assert(JSON.stringify(first.map(task => task.id)) === JSON.stringify(config.fixedTaskIds), mode + ': fixed pool changed');
 }
@@ -186,6 +186,47 @@ assert(diagnosticReport.adaptiveDecision?.scoreBand.low === diagnosticDecision.s
   'Adaptive report must retain the explicit uncertainty boundary.');
 assert(diagnosticReport.localDebrief.includes('Стартовая граница'),
   'Adaptive report must explain why placement stopped.');
+
+const interviewTasks = selectAssessmentTasks('interview', practiced);
+const interviewSession: AssessmentSession = {
+  ...session,
+  id: '00000000-0000-4000-8000-000000000003',
+  mode: 'interview',
+  formId: 'INTERVIEW-assessment-blueprint-v3-F1',
+  deadlineAt: new Date(Date.now() + 35 * 60_000).toISOString(),
+  taskIds: interviewTasks.map(task => task.id),
+  currentIndex: interviewTasks.length - 1,
+  selection: {
+    excludedKnownSolutions: 0,
+    fallbackKnownSolutions: 0,
+    distinctModules: 5,
+    distinctSkills: 5
+  },
+  answers: Object.fromEntries(interviewTasks.map((task, index) => [task.id, {
+    taskId: task.id,
+    sql: task.solution,
+    attempts: 1,
+    incorrect: 0,
+    technicalErrors: 0,
+    correct: true,
+    skipped: false,
+    elapsedSeconds: 180,
+    interviewerUses: index === 0 ? 1 : 0,
+    hintsUsed: 0,
+    solutionViews: 0,
+    explanation: 'Одна строка соответствует целевой сущности; сначала фиксирую grain, затем применяю условия и стабильный порядок.',
+    alternative: 'Альтернатива использует CTE: она нагляднее, но добавляет этап.',
+    edgeCases: 'NULL, дубли и ties обрабатываются явно и не меняют кратность результата.',
+    startedAt,
+    completedAt
+  }]))
+};
+const interviewReport = buildAssessmentReport(interviewSession, 'completed');
+assert(interviewReport.explanationRubric?.completed === 5, 'Interview report lost completed explanation rubrics');
+assert(interviewReport.explanationRubric?.awaitingHumanReview === 5, 'Interview prose must wait for human review');
+assert(interviewReport.taskScores.every(item => item.explanationRubric?.proseScore === null), 'Interview report invented an AI prose score');
+assert(interviewReport.assistance?.interviewerUses === 1 && interviewReport.assistance.independent === false, 'Assistance provenance is not visible');
+assert(interviewReport.independence < 100, 'Assisted interview report still claims full independence');
 
 const reportMigration = readFileSync(new URL('../migrations/0004_assessment_center.sql', import.meta.url), 'utf8');
 assert(/REFERENCES\s+users\s*\(\s*user_id\s*\)/i.test(reportMigration), 'assessment report FK must reference users.user_id');

@@ -12,6 +12,18 @@ type AssessmentTaskScoreV2 = {
   attempts: number;
   elapsedSeconds: number;
   interviewerUses: number;
+  hintsUsed: number;
+  solutionViews: number;
+  explanationRubric: {
+    deterministicSqlPassed: boolean;
+    explanationSubmitted: boolean;
+    alternativeSubmitted: boolean;
+    edgeCasesSubmitted: boolean;
+    complete: boolean;
+    reviewStatus: 'not-required' | 'missing' | 'awaiting-human-review';
+    proseScore: null;
+    authority: 'deterministic-sql-plus-human-prose-review';
+  };
   score: number;
   technicalErrors: number;
   telemetryEligible: boolean;
@@ -59,6 +71,18 @@ type AssessmentReportV2 = {
   accuracy: number;
   firstAttemptRate: number;
   independence: number;
+  assistance: {
+    interviewerUses: number;
+    hintsUsed: number;
+    solutionViews: number;
+    independent: boolean;
+  };
+  explanationRubric?: {
+    completed: number;
+    total: number;
+    awaitingHumanReview: number;
+    authority: 'deterministic-sql-plus-human-prose-review';
+  };
   readinessDelta: number;
   taskScores: AssessmentTaskScoreV2[];
   moduleScores: AssessmentModuleScoreV2[];
@@ -140,11 +164,21 @@ function expectedExclusion(status: AssessmentStatus, item: AssessmentTaskScoreV2
 function validTaskScore(value: unknown, status: AssessmentStatus, baselineReadiness: number): value is AssessmentTaskScoreV2 {
   if (!objectRecord(value) || !exactKeys(value, [
     'taskId', 'title', 'module', 'topic', 'correct', 'skipped', 'attempts', 'elapsedSeconds',
-    'interviewerUses', 'score', 'technicalErrors', 'telemetryEligible', 'telemetryExclusionReason',
+    'interviewerUses', 'hintsUsed', 'solutionViews', 'explanationRubric', 'score', 'technicalErrors', 'telemetryEligible', 'telemetryExclusionReason',
     'abilityBand', 'itemVersion', 'reasoningSkill', 'errorClass', 'expectedSeconds'
   ])) return false;
   const item = value as AssessmentTaskScoreV2;
-  if (!shortText(item.taskId, 16, 8)
+  if (!objectRecord(item.explanationRubric)
+    || !exactKeys(item.explanationRubric, ['deterministicSqlPassed', 'explanationSubmitted', 'alternativeSubmitted', 'edgeCasesSubmitted', 'complete', 'reviewStatus', 'proseScore', 'authority'])
+    || typeof item.explanationRubric.deterministicSqlPassed !== 'boolean'
+    || typeof item.explanationRubric.explanationSubmitted !== 'boolean'
+    || typeof item.explanationRubric.alternativeSubmitted !== 'boolean'
+    || typeof item.explanationRubric.edgeCasesSubmitted !== 'boolean'
+    || typeof item.explanationRubric.complete !== 'boolean'
+    || !['not-required', 'missing', 'awaiting-human-review'].includes(item.explanationRubric.reviewStatus)
+    || item.explanationRubric.proseScore !== null
+    || item.explanationRubric.authority !== 'deterministic-sql-plus-human-prose-review'
+    || !shortText(item.taskId, 16, 8)
     || !TASK_ID_PATTERN.test(item.taskId)
     || !shortText(item.title, 240, 1)
     || !shortText(item.module, 80, 1)
@@ -155,6 +189,8 @@ function validTaskScore(value: unknown, status: AssessmentStatus, baselineReadin
     || !boundedInteger(item.attempts, 100)
     || !boundedInteger(item.elapsedSeconds, 86_400)
     || !boundedInteger(item.interviewerUses, 20)
+    || !boundedInteger(item.hintsUsed, 20)
+    || !boundedInteger(item.solutionViews, 20)
     || !boundedInteger(item.score, 100)
     || !boundedInteger(item.technicalErrors, 100)
     || typeof item.telemetryEligible !== 'boolean'
@@ -223,13 +259,27 @@ function containsForbiddenEvidenceKey(value: unknown): boolean {
 function validReportV2(value: unknown): value is AssessmentReportV2 {
   if (!objectRecord(value) || !exactKeys(value, [
     'version', 'id', 'userId', 'mode', 'status', 'startedAt', 'completedAt', 'durationSeconds',
-    'score', 'grade', 'accuracy', 'firstAttemptRate', 'independence', 'readinessDelta', 'taskScores',
+    'score', 'grade', 'accuracy', 'firstAttemptRate', 'independence', 'assistance', 'readinessDelta', 'taskScores',
     'moduleScores', 'strengths', 'weaknesses', 'localDebrief', 'baselineReadiness', 'formId',
     'blueprintVersion', 'thresholdVersion', 'measurement'
-  ], ['aiDebrief'])) return false;
+  ], ['aiDebrief', 'explanationRubric'])) return false;
   if (containsForbiddenEvidenceKey(value)) return false;
   const report = value as AssessmentReportV2;
-  if (report.version !== 1
+  if (!objectRecord(report.assistance)
+    || !exactKeys(report.assistance, ['interviewerUses', 'hintsUsed', 'solutionViews', 'independent'])
+    || !boundedInteger(report.assistance.interviewerUses, 800)
+    || !boundedInteger(report.assistance.hintsUsed, 800)
+    || !boundedInteger(report.assistance.solutionViews, 800)
+    || typeof report.assistance.independent !== 'boolean'
+    || (report.explanationRubric !== undefined && (!objectRecord(report.explanationRubric)
+      || !exactKeys(report.explanationRubric, ['completed', 'total', 'awaitingHumanReview', 'authority'])
+      || !boundedInteger(report.explanationRubric.completed, 40)
+      || !boundedInteger(report.explanationRubric.total, 40)
+      || !boundedInteger(report.explanationRubric.awaitingHumanReview, 40)
+      || report.explanationRubric.completed > report.explanationRubric.total
+      || report.explanationRubric.awaitingHumanReview > report.explanationRubric.total
+      || report.explanationRubric.authority !== 'deterministic-sql-plus-human-prose-review'))
+    || report.version !== 1
     || !REPORT_ID_PATTERN.test(report.id)
     || !shortText(report.userId, 80, 16)
     || !MODES.has(report.mode)
@@ -270,11 +320,20 @@ function validReportV2(value: unknown): value is AssessmentReportV2 {
   const expectedAccuracy = Math.round(correct / report.taskScores.length * 100);
   const expectedFirstAttemptRate = Math.round(firstAttempt / Math.max(1, correct) * 100);
   const expectedIndependence = Math.round(report.taskScores.reduce(
-    (sum, item) => sum + Math.max(0, 100 - item.interviewerUses * 30), 0
+    (sum, item) => sum + Math.max(0, 100 - item.interviewerUses * 30 - item.hintsUsed * 40 - item.solutionViews * 100), 0
   ) / report.taskScores.length);
+  const expectedAssistance = {
+    interviewerUses: report.taskScores.reduce((sum, item) => sum + item.interviewerUses, 0),
+    hintsUsed: report.taskScores.reduce((sum, item) => sum + item.hintsUsed, 0),
+    solutionViews: report.taskScores.reduce((sum, item) => sum + item.solutionViews, 0)
+  };
   if (report.accuracy !== expectedAccuracy
     || report.firstAttemptRate !== expectedFirstAttemptRate
-    || report.independence !== expectedIndependence) return false;
+    || report.independence !== expectedIndependence
+    || report.assistance.interviewerUses !== expectedAssistance.interviewerUses
+    || report.assistance.hintsUsed !== expectedAssistance.hintsUsed
+    || report.assistance.solutionViews !== expectedAssistance.solutionViews
+    || report.assistance.independent !== (expectedAssistance.interviewerUses === 0 && expectedAssistance.hintsUsed === 0 && expectedAssistance.solutionViews === 0)) return false;
   return validMeasurement(report.measurement, report);
 }
 

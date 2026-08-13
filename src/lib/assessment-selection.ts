@@ -104,7 +104,14 @@ function chooseCandidate(input: {
   const usedModules = new Set(input.selected.map(task => task.module));
   const stablePool = input.pool
     .filter(task => !input.slot || assessmentItem(task.id)?.reasoningSkill === input.slot.reasoningSkill)
-    .sort((left, right) => left.id.localeCompare(right.id));
+    .sort((left, right) => {
+      if (input.blueprint.mode === 'interview') {
+        const skillOrder = (assessmentItem(left.id)?.reasoningSkill || '')
+          .localeCompare(assessmentItem(right.id)?.reasoningSkill || '');
+        if (skillOrder !== 0) return skillOrder;
+      }
+      return left.id.localeCompare(right.id);
+    });
   const preferredIds = new Set(stablePool
     .filter((_, index) => index % 4 === input.variant - 1)
     .map(task => task.id));

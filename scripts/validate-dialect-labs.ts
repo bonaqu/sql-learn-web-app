@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import initSqlJs from 'sql.js';
 import { dialectLabCases, dialectLabCase, type DialectResultValue } from '../src/data/dialect-lab-cases.ts';
 import { dialectLabManifests, type SqlDialect } from '../src/data/dialect-lab-manifests.ts';
+import { dialectPrimarySources } from '../src/data/dialect-primary-sources.ts';
 import { evaluateDialectCaseSql, validateDialectSqlPolicy } from '../src/lib/dialect-lab-policy.ts';
 import {
   dialectLabCompletion,
@@ -50,6 +51,8 @@ assert(dialectLabManifests.length === 11, `Expected 11 published dialect labs, g
 assert(dialectLabCases.length === 33, `Expected 33 executable dialect cases, got ${dialectLabCases.length}`);
 assert(dialectLabCases.length === dialectLabManifests.length * dialects.length, 'Every lab must publish one case per dialect');
 assert(realEngineContracts.length === dialectLabManifests.length * 2, 'Every lab must retain PostgreSQL and MySQL real-engine CI contracts');
+assert(dialectPrimarySources.length === dialectLabManifests.length * dialects.length, 'Every dialect claim must map to one reviewed primary source');
+assert(new Set(dialectPrimarySources.map(item => `${item.capability}:${item.dialect}`)).size === dialectPrimarySources.length, 'Primary-source mappings must be unique');
 assert(new Set(dialectLabManifests.map(lab => lab.id)).size === dialectLabManifests.length, 'Dialect lab IDs must be unique');
 assert(new Set(dialectLabCases.map(item => `${item.labId}:${item.dialect}`)).size === dialectLabCases.length, 'Dialect case keys must be unique');
 assert(new Set(realEngineContracts.map(item => `${item.labId}:${item.dialect}`)).size === realEngineContracts.length, 'Real-engine contract keys must be unique');
@@ -67,6 +70,14 @@ for (const lab of dialectLabManifests) {
   assert(lab.evidence.minimumPassingDialects === 3, `${lab.id}: completion still requires three independently verified dialects`);
   assert(JSON.stringify([...lab.portabilityChallenge.requiredDialects].sort()) === JSON.stringify([...dialects].sort()), `${lab.id}: required dialect coverage changed`);
   assert(lab.behaviors.length === 3, `${lab.id}: expected three engine behaviors`);
+  const sources = dialectPrimarySources.filter(item => item.capability === lab.capability);
+  assert(sources.length === 3, `${lab.id}: primary-source map is incomplete`);
+  assert(sources.every(item => item.reviewedAt === '2026-08-13'), `${lab.id}: primary-source review date is stale`);
+  assert(sources.every(item => item.dialect === 'sqlite'
+    ? /^https:\/\/(?:www\.)?sqlite\.org\//.test(item.url)
+    : item.dialect === 'postgresql'
+      ? /^https:\/\/www\.postgresql\.org\/docs\/current\//.test(item.url)
+      : /^https:\/\/dev\.mysql\.com\/doc\/refman\/8\.4\/en\//.test(item.url)), `${lab.id}: source is not the current official manual`);
 
   for (const dialect of dialects) {
     const behavior = lab.behaviors.find(item => item.dialect === dialect);
@@ -238,4 +249,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log(`Dialect lab validation passed: ${dialectLabManifests.length} labs, ${dialectLabCases.length} cases, exact SQLite fixtures, 22 real PostgreSQL/MySQL CI contracts and an honest Cloudflare Free preview boundary with zero false mastery.`);
+console.log(`Dialect lab validation passed: ${dialectLabManifests.length} labs, ${dialectLabCases.length} cases, ${dialectPrimarySources.length} current official manual mappings, exact SQLite fixtures, 22 real PostgreSQL/MySQL CI contracts and an honest Cloudflare Free preview boundary with zero false mastery.`);

@@ -13,6 +13,18 @@ type AssessmentTaskScorePayload = {
   attempts: number;
   elapsedSeconds: number;
   interviewerUses: number;
+  hintsUsed?: number;
+  solutionViews?: number;
+  explanationRubric?: {
+    deterministicSqlPassed: boolean;
+    explanationSubmitted: boolean;
+    alternativeSubmitted: boolean;
+    edgeCasesSubmitted: boolean;
+    complete: boolean;
+    reviewStatus: 'not-required' | 'missing' | 'awaiting-human-review';
+    proseScore: null;
+    authority: 'deterministic-sql-plus-human-prose-review';
+  };
   score: number;
   technicalErrors?: number;
   telemetryEligible?: boolean;
@@ -65,6 +77,18 @@ type AssessmentReportPayload = {
   accuracy: number;
   firstAttemptRate: number;
   independence: number;
+  assistance?: {
+    interviewerUses: number;
+    hintsUsed: number;
+    solutionViews: number;
+    independent: boolean;
+  };
+  explanationRubric?: {
+    completed: number;
+    total: number;
+    awaitingHumanReview: number;
+    authority: 'deterministic-sql-plus-human-prose-review';
+  };
   readinessDelta: number;
   strengths: string[];
   weaknesses: string[];
@@ -138,6 +162,18 @@ function validTaskScore(value: unknown): value is AssessmentTaskScorePayload {
     && boundedInteger(item.attempts, 100)
     && boundedInteger(item.elapsedSeconds, 86_400)
     && boundedInteger(item.interviewerUses, 20)
+    && (item.hintsUsed === undefined || boundedInteger(item.hintsUsed, 20))
+    && (item.solutionViews === undefined || boundedInteger(item.solutionViews, 20))
+    && (item.explanationRubric === undefined || (
+      typeof item.explanationRubric.deterministicSqlPassed === 'boolean'
+      && typeof item.explanationRubric.explanationSubmitted === 'boolean'
+      && typeof item.explanationRubric.alternativeSubmitted === 'boolean'
+      && typeof item.explanationRubric.edgeCasesSubmitted === 'boolean'
+      && typeof item.explanationRubric.complete === 'boolean'
+      && ['not-required', 'missing', 'awaiting-human-review'].includes(item.explanationRubric.reviewStatus)
+      && item.explanationRubric.proseScore === null
+      && item.explanationRubric.authority === 'deterministic-sql-plus-human-prose-review'
+    ))
     && boundedInteger(item.score, 100)
     && (item.technicalErrors === undefined || boundedInteger(item.technicalErrors, 100))
     && (item.telemetryEligible === undefined || typeof item.telemetryEligible === 'boolean')
@@ -215,6 +251,20 @@ function validReport(value: unknown): value is AssessmentReportPayload {
     && boundedInteger(report.accuracy, 100)
     && boundedInteger(report.firstAttemptRate, 100)
     && boundedInteger(report.independence, 100)
+    && (report.assistance === undefined || (
+      boundedInteger(report.assistance.interviewerUses, 800)
+      && boundedInteger(report.assistance.hintsUsed, 800)
+      && boundedInteger(report.assistance.solutionViews, 800)
+      && typeof report.assistance.independent === 'boolean'
+    ))
+    && (report.explanationRubric === undefined || (
+      boundedInteger(report.explanationRubric.completed, 40)
+      && boundedInteger(report.explanationRubric.total, 40)
+      && boundedInteger(report.explanationRubric.awaitingHumanReview, 40)
+      && report.explanationRubric.completed <= report.explanationRubric.total
+      && report.explanationRubric.awaitingHumanReview <= report.explanationRubric.total
+      && report.explanationRubric.authority === 'deterministic-sql-plus-human-prose-review'
+    ))
     && typeof report.readinessDelta === 'number'
     && Number.isInteger(report.readinessDelta)
     && report.readinessDelta >= -20

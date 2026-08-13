@@ -25,6 +25,7 @@ import {
   type AdaptiveDiagnosticDecision
 } from './adaptive-placement';
 import type { Progress } from './progress';
+import { evaluateInterviewExplanation, type InterviewExplanationRubric } from './interview-rubric';
 
 export type AssessmentMode = 'quick' | 'interview' | 'exam' | 'diagnostic' | 'production' | 'final';
 export type AssessmentStatus = 'active' | 'completed' | 'expired' | 'abandoned';
@@ -56,6 +57,11 @@ export type AssessmentAnswer = {
   skipped: boolean;
   elapsedSeconds: number;
   interviewerUses: number;
+  hintsUsed: number;
+  solutionViews: number;
+  explanation: string;
+  alternative: string;
+  edgeCases: string;
   startedAt: string;
   completedAt?: string;
 };
@@ -95,6 +101,9 @@ export type AssessmentTaskScore = {
   attempts: number;
   elapsedSeconds: number;
   interviewerUses: number;
+  hintsUsed: number;
+  solutionViews: number;
+  explanationRubric?: InterviewExplanationRubric;
   score: number;
   technicalErrors?: number;
   telemetryEligible?: boolean;
@@ -128,6 +137,18 @@ export type AssessmentReport = {
   accuracy: number;
   firstAttemptRate: number;
   independence: number;
+  assistance?: {
+    interviewerUses: number;
+    hintsUsed: number;
+    solutionViews: number;
+    independent: boolean;
+  };
+  explanationRubric?: {
+    completed: number;
+    total: number;
+    awaitingHumanReview: number;
+    authority: 'deterministic-sql-plus-human-prose-review';
+  };
   readinessDelta: number;
   taskScores: AssessmentTaskScore[];
   moduleScores: AssessmentModuleScore[];
@@ -162,7 +183,7 @@ export const assessmentModes: Record<AssessmentMode, AssessmentModeConfig> = {
   },
   interview: {
     mode: 'interview', title: 'SQL Interview Simulation', shortTitle: 'Interview',
-    description: 'Пять рабочих сценариев и ограниченные уточнения AI Interviewer.',
+    description: 'Пять оригинальных сценариев с общим 35-минутным deadline. В обычном учебном Interview таймера нет.',
     durationMinutes: 35, taskCount: 5, interviewer: true, minimumCompleted: 6, minimumModules: 2, passingScore: 65,
     blueprintVersion: ASSESSMENT_BLUEPRINT_VERSION, thresholdVersion: ASSESSMENT_THRESHOLD_VERSION
   },
@@ -270,6 +291,11 @@ export function createAssessmentSession(mode: AssessmentMode, progress: Progress
       skipped: false,
       elapsedSeconds: 0,
       interviewerUses: 0,
+      hintsUsed: 0,
+      solutionViews: 0,
+      explanation: '',
+      alternative: '',
+      edgeCases: '',
       startedAt: now.toISOString()
     }])),
     baselineReadiness,
@@ -298,6 +324,11 @@ function normalizeAnswer(taskId: string, raw: Partial<AssessmentAnswer> | undefi
     skipped: raw?.skipped === true,
     elapsedSeconds: Math.max(0, Number(raw?.elapsedSeconds) || 0),
     interviewerUses: Math.max(0, Number(raw?.interviewerUses) || 0),
+    hintsUsed: Math.max(0, Number(raw?.hintsUsed) || 0),
+    solutionViews: Math.max(0, Number(raw?.solutionViews) || 0),
+    explanation: typeof raw?.explanation === 'string' ? raw.explanation.slice(0, 1_200) : '',
+    alternative: typeof raw?.alternative === 'string' ? raw.alternative.slice(0, 800) : '',
+    edgeCases: typeof raw?.edgeCases === 'string' ? raw.edgeCases.slice(0, 800) : '',
     startedAt: typeof raw?.startedAt === 'string' ? raw.startedAt : fallbackStartedAt,
     completedAt: typeof raw?.completedAt === 'string' ? raw.completedAt : undefined
   };
@@ -373,7 +404,12 @@ export function mergeAssessmentAnswer(previous: AssessmentAnswer, patch: Partial
     && patch.technicalErrors === undefined
     && patch.correct === undefined
     && patch.skipped === undefined
-    && patch.interviewerUses === undefined;
+    && patch.interviewerUses === undefined
+    && patch.hintsUsed === undefined
+    && patch.solutionViews === undefined
+    && patch.explanation === undefined
+    && patch.alternative === undefined
+    && patch.edgeCases === undefined;
   const requestedElapsed = patch.elapsedSeconds ?? previous.elapsedSeconds;
   return {
     ...previous,
@@ -382,6 +418,11 @@ export function mergeAssessmentAnswer(previous: AssessmentAnswer, patch: Partial
     incorrect: Math.max(previous.incorrect, patch.incorrect ?? previous.incorrect),
     technicalErrors: Math.max(previous.technicalErrors, patch.technicalErrors ?? previous.technicalErrors),
     interviewerUses: Math.max(previous.interviewerUses, patch.interviewerUses ?? previous.interviewerUses),
+    hintsUsed: Math.max(previous.hintsUsed, patch.hintsUsed ?? previous.hintsUsed),
+    solutionViews: Math.max(previous.solutionViews, patch.solutionViews ?? previous.solutionViews),
+    explanation: String(patch.explanation ?? previous.explanation).slice(0, 1_200),
+    alternative: String(patch.alternative ?? previous.alternative).slice(0, 800),
+    edgeCases: String(patch.edgeCases ?? previous.edgeCases).slice(0, 800),
     elapsedSeconds: timerOnlyPatch ? Math.max(previous.elapsedSeconds + 5, requestedElapsed) : Math.max(previous.elapsedSeconds, requestedElapsed),
     correct: previous.correct || patch.correct === true,
     skipped: patch.skipped ?? previous.skipped,
@@ -439,12 +480,15 @@ function telemetryExclusion(status: Exclude<AssessmentStatus, 'active'>, answer:
   return null;
 }
 
-function taskScore(task: SqlTask, answer: AssessmentAnswer, expectedSeconds: number, status: Exclude<AssessmentStatus, 'active'>, baselineReadiness: number): AssessmentTaskScore {
+function taskScore(task: SqlTask, answer: AssessmentAnswer, expectedSeconds: number, status: Exclude<AssessmentStatus, 'active'>, baselineReadiness: number, interviewMode: boolean): AssessmentTaskScore {
   const accuracy = answer.correct ? ASSESSMENT_SCORING_POLICY.weights.accuracy : 0;
   const attemptScore = answer.correct ? Math.round(ASSESSMENT_SCORING_POLICY.weights.firstAttempt / Math.max(1, answer.attempts)) : 0;
   const speedRatio = expectedSeconds / Math.max(1, answer.elapsedSeconds || expectedSeconds);
   const speedScore = answer.correct ? Math.round(clamp(speedRatio, 0.25, 1) * ASSESSMENT_SCORING_POLICY.weights.time) : 0;
-  const independenceScore = answer.correct ? Math.max(0, ASSESSMENT_SCORING_POLICY.weights.independence - answer.interviewerUses * 3) : 0;
+  const hintsUsed = Math.max(0, Number(answer.hintsUsed) || 0);
+  const solutionViews = Math.max(0, Number(answer.solutionViews) || 0);
+  const assistancePenalty = answer.interviewerUses * 3 + hintsUsed * 4 + solutionViews * ASSESSMENT_SCORING_POLICY.weights.independence;
+  const independenceScore = answer.correct ? Math.max(0, ASSESSMENT_SCORING_POLICY.weights.independence - assistancePenalty) : 0;
   const item = assessmentItem(task.id);
   const exclusion = telemetryExclusion(status, answer);
   return {
@@ -457,6 +501,9 @@ function taskScore(task: SqlTask, answer: AssessmentAnswer, expectedSeconds: num
     attempts: answer.attempts,
     elapsedSeconds: answer.elapsedSeconds,
     interviewerUses: answer.interviewerUses,
+    hintsUsed,
+    solutionViews,
+    explanationRubric: evaluateInterviewExplanation(answer, answer.correct, interviewMode),
     technicalErrors: answer.technicalErrors,
     telemetryEligible: exclusion === null,
     telemetryExclusionReason: exclusion,
@@ -495,13 +542,26 @@ export function buildAssessmentReport(session: AssessmentSession, status: Exclud
     const task = tasks.find(item => item.id === taskId);
     const answer = session.answers[taskId];
     if (!task || !answer) throw new Error(`Assessment task ${taskId} is missing`);
-    return taskScore(task, answer, calibratedExpectedSeconds(taskId, calibration), status, session.baselineReadiness);
+    return taskScore(task, answer, calibratedExpectedSeconds(taskId, calibration), status, session.baselineReadiness, session.mode === 'interview');
   });
   const score = Math.round(taskScores.reduce((sum, task) => sum + task.score, 0) / Math.max(1, taskScores.length));
   const correct = taskScores.filter(task => task.correct).length;
   const accuracy = Math.round(correct / Math.max(1, taskScores.length) * 100);
   const firstAttemptRate = Math.round(taskScores.filter(task => task.correct && task.attempts === 1).length / Math.max(1, correct) * 100);
-  const independence = Math.round(taskScores.reduce((sum, task) => sum + Math.max(0, 100 - task.interviewerUses * 30), 0) / Math.max(1, taskScores.length));
+  const assistance = {
+    interviewerUses: taskScores.reduce((sum, task) => sum + task.interviewerUses, 0),
+    hintsUsed: taskScores.reduce((sum, task) => sum + task.hintsUsed, 0),
+    solutionViews: taskScores.reduce((sum, task) => sum + task.solutionViews, 0),
+    independent: false
+  };
+  assistance.independent = assistance.interviewerUses === 0 && assistance.hintsUsed === 0 && assistance.solutionViews === 0;
+  const independence = Math.round(taskScores.reduce((sum, task) => sum + Math.max(0, 100 - task.interviewerUses * 30 - task.hintsUsed * 40 - task.solutionViews * 100), 0) / Math.max(1, taskScores.length));
+  const explanationRubric = session.mode === 'interview' ? {
+    completed: taskScores.filter(task => task.explanationRubric?.complete).length,
+    total: taskScores.length,
+    awaitingHumanReview: taskScores.filter(task => task.explanationRubric?.reviewStatus === 'awaiting-human-review').length,
+    authority: 'deterministic-sql-plus-human-prose-review' as const
+  } : undefined;
   const grouped = new Map<string, AssessmentTaskScore[]>();
   for (const task of taskScores) grouped.set(task.module, [...(grouped.get(task.module) || []), task]);
   const moduleScores = Array.from(grouped, ([module, items]) => ({
@@ -542,6 +602,8 @@ export function buildAssessmentReport(session: AssessmentSession, status: Exclud
     accuracy,
     firstAttemptRate,
     independence,
+    assistance,
+    explanationRubric,
     readinessDelta,
     taskScores,
     moduleScores,
@@ -591,7 +653,18 @@ function normalizeReport(report: AssessmentReport): AssessmentReport {
     formId: report.formId || `LEGACY-${report.mode.toUpperCase()}-V1`,
     blueprintVersion,
     thresholdVersion,
-    taskScores: report.taskScores.map(item => ({ ...item, technicalErrors: Math.max(0, Number(item.technicalErrors) || 0) })),
+    assistance: report.assistance || {
+      interviewerUses: report.taskScores.reduce((sum, item) => sum + (Number(item.interviewerUses) || 0), 0),
+      hintsUsed: report.taskScores.reduce((sum, item) => sum + (Number(item.hintsUsed) || 0), 0),
+      solutionViews: report.taskScores.reduce((sum, item) => sum + (Number(item.solutionViews) || 0), 0),
+      independent: report.taskScores.every(item => (Number(item.interviewerUses) || 0) === 0 && (Number(item.hintsUsed) || 0) === 0 && (Number(item.solutionViews) || 0) === 0)
+    },
+    taskScores: report.taskScores.map(item => ({
+      ...item,
+      technicalErrors: Math.max(0, Number(item.technicalErrors) || 0),
+      hintsUsed: Math.max(0, Number(item.hintsUsed) || 0),
+      solutionViews: Math.max(0, Number(item.solutionViews) || 0)
+    })),
     adaptiveDecision: normalizeAdaptiveReportDecision(report)
   };
 }

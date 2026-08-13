@@ -53,6 +53,9 @@ import { loadAuthSession } from '../lib/auth';
 import { overallReadiness } from '../lib/learning-path';
 import { loadProgress } from '../lib/progress';
 import { useDialogFocus } from '../lib/dialog-focus';
+import { interviewSessionForTask } from '../data/interview-session-bank';
+import { INTERVIEW_PROSE_LIMITS, interviewProseComplete } from '../lib/interview-rubric';
+import '../assessment-phase10.css';
 
 const Editor = lazy(() => import('./SqlEditor'));
 type RunState = 'idle' | 'success' | 'error';
@@ -117,6 +120,8 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
   const activeAnswer = activeTask && session ? session.answers[activeTask.id] : null;
   const config = session ? assessmentModes[session.mode] : null;
   const adaptiveDecision = session ? assessmentAdaptiveDecision(session) : null;
+  const interviewDefinition = activeTask ? interviewSessionForTask(activeTask.id) : null;
+  const canAdvance = Boolean(activeAnswer && (activeAnswer.skipped || (activeAnswer.correct && (!config?.interviewer || interviewProseComplete(activeAnswer)))));
 
   useEffect(() => {
     if (externalLauncher) return;
@@ -305,7 +310,9 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
       setResult(evaluation.output);
       setRunState(evaluation.correct ? 'success' : 'error');
       setMessage(evaluation.correct
-        ? 'Контракт результата и скрытые проверки пройдены. Ответ зафиксирован в assessment.'
+        ? session.mode === 'interview'
+          ? 'SQL-контракт пройден. Заполни объяснение, альтернативу и edge cases: prose ждёт человеческой проверки и не меняет deterministic score.'
+          : 'Контракт результата и скрытые проверки пройдены. Ответ зафиксирован в assessment.'
         : `${evaluation.diagnostic?.title || 'Результат не совпал'}. ${evaluation.diagnostic?.nextStep || 'Проверь контракт результата.'}`);
     } catch (error) {
       const technical = error instanceof AssessmentSqlExecutionError && error.kind === 'technical';
@@ -441,6 +448,8 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
             <li><ListChecks />{mode === 'diagnostic' ? '3–7 задач' : `${modeConfig.taskCount} задач`}</li>
             <li><LockKeyhole />без решения и обычного Mentor</li>
             {modeConfig.interviewer && <li><Sparkles />до 2 уточнений на задачу</li>}
+            {modeConfig.interviewer && <li><TimerReset />learning mode без таймера · simulation с общим deadline</li>}
+            {modeConfig.interviewer && <li><BrainCircuit />объяснение, альтернатива и edge cases — на human review</li>}
           </ul>
           {eligibility.eligible
             ? <button onClick={() => start(mode)} data-testid={`start-${mode}`}><Play />Начать</button>
@@ -481,7 +490,7 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
 
     <section className="assessment-workspace">
       <article className="assessment-task-panel">
-        <div className="assessment-task-meta"><span>{activeTask.topic}</span><span>{activeTask.difficulty}</span><span>попыток {activeAnswer.attempts}</span>{activeAnswer.technicalErrors > 0 && <span>technical {activeAnswer.technicalErrors}</span>}</div>
+        <div className="assessment-task-meta"><span>{activeTask.topic}</span><span>{activeTask.difficulty}</span>{interviewDefinition && <span>{interviewDefinition.pattern}</span>}<span>попыток {activeAnswer.attempts}</span>{activeAnswer.technicalErrors > 0 && <span>technical {activeAnswer.technicalErrors}</span>}</div>
         <h1>{activeTask.title}</h1>
         <p>{activeTask.description}</p>
         <div className="assessment-integrity-note" data-testid="assessment-locked-tools"><LockKeyhole /><span><strong>Assessment integrity</strong><small>Подсказки, эталон и обычный AI Mentor недоступны до завершения.</small></span></div>
@@ -491,6 +500,40 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
           <button onClick={() => void askInterviewer()} disabled={interviewerLoading || activeAnswer.interviewerUses >= 2 || !interviewerQuestion.trim()}><Sparkles />{interviewerLoading ? 'Формулирую уточнение…' : 'Спросить'}</button>
           <p>{interviewerAnswer}</p>
         </div>}
+        {config.interviewer && interviewDefinition && <fieldset className="assessment-explanation-rubric" data-testid="assessment-explanation-rubric">
+          <legend>Reasoning rubric</legend>
+          <p>SQL оценивается детерминированно. Текст фиксируется в отчёте для человеческой проверки; AI не выставляет prose-score.</p>
+          <label>Объяснение grain и шагов
+            <textarea
+              value={activeAnswer.explanation}
+              onChange={event => setSession(updateAssessmentAnswer(session, activeTask.id, { explanation: event.target.value }))}
+              maxLength={INTERVIEW_PROSE_LIMITS.explanation.maximum}
+              placeholder={interviewDefinition.rubric.explanationPrompt}
+            />
+            <small>минимум {INTERVIEW_PROSE_LIMITS.explanation.minimum} символов</small>
+          </label>
+          <label>Альтернативный подход и компромисс
+            <textarea
+              value={activeAnswer.alternative}
+              onChange={event => setSession(updateAssessmentAnswer(session, activeTask.id, { alternative: event.target.value }))}
+              maxLength={INTERVIEW_PROSE_LIMITS.alternative.maximum}
+              placeholder={interviewDefinition.rubric.alternativePrompt}
+            />
+            <small>минимум {INTERVIEW_PROSE_LIMITS.alternative.minimum} символов</small>
+          </label>
+          <label>Edge cases
+            <textarea
+              value={activeAnswer.edgeCases}
+              onChange={event => setSession(updateAssessmentAnswer(session, activeTask.id, { edgeCases: event.target.value }))}
+              maxLength={INTERVIEW_PROSE_LIMITS.edgeCases.maximum}
+              placeholder={interviewDefinition.rubric.edgeCasesPrompt}
+            />
+            <small>минимум {INTERVIEW_PROSE_LIMITS.edgeCases.minimum} символов</small>
+          </label>
+          <div className="assessment-rubric-status" role="status">
+            {interviewProseComplete(activeAnswer) ? 'Все три части сохранены · ожидают human review' : 'Заполни все три части, чтобы перейти дальше после правильного SQL.'}
+          </div>
+        </fieldset>}
       </article>
 
       <article className="assessment-editor-panel">
@@ -507,7 +550,7 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
         <div className="assessment-runbar">
           <button className="assessment-run" onClick={runSql} disabled={!engine}><Play />Проверить SQL</button>
           <button onClick={skip}><SkipForward />Пропустить</button>
-          <button onClick={nextTask} disabled={!activeAnswer.correct && !activeAnswer.skipped}>{adaptiveDecision?.shouldStop || session.currentIndex >= session.taskIds.length - 1 ? 'Получить стартовый маршрут' : 'Следующая'}<ChevronRight /></button>
+          <button onClick={nextTask} disabled={!canAdvance}>{adaptiveDecision?.shouldStop || session.currentIndex >= session.taskIds.length - 1 ? 'Получить стартовый маршрут' : 'Следующая'}<ChevronRight /></button>
         </div>
         <div className={`assessment-feedback ${runState}`} role="status" aria-live="polite">{runState === 'success' ? <CheckCircle2 /> : runState === 'error' ? <AlertTriangle /> : <Target />}<span>{message}</span></div>
         {!!result.length && <div className="assessment-result-table" data-testid="assessment-result">
@@ -521,8 +564,13 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
     <section className="assessment-report-hero">
       <button className="assessment-back" onClick={() => setReport(null)}><ArrowLeft />К Assessment Center</button>
       <div className={`assessment-report-score grade-${report.grade}`}><strong>{report.score}</strong><span>/100</span></div>
-      <div><span>{assessmentModes[report.mode].title}{report.formId ? ` · ${report.formId}` : ''}</span><h1>{gradeLabel(report)}</h1><p>{report.status === 'expired' ? 'Время истекло. Незавершённые задачи учтены как пропущенные.' : 'Skill report рассчитан по точности, времени, попыткам и самостоятельности.'}</p></div>
+      <div><span>{assessmentModes[report.mode].title}{report.formId ? ` · ${report.formId}` : ''}</span><h1>{gradeLabel(report)}</h1><p>{report.status === 'expired' ? 'Время истекло. Незавершённые задачи учтены как пропущенные.' : 'Skill report рассчитан по deterministic SQL, времени, попыткам и самостоятельности. Prose не оценивается AI.'}</p></div>
     </section>
+    {report.explanationRubric && <section className="assessment-report-card assessment-rubric-report" data-testid="assessment-rubric-report">
+      <div className="assessment-section-heading"><div><span>Reasoning rubric</span><h2>{report.explanationRubric.completed}/{report.explanationRubric.total} заполнено</h2></div><BrainCircuit /></div>
+      <p>Explanation, alternative и edge cases отделены от SQL correctness. {report.explanationRubric.awaitingHumanReview} ответов ожидают human review; автоматического prose-score нет.</p>
+      <small>Assistance: interviewer {report.assistance?.interviewerUses || 0} · hints {report.assistance?.hintsUsed || 0} · solution views {report.assistance?.solutionViews || 0}</small>
+    </section>}
     <section className="assessment-report-metrics">
       <article><CheckCircle2 /><span><small>Точность</small><strong>{report.accuracy}%</strong></span></article>
       <article><Target /><span><small>С первой попытки</small><strong>{report.firstAttemptRate}%</strong></span></article>
@@ -549,7 +597,7 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
     </section>
     <section className="assessment-task-breakdown assessment-report-card">
       <div className="assessment-section-heading"><div><span>Задачи</span><h2>Детализация попыток</h2></div><ListChecks /></div>
-      {report.taskScores.map((task, index) => <div className="assessment-task-score" key={task.taskId}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{task.title}</strong><small>{task.topic} · {task.attempts} попыток · {formatDuration(task.elapsedSeconds)}{task.telemetryEligible === false ? ` · excluded: ${task.telemetryExclusionReason}` : ''}</small></div><b className={task.correct ? 'correct' : 'incorrect'}>{task.score}</b></div>)}
+      {report.taskScores.map((task, index) => <div className="assessment-task-score" key={task.taskId}><span>{String(index + 1).padStart(2, '0')}</span><div><strong>{task.title}</strong><small>{task.topic} · {task.attempts} попыток · {formatDuration(task.elapsedSeconds)} · assistance {task.interviewerUses + (task.hintsUsed || 0) + (task.solutionViews || 0)}{task.telemetryEligible === false ? ` · excluded: ${task.telemetryExclusionReason}` : ''}{task.explanationRubric ? ` · prose: ${task.explanationRubric.reviewStatus}` : ''}</small></div><b className={task.correct ? 'correct' : 'incorrect'}>{task.score}</b></div>)}
     </section>
   </main> : null;
 

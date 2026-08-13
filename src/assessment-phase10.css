@@ -1,0 +1,73 @@
+.assessment-explanation-rubric {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 0;
+  padding: 16px;
+  border: 1px solid rgba(56, 189, 248, .24);
+  border-radius: 16px;
+  background: rgba(56, 189, 248, .06);
+}
+
+.assessment-explanation-rubric legend {
+  padding-inline: 7px;
+  color: #8fddff;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.assessment-explanation-rubric > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.assessment-explanation-rubric label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.assessment-explanation-rubric textarea {
+  min-height: 76px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 10px;
+  font: inherit;
+  font-weight: 400;
+  line-height: 1.45;
+}
+
+.assessment-explanation-rubric textarea:focus-visible {
+  outline: 3px solid rgba(56, 189, 248, .4);
+  outline-offset: 2px;
+}
+
+.assessment-explanation-rubric small,
+.assessment-rubric-report small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.assessment-rubric-status,
+.assessment-rubric-report {
+  color: var(--muted);
+}
+
+.assessment-rubric-status {
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: rgba(56, 189, 248, .08);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.assessment-rubric-report p {
+  line-height: 1.6;
+}

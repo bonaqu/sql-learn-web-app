@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { tasks } from '../../src/data/course-catalog';
 import { authenticatePage, loginPage } from './auth-helper';
@@ -211,8 +212,17 @@ test('desktop assessment interview allows bounded clarification without exposing
   await page.goto('./');
   await waitForInitialCloudHydration(page);
   await openAdvancedTool(page, 'assessment-trigger');
+  await expect(page.getByTestId('assessment-mode-interview')).toContainText('обычном учебном Interview таймера нет');
   await page.getByTestId('start-interview').click();
   await expect(page.getByTestId('assessment-interviewer')).toBeVisible();
+  await expect(page.getByTestId('assessment-timer')).toContainText(/^3[0-5]:\d{2}$/);
+  const selectedModes = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find(item => item.startsWith('sql-academy-assessment-session-v1:')) || '';
+    const session = JSON.parse(localStorage.getItem(key) || 'null');
+    return session?.taskIds || [];
+  });
+  expect(selectedModes.length).toBe(5);
+  expect(selectedModes.every((taskId: string) => tasks.find(task => task.id === taskId)?.mode === 'interview')).toBe(true);
   await page.getByPlaceholder('Задай уточняющий вопрос о требованиях…').fill('Нужна ли стабильная сортировка результата?');
   const askButton = page.getByRole('button', { name: 'Спросить' });
   await expect(askButton).toBeEnabled();
@@ -220,6 +230,38 @@ test('desktop assessment interview allows bounded clarification without exposing
   await expect(page.locator('.assessment-interviewer p')).not.toContainText('AI Interviewer может');
   await expect(page.locator('.assessment-interviewer')).toContainText('Осталось уточнений: 1');
   await expect(page.locator('.assessment-interviewer p')).not.toContainText(/SELECT\s/i);
+  const rubric = page.getByTestId('assessment-explanation-rubric');
+  await expect(rubric).toContainText('AI не выставляет prose-score');
+  await page.getByLabel('Объяснение grain и шагов').fill('Одна строка соответствует заявке; сначала фиксирую grain, затем фильтрую и задаю полный порядок результата.');
+  await page.getByLabel('Альтернативный подход и компромисс').fill('Можно использовать CTE: понятнее, но запрос становится длиннее.');
+  await page.getByLabel('Edge cases').fill('NULL, дубли и ties требуют явных условий и уникального tie-breaker.');
+  await expect(rubric).toContainText('ожидают human review');
+  await page.reload();
+  await expect(page.getByTestId('assessment-center')).toBeVisible();
+  await expect(page.getByLabel('Объяснение grain и шагов')).toHaveValue(/Одна строка соответствует/);
+  await expect(page.getByTestId('assessment-timer')).toContainText(/^3[0-5]:\d{2}$/);
+  const accessibility = await new AxeBuilder({ page }).include('[data-testid="assessment-center"]').analyze();
+  expect(accessibility.violations.filter(item => item.impact === 'serious' || item.impact === 'critical')).toEqual([]);
+});
+
+test('mobile assessment interview rubric resumes without overflow', async ({ page }, testInfo) => {
+  await authenticatePage(page, 'mobileinterview');
+  await page.addInitScript(({ key, value }) => localStorage.setItem(key, JSON.stringify(value)), {
+    key: PROGRESS_KEY,
+    value: practicedProgress()
+  });
+  await page.goto('./');
+  await waitForInitialCloudHydration(page);
+  await openAdvancedTool(page, 'assessment-trigger');
+  await page.getByTestId('start-interview').click();
+  await expect(page.getByTestId('assessment-explanation-rubric')).toBeVisible();
+  await page.getByLabel('Объяснение grain и шагов').focus();
+  await page.keyboard.insertText('Одна строка на сущность; объяснение сохраняется и восстанавливается после перезагрузки интерфейса.');
+  await page.reload();
+  await expect(page.getByTestId('assessment-center')).toBeVisible();
+  await expect(page.getByLabel('Объяснение grain и шагов')).toHaveValue(/сохраняется и восстанавливается/);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath('mobile-interview-rubric.png'), fullPage: true });
 });
 
 test('mobile assessment landing, adaptive session and measurement panel fit Pixel 7', async ({ page }, testInfo) => {
