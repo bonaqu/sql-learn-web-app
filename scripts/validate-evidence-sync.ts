@@ -3,9 +3,16 @@ import {
   reportsToUpload,
   type SyncableEvidenceReport
 } from '../src/lib/evidence-sync.ts';
-import { reconcileProgress, type ProgressSyncApi } from '../src/lib/auth.ts';
-import { defaultProgress, type Progress } from '../src/lib/progress.ts';
+import { mergeProgress, reconcileProgress, type ProgressSyncApi } from '../src/lib/auth.ts';
+import {
+  defaultProgress,
+  DURABLE_MASTERY_EVIDENCE_VERSION,
+  hasDurableTaskEvidence,
+  migrateProgress,
+  type Progress
+} from '../src/lib/progress.ts';
 import core from '../worker/core.ts';
+import { validMasteryProgressPayload } from '../worker/mastery-progress.ts';
 
 const failures: string[] = [];
 const assert = (condition: unknown, message: string) => { if (!condition) failures.push(message); };
@@ -137,6 +144,81 @@ try {
 }
 assert(networkFailureObserved && JSON.stringify(deviceB) === networkFailureBefore,
   'Network failure must leave local evidence unchanged and unsynced');
+
+const oldProgress = migrateProgress({
+  version: 3,
+  completed: ['task-001'],
+  taskStats: { 'task-001': { attempts: 1, incorrect: 0, hintsUsed: 0, completedAt: '2026-07-20T10:00:00.000Z' } },
+  xp: 10,
+  streak: 1,
+  history: defaultProgress.history
+});
+assert(oldProgress.completed.includes('task-001'), 'Old progress migration must preserve completion history');
+assert(!hasDurableTaskEvidence(oldProgress, 'task-001', Date.parse('2026-08-11T10:00:00.000Z')),
+  'Old progress migration must not fabricate durable evidence');
+assert(validMasteryProgressPayload(oldProgress), 'D1 progress contract must continue accepting migrated old-client payloads');
+
+const durableLocal = structuredClone(defaultProgress);
+durableLocal.completed = ['task-001', 'task-002', 'task-004', 'task-005'];
+durableLocal.taskStats = {
+  'task-001': { attempts: 1, incorrect: 0, hintsUsed: 0, independentPasses: 1, lastIndependentAt: '2026-08-10T09:00:00.000Z' },
+  'task-002': {
+    attempts: 1, incorrect: 0, hintsUsed: 0,
+    retrievalEvidenceVersion: DURABLE_MASTERY_EVIDENCE_VERSION,
+    retrievalSourceTaskId: 'task-001', retrievalScheduledAt: '2026-08-10T09:00:00.000Z',
+    retrievalDueAt: '2026-08-12T09:10:00.000Z', retrievalIntervalDays: 1,
+    retrievalSuccesses: 1, retrievalLapses: 0, lastRetrievalAt: '2026-08-11T09:10:00.000Z',
+    lastRetrievalPassed: true, durableEvidenceAt: '2026-08-11T09:10:00.000Z', durableUntil: '2026-08-12T09:10:00.000Z'
+  },
+  'task-004': { attempts: 1, incorrect: 0, hintsUsed: 0, independentPasses: 1, lastIndependentAt: '2026-08-10T08:00:00.000Z' },
+  'task-005': {
+    attempts: 1, incorrect: 0, hintsUsed: 0,
+    retrievalEvidenceVersion: DURABLE_MASTERY_EVIDENCE_VERSION,
+    retrievalSourceTaskId: 'task-004', retrievalScheduledAt: '2026-08-10T08:00:00.000Z',
+    retrievalDueAt: '2026-08-12T08:10:00.000Z', retrievalIntervalDays: 1,
+    retrievalSuccesses: 1, lastRetrievalAt: '2026-08-11T08:10:00.000Z', lastRetrievalPassed: true,
+    durableEvidenceAt: '2026-08-11T08:10:00.000Z', durableUntil: '2026-08-12T08:10:00.000Z'
+  }
+};
+const failedRemote = structuredClone(durableLocal);
+failedRemote.taskStats['task-002'] = {
+  ...failedRemote.taskStats['task-002'],
+  incorrect: 1,
+  retrievalDueAt: '2026-08-11T10:10:00.000Z',
+  retrievalIntervalDays: 0,
+  retrievalLapses: 1,
+  lastRetrievalAt: '2026-08-11T10:00:00.000Z',
+  lastRetrievalPassed: false,
+  durableEvidenceAt: undefined,
+  durableUntil: undefined
+};
+const conservativeMerge = mergeProgress(durableLocal, failedRemote);
+assert(conservativeMerge.taskStats['task-002'].lastRetrievalPassed === false
+    && conservativeMerge.taskStats['task-002'].durableEvidenceAt === undefined,
+  'Multi-device merge must not let stale success overwrite a newer retrieval failure');
+assert(conservativeMerge.taskStats['task-005'].lastRetrievalPassed === true,
+  'Relevant failure must not erase unrelated concept evidence');
+assert(validMasteryProgressPayload(conservativeMerge),
+  'D1 progress contract must accept the new evidence-versioned retrieval payload');
+const forgedDurable = structuredClone(conservativeMerge);
+forgedDurable.taskStats['task-002'] = {
+  ...forgedDurable.taskStats['task-002'],
+  retrievalSourceTaskId: 'task-002',
+  lastRetrievalPassed: true,
+  durableEvidenceAt: '2026-08-11T11:00:00.000Z',
+  durableUntil: '2026-08-11T10:00:00.000Z'
+};
+assert(!validMasteryProgressPayload(forgedDurable),
+  'D1 progress contract must reject self-referential or backward durable evidence');
+const stretchedDurable = structuredClone(durableLocal);
+stretchedDurable.taskStats['task-002'].retrievalDueAt = '2026-09-11T09:10:00.000Z';
+stretchedDurable.taskStats['task-002'].durableUntil = '2026-09-11T09:10:00.000Z';
+assert(!validMasteryProgressPayload(stretchedDurable),
+  'D1 progress contract must reject durable windows outside the deterministic interval ladder');
+const arbitraryRetry = structuredClone(failedRemote);
+arbitraryRetry.taskStats['task-002'].retrievalDueAt = '2026-08-11T10:11:00.000Z';
+assert(!validMasteryProgressPayload(arbitraryRetry),
+  'D1 progress contract must reject retry delays outside the deterministic bounded ladder');
 
 let legacyDatabaseCalls = 0;
 const legacyResponse = await core.fetch(new Request('https://academy.test/api/progress', {

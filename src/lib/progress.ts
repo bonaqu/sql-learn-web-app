@@ -13,7 +13,19 @@ export type TaskStats = {
   hintsUsed: number;
   solutionViews?: number;
   solutionViewedAt?: string;
+  assistedPasses?: number;
+  lastAssistedAt?: string;
   retrievalDueAt?: string;
+  retrievalEvidenceVersion?: string;
+  retrievalSourceTaskId?: string;
+  retrievalScheduledAt?: string;
+  retrievalIntervalDays?: number;
+  retrievalSuccesses?: number;
+  retrievalLapses?: number;
+  lastRetrievalAt?: string;
+  lastRetrievalPassed?: boolean;
+  durableEvidenceAt?: string;
+  durableUntil?: string;
   independentPasses?: number;
   lastIndependentAt?: string;
   errorKinds?: Partial<Record<AttemptErrorKind, number>>;
@@ -42,11 +54,15 @@ export type AttemptEvidence = {
   diagnostic?: AttemptDiagnostic;
   independent?: boolean;
   contractEvidence?: TaskEvaluationEvidence;
+  at?: Date | string | number;
 };
 
 export const STORAGE_KEY = 'sql-academy-progress-v4';
 export const PROGRESS_CHANGED_EVENT = 'sql-academy-progress-changed';
 export const CLEAN_REVIEW_INTERVAL_DAYS = 3;
+export const DURABLE_MASTERY_EVIDENCE_VERSION = 'durable-mastery-v1';
+export const INITIAL_RETRIEVAL_DELAY_MINUTES = 10;
+export const MAX_RETRIEVAL_INTERVAL_DAYS = 30;
 const LEGACY_KEYS = ['sql-academy-progress-v3', 'sql-academy-progress-v2'];
 const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 
@@ -92,7 +108,21 @@ function normalizeStats(raw: unknown): Record<string, TaskStats> {
       hintsUsed: Math.max(0, Number(value.hintsUsed) || 0),
       solutionViews: value.solutionViews === undefined ? undefined : Math.max(0, Number(value.solutionViews) || 0),
       solutionViewedAt: typeof value.solutionViewedAt === 'string' ? value.solutionViewedAt : undefined,
+      assistedPasses: value.assistedPasses === undefined ? undefined : Math.max(0, Number(value.assistedPasses) || 0),
+      lastAssistedAt: typeof value.lastAssistedAt === 'string' ? value.lastAssistedAt : undefined,
       retrievalDueAt: typeof value.retrievalDueAt === 'string' ? value.retrievalDueAt : undefined,
+      retrievalEvidenceVersion: value.retrievalEvidenceVersion === DURABLE_MASTERY_EVIDENCE_VERSION
+        ? value.retrievalEvidenceVersion
+        : undefined,
+      retrievalSourceTaskId: typeof value.retrievalSourceTaskId === 'string' ? value.retrievalSourceTaskId : undefined,
+      retrievalScheduledAt: typeof value.retrievalScheduledAt === 'string' ? value.retrievalScheduledAt : undefined,
+      retrievalIntervalDays: value.retrievalIntervalDays === undefined ? undefined : Math.max(0, Number(value.retrievalIntervalDays) || 0),
+      retrievalSuccesses: value.retrievalSuccesses === undefined ? undefined : Math.max(0, Number(value.retrievalSuccesses) || 0),
+      retrievalLapses: value.retrievalLapses === undefined ? undefined : Math.max(0, Number(value.retrievalLapses) || 0),
+      lastRetrievalAt: typeof value.lastRetrievalAt === 'string' ? value.lastRetrievalAt : undefined,
+      lastRetrievalPassed: typeof value.lastRetrievalPassed === 'boolean' ? value.lastRetrievalPassed : undefined,
+      durableEvidenceAt: typeof value.durableEvidenceAt === 'string' ? value.durableEvidenceAt : undefined,
+      durableUntil: typeof value.durableUntil === 'string' ? value.durableUntil : undefined,
       independentPasses: value.independentPasses === undefined ? undefined : Math.max(0, Number(value.independentPasses) || 0),
       lastIndependentAt: typeof value.lastIndependentAt === 'string' ? value.lastIndependentAt : undefined,
       errorKinds: value.errorKinds && typeof value.errorKinds === 'object' ? value.errorKinds : undefined,
@@ -111,6 +141,78 @@ function normalizeStats(raw: unknown): Record<string, TaskStats> {
     };
   }
   return result;
+}
+
+function evidenceDate(value: Date | string | number | undefined) {
+  if (value instanceof Date) return new Date(value.getTime());
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value);
+    if (Number.isFinite(parsed.getTime())) return parsed;
+  }
+  return new Date();
+}
+
+function retrievalCandidates(source: SqlTask) {
+  const sourceContext = source.learningContract?.contextId;
+  const sourceFamily = source.learningContract?.solutionFamily;
+  const modePriority = { practice: 0, lesson: 1, interview: 2, puzzle: 3 } as const;
+  return tasks
+    .filter(candidate => candidate.module === source.module && candidate.id !== source.id)
+    .filter(candidate => !sourceContext || !sourceFamily
+      || (candidate.learningContract?.contextId !== sourceContext
+        && candidate.learningContract?.solutionFamily !== sourceFamily))
+    .sort((left, right) => modePriority[left.mode] - modePriority[right.mode] || left.id.localeCompare(right.id));
+}
+
+export function relatedRetrievalTask(source: SqlTask, progress?: Progress) {
+  const candidates = retrievalCandidates(source);
+  if (!candidates.length) return null;
+  const available = progress
+    ? candidates.filter(candidate => {
+        const stats = progress.taskStats[candidate.id];
+        return !stats?.retrievalSourceTaskId || stats.retrievalSourceTaskId === source.id;
+      })
+    : candidates;
+  return progress ? available[0] || null : candidates[0];
+}
+
+function nextIntervalDays(successes: number, previous: number) {
+  if (successes <= 1) return 1;
+  if (successes === 2) return 3;
+  return Math.min(MAX_RETRIEVAL_INTERVAL_DAYS, Math.max(4, Math.round(Math.max(1, previous) * 2)));
+}
+
+function retryDelayMs(lapses: number) {
+  const minutes = Math.min(24 * 60, INITIAL_RETRIEVAL_DELAY_MINUTES * (3 ** Math.max(0, lapses - 1)));
+  return minutes * 60_000;
+}
+
+function scheduleRelatedRetrieval(
+  progress: Progress,
+  source: SqlTask,
+  now: Date,
+  resetExisting: boolean
+) {
+  const target = relatedRetrievalTask(source, progress);
+  if (!target) return progress.taskStats;
+  const previous = progress.taskStats[target.id] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
+  if (previous.retrievalSourceTaskId === source.id && previous.retrievalDueAt && !resetExisting) {
+    return progress.taskStats;
+  }
+  return {
+    ...progress.taskStats,
+    [target.id]: {
+      ...previous,
+      retrievalEvidenceVersion: DURABLE_MASTERY_EVIDENCE_VERSION,
+      retrievalSourceTaskId: source.id,
+      retrievalScheduledAt: now.toISOString(),
+      retrievalDueAt: new Date(now.getTime() + INITIAL_RETRIEVAL_DELAY_MINUTES * 60_000).toISOString(),
+      retrievalIntervalDays: 0,
+      lastRetrievalPassed: false,
+      durableEvidenceAt: undefined,
+      durableUntil: undefined
+    }
+  };
 }
 
 export function migrateProgress(raw: unknown): Progress {
@@ -162,13 +264,18 @@ export function recordAttempt(
   correct: boolean,
   evidence: AttemptEvidence = {}
 ): Progress {
-  const now = new Date();
+  const now = evidenceDate(evidence.at);
   const today = localDateKey(now);
   const previous = progress.taskStats[task.id] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
   const alreadyCompleted = progress.completed.includes(task.id);
   const newlyCompleted = correct && !alreadyCompleted;
-  const retrievalReady = !previous.retrievalDueAt || Date.parse(previous.retrievalDueAt) <= now.getTime();
-  const independentPass = Boolean(correct && evidence.independent && retrievalReady);
+  const retrievalDue = timestamp(previous.retrievalDueAt);
+  const scheduledRetrieval = previous.retrievalEvidenceVersion === DURABLE_MASTERY_EVIDENCE_VERSION
+    && Boolean(previous.retrievalSourceTaskId)
+    && previous.retrievalSourceTaskId !== task.id
+    && retrievalDue !== null
+    && retrievalDue <= now.getTime();
+  const independentPass = Boolean(correct && evidence.independent);
   const weekdayIndex = now.getDay() === 0 ? 6 : now.getDay() - 1;
   const streak = newlyCompleted
     ? progress.lastStudyDate === today
@@ -182,6 +289,66 @@ export function recordAttempt(
     errorKinds[evidence.diagnostic.kind] = (errorKinds[evidence.diagnostic.kind] || 0) + 1;
   }
 
+  const retrievalSuccesses = scheduledRetrieval && independentPass
+    ? (previous.retrievalSuccesses || 0) + 1
+    : previous.retrievalSuccesses;
+  const retrievalLapses = scheduledRetrieval && !independentPass
+    ? (previous.retrievalLapses || 0) + 1
+    : previous.retrievalLapses;
+  const retrievalIntervalDays = scheduledRetrieval && independentPass
+    ? nextIntervalDays(retrievalSuccesses || 1, previous.retrievalIntervalDays || 0)
+    : scheduledRetrieval && !independentPass
+      ? 0
+      : previous.retrievalIntervalDays;
+  const nextRetrievalDueAt = scheduledRetrieval
+    ? independentPass
+      ? new Date(now.getTime() + (retrievalIntervalDays || 1) * 86_400_000).toISOString()
+      : new Date(now.getTime() + retryDelayMs(retrievalLapses || 1)).toISOString()
+    : previous.retrievalDueAt;
+  const nextCurrentStats: TaskStats = {
+    ...previous,
+    attempts: previous.attempts + 1,
+    incorrect: previous.incorrect + (correct ? 0 : 1),
+    assistedPasses: (previous.assistedPasses || 0) + (correct && !independentPass ? 1 : 0),
+    lastAssistedAt: correct && !independentPass ? now.toISOString() : previous.lastAssistedAt,
+    independentPasses: (previous.independentPasses || 0) + (independentPass ? 1 : 0),
+    lastIndependentAt: independentPass ? now.toISOString() : previous.lastIndependentAt,
+    retrievalDueAt: nextRetrievalDueAt,
+    retrievalIntervalDays,
+    retrievalSuccesses,
+    retrievalLapses,
+    lastRetrievalAt: scheduledRetrieval ? now.toISOString() : previous.lastRetrievalAt,
+    lastRetrievalPassed: scheduledRetrieval ? independentPass : previous.lastRetrievalPassed,
+    durableEvidenceAt: scheduledRetrieval && independentPass ? now.toISOString() : scheduledRetrieval ? undefined : previous.durableEvidenceAt,
+    durableUntil: scheduledRetrieval && independentPass ? nextRetrievalDueAt : scheduledRetrieval ? undefined : previous.durableUntil,
+    errorKinds,
+    lastDiagnostic: !correct && evidence.diagnostic ? evidence.diagnostic : previous.lastDiagnostic,
+    lastAttemptAt: now.toISOString(),
+    completedAt: newlyCompleted ? now.toISOString() : previous.completedAt,
+    evidenceContractVersion: independentPass && evidence.contractEvidence
+      ? evidence.contractEvidence.evidenceContractVersion
+      : previous.evidenceContractVersion,
+    evaluationContractId: independentPass && evidence.contractEvidence
+      ? evidence.contractEvidence.contractId
+      : previous.evaluationContractId,
+    evaluationContractVersion: independentPass && evidence.contractEvidence
+      ? evidence.contractEvidence.contractVersion
+      : previous.evaluationContractVersion,
+    validatedFixtureIds: independentPass && evidence.contractEvidence
+      ? [...evidence.contractEvidence.fixtureIds].sort()
+      : previous.validatedFixtureIds,
+    hiddenFixtureIds: independentPass && evidence.contractEvidence
+      ? [...evidence.contractEvidence.hiddenFixtureIds].sort()
+      : previous.hiddenFixtureIds
+  };
+  let taskStats = { ...progress.taskStats, [task.id]: nextCurrentStats };
+  const nextProgress = { ...progress, taskStats };
+  if (correct && !independentPass) {
+    taskStats = scheduleRelatedRetrieval(nextProgress, task, now, true);
+  } else if (independentPass) {
+    taskStats = scheduleRelatedRetrieval(nextProgress, task, now, false);
+  }
+
   return {
     ...progress,
     completed: newlyCompleted ? [...progress.completed, task.id] : progress.completed,
@@ -192,36 +359,7 @@ export function recordAttempt(
     history: newlyCompleted
       ? progress.history.map((point, index) => index === weekdayIndex ? { ...point, solved: point.solved + 1 } : point)
       : progress.history,
-    taskStats: {
-      ...progress.taskStats,
-      [task.id]: {
-        ...previous,
-        attempts: previous.attempts + 1,
-        incorrect: previous.incorrect + (correct ? 0 : 1),
-        independentPasses: (previous.independentPasses || 0) + (independentPass ? 1 : 0),
-        lastIndependentAt: independentPass ? now.toISOString() : previous.lastIndependentAt,
-        retrievalDueAt: independentPass ? undefined : previous.retrievalDueAt,
-        errorKinds,
-        lastDiagnostic: !correct && evidence.diagnostic ? evidence.diagnostic : previous.lastDiagnostic,
-        lastAttemptAt: now.toISOString(),
-        completedAt: newlyCompleted ? now.toISOString() : previous.completedAt,
-        evidenceContractVersion: independentPass && evidence.contractEvidence
-          ? evidence.contractEvidence.evidenceContractVersion
-          : previous.evidenceContractVersion,
-        evaluationContractId: independentPass && evidence.contractEvidence
-          ? evidence.contractEvidence.contractId
-          : previous.evaluationContractId,
-        evaluationContractVersion: independentPass && evidence.contractEvidence
-          ? evidence.contractEvidence.contractVersion
-          : previous.evaluationContractVersion,
-        validatedFixtureIds: independentPass && evidence.contractEvidence
-          ? [...evidence.contractEvidence.fixtureIds].sort()
-          : previous.validatedFixtureIds,
-        hiddenFixtureIds: independentPass && evidence.contractEvidence
-          ? [...evidence.contractEvidence.hiddenFixtureIds].sort()
-          : previous.hiddenFixtureIds
-      }
-    }
+    taskStats
   };
 }
 
@@ -236,10 +374,11 @@ export function recordHint(progress: Progress, taskId: string): Progress {
   };
 }
 
-export function recordSolutionView(progress: Progress, taskId: string): Progress {
+export function recordSolutionView(progress: Progress, taskId: string, at?: Date | string | number): Progress {
   const previous = progress.taskStats[taskId] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
-  const now = new Date();
-  return {
+  const now = evidenceDate(at);
+  const task = tasks.find(item => item.id === taskId);
+  const next = {
     ...progress,
     taskStats: {
       ...progress.taskStats,
@@ -247,16 +386,46 @@ export function recordSolutionView(progress: Progress, taskId: string): Progress
         ...previous,
         solutionViews: (previous.solutionViews || 0) + 1,
         solutionViewedAt: now.toISOString(),
-        retrievalDueAt: new Date(now.getTime() + 10 * 60_000).toISOString()
+        retrievalDueAt: previous.retrievalSourceTaskId
+          ? new Date(now.getTime() + INITIAL_RETRIEVAL_DELAY_MINUTES * 60_000).toISOString()
+          : previous.retrievalDueAt,
+        retrievalIntervalDays: previous.retrievalSourceTaskId ? 0 : previous.retrievalIntervalDays,
+        lastRetrievalAt: previous.retrievalSourceTaskId ? now.toISOString() : previous.lastRetrievalAt,
+        lastRetrievalPassed: previous.retrievalSourceTaskId ? false : previous.lastRetrievalPassed,
+        durableEvidenceAt: previous.retrievalSourceTaskId ? undefined : previous.durableEvidenceAt,
+        durableUntil: previous.retrievalSourceTaskId ? undefined : previous.durableUntil
       }
     }
   };
+  return task ? { ...next, taskStats: scheduleRelatedRetrieval(next, task, now, true) } : next;
 }
 
-export function hasIndependentTaskEvidence(progress: Progress, taskId: string) {
+export function hasDurableTaskEvidence(progress: Progress, sourceTaskId: string, now = Date.now()) {
+  const source = tasks.find(task => task.id === sourceTaskId);
+  if (!source) return false;
+  return Object.entries(progress.taskStats).some(([targetTaskId, stats]) => {
+    if (targetTaskId === sourceTaskId
+      || stats.retrievalEvidenceVersion !== DURABLE_MASTERY_EVIDENCE_VERSION
+      || stats.retrievalSourceTaskId !== sourceTaskId
+      || !stats.lastRetrievalPassed
+      || !stats.durableEvidenceAt
+      || !stats.durableUntil
+      || Date.parse(stats.durableUntil) <= now) return false;
+    const target = tasks.find(task => task.id === targetTaskId);
+    if (!target || target.module !== source.module) return false;
+    if (!hasDirectIndependentEvidence(progress, targetTaskId)) return false;
+    return !source.learningContract || !target.learningContract
+      || (source.learningContract.contextId !== target.learningContract.contextId
+        && source.learningContract.solutionFamily !== target.learningContract.solutionFamily);
+  });
+}
+
+function hasDirectIndependentEvidence(progress: Progress, taskId: string) {
   const stats = progress.taskStats[taskId];
   if (!stats || !progress.completed.includes(taskId)) return false;
-  if (stats.retrievalDueAt) return false;
+  const solutionAfterIndependent = timestamp(stats.solutionViewedAt) !== null
+    && (timestamp(stats.lastIndependentAt) === null || timestamp(stats.solutionViewedAt)! >= timestamp(stats.lastIndependentAt)!);
+  if (solutionAfterIndependent) return false;
   const task = tasks.find(item => item.id === taskId);
   if (task?.evaluationContractId) {
     return (stats.independentPasses || 0) > 0
@@ -272,6 +441,29 @@ export function hasIndependentTaskEvidence(progress: Progress, taskId: string) {
     && stats.attempts > 0
     && stats.attempts <= 2
     && stats.hintsUsed === 0;
+}
+
+export function hasIndependentTaskEvidence(progress: Progress, taskId: string, now = Date.now()) {
+  return hasDirectIndependentEvidence(progress, taskId) || hasDurableTaskEvidence(progress, taskId, now);
+}
+
+export function reviewReason(progress: Progress, taskId: string, now = Date.now()) {
+  const stats = progress.taskStats[taskId];
+  if (!stats) return null;
+  const source = stats.retrievalSourceTaskId ? tasks.find(task => task.id === stats.retrievalSourceTaskId) : null;
+  if (source && stats.retrievalDueAt && Date.parse(stats.retrievalDueAt) <= now) {
+    if ((stats.retrievalLapses || 0) > 0 && !stats.lastRetrievalPassed) {
+      return { code: 'failed-retrieval', title: 'Возврат после ошибки', detail: `Проверь ${source.topic} на другой задаче без подсказки. Предыдущая попытка не подтвердила воспроизведение.` } as const;
+    }
+    if ((stats.retrievalSuccesses || 0) > 0) {
+      return { code: 'evidence-refresh', title: 'Срок доказательства подошёл', detail: `Снова примени ${source.topic} в другом контексте: прежнее подтверждение больше не считается свежим.` } as const;
+    }
+    return { code: 'delayed-transfer', title: 'Отложенная проверка', detail: `Ты уже работал с темой «${source.title}». Теперь реши связанную, но другую задачу без подсказки и эталона.` } as const;
+  }
+  if (stats.incorrect > 0) return { code: 'remediation', title: 'Разобрать недавнюю ошибку', detail: 'Очередь вернула задачу по сигналу ошибки. Исправь конкретную причину и затем повтори самостоятельно.' } as const;
+  if ((stats.assistedPasses || 0) > 0) return { code: 'assisted-follow-up', title: 'После попытки с помощью', detail: 'Подсказка помогла завершить задачу, но доказательства самостоятельного решения пока нет.' } as const;
+  if (progress.completed.includes(taskId)) return { code: 'spaced-retrieval', title: 'Пора освежить навык', detail: 'Предыдущее самостоятельное решение устарело; воспроизведи подход снова.' } as const;
+  return { code: 'unfinished', title: 'Продолжить начатое', detail: 'Задача была начата, но исполняемое решение ещё не подтверждено.' } as const;
 }
 
 export function moduleErrorSummary(progress: Progress, moduleId: string) {
@@ -292,12 +484,43 @@ function timestamp(value: string | undefined) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function reviewQueue(progress: Progress, limit = 24): SqlTask[] {
-  return tasks
+const CONFUSABLE_MODULES: Record<string, readonly string[]> = {
+  filtering: ['data-quality'],
+  'data-quality': ['filtering'],
+  aggregates: ['grouping'],
+  grouping: ['aggregates'],
+  joins: ['subqueries'],
+  subqueries: ['joins'],
+  sorting: ['windows'],
+  windows: ['sorting'],
+  transactions: ['schema'],
+  schema: ['transactions']
+};
+
+function interleaveReviewCandidates<T extends { task: SqlTask; score: number }>(ranked: T[]) {
+  const remaining = [...ranked];
+  const ordered: T[] = [];
+  while (remaining.length) {
+    if (!ordered.length) {
+      ordered.push(remaining.shift()!);
+      continue;
+    }
+    const previousModule = ordered[ordered.length - 1].task.module;
+    const confusable = new Set(CONFUSABLE_MODULES[previousModule] || []);
+    let index = remaining.findIndex(item => confusable.has(item.task.module));
+    if (index < 0) index = remaining.findIndex(item => item.task.module !== previousModule);
+    if (index < 0) index = 0;
+    ordered.push(remaining.splice(index, 1)[0]);
+  }
+  return ordered;
+}
+
+export function reviewQueue(progress: Progress, limit = 24, now = Date.now()): SqlTask[] {
+  const ranked = tasks
     .map(task => {
       const stats = progress.taskStats[task.id] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
       const completed = progress.completed.includes(task.id);
-      const independent = hasIndependentTaskEvidence(progress, task.id);
+      const independent = hasIndependentTaskEvidence(progress, task.id, now);
       const lastAttemptAt = timestamp(stats.lastAttemptAt);
       const lastIndependentAt = timestamp(stats.lastIndependentAt);
       const latestAttemptWasIndependent = independent
@@ -306,11 +529,11 @@ export function reviewQueue(progress: Progress, limit = 24): SqlTask[] {
       const ageAnchor = latestAttemptWasIndependent ? lastIndependentAt : lastAttemptAt;
       const ageDays = ageAnchor === null
         ? 0
-        : Math.max(0, (Date.now() - ageAnchor) / 86_400_000);
+        : Math.max(0, (now - ageAnchor) / 86_400_000);
       const diagnosed = Object.values(stats.errorKinds || {}).reduce((sum, count) => sum + (count || 0), 0);
       const retrievalDue = timestamp(stats.retrievalDueAt);
-      const retrievalWaiting = retrievalDue !== null && retrievalDue > Date.now();
-      const solutionRetrieval = retrievalDue !== null && retrievalDue <= Date.now() ? 12 : 0;
+      const retrievalWaiting = retrievalDue !== null && retrievalDue > now;
+      const solutionRetrieval = retrievalDue !== null && retrievalDue <= now ? 12 : 0;
       const independentGap = completed && !independent && !retrievalWaiting ? 4 : 0;
       const unresolvedRemediation = latestAttemptWasIndependent
         ? 0
@@ -326,7 +549,8 @@ export function reviewQueue(progress: Progress, limit = 24): SqlTask[] {
       return { task, score: solutionRetrieval + unresolvedRemediation + unfinishedAttempt + spacedReview };
     })
     .filter(item => item.score > 0)
-    .sort((a, b) => b.score - a.score || a.task.id.localeCompare(b.task.id))
+    .sort((a, b) => b.score - a.score || a.task.id.localeCompare(b.task.id));
+  return interleaveReviewCandidates(ranked)
     .slice(0, limit)
     .map(item => item.task);
 }

@@ -1,0 +1,43 @@
+.review-return-reason {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid color-mix(in srgb, #7d68ff 34%, var(--line));
+  border-radius: 15px;
+  background: color-mix(in srgb, #7d68ff 7%, var(--surface));
+  color: var(--text);
+}
+
+.review-return-reason > svg {
+  width: 21px;
+  flex: none;
+  color: #9b88ff;
+}
+
+.review-return-reason > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.review-return-reason small {
+  text-transform: uppercase;
+  letter-spacing: .09em;
+  font-size: 9px;
+  font-weight: 850;
+  color: #9b88ff;
+}
+
+.review-return-reason h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.review-return-reason p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}

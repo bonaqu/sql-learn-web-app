@@ -36,9 +36,9 @@ const gradeLabels: Record<ReviewGrade, { title: string; detail: string }> = {
 };
 
 const introductionLabels: Record<ReviewIntroductionSource, string> = {
-  lesson: 'теория + knowledge check',
-  'independent-practice': 'independent SQL evidence',
-  'legacy-practice': 'migrated legacy practice'
+  lesson: 'пройденная теория и проверка понимания',
+  'independent-practice': 'самостоятельно выполненный SQL',
+  'legacy-practice': 'ранее завершённая практика без доказательства прочного освоения'
 };
 
 export function SpacedReview() {
@@ -58,14 +58,14 @@ export function SpacedReview() {
 
   return <main className="review-studio" data-testid="spaced-review">
     <header className="learning-tool-hero">
-      <div><small>Active recall · интервальное повторение</small><h1>Review Deck</h1><p>Карточка появляется только после учебного evidence. Сначала воспроизведи модель по памяти, затем сравни ответ и оцени реальную сложность.</p></div>
+      <div><small>Воспроизведение по памяти · интервальное повторение</small><h1>Карточки для повторения</h1><p>Сначала воспроизведи модель по памяти, затем сравни ответ и оцени сложность. Самооценка меняет только расписание карточки: прочное освоение подтверждает отдельная отложенная SQL-задача без помощи.</p></div>
       <div className="review-due-badge"><RefreshCw /><strong>{stats.due}</strong><span>карточек сегодня</span></div>
     </header>
 
     <section className="review-stat-grid" aria-label="Статистика повторения">
-      <span><BookMarked /><strong>{stats.available}</strong><small>открыто по evidence</small></span>
+      <span><BookMarked /><strong>{stats.available}</strong><small>доступно по учебным сигналам</small></span>
       <span><Gauge /><strong>{stats.mature}</strong><small>интервал 21+ день</small></span>
-      <span><AlertTriangle /><strong>{stats.lapses}</strong><small>remediation lapses</small></span>
+      <span><AlertTriangle /><strong>{stats.lapses}</strong><small>повторных затруднений</small></span>
       <span><LockKeyhole /><strong>{stats.locked}</strong><small>тем ещё не изучено</small></span>
     </section>
 
@@ -80,7 +80,7 @@ export function SpacedReview() {
         <div className="review-answer"><strong>Модель</strong><p>{card.answer}</p></div>
         <div className="review-example"><strong>Мини-пример</strong><pre><code>{card.example}</code></pre></div>
         <div className="review-trap"><ShieldAlert /><span><strong>Типичная ловушка</strong><small>{card.trap}</small></span></div>
-        <div className="review-grades" aria-label="Оценить повторение">
+        <div className="review-grades" aria-label="Оценить сложность карточки; это не проверка правильности">
           {(Object.keys(gradeLabels) as ReviewGrade[]).map(value => <button key={value} className={value} onClick={() => grade(value)} data-testid={`review-grade-${value}`}>
             <strong>{gradeLabels[value].title}</strong><small>{gradeLabels[value].detail}</small>
           </button>)}

@@ -85,6 +85,51 @@ export default defineConfig(({ command }) => ({
           includeDependenciesRecursively: false,
           groups: [
             {
+              name: 'monaco-base',
+              test: /node_modules[\\/]monaco-editor[\\/]esm[\\/]vs[\\/]base[\\/]/,
+              priority: 70
+            },
+            {
+              name: 'monaco-platform',
+              test: /node_modules[\\/]monaco-editor[\\/]esm[\\/]vs[\\/]platform[\\/]/,
+              priority: 69
+            },
+            {
+              name: 'monaco-editor-browser',
+              test: /node_modules[\\/]monaco-editor[\\/]esm[\\/]vs[\\/]editor[\\/]browser[\\/]/,
+              priority: 68
+            },
+            {
+              name: 'monaco-editor-common',
+              test: /node_modules[\\/]monaco-editor[\\/]esm[\\/]vs[\\/]editor[\\/]common[\\/]/,
+              priority: 67
+            },
+            {
+              name: 'monaco-editor-contrib',
+              test: /node_modules[\\/]monaco-editor[\\/]esm[\\/]vs[\\/]editor[\\/]contrib[\\/]/,
+              priority: 66
+            },
+            {
+              name: 'monaco-editor-standalone',
+              test: /node_modules[\\/]monaco-editor[\\/]esm[\\/]vs[\\/]editor[\\/]standalone[\\/]/,
+              priority: 65
+            },
+            {
+              name: 'monaco-editor-core',
+              test: /node_modules[\\/]monaco-editor[\\/]esm[\\/]vs[\\/]editor[\\/]/,
+              priority: 64
+            },
+            {
+              name: 'monaco-features',
+              test: /node_modules[\\/]monaco-editor[\\/]esm[\\/]vs[\\/]features[\\/]/,
+              priority: 63
+            },
+            {
+              name: 'monaco-language',
+              test: /node_modules[\\/]monaco-editor[\\/]esm[\\/]vs[\\/]languages?[\\/]/,
+              priority: 62
+            },
+            {
               name: 'sqlite',
               test: /(?:node_modules[\\/]sql\.js[\\/]|src[\\/]lib[\\/]sql-browser\.ts$)/,
               priority: 50
