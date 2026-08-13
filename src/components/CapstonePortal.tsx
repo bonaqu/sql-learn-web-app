@@ -250,6 +250,13 @@ export default function CapstonePortal({ projectId, openRequest }: CapstonePorta
           <span className={latestReport?.passed ? 'passed' : ''}>{latestReport?.passed ? <CheckCircle2 /> : <Target />}{statusLabel(latestReport)}</span>
         </section>
 
+        <section className="capstone-engine-evidence" data-testid="capstone-engine-evidence">
+          <div><ShieldCheck /><span><strong>Dataset provenance</strong><small>{contract.originality}</small></span></div>
+          <p><b>Engine evidence:</b> {contract.engineEvidence}</p>
+          <p><b>SQLite limitation:</b> {contract.sqliteLimitations}</p>
+          <div>{contract.datasets.map(dataset => <span key={dataset.id}>{dataset.hidden ? 'Hidden' : 'Public'} · {dataset.edgeCases.join(' · ')}</span>)}</div>
+        </section>
+
         {activeFile && <section className="capstone-editor-card">
           <header><div><Code2 /><span><small>{activeFile.kind} artifact</small><h2>{activeFile.title}</h2></span></div><strong>{activeFile.weight}%</strong></header>
           <p>{activeFile.description}</p>
@@ -280,7 +287,7 @@ export default function CapstonePortal({ projectId, openRequest }: CapstonePorta
         </section>
 
         <section className="capstone-submit">
-          <div><strong>Deterministic evaluator</strong><small>Public contract + hidden edge cases + stable order + schema/plan invariants + reflection.</small></div>
+          <div><strong>Deterministic evaluator</strong><small>Public contract + hidden edge cases + stable order + schema/final-state/plan invariants + reflection.</small></div>
           <button data-testid="submit-capstone" onClick={() => void submit()} disabled={evaluating}>
             {evaluating ? <LoaderCircle className="spin" /> : <Play />}{evaluating ? 'Проверяю…' : 'Отправить immutable attempt'}
           </button>
@@ -306,7 +313,7 @@ export default function CapstonePortal({ projectId, openRequest }: CapstonePorta
 
         {bestReport && <section className="capstone-portfolio" data-testid="capstone-portfolio">
           <header><Download /><div><small>Reviewer-friendly artifact</small><h2>Verified SQL portfolio</h2></div></header>
-          <p>Экспорт строится из immutable submission snapshot. Текущий draft, user ID и данные работодателя в него не попадают.</p>
+          <p>Экспорт строится из immutable submission snapshot. Account ID не включается; email, телефоны, token/password/API-key patterns автоматически редактируются. Метка independent/guided/solution-assisted сохраняется.</p>
           <div>
             <button onClick={() => downloadCapstoneMarkdown(bestReport, projectTitle(activeProjectId))}><Download />Markdown</button>
             <button onClick={() => downloadCapstoneSql(bestReport, projectTitle(activeProjectId))}><FileCode2 />SQL bundle</button>

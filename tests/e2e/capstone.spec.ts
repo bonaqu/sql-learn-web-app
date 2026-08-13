@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { capstoneContract } from '../../src/data/capstone-contracts';
+import { capstoneProjects } from '../../src/data/complete-curriculum';
 import { authenticatePage, loginPage } from './auth-helper';
 import { openAdvancedTool } from './navigation-helper';
 
@@ -8,7 +9,7 @@ const PROJECT_ID = 'project-incident-command';
 const contract = capstoneContract(PROJECT_ID);
 if (!contract) throw new Error('Missing capstone contract for E2E');
 
-const reflection = `Гранулярность результата — одна строка на одно обращение. Знаменатель breach rate включает только closed обращения, а open tickets остаются backlog и не получают ложное resolution time. Tie-breaker и финальный порядок делают рейтинг детерминированным. Hidden edge cases проверяют NULL, дубли и одинаковые значения риска. Эти ограничения нужно сохранить при использовании результата в operating review.`;
+const reflection = `Гранулярность результата — одна строка на одно обращение. Знаменатель breach rate включает только closed обращения, а open tickets остаются backlog и не получают ложное resolution time. История событий агрегируется без умножения обращений. Tie-breaker и финальный порядок делают рейтинг детерминированным. Hidden edge cases проверяют NULL, дубли и одинаковые значения риска. Эти ограничения нужно сохранить при использовании результата в operating review.`;
 
 async function expectNoSeriousAxeViolations(page: import('@playwright/test').Page) {
   const result = await new AxeBuilder({ page })
@@ -36,14 +37,61 @@ async function openEvaluator(page: import('@playwright/test').Page, name: RegExp
   return evaluator;
 }
 
-async function fillReferenceSubmission(evaluator: import('@playwright/test').Locator) {
-  for (const file of contract.files) {
+function reflectionFor(activeContract: NonNullable<ReturnType<typeof capstoneContract>>) {
+  const ideas = activeContract.reflection.requiredIdeas.map(idea => idea.keywords[0]).join('. ');
+  const sentence = `${ideas}. Public и hidden fixtures проверяют edge cases, порядок и ограничения результата; evidence отделено от гипотезы. `;
+  return sentence.repeat(Math.ceil((activeContract.reflection.minimumCharacters + 30) / sentence.length));
+}
+
+async function fillReferenceSubmission(evaluator: import('@playwright/test').Locator, activeContract = contract) {
+  for (const file of activeContract.files) {
     await evaluator.locator('.capstone-files button').filter({ hasText: file.title }).click();
     const solution = file.kind === 'schema' ? file.starterSql : file.referenceSql || file.starterSql;
     await evaluator.getByTestId('capstone-sql-editor').fill(solution);
   }
-  await evaluator.getByTestId('capstone-reflection').fill(reflection);
+  await evaluator.getByTestId('capstone-reflection').fill(activeContract === contract ? reflection : reflectionFor(activeContract));
 }
+
+test('desktop capstone traces failure, remediation and independent pass for every professional track', async ({ page }, testInfo) => {
+  test.setTimeout(260_000);
+  await authenticatePage(page, 'all-track-capstones');
+  await page.goto('./');
+  const studio = await openProjectLab(page);
+
+  for (const project of capstoneProjects) {
+    const activeContract = capstoneContract(project.id);
+    if (!activeContract) throw new Error(`Missing contract for ${project.id}`);
+    await studio.locator('.project-catalog > button').filter({ hasText: project.title }).click();
+    await expect(studio.getByTestId('project-track-contract')).toContainText(project.portfolioOutcome);
+    await expect(studio.getByTestId('project-originality')).toContainText(/синтетическ|оригинальн/i);
+    const evaluator = await openEvaluator(page, new RegExp(project.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+    await expect(evaluator.getByTestId('capstone-engine-evidence')).toContainText('SQLite limitation');
+
+    await evaluator.getByTestId('capstone-reflection').fill('Недостаточное объяснение.');
+    await evaluator.getByTestId('submit-capstone').click();
+    await expect(evaluator.getByTestId('capstone-report')).toContainText('Remediation report', { timeout: 60_000 });
+    await expect(evaluator.getByTestId('capstone-report')).toContainText(/Нужно не менее|Неверный result contract|SQLite/i);
+
+    await fillReferenceSubmission(evaluator, activeContract);
+    await evaluator.getByTestId('submit-capstone').click();
+    const passed = evaluator.getByTestId('capstone-report');
+    await expect(passed).toContainText('Capstone passed', { timeout: 60_000 });
+    await expect(passed).toContainText('100%');
+    await expect(passed).toContainText('independent');
+    await expect(evaluator.locator('.capstone-status')).toContainText(/сохранён локально и в D1/i);
+    if (project.trackId === 'backend') await expect(passed).toContainText(/final database state/i);
+    if (project.id === capstoneProjects.at(-1)?.id) {
+      await page.keyboard.press('Escape');
+      await expect(evaluator).toBeHidden();
+      await expect(studio.getByTestId('open-capstone-evaluator')).toBeFocused();
+    } else {
+      await evaluator.getByRole('button', { name: 'Закрыть executable capstone' }).click();
+    }
+  }
+
+  await expectNoSeriousAxeViolations(page);
+  await page.screenshot({ path: testInfo.outputPath('desktop-all-track-capstones.png'), fullPage: true });
+});
 
 test('desktop capstone creates immutable report, exports portfolio and hydrates a second device', async ({ page, browser }, testInfo) => {
   const auth = await authenticatePage(page, 'capstone');
@@ -107,6 +155,7 @@ test('desktop capstone creates immutable report, exports portfolio and hydrates 
 });
 
 test('mobile capstone reports failed invariants without horizontal overflow', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 360, height: 800 });
   await authenticatePage(page, 'capstonemobile');
   await page.goto('./');
   await openProjectLab(page);

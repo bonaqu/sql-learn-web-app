@@ -3,7 +3,7 @@ import type { CapstoneReport } from './capstone-evaluator';
 
 export const CAPSTONE_REPORTS_CHANGED_EVENT = 'sql-academy-capstone-reports-changed';
 const STORAGE_PREFIX = 'sql-academy-capstone-reports-v1';
-const PROJECT_IDS = new Set(['project-incident-command', 'project-data-trust', 'project-executive-mart']);
+const PROJECT_IDS = new Set(['project-incident-command', 'project-data-trust', 'project-executive-mart', 'project-analytics-decision', 'project-backend-integrity']);
 const MAX_REPORTS = 30;
 
 function storageKey(userId: string) {

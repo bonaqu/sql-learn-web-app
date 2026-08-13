@@ -134,6 +134,7 @@ const goalIcons: Record<LearnerGoal, React.ReactNode> = {
   support: <BriefcaseBusiness />,
   analyst: <BarChart3 />,
   backend: <Laptop2 />,
+  'data-engineering': <Database />,
   interview: <Target />,
   full: <GraduationCap />
 };

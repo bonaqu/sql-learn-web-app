@@ -79,6 +79,8 @@ type EvaluationContext = {
 
 const MUTATING_SQL = /\b(INSERT|UPDATE|DELETE|REPLACE|ALTER|DROP\s+TABLE|CREATE\s+TABLE|TRUNCATE|ATTACH|DETACH|VACUUM|PRAGMA\s+(?!query_only\b))\b/i;
 const SCHEMA_FORBIDDEN = /\b(INSERT|UPDATE|DELETE|REPLACE|ALTER|DROP\s+TABLE|CREATE\s+TABLE|TRUNCATE|ATTACH|DETACH|VACUUM)\b/i;
+const MUTATION_FORBIDDEN = /\b(DROP\s+TABLE|ALTER\s+TABLE|TRUNCATE|ATTACH|DETACH|VACUUM|PRAGMA)\b/i;
+const UNBOUNDED_MUTATION = /\b(?:UPDATE\s+[\w"`\[\].]+\s+SET|DELETE\s+FROM\s+[\w"`\[\].]+)\b(?:(?!\bWHERE\b)[\s\S])*?(?:;|$)/i;
 
 function clamp(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)));
@@ -133,6 +135,13 @@ function safeSql(file: CapstoneFileContract, sql: string) {
   if (file.kind === 'schema' && SCHEMA_FORBIDDEN.test(sql)) {
     return { ok: false, message: 'Schema artifact не должен изменять или удалять исходные таблицы/строки.' };
   }
+  if (file.kind === 'mutation') {
+    if (MUTATION_FORBIDDEN.test(sql)) return { ok: false, message: 'Mutation artifact содержит запрещённое изменение схемы или окружения.' };
+    if (!/\bBEGIN\b/i.test(sql) || !/\bCOMMIT\b/i.test(sql)) return { ok: false, message: 'Mutation artifact должен явно использовать BEGIN и COMMIT.' };
+    if (!/\b(?:UPDATE|INSERT|DELETE)\b/i.test(sql)) return { ok: false, message: 'Mutation artifact не содержит DML.' };
+    if (UNBOUNDED_MUTATION.test(sql)) return { ok: false, message: 'UPDATE/DELETE без WHERE запрещён: ограничь целевое множество.' };
+    if (!file.postValidationSql || !file.referenceSql) return { ok: false, message: 'Mutation contract не содержит final-state validation.' };
+  }
   return { ok: true, message: '' };
 }
 
@@ -145,6 +154,7 @@ function database(SQL: SqlJsStatic, dataset: CapstoneDatasetVariant) {
 
 function fileCheckKind(file: CapstoneFileContract, dataset: CapstoneDatasetVariant): CapstoneCheckKind {
   if (dataset.hidden) return 'hidden-data';
+  if (file.kind === 'mutation') return 'state-invariant';
   if (file.kind === 'schema') return 'schema-invariant';
   if (file.kind === 'plan') return 'plan-shape';
   return 'result-contract';
@@ -203,7 +213,7 @@ async function evaluateFileDataset(context: EvaluationContext, file: CapstoneFil
   let learnerTable: SqlTable | null = null;
   try {
     const learnerResults = learnerDb.exec(learnerSql);
-    learnerTable = file.kind === 'schema' && file.postValidationSql
+    learnerTable = (file.kind === 'schema' || file.kind === 'mutation') && file.postValidationSql
       ? lastTable(learnerDb.exec(file.postValidationSql))
       : lastTable(learnerResults);
   } catch (reason) {
@@ -229,7 +239,12 @@ async function evaluateFileDataset(context: EvaluationContext, file: CapstoneFil
   const referenceDb = database(context.SQL, dataset);
   let referenceTable: SqlTable | null = null;
   try {
-    referenceTable = lastTable(referenceDb.exec(file.referenceSql));
+    if (file.kind === 'mutation') {
+      referenceDb.exec(file.referenceSql);
+      referenceTable = lastTable(referenceDb.exec(file.postValidationSql || ''));
+    } else {
+      referenceTable = lastTable(referenceDb.exec(file.referenceSql));
+    }
   } catch (reason) {
     referenceDb.close();
     return failedFileCheck(file, dataset, maxScore, `Reference contract invalid: ${reason instanceof Error ? reason.message : String(reason)}`);
@@ -246,7 +261,14 @@ async function evaluateFileDataset(context: EvaluationContext, file: CapstoneFil
         : 'Результат не совпал с public contract по значениям, строкам или порядку.'
     );
   }
-  return passedFileCheck(file, dataset, maxScore, dataset.hidden ? 'Hidden edge cases пройдены.' : 'Public result contract совпал.');
+  return passedFileCheck(
+    file,
+    dataset,
+    maxScore,
+    file.kind === 'mutation'
+      ? (dataset.hidden ? 'Hidden final database state и mutation scope пройдены.' : 'Public final database state совпал; safe mutation contract выполнен.')
+      : (dataset.hidden ? 'Hidden edge cases пройдены.' : 'Public result contract совпал.')
+  );
 }
 
 function evaluateReflection(contract: CapstoneEvaluationContract, reflection: string): CapstoneCheckResult {

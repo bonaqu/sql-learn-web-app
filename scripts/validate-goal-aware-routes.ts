@@ -11,10 +11,10 @@ import {
 } from '../src/lib/goal-aware-route';
 import type { LearnerGoal } from '../src/lib/learner-onboarding';
 
-const goals: LearnerGoal[] = ['support', 'analyst', 'backend', 'interview', 'full'];
+const goals: LearnerGoal[] = ['support', 'analyst', 'backend', 'data-engineering', 'interview', 'full'];
 const routes = new Map(goals.map(goal => [goal, goalModuleRoute(goal)]));
 const canonicalSet = new Set(canonicalModuleIds);
-const rawGoalCodes = /«(?:support|analyst|backend|interview|full)»/;
+const rawGoalCodes = /«(?:support|analyst|backend|data-engineering|interview|full)»/;
 
 function firstDifference(left: readonly string[], right: readonly string[]) {
   const length = Math.min(left.length, right.length);
@@ -77,6 +77,7 @@ const personaTraces = [
   { id: 'analyst', goal: 'analyst' as const, completed: goalModuleRoute('analyst').slice(0, SHARED_FOUNDATION_MODULE_IDS.length) },
   { id: 'support', goal: 'support' as const, completed: goalModuleRoute('support').slice(0, SHARED_FOUNDATION_MODULE_IDS.length) },
   { id: 'backend', goal: 'backend' as const, completed: goalModuleRoute('backend').slice(0, SHARED_FOUNDATION_MODULE_IDS.length) },
+  { id: 'data-engineering', goal: 'data-engineering' as const, completed: goalModuleRoute('data-engineering').slice(0, SHARED_FOUNDATION_MODULE_IDS.length) },
   { id: 'interview', goal: 'interview' as const, completed: goalModuleRoute('interview').slice(0, SHARED_FOUNDATION_MODULE_IDS.length) },
   { id: 'returning-with-debt', goal: 'analyst' as const, completed: goalModuleRoute('analyst').slice(0, 2) }
 ];

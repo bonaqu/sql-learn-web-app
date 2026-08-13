@@ -130,11 +130,12 @@
 }
 
 .goal-switch-preview article small {
-  color: var(--accent, #8b7cff);
+  color: #a78bfa;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: .05em;
 }
+[data-theme='light'] .goal-switch-preview article small { color: #6d28d9; }
 .goal-switch-preview article strong { font-size: 20px; }
 .goal-switch-preview article span { color: var(--text-secondary, #a7adbb); font-weight: 700; }
 .goal-switch-preview article p { margin: 0; }

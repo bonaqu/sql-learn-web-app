@@ -71,9 +71,12 @@ export interface ProjectDeliverable {
 
 export interface CapstoneProject {
   id: string;
+  trackId: 'general' | 'support' | 'analyst' | 'backend' | 'data-engineering';
   title: string;
   summary: string;
   scenario: string;
+  originalityNote: string;
+  portfolioOutcome: string;
   estimatedMinutes: number;
   moduleIds: CourseModuleId[];
   deliverables: ProjectDeliverable[];
@@ -477,9 +480,12 @@ export const curriculumCheckpoints: CurriculumCheckpoint[] = [
 export const capstoneProjects: CapstoneProject[] = [
   {
     id: 'project-incident-command',
+    trackId: 'support',
     title: 'Incident Command Dashboard',
     summary: 'Операционная панель для руководителя смены поддержки.',
     scenario: 'T-Bonk хочет видеть нагрузку, SLA breaches и инженеров, которым требуется помощь, без ручной сверки нескольких отчётов.',
+    originalityNote: 'Синтетический кейс SQL Academy; названия, строки и hidden edge cases созданы для курса и не содержат данных работодателя.',
+    portfolioOutcome: 'Incident investigation pack с историей, SLA contract, NULL/duplicate caveats и приоритетом эскалации.',
     estimatedMinutes: 75,
     moduleIds: ['joins', 'grouping', 'dates', 'windows', 'support'],
     deliverables: [
@@ -514,9 +520,12 @@ export const capstoneProjects: CapstoneProject[] = [
   },
   {
     id: 'project-data-trust',
+    trackId: 'data-engineering',
     title: 'Customer Data Trust Audit',
     summary: 'Аудит качества клиентских контактов и правил целостности.',
     scenario: 'Команда T-Bonk подозревает дубли email, пропуски и неоднозначные правила хранения контактов перед миграцией.',
+    originalityNote: 'Оригинальный синтетический датасет SQL Academy на зарезервированном домене .example; реальные клиентские записи не используются.',
+    portfolioOutcome: 'Reproducible quality pipeline: profiling, trusted model, идемпотентная проверка и data contract.',
     estimatedMinutes: 65,
     moduleIds: ['text', 'set-ops', 'data-quality', 'transactions', 'schema'],
     deliverables: [
@@ -551,9 +560,12 @@ export const capstoneProjects: CapstoneProject[] = [
   },
   {
     id: 'project-executive-mart',
+    trackId: 'general',
     title: 'T-Bonk SLA Executive Mart',
     summary: 'Финальная витрина SLA для еженедельного operating review.',
     scenario: 'Руководству нужен один повторяемый запрос: объём, среднее время, breaches, trend и рейтинг сервисов с объяснимым планом выполнения.',
+    originalityNote: 'Оригинальная составная задача SQL Academy на полностью синтетической операционной модели.',
+    portfolioOutcome: 'Cross-functional mart с metric contract, стабильным ranking и честно ограниченным plan evidence.',
     estimatedMinutes: 95,
     moduleIds: ['cte', 'windows', 'indexes', 'explain', 'support', 'final'],
     deliverables: [
@@ -591,6 +603,86 @@ export const capstoneProjects: CapstoneProject[] = [
       { id: 'mart-architecture', title: 'Архитектура запроса', weight: 25, description: 'Этапы изолированы и повторно проверяемы.' },
       { id: 'mart-performance', title: 'Производительность', weight: 20, description: 'План и индексная гипотеза подтверждены.' },
       { id: 'mart-communication', title: 'Объяснимость', weight: 20, description: 'Метрики можно безопасно использовать в review.' }
+    ]
+  },
+  {
+    id: 'project-analytics-decision',
+    trackId: 'analyst',
+    title: 'Learning Activation Decision',
+    summary: 'Cohort/funnel-анализ для продуктового решения о первом опыте пользователя.',
+    scenario: 'Продуктовая команда должна решить, где теряется активация: сравнить недельные cohorts, этапы funnel и динамику completion без причинных обещаний.',
+    originalityNote: 'События активации генерируются локально из синтетических ticket/event fixtures SQL Academy; это не экспорт продуктовой аналитики.',
+    portfolioOutcome: 'Decision memo с cohort/funnel таблицами, оконной динамикой, population/denominator и ограничениями интерпретации.',
+    estimatedMinutes: 90,
+    moduleIds: ['joins', 'grouping', 'dates', 'windows', 'conditional-aggregation', 'window-frames'],
+    deliverables: [
+      {
+        id: 'analytics-cohorts',
+        title: 'Cohort contract',
+        description: 'Собери weekly cohort по дате первого обращения и измерь размер/активацию.',
+        acceptance: ['Cohort привязан к первому событию', 'Population и denominator явны', 'NULL не превращается в успех'],
+        starterSql: 'WITH first_touch AS (...), cohort_metrics AS (...)\nSELECT * FROM cohort_metrics;'
+      },
+      {
+        id: 'analytics-funnel',
+        title: 'Funnel',
+        description: 'Посчитай created → assigned → closed по cohort без умножения событий.',
+        acceptance: ['Этапы монотонны', 'Одно обращение учитывается один раз', 'Hidden unknown event не ломает funnel'],
+        starterSql: 'WITH flags AS (...)\nSELECT cohort_week, created_count, assigned_count, closed_count FROM flags;'
+      },
+      {
+        id: 'analytics-decision',
+        title: 'Window trend и решение',
+        description: 'Сравни conversion с предыдущей cohort и сформулируй решение.',
+        acceptance: ['Использован LAG', 'Порядок cohort стабилен', 'Корреляция не названа причинностью'],
+        starterSql: 'SELECT cohort_week, activation_rate, LAG(activation_rate) OVER (ORDER BY cohort_week) AS previous_rate FROM (...);'
+      }
+    ],
+    rubric: [
+      { id: 'analytics-contract', title: 'Metric contract', weight: 30, description: 'Population, period и denominator определены.' },
+      { id: 'analytics-funnel-rubric', title: 'Cohort и funnel', weight: 30, description: 'Этапы не умножают сущности и сохраняют NULL semantics.' },
+      { id: 'analytics-window', title: 'Динамика', weight: 20, description: 'Window comparison детерминирован.' },
+      { id: 'analytics-decision-note', title: 'Decision note', weight: 20, description: 'Вывод отделяет evidence от гипотезы.' }
+    ]
+  },
+  {
+    id: 'project-backend-integrity',
+    trackId: 'backend',
+    title: 'Safe Ticket State Migration',
+    summary: 'Транзакционный DML backfill и защитная схема для жизненного цикла обращения.',
+    scenario: 'Backend-команда вводит нормализованный state для legacy обращений. Нужно безопасно изменить строки, сохранить audit, доказать final state и описать locking/rollback.',
+    originalityNote: 'Синтетическая миграция SQL Academy; схема и edge cases разработаны для проверки final-state invariants и не происходят из production.',
+    portfolioOutcome: 'Migration pack с safe mutation, post-state evidence, schema guard, injection boundary и engine-specific locking note.',
+    estimatedMinutes: 105,
+    moduleIds: ['schema', 'dml', 'transactions', 'concurrency', 'indexes', 'explain', 'sql-security', 'schema-evolution'],
+    deliverables: [
+      {
+        id: 'backend-mutation',
+        title: 'Safe backfill',
+        description: 'В транзакции заполни state только для целевого множества и сохрани исходное значение в audit.',
+        acceptance: ['Есть BEGIN/COMMIT', 'UPDATE ограничен WHERE', 'Post-state совпадает с инвариантами на public и hidden данных'],
+        starterSql: 'BEGIN;\n-- TODO: audit before mutation\n-- TODO: bounded UPDATE\nCOMMIT;'
+      },
+      {
+        id: 'backend-schema',
+        title: 'Guarded read model',
+        description: 'Создай представление, которое обнаруживает невозможные state/time combinations.',
+        acceptance: ['Исходные таблицы не удаляются', 'Инварианты проверяются запросом', 'Миграция допускает rollback'],
+        starterSql: 'CREATE VIEW ticket_state_invariants AS\nSELECT ...;'
+      },
+      {
+        id: 'backend-boundary',
+        title: 'Runtime boundary',
+        description: 'Подтверди индексный путь и объясни параметризацию, locking и различия движков.',
+        acceptance: ['Реальный EXPLAIN подтверждает claim', 'Input остаётся параметром', 'SQLite limitation названа явно'],
+        starterSql: 'EXPLAIN QUERY PLAN SELECT ...;'
+      }
+    ],
+    rubric: [
+      { id: 'backend-state', title: 'Final database state', weight: 35, description: 'Оценивается состояние таблиц после mutation, а не SELECT автора.' },
+      { id: 'backend-safety', title: 'Mutation safety', weight: 25, description: 'Транзакция, bounded WHERE и audit предотвращают потерю данных.' },
+      { id: 'backend-integrity', title: 'Schema integrity', weight: 20, description: 'Read model обнаруживает нарушения.' },
+      { id: 'backend-runtime-rubric', title: 'Runtime evidence', weight: 20, description: 'Plan, locking и injection boundary описаны по движкам.' }
     ]
   }
 ];

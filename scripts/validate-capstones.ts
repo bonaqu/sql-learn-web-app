@@ -3,6 +3,7 @@ import initSqlJs from 'sql.js';
 import { capstoneContractList } from '../src/data/capstone-contracts.ts';
 import { capstoneProjects } from '../src/data/complete-curriculum.ts';
 import { capstoneWorkspaceTemplate } from '../src/data/capstone-workspace-templates.ts';
+import { professionalTracks } from '../src/data/role-track-matrices.ts';
 import {
   evaluateCapstone,
   type CapstoneReport,
@@ -11,6 +12,8 @@ import {
 import { calculateCompleteReadiness } from '../src/lib/complete-readiness.ts';
 import { emptyCurriculumProgress } from '../src/lib/curriculum-progress.ts';
 import { defaultProgress } from '../src/lib/progress.ts';
+import { capstonePortfolioMarkdown, capstoneSqlBundle } from '../src/lib/capstone-portfolio.ts';
+import { SHARED_FOUNDATION_MODULE_IDS } from '../src/lib/goal-aware-route.ts';
 
 const failures: string[] = [];
 const assert = (condition: unknown, message: string) => { if (!condition) failures.push(message); };
@@ -56,15 +59,37 @@ async function reportFor(
 
 assert(capstoneContractList.length === capstoneProjects.length, 'Every capstone project must have one evaluator contract');
 assert(new Set(capstoneContractList.map(contract => contract.projectId)).size === capstoneContractList.length, 'Capstone project IDs must be unique');
+assert(professionalTracks.length === 5, 'Five professional track matrices are required');
+const requiredCompetencies: Record<string, string[]> = {
+  support: ['investigations', 'sla', 'history', 'duplicates', 'null'],
+  analyst: ['metrics', 'dates', 'cohorts', 'funnels', 'windows'],
+  backend: ['schema', 'dml', 'transactions', 'locking', 'indexes', 'injection', 'migrations'],
+  'data-engineering': ['quality', 'modeling', 'pipelines', 'reproducibility']
+};
+for (const track of professionalTracks) {
+  assert(JSON.stringify(track.sharedPrerequisiteModuleIds) === JSON.stringify(SHARED_FOUNDATION_MODULE_IDS), `${track.id}: shared foundation must remain canonical`);
+  assert(track.jobTasks.length >= 2, `${track.id}: authentic job-task evidence is missing`);
+  assert(track.jobTasks.every(task => task.moduleIds.length >= 2 && task.evidence.length >= 30), `${track.id}: differentiated transfer evidence is incomplete`);
+  assert(track.capstoneProjectIds.length >= 1, `${track.id}: capstone outcome is missing`);
+  assert(track.capstoneProjectIds.every(projectId => capstoneProjects.some(project => project.id === projectId)), `${track.id}: mapped capstone does not exist`);
+  for (const competency of requiredCompetencies[track.id] || []) {
+    assert(track.competencies.some(item => item.toLowerCase() === competency), `${track.id}: missing required competency ${competency}`);
+  }
+}
 
 const globalFileIds = new Set<string>();
 const passedReports: CapstoneReport[] = [];
 for (const contract of capstoneContractList) {
   const project = capstoneProjects.find(item => item.id === contract.projectId);
   assert(Boolean(project), `${contract.projectId}: missing Project Lab definition`);
+  assert(project?.trackId === contract.trackId, `${contract.projectId}: Project Lab and evaluator track differ`);
+  assert(contract.originality.length >= 60, `${contract.projectId}: dataset originality/provenance note is weak`);
+  assert(contract.engineEvidence.length >= 60, `${contract.projectId}: engine evidence note is weak`);
+  assert(/SQLite/i.test(contract.sqliteLimitations), `${contract.projectId}: SQLite limitation must be explicit`);
   assert(contract.files.length === 3, `${contract.projectId}: exactly three SQL artifacts are required`);
   assert(contract.datasets.some(dataset => !dataset.hidden), `${contract.projectId}: public dataset is required`);
   assert(contract.datasets.some(dataset => dataset.hidden), `${contract.projectId}: hidden dataset is required`);
+  assert(contract.datasets.every(dataset => dataset.provenance.length >= 60 && dataset.edgeCases.length >= 3), `${contract.projectId}: dataset provenance/edge cases are incomplete`);
   assert(contract.files.reduce((sum, file) => sum + file.weight, 0) + contract.reflection.weight === 100, `${contract.projectId}: weights must sum to 100`);
   assert(contract.reflection.minimumCharacters >= 180, `${contract.projectId}: reflection contract is too weak`);
   assert(contract.reflection.requiredIdeas.length >= 4, `${contract.projectId}: reflection must cover at least four ideas`);
@@ -88,6 +113,10 @@ for (const contract of capstoneContractList) {
     assert(report.files.every(file => file.passed), `${contract.projectId}: a reference artifact failed`);
     assert(report.checks.some(check => check.hidden), `${contract.projectId}: report contains no hidden evidence`);
     assert(Object.keys(report.submissionFiles).length === contract.files.length, `${contract.projectId}: immutable SQL snapshot is incomplete`);
+    if (contract.trackId === 'backend') {
+      const stateChecks = report.checks.filter(check => check.kind === 'state-invariant' || (check.hidden && check.fileId === 'backend-mutation.sql'));
+      assert(stateChecks.length >= 2 && stateChecks.every(check => check.passed), `${contract.projectId}: public/hidden final database state is not proven`);
+    }
 
     const assisted = await reportFor(contract, { solutionViews: 1 });
     assert(!assisted.passed, `${contract.projectId}: solution-assisted attempt must not pass independence gate`);
@@ -98,12 +127,13 @@ for (const contract of capstoneContractList) {
     const broken = await reportFor(contract, { files: brokenFiles });
     assert(!broken.passed, `${contract.projectId}: empty required artifact unexpectedly passed`);
     assert(broken.remediation.length > 0, `${contract.projectId}: failed attempt contains no remediation`);
+    console.log(`CAPSTONE_TRACE ${contract.trackId} ${contract.projectId}: reference=${report.score}/PASS public+hidden=${report.checks.filter(check => check.fileId).length}; broken=${broken.score}/FAIL remediation=${broken.remediation.length}; provenance=${report.provenance}.`);
   } catch (reason) {
     failures.push(`${contract.projectId}: evaluator crashed (${reason instanceof Error ? reason.message : String(reason)})`);
   }
 }
 
-assert(globalFileIds.size === 9, `Expected 9 globally unique capstone files, got ${globalFileIds.size}`);
+assert(globalFileIds.size === 15, `Expected 15 globally unique capstone files, got ${globalFileIds.size}`);
 assert(passedReports.length === capstoneProjects.length, 'Reference report generation is incomplete');
 
 const legacyCheckboxProgress = {
@@ -118,10 +148,27 @@ const reportReadiness = calculateCompleteReadiness(defaultProgress, emptyCurricu
 assert(reportReadiness.projectCompletion === 100, 'Passed reports must produce 100% capstone completion');
 assert(reportReadiness.criteria.find(item => item.id === 'projects')?.passed, 'Passed reports must satisfy capstone certificate criterion');
 
+const portfolioFixture = passedReports[0];
+if (portfolioFixture) {
+  const privateReport = {
+    ...portfolioFixture,
+    submissionFiles: { ...portfolioFixture.submissionFiles, [portfolioFixture.files[0].fileId]: "SELECT 'owner@private.test', '+7 999 123-45-67', 'api_key=sk-private';" },
+    reflection: 'password=hunter2 token=eyJabcdefghijkl.abcdefgh.abcdefgh owner@private.test'
+  };
+  const markdown = capstonePortfolioMarkdown(privateReport, 'Privacy fixture');
+  const sqlBundle = capstoneSqlBundle(privateReport, 'Privacy fixture');
+  for (const secret of ['owner@private.test', '+7 999 123-45-67', 'hunter2', 'sk-private', 'eyJabcdefghijkl']) {
+    assert(!markdown.includes(secret) && !sqlBundle.includes(secret), `Portfolio leaked private pattern ${secret}`);
+  }
+  assert(markdown.includes('Provenance: independent'), 'Portfolio must accurately expose independent provenance');
+  assert(markdown.includes('[REDACTED_'), 'Portfolio must signal redacted private data');
+}
+
 if (failures.length) {
   console.error(`Capstone validation failed with ${failures.length} issue(s):`);
   for (const failure of failures) console.error(`- ${failure}`);
   process.exit(1);
 }
 
-console.log(`Capstones validated: ${capstoneContractList.length} projects, ${globalFileIds.size} SQL artifacts, public/hidden datasets, immutable snapshots, provenance gate and report-only readiness.`);
+console.log(`Track matrices validated: ${professionalTracks.map(track => `${track.id}:${track.jobTasks.length} tasks/${track.capstoneProjectIds.join('+')}`).join(', ')}; shared foundation ${SHARED_FOUNDATION_MODULE_IDS.length} modules.`);
+console.log(`Capstones validated: ${capstoneContractList.length} projects, ${globalFileIds.size} SQL artifacts, original public/hidden datasets, final-state mutation checks, immutable snapshots, privacy-safe portfolio and provenance gate.`);

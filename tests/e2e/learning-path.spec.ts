@@ -46,6 +46,10 @@ function goalSwitchFixture(userId: string, currentGoal: LearnerGoal, proposedGoa
       version: 1,
       goal: currentGoal,
       experience: 'advanced',
+      programmingExperience: 'professional',
+      priorSqlExperience: 'work',
+      dialect: 'postgresql',
+      routePreference: 'full',
       dailyMinutes: 25,
       studyDays: ['MO', 'WE', 'FR'],
       pace: 'steady',
@@ -57,6 +61,10 @@ function goalSwitchFixture(userId: string, currentGoal: LearnerGoal, proposedGoa
         recommendedTrack: currentGoal === 'analyst' ? 'analytics' : 'performance',
         strongModuleIds,
         focusModuleIds: ['filtering'],
+        confidenceLow: 88,
+        confidenceHigh: 100,
+        decisionReason: 'Validated goal-switch browser fixture.',
+        diagnosticTaskCount: 7,
         completedAt: now
       },
       firstWeekPlan: [],
@@ -85,7 +93,15 @@ function goalSwitchFixture(userId: string, currentGoal: LearnerGoal, proposedGoa
         startedAt: now,
         completedAt: now,
         durationSeconds: 300,
-        taskResults: []
+        attemptNumber: 1,
+        bestScore: 100,
+        passingScore: checkpoint.passingScore,
+        accuracy: 100,
+        firstAttemptRate: 100,
+        independence: 100,
+        taskScores: [],
+        moduleScores: phase.moduleIds.map(module => ({ module, title: moduleTitle(module), score: 100, correct: 1, total: 1 })),
+        remediationModules: []
       }] : [];
     }),
     currentModuleId: currentRoute[divergence],
@@ -194,6 +210,7 @@ test('desktop goal preview cancels without writes and applies only future Analys
   await learningPath.getByTestId('goal-switch-trigger').click();
   const panel = learningPath.getByTestId('goal-switch-panel');
   await expect(panel).toBeVisible();
+  await expect(panel.getByTestId('goal-switch-option-data-engineering')).toContainText(/Data engineering/i);
   await panel.getByTestId('goal-switch-option-backend').click();
   await expect(panel.getByTestId('goal-switch-current-action')).toContainText(fixture.currentModuleTitle);
   await expect(panel.getByTestId('goal-switch-proposed-action')).toContainText(fixture.proposedModuleTitle);
@@ -232,7 +249,8 @@ test('desktop goal preview cancels without writes and applies only future Analys
   await secondPage.goto('./');
   await secondPage.waitForTimeout(1200);
   await secondPage.getByTestId('learning-path-trigger').click();
-  await expect(secondPage.getByTestId('learning-path').locator('.session-list > button').first()).toContainText(fixture.proposedModuleTitle);
+  await expect(secondPage.getByTestId('learning-path').locator('.roadmap-heading .path-eyebrow')).toContainText(/SQL для бэкенда/i);
+  await expect(secondPage.getByTestId('learning-path').locator('.session-list > button').first()).toContainText(/Checkpoint · Надёжная база/i);
   await secondContext.close();
 });
 

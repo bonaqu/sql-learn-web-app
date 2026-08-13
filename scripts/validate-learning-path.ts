@@ -198,7 +198,7 @@ if (new Set(phases.map(phase => phase.checkpointTask.id)).size !== phases.length
 if (overallReadiness(emptyProgress, baseEvidence) !== 0) failures.push('Empty progress readiness must be zero');
 if (overallReadiness(practicedProgress, baseEvidence) < 0 || overallReadiness(practicedProgress, baseEvidence) > 100) failures.push('Readiness must stay inside 0..100');
 
-const goals: LearnerGoal[] = ['support', 'analyst', 'backend', 'interview', 'full'];
+const goals: LearnerGoal[] = ['support', 'analyst', 'backend', 'data-engineering', 'interview', 'full'];
 for (const goal of goals) {
   const emptySession = validateSession(`empty ${goal} learner`, emptyProgress, {
     curriculum: emptyCurriculumProgress(),

@@ -136,7 +136,7 @@ for (const task of tasks) {
   if (task.mode === 'puzzle') assert.equal(stage, 'puzzle');
 }
 
-const goals: LearnerGoal[] = ['support', 'analyst', 'backend', 'interview', 'full'];
+const goals: LearnerGoal[] = ['support', 'analyst', 'backend', 'data-engineering', 'interview', 'full'];
 const emptyCurriculum = emptyCurriculumProgress();
 for (const goal of goals) {
   const frontier = buildJourneyFrontier(emptyProgress(), emptyCurriculum, {
