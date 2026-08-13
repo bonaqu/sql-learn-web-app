@@ -10,7 +10,8 @@ async function completeDeferredOnboarding(page: import('@playwright/test').Page)
   await dialog.getByRole('radio', { name: /25/ }).click();
   await dialog.getByRole('button', { name: /Устойчивый/i }).click();
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
-  await dialog.getByRole('button', { name: /С нуля/i }).click();
+  await dialog.getByRole('radio', { name: /Без опыта/i }).click();
+  await dialog.getByRole('radio', { name: /С нуля/i }).click();
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
   await dialog.getByTestId('defer-placement').click();
   await dialog.getByTestId('complete-onboarding').click();

@@ -44,6 +44,10 @@ function profile(goal: LearnerGoal, strongModuleIds: string[] = []): LearnerOnbo
       recommendedTrack: 'fundamentals',
       strongModuleIds: [...strongModuleIds],
       focusModuleIds: ['filtering'],
+      confidenceLow: strongModuleIds.length ? 78 : null,
+      confidenceHigh: strongModuleIds.length ? 100 : null,
+      decisionReason: strongModuleIds.length ? 'Validated goal-switch fixture.' : null,
+      diagnosticTaskCount: strongModuleIds.length ? 7 : null,
       completedAt: strongModuleIds.length ? timestamp : null
     },
     completedAt: timestamp,

@@ -73,7 +73,7 @@ type AssessmentReportV2 = {
   measurement: AssessmentMeasurementV2;
 };
 
-const CURRENT_BLUEPRINT_VERSION = 'assessment-blueprint-v2';
+const CURRENT_BLUEPRINT_VERSION = 'assessment-blueprint-v3';
 const CURRENT_THRESHOLD_VERSION = 'assessment-thresholds-v2';
 const REPORT_ID_PATTERN = /^[a-f0-9-]{16,64}$/i;
 const TASK_ID_PATTERN = /^task-[0-9]{3}$/;

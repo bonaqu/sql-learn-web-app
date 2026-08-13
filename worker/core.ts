@@ -116,6 +116,10 @@ export default {
       }
 
       if (request.method === 'PUT') {
+        // Drain the rejected legacy payload before returning. Leaving the request
+        // stream unread can tear down the local Worker proxy connection and makes
+        // the explicit 428 recovery contract unreliable for real clients as well.
+        await request.arrayBuffer();
         return json({
           error: 'Legacy progress writes are read-only. Reload and use the revisioned mastery progress contract.',
           code: 'PROGRESS_REVISION_REQUIRED',

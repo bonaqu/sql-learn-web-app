@@ -1,6 +1,6 @@
 import { tasks, type Difficulty, type SqlTask } from './course-catalog';
 
-export const ASSESSMENT_BLUEPRINT_VERSION = 'assessment-blueprint-v2';
+export const ASSESSMENT_BLUEPRINT_VERSION = 'assessment-blueprint-v3';
 export const ASSESSMENT_THRESHOLD_VERSION = 'assessment-thresholds-v2';
 
 export type CalibratedAssessmentMode = 'quick' | 'interview' | 'exam' | 'diagnostic' | 'production' | 'final';
@@ -139,7 +139,7 @@ export function assessmentItem(taskId: string) {
   return itemById.get(taskId) || null;
 }
 
-const diagnosticTasks = ['task-002', 'task-014', 'task-026', 'task-034', 'task-040', 'task-046', 'task-058', 'task-070', 'task-082', 'task-094', 'task-142', 'task-152'];
+const diagnosticTasks = ['task-002', 'task-014', 'task-026', 'task-034', 'task-040', 'task-058', 'task-094'];
 const productionAnchors = ['task-080', 'task-087', 'task-093', 'task-099', 'task-105', 'task-111', 'task-117', 'task-124', 'task-132', 'task-148', 'task-155', 'task-166', 'task-184', 'task-196', 'task-205', 'task-214', 'task-226', 'task-234'];
 const finalAnchors = ['task-005', 'task-017', 'task-029', 'task-035', 'task-041', 'task-047', 'task-053', 'task-059', 'task-065', 'task-071', 'task-077', 'task-083', 'task-089', 'task-095', 'task-101', 'task-107', 'task-113', 'task-119', 'task-128', 'task-139', 'task-150', 'task-160', 'task-170', 'task-180', 'task-190', 'task-200', 'task-210', 'task-220', 'task-230', 'task-240'];
 
@@ -198,8 +198,8 @@ export const assessmentBlueprints: Record<CalibratedAssessmentMode, AssessmentBl
     thresholdVersion: ASSESSMENT_THRESHOLD_VERSION,
     mode: 'diagnostic',
     taskCount: diagnosticTasks.length,
-    minimumDistinctModules: 10,
-    minimumDistinctSkills: 8,
+    minimumDistinctModules: 7,
+    minimumDistinctSkills: 6,
     slots: [],
     fixedTaskIds: diagnosticTasks,
     maximumFormOverlap: 1

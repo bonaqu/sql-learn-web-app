@@ -111,7 +111,7 @@ assert(afterExpired.fallbackKnownSolutions === 0, 'Expired report must not force
 function aggregate(taskId: string, overrides: Partial<AssessmentItemAggregate>): AssessmentItemAggregate {
   return {
     taskId,
-    blueprintVersion: 'assessment-blueprint-v2',
+    blueprintVersion: 'assessment-blueprint-v3',
     eligibleAttempts: MINIMUM_CALIBRATION_EVIDENCE,
     correctCount: 18,
     firstAttemptCorrect: 12,
@@ -189,7 +189,7 @@ const zeroEvidence = buildAssessmentMeasurement({
   eligibleItems: 0,
   excludedItems: 3,
   taskIds: assessmentItemBank.slice(0, 3).map(item => item.taskId),
-  formId: 'QUICK-assessment-blueprint-v2-F1',
+  formId: 'QUICK-assessment-blueprint-v3-F1',
   snapshot: calibrationSnapshot([])
 });
 assert(zeroEvidence.accuracyInterval.low === 0 && zeroEvidence.accuracyInterval.high === 100, 'Zero eligible evidence must have full accuracy uncertainty');

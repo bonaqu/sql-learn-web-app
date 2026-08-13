@@ -153,7 +153,12 @@ assert(sqlExams.length === 3, `Expected 3 exams, got ${sqlExams.length}`);
 assert(unique(sqlExams.map(exam => exam.id)), 'Exam IDs must be unique');
 assert(sqlExams.reduce((sum, exam) => sum + exam.readinessWeight, 0) === 100, 'Exam readiness weights must sum to 100');
 for (const exam of sqlExams) {
-  assert(exam.taskIds.length >= 10, `${exam.id}: exam pool is too small`);
+  if (exam.id === 'diagnostic') {
+    assert(exam.taskIds.length >= 3 && exam.taskIds.length <= 7, `${exam.id}: adaptive probe must stay inside 3..7 tasks`);
+    assert(exam.durationMinutes <= 20, `${exam.id}: adaptive orientation must remain short`);
+  } else {
+    assert(exam.taskIds.length >= 10, `${exam.id}: exam pool is too small`);
+  }
   assert(unique(exam.taskIds), `${exam.id}: duplicate task IDs`);
   assert(exam.passingScore >= 50 && exam.passingScore <= 100, `${exam.id}: passing score out of range`);
   for (const taskId of exam.taskIds) assert(taskIds.has(taskId), `${exam.id}: unknown task ${taskId}`);

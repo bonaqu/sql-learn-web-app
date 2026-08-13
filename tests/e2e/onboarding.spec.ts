@@ -83,7 +83,19 @@ async function chooseCoreContract(page: Page) {
   await dialog.getByRole('button', { name: /Устойчивый/i }).click();
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
   await expect(dialog.getByTestId('onboarding-experience')).toBeVisible();
-  await dialog.getByRole('button', { name: /Использую время от времени/i }).click();
+  const noProgramming = dialog.getByRole('radio', { name: /Без опыта/i });
+  await noProgramming.focus();
+  await noProgramming.press('ArrowRight');
+  await expect(dialog.getByRole('radio', { name: /Пишу код иногда/i })).toHaveAttribute('aria-checked', 'true');
+  await dialog.getByRole('radio', { name: /Использую время от времени/i }).click();
+  await dialog.getByRole('radio', { name: /PostgreSQL/i }).click();
+  await dialog.getByRole('radio', { name: /Быстрый маршрут/i }).click();
+  const accessibility = await new AxeBuilder({ page })
+    .include('[data-testid="onboarding-experience"]')
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
+  expect(accessibility.violations.filter(item => item.impact === 'serious' || item.impact === 'critical')).toEqual([]);
+  await expectNoHorizontalOverflow(page);
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
   await expect(dialog.getByTestId('onboarding-placement')).toBeVisible();
 }
@@ -224,7 +236,8 @@ test('desktop onboarding uses executable placement and resumes one shared fronti
   await dialog.getByTestId('start-placement').click();
   const assessment = page.getByRole('dialog', { name: /Assessment Center/i });
   await expect(assessment).toBeVisible();
-  await expect(assessment.getByRole('heading', { name: 'Diagnostic SQL Check' })).toBeVisible();
+  await expect(assessment.getByRole('heading', { name: 'Стартовая диагностика SQL' })).toBeVisible();
+  await expect(assessment.getByTestId('assessment-mode-diagnostic')).toContainText('3–7 задач');
   await assessment.getByRole('button', { name: /Закрыть Assessment Center/i }).click();
 
   const report = diagnosticReport(String(auth.session.userId));
@@ -244,11 +257,18 @@ test('desktop onboarding uses executable placement and resumes one shared fronti
   await expect(dialog.getByText('Правило восстановления')).toBeVisible();
   await dialog.getByTestId('complete-onboarding').click();
   await expect(dialog.getByRole('status')).toContainText(/облаке|локально/i);
+  const savedPreferences = await page.evaluate(userId => {
+    const profile = JSON.parse(localStorage.getItem(`sql-academy-onboarding-v1:${userId}`) || 'null');
+    return profile ? { dialect: profile.dialect, routePreference: profile.routePreference, programmingExperience: profile.programmingExperience } : null;
+  }, String(auth.session.userId));
+  expect(savedPreferences).toEqual({ dialect: 'postgresql', routePreference: 'fast', programmingExperience: 'some' });
   await page.screenshot({ path: testInfo.outputPath('desktop-onboarding-plan.png'), fullPage: true });
   await dialog.getByRole('button', { name: 'Закрыть стартовый план' }).click();
 
   await expect(page.getByTestId('onboarding-trigger')).toContainText('Мой учебный план');
   await expectSharedFoundationToday(page, /SQL для поддержки/i);
+  await expect(page.getByTestId('guided-session-budget')).toContainText(/Новое|Повторение|Восстановление|Перенос/);
+  await expect(page.getByTestId('guided-session-budget')).toContainText(/Почему|обязательна|цели/i);
   await page.reload();
   await expectSharedFoundationToday(page, /SQL для поддержки/i);
   await page.screenshot({ path: testInfo.outputPath('desktop-goal-aware-today.png'), fullPage: true });
@@ -305,7 +325,8 @@ test('desktop onboarding advanced analyst and backend evidence resume different 
   await backendContext.close();
 });
 
-test('mobile deferred placement starts from zero and keeps the shared goal frontier accessible', async ({ page }, testInfo) => {
+test('mobile onboarding deferred placement starts from zero and keeps the shared goal frontier accessible', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 360, height: 800 });
   await authenticatePage(page, 'mobileonboarding');
   await page.goto('./');
   await openOnboarding(page);
@@ -317,7 +338,9 @@ test('mobile deferred placement starts from zero and keeps the shared goal front
   await dialog.getByRole('radio', { name: /15/ }).click();
   await dialog.getByRole('button', { name: /Мягкий/i }).click();
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
-  await dialog.getByRole('button', { name: /С нуля/i }).click();
+  await dialog.getByRole('radio', { name: /Без опыта/i }).click();
+  await dialog.getByRole('radio', { name: /С нуля/i }).click();
+  await expectNoHorizontalOverflow(page);
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
   await dialog.getByTestId('defer-placement').click();
 

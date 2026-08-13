@@ -102,14 +102,15 @@ function evidenceActionLabel(action: ModuleSkillEvidence['recommendedAction']) {
 
 const sessionReasonLabels: Record<SessionItem['reason'], string> = {
   review: 'повторение по памяти',
-  weakness: 'восстановление слабой темы',
+  remediation: 'восстановление слабой темы',
   new: 'следующий шаг маршрута',
-  checkpoint: 'контрольный этап'
+  checkpoint: 'контрольный этап',
+  transfer: 'перенос навыка'
 };
 
 function reasonIcon(reason: SessionItem['reason']) {
   if (reason === 'review') return <RefreshCw />;
-  if (reason === 'weakness') return <Target />;
+  if (reason === 'remediation') return <Target />;
   if (reason === 'checkpoint') return <Flag />;
   return <Play />;
 }

@@ -38,6 +38,19 @@ type AssessmentMeasurementPayload = {
   explanation: string[];
 };
 
+type AdaptiveDiagnosticDecisionPayload = {
+  version: 'adaptive-diagnostic-v1';
+  completedCount: 3 | 5 | 7;
+  correctCount: number;
+  plannedCount: 3 | 5 | 7;
+  shouldStop: boolean;
+  stopReason: string;
+  level: 'foundation' | 'developing' | 'working' | 'advanced';
+  scoreBand: { low: number; high: number };
+  confidenceLabel: string;
+  explanation: string;
+};
+
 type AssessmentReportPayload = {
   version: 1;
   id: string;
@@ -64,6 +77,7 @@ type AssessmentReportPayload = {
   blueprintVersion?: string;
   thresholdVersion?: string;
   measurement?: AssessmentMeasurementPayload;
+  adaptiveDecision?: AdaptiveDiagnosticDecisionPayload;
 };
 
 const REPORT_ID_PATTERN = /^[a-f0-9-]{16,64}$/i;
@@ -72,7 +86,8 @@ const MODES = new Set<AssessmentMode>(['quick', 'interview', 'exam', 'diagnostic
 const STATUSES = new Set<AssessmentStatus>(['completed', 'expired', 'abandoned']);
 const ABILITY_BANDS = new Set<AbilityBand>(['low', 'mid', 'high']);
 const EXCLUSIONS = new Set<Exclude<TelemetryExclusion, null>>(['status', 'not-attempted', 'skipped', 'interviewer', 'technical-error']);
-const CURRENT_BLUEPRINT_VERSION = 'assessment-blueprint-v2';
+const ADAPTIVE_STOP_REASONS = new Set(['minimum-probe-incomplete', 'foundation-observed', 'bridge-needed', 'challenge-needed', 'maximum-evidence-reached']);
+const CURRENT_BLUEPRINT_VERSION = 'assessment-blueprint-v3';
 const MAX_REPORT_BYTES = 220_000;
 const MAX_AI_BYTES = 24_000;
 const DAILY_AI_LIMIT = 30;
@@ -161,6 +176,26 @@ function validMeasurement(value: unknown): value is AssessmentMeasurementPayload
     && stringList(measurement.explanation, 8, 400);
 }
 
+function validAdaptiveDecision(value: unknown): value is AdaptiveDiagnosticDecisionPayload {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const decision = value as Partial<AdaptiveDiagnosticDecisionPayload>;
+  const band = decision.scoreBand as AdaptiveDiagnosticDecisionPayload['scoreBand'] | undefined;
+  return decision.version === 'adaptive-diagnostic-v1'
+    && [3, 5, 7].includes(Number(decision.completedCount))
+    && boundedInteger(decision.correctCount, Number(decision.completedCount))
+    && [3, 5, 7].includes(Number(decision.plannedCount))
+    && typeof decision.shouldStop === 'boolean'
+    && typeof decision.stopReason === 'string'
+    && ADAPTIVE_STOP_REASONS.has(decision.stopReason)
+    && ['foundation', 'developing', 'working', 'advanced'].includes(String(decision.level))
+    && Boolean(band)
+    && boundedInteger(band?.low, 100)
+    && boundedInteger(band?.high, 100)
+    && band!.low <= band!.high
+    && shortText(decision.confidenceLabel, 160, 8)
+    && shortText(decision.explanation, 600, 24);
+}
+
 function validReport(value: unknown): value is AssessmentReportPayload {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const report = value as Partial<AssessmentReportPayload>;
@@ -197,7 +232,8 @@ function validReport(value: unknown): value is AssessmentReportPayload {
     && (report.formId === undefined || shortText(report.formId, 120, 8))
     && (report.blueprintVersion === undefined || shortText(report.blueprintVersion, 80, 8))
     && (report.thresholdVersion === undefined || shortText(report.thresholdVersion, 80, 8))
-    && (report.measurement === undefined || validMeasurement(report.measurement));
+    && (report.measurement === undefined || validMeasurement(report.measurement))
+    && (report.adaptiveDecision === undefined || report.mode === 'diagnostic' && validAdaptiveDecision(report.adaptiveDecision));
 }
 
 function immutableReport(report: AssessmentReportPayload) {

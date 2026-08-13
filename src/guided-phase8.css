@@ -1,0 +1,64 @@
+.guided-session-budget {
+  grid-column: 1 / -1;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+}
+
+.guided-session-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 14px 0;
+}
+
+.guided-session-chips span {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #7963ff 9%, transparent);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.guided-session-budget ol {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.guided-session-budget li {
+  display: grid;
+  grid-template-columns: 58px 1fr;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg) 58%, transparent);
+}
+
+.guided-session-budget li > span {
+  color: #a998ff;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.guided-session-budget li strong {
+  font-size: 12px;
+}
+
+.guided-session-budget li p,
+.guided-session-budget li small {
+  display: block;
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.guided-session-budget li b {
+  color: var(--text);
+  font-weight: 800;
+}

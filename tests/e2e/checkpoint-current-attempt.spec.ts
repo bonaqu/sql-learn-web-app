@@ -1,5 +1,6 @@
 import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 import { checkpointTaskById } from '../../src/data/checkpoint-task-bank';
 import { curriculumCheckpoints } from '../../src/data/complete-curriculum';
 import { tasks } from '../../src/data/course-catalog';
@@ -64,9 +65,9 @@ function fixture(userId: string) {
   const olderAt = new Date(Date.now() - 120_000).toISOString();
   const newerAt = new Date(Date.now() - 60_000).toISOString();
   return {
-    olderPass: report(userId, 'a0000000-0000-0000-0000-000000000001', olderAt, 1, 91, true, 91),
-    newerFail: report(userId, 'b0000000-0000-0000-0000-000000000002', newerAt, 2, 45, false, 91),
-    laterPass: report(userId, 'c0000000-0000-0000-0000-000000000003', new Date().toISOString(), 3, 88, true, 91)
+    olderPass: report(userId, randomUUID(), olderAt, 1, 91, true, 91),
+    newerFail: report(userId, randomUUID(), newerAt, 2, 45, false, 91),
+    laterPass: report(userId, randomUUID(), new Date().toISOString(), 3, 88, true, 91)
   };
 }
 

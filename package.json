@@ -119,7 +119,7 @@
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
     "vite-plugin-pwa": "^1.0.3",
-    "wrangler": "^4.28.1"
+    "wrangler": "4.122.0"
   },
   "overrides": {
     "dompurify": "3.4.13"

@@ -64,7 +64,7 @@ test('desktop assessment waits for evidence hydration, uses an adaptive form and
   await expect(page.getByTestId('assessment-landing')).toBeVisible();
   const calibrationSummary = page.getByTestId('assessment-calibration-summary');
   await expect(calibrationSummary).toBeVisible();
-  await expect(calibrationSummary).toContainText(/Blueprint v2|authored difficulty/i);
+  await expect(calibrationSummary).toContainText(/Blueprint v3|authored difficulty/i);
   const quickStart = page.getByTestId('start-quick');
   await expect(quickStart).toBeDisabled();
   await expect(calibrationSummary).toContainText(/Синхронизирую reports/i);
@@ -89,8 +89,8 @@ test('desktop assessment waits for evidence hydration, uses an adaptive form and
     taskIds: string[];
     selection: { distinctModules: number; distinctSkills: number };
   };
-  expect(session.formId).toMatch(/^QUICK-assessment-blueprint-v2-F[1-4]$/);
-  expect(session.blueprintVersion).toBe('assessment-blueprint-v2');
+  expect(session.formId).toMatch(/^QUICK-assessment-blueprint-v3-F[1-4]$/);
+  expect(session.blueprintVersion).toBe('assessment-blueprint-v3');
   expect(session.thresholdVersion).toBe('assessment-thresholds-v2');
   expect(session.taskIds).toHaveLength(3);
   expect(new Set(session.taskIds).size).toBe(3);
@@ -136,7 +136,7 @@ test('desktop assessment waits for evidence hydration, uses an adaptive form and
   await secondContext.close();
 });
 
-test('desktop diagnostic exam uses its fixed 12-task protected pool and resumes', async ({ page }) => {
+test('desktop diagnostic exam adaptively stops a zero-level learner after three executable probes', async ({ page }) => {
   const auth = await authenticatePage(page, 'diagnostic');
   await page.goto('./');
   await openAdvancedTool(page, 'assessment-trigger');
@@ -145,8 +145,9 @@ test('desktop diagnostic exam uses its fixed 12-task protected pool and resumes'
 
   await expect(page.getByTestId('assessment-session')).toBeVisible();
   await expect(page.locator('.assessment-mode-pill')).toHaveText('Diagnostic');
-  await expect(page.locator('.assessment-progress-strip button')).toHaveCount(12);
-  await expect(page.getByTestId('assessment-timer')).toContainText(/^3[34]:|^35:/);
+  await expect(page.locator('.assessment-progress-strip button')).toHaveCount(3);
+  await expect(page.getByTestId('assessment-timer')).toContainText(/^1[67]:|^18:/);
+  await expect(page.getByTestId('adaptive-diagnostic-status')).toContainText(/три короткие базовые пробы/i);
   await expect(page.getByTestId('assessment-interviewer')).toHaveCount(0);
   await expect(page.getByTestId('assessment-locked-tools')).toBeVisible();
 
@@ -154,13 +155,21 @@ test('desktop diagnostic exam uses its fixed 12-task protected pool and resumes'
   await expect.poll(() => page.evaluate(key => {
     const session = JSON.parse(localStorage.getItem(key) || 'null');
     return session?.mode === 'diagnostic'
-      && session?.taskIds?.length === 12
-      && session?.formId?.startsWith('DIAGNOSTIC-assessment-blueprint-v2-');
+      && session?.taskIds?.length === 7
+      && session?.formId?.startsWith('DIAGNOSTIC-assessment-blueprint-v3-');
   }, sessionKey)).toBe(true);
   await page.reload();
   await expect(page.getByTestId('assessment-session')).toBeVisible();
   await expect(page.locator('.assessment-mode-pill')).toHaveText('Diagnostic');
-  await expect(page.locator('.assessment-progress-strip button')).toHaveCount(12);
+  await expect(page.locator('.assessment-progress-strip button')).toHaveCount(3);
+
+  for (let index = 0; index < 3; index += 1) {
+    await page.getByRole('button', { name: 'Пропустить' }).click();
+  }
+  await expect(page.getByTestId('assessment-report')).toBeVisible();
+  await expect(page.getByTestId('adaptive-diagnostic-result')).toContainText(/3 задач/i);
+  await expect(page.getByTestId('adaptive-diagnostic-result')).toContainText(/безопасного старта с основ/i);
+  await expect.poll(() => page.evaluate(key => localStorage.getItem(key), sessionKey)).toBeNull();
 });
 
 test('desktop assessment enforces exam integrity and restores an expired session as a report', async ({ page }) => {

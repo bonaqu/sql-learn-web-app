@@ -18,6 +18,12 @@ import {
   type AssessmentMeasurement
 } from './assessment-calibration';
 import { selectAssessmentForm, type AssessmentSelectionResult } from './assessment-selection';
+import {
+  ADAPTIVE_DIAGNOSTIC_VERSION,
+  adaptiveDiagnosticDecision,
+  completedAdaptiveTaskIds,
+  type AdaptiveDiagnosticDecision
+} from './adaptive-placement';
 import type { Progress } from './progress';
 
 export type AssessmentMode = 'quick' | 'interview' | 'exam' | 'diagnostic' | 'production' | 'final';
@@ -134,6 +140,7 @@ export type AssessmentReport = {
   blueprintVersion?: string;
   thresholdVersion?: string;
   measurement?: AssessmentMeasurement;
+  adaptiveDecision?: AdaptiveDiagnosticDecision;
 };
 
 export const ASSESSMENT_CHANGED_EVENT = 'sql-academy-assessment-changed';
@@ -398,6 +405,31 @@ export function goToAssessmentTask(session: AssessmentSession, index: number) {
   return saveAssessmentSession({ ...session, currentIndex: clamp(index, 0, session.taskIds.length - 1) });
 }
 
+export function assessmentAdaptiveDecision(session: AssessmentSession) {
+  if (session.mode !== 'diagnostic') return null;
+  return adaptiveDiagnosticDecision(session.taskIds.map(taskId => ({
+    taskId,
+    correct: session.answers[taskId]?.correct === true,
+    skipped: session.answers[taskId]?.skipped === true
+  })));
+}
+
+export function finalizeAdaptiveDiagnosticSession(session: AssessmentSession) {
+  if (session.mode !== 'diagnostic') return session;
+  const taskIds = completedAdaptiveTaskIds(session.taskIds.map(taskId => ({
+    taskId,
+    correct: session.answers[taskId]?.correct === true,
+    skipped: session.answers[taskId]?.skipped === true
+  })));
+  if (taskIds.length < 3) return session;
+  return {
+    ...session,
+    taskIds,
+    currentIndex: Math.min(session.currentIndex, taskIds.length - 1),
+    answers: Object.fromEntries(taskIds.map(taskId => [taskId, session.answers[taskId]]))
+  };
+}
+
 function telemetryExclusion(status: Exclude<AssessmentStatus, 'active'>, answer: AssessmentAnswer): AssessmentTaskScore['telemetryExclusionReason'] {
   if (status !== 'completed') return 'status';
   if (answer.attempts <= 0) return 'not-attempted';
@@ -492,6 +524,10 @@ export function buildAssessmentReport(session: AssessmentSession, status: Exclud
     formId: session.formId,
     snapshot: calibration
   });
+  const diagnosticDecision = assessmentAdaptiveDecision(session);
+  const adaptiveDecision = diagnosticDecision && [3, 5, 7].includes(diagnosticDecision.completedCount)
+    ? diagnosticDecision
+    : undefined;
   const report: AssessmentReport = {
     version: 1,
     id: session.id,
@@ -516,10 +552,34 @@ export function buildAssessmentReport(session: AssessmentSession, status: Exclud
     formId: session.formId,
     blueprintVersion: session.blueprintVersion,
     thresholdVersion: session.thresholdVersion,
-    measurement
+    measurement,
+    adaptiveDecision
   };
   report.localDebrief = localDebrief({ score, accuracy, strengths, weaknesses, measurement });
+  if (adaptiveDecision) {
+    report.localDebrief += `\nСтартовая граница: ${adaptiveDecision.confidenceLabel}. ${adaptiveDecision.explanation} Наблюдаемый диапазон ${adaptiveDecision.scoreBand.low}–${adaptiveDecision.scoreBand.high}%.`;
+  }
   return report;
+}
+
+function normalizeAdaptiveReportDecision(report: AssessmentReport) {
+  const decision = report.adaptiveDecision;
+  if (report.mode !== 'diagnostic'
+    || decision?.version !== ADAPTIVE_DIAGNOSTIC_VERSION
+    || ![3, 5, 7].includes(decision.completedCount)
+    || ![3, 5, 7].includes(decision.plannedCount)
+    || !['minimum-probe-incomplete', 'foundation-observed', 'bridge-needed', 'challenge-needed', 'maximum-evidence-reached'].includes(decision.stopReason)
+    || !['foundation', 'developing', 'working', 'advanced'].includes(decision.level)) return undefined;
+  const low = clamp(Math.round(Number(decision.scoreBand?.low) || 0), 0, 100);
+  const high = clamp(Math.round(Number(decision.scoreBand?.high) || 0), 0, 100);
+  if (low > high) return undefined;
+  return {
+    ...decision,
+    correctCount: clamp(Math.round(Number(decision.correctCount) || 0), 0, decision.completedCount),
+    scoreBand: { low, high },
+    confidenceLabel: String(decision.confidenceLabel || '').slice(0, 160),
+    explanation: String(decision.explanation || '').slice(0, 600)
+  } satisfies AdaptiveDiagnosticDecision;
 }
 
 function normalizeReport(report: AssessmentReport): AssessmentReport {
@@ -531,7 +591,8 @@ function normalizeReport(report: AssessmentReport): AssessmentReport {
     formId: report.formId || `LEGACY-${report.mode.toUpperCase()}-V1`,
     blueprintVersion,
     thresholdVersion,
-    taskScores: report.taskScores.map(item => ({ ...item, technicalErrors: Math.max(0, Number(item.technicalErrors) || 0) }))
+    taskScores: report.taskScores.map(item => ({ ...item, technicalErrors: Math.max(0, Number(item.technicalErrors) || 0) })),
+    adaptiveDecision: normalizeAdaptiveReportDecision(report)
   };
 }
 
