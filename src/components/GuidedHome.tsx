@@ -25,9 +25,11 @@ import {
   type WeekPlanItem
 } from '../lib/learner-onboarding';
 import type { JourneyFrontier } from '../lib/learning-journey';
+import type { DailyRoute } from '../lib/daily-route';
 import type { Progress } from '../lib/progress';
 
 import '../checkpoint-remediation.css';
+import '../guided-phase8.css';
 
 type GuidedHomeProps = {
   progress: Progress;
@@ -43,11 +45,13 @@ type GuidedHomeProps = {
 type JourneySnapshot = {
   frontier: JourneyFrontier;
   completedLessons: number;
+  dailySession: DailyRoute;
 };
 
 type JourneyModules = [
   typeof import('../lib/journey-evidence'),
-  typeof import('../lib/learning-journey')
+  typeof import('../lib/learning-journey'),
+  typeof import('../lib/daily-route')
 ];
 
 let journeyModulesPromise: Promise<JourneyModules> | null = null;
@@ -55,7 +59,8 @@ let journeyModulesPromise: Promise<JourneyModules> | null = null;
 function loadJourneyModules() {
   journeyModulesPromise ||= Promise.all([
     import('../lib/journey-evidence'),
-    import('../lib/learning-journey')
+    import('../lib/learning-journey'),
+    import('../lib/daily-route')
   ]);
   return journeyModulesPromise;
 }
@@ -112,7 +117,7 @@ export default function GuidedHome({
   useEffect(() => {
     let disposed = false;
     setJourney(null);
-    loadJourneyModules().then(([evidenceModule, journeyModule]) => {
+    loadJourneyModules().then(([evidenceModule, journeyModule, pathModule]) => {
       if (disposed) return;
       const evidence = evidenceModule.loadJourneyEvidenceSnapshot();
       const frontier = journeyModule.buildJourneyFrontier(progress, evidence.curriculum, {
@@ -125,9 +130,18 @@ export default function GuidedHome({
           ? profile.placement.strongModuleIds
           : []
       });
+      const dailySession = pathModule.buildDailyRoute(progress, profile.dailyMinutes, {
+        curriculum: evidence.curriculum,
+        passedCheckpointIds: evidence.passedCheckpointIds,
+        checkpointRemediations: evidence.checkpointRemediations,
+        assessmentComplete: evidence.assessmentComplete,
+        bypassedModuleIds: profile.placement.status === 'completed' ? profile.placement.strongModuleIds : [],
+        goal: profile.goal
+      });
       setJourney({
         frontier,
-        completedLessons: evidence.curriculum.completedLessons.length
+        completedLessons: evidence.curriculum.completedLessons.length,
+        dailySession
       });
     }).catch(() => {
       if (!disposed) setJourney(null);
@@ -232,6 +246,19 @@ export default function GuidedHome({
     </div>
 
     <div className="guided-grid">
+      <article className="guided-session-budget" data-testid="guided-session-budget">
+        <div className="guided-card-heading"><div><Clock3 /><span><strong>Бюджет сегодняшней сессии</strong><small>{journey?.dailySession.budgetExplanation || `До ${profile.dailyMinutes} минут без накопления долга`}</small></span></div></div>
+        <div className="guided-session-chips" aria-label="Состав сегодняшней сессии">
+          <span>Новое · {journey?.dailySession.newCount || 0}</span>
+          <span>Повторение · {journey?.dailySession.reviewCount || 0}</span>
+          <span>Восстановление · {journey?.dailySession.remediationCount || 0}</span>
+          <span>Перенос · {journey?.dailySession.transferCount || 0}</span>
+        </div>
+        <ol>{journey?.dailySession.items.map(item => <li key={item.id}>
+          <span>{item.minutes} мин</span>
+          <div><strong>{item.title}</strong><p><b>Почему сейчас:</b> {item.whyNow}</p><small><b>Связь с целью:</b> {item.goalConnection}</small></div>
+        </li>)}</ol>
+      </article>
       <article className="guided-week">
         <div className="guided-card-heading"><div><CalendarDays /><span><strong>Первая неделя</strong><small>Общая база и специализация без пропуска обязательных тем</small></span></div><button onClick={onOpenPlan}>Весь план <Route /></button></div>
         <div className="guided-week-list">{profile.firstWeekPlan.slice(0, 5).map(item => {

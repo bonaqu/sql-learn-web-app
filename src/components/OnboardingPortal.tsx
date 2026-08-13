@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   ArrowRight,
   BarChart3,
-  BookOpen,
   BriefcaseBusiness,
   CalendarDays,
   Check,
@@ -12,6 +11,7 @@ import {
   Clock3,
   Code2,
   Compass,
+  Database,
   Gauge,
   GraduationCap,
   Laptop2,
@@ -32,26 +32,31 @@ import {
   calculatePlacement,
   completeOnboarding,
   deferredPlacement,
-  emptyOnboardingProfile,
   goalOptions,
   latestCompletedDiagnostic,
   loadOnboardingProfile,
   ONBOARDING_ASSESSMENT_INTENT_KEY,
   onboardingReady,
   placementLevelLabels,
+  profileForPlacementRetake,
   recommendedTrackLabels,
   saveOnboardingProfile,
   studyDayLabels,
   weekPlanKindLabels,
   type ExperienceLevel,
+  type LearningRoutePreference,
   type LearnerGoal,
   type LearnerOnboardingProfile,
+  type PriorSqlExperience,
+  type ProgrammingExperience,
+  type SqlDialectPreference,
   type StudyDay,
   type StudyPace
 } from '../lib/learner-onboarding';
 import { syncOnboardingProfile } from '../lib/onboarding-sync';
 
 import '../onboarding.css';
+import '../onboarding-phase8.css';
 
 type WizardStep = 'goal' | 'schedule' | 'experience' | 'placement' | 'plan';
 
@@ -70,6 +75,32 @@ const experienceOptions: Array<{ id: ExperienceLevel; title: string; description
   { id: 'advanced', title: 'Уверенный опыт', description: 'Работал с окнами, транзакциями, планами выполнения или боевыми схемами.' }
 ];
 
+const programmingOptions: Array<{ id: ProgrammingExperience; title: string; description: string }> = [
+  { id: 'none', title: 'Без опыта', description: 'Начну с чтения схемы и результата запроса.' },
+  { id: 'some', title: 'Пишу код иногда', description: 'Знакомы переменные, условия или функции.' },
+  { id: 'professional', title: 'Работаю разработчиком', description: 'Можно быстрее связывать SQL с кодом и системами.' }
+];
+
+const dialectOptions: Array<{ id: SqlDialectPreference; title: string }> = [
+  { id: 'unknown', title: 'Пока не знаю' },
+  { id: 'postgresql', title: 'PostgreSQL' },
+  { id: 'mysql', title: 'MySQL' },
+  { id: 'sqlserver', title: 'SQL Server' },
+  { id: 'sqlite', title: 'SQLite' }
+];
+
+const routeOptions: Array<{ id: LearningRoutePreference; title: string; description: string }> = [
+  { id: 'full', title: 'Полный путь', description: 'Подробные объяснения, практика и перенос навыка.' },
+  { id: 'fast', title: 'Быстрый маршрут', description: 'Меньше вводных, больше практики; обязательная база сохраняется.' }
+];
+
+const priorSqlByExperience: Record<ExperienceLevel, PriorSqlExperience> = {
+  none: 'none',
+  basics: 'course',
+  regular: 'work',
+  advanced: 'work'
+};
+
 const paceOptions: Array<{ id: StudyPace; title: string; detail: string }> = [
   { id: 'gentle', title: 'Мягкий', detail: '2–3 сессии в неделю, минимум новых тем.' },
   { id: 'steady', title: 'Устойчивый', detail: '3–5 сессий, баланс уроков, практики и повторения.' },
@@ -77,6 +108,27 @@ const paceOptions: Array<{ id: StudyPace; title: string; detail: string }> = [
 ];
 
 const dayOrder: StudyDay[] = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU'];
+
+function handleRadioArrow<T extends string>(
+  event: React.KeyboardEvent<HTMLButtonElement>,
+  values: readonly T[],
+  current: T | null,
+  select: (value: T) => void
+) {
+  if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const currentIndex = Math.max(0, values.indexOf(current || values[0]));
+  const nextIndex = event.key === 'Home'
+    ? 0
+    : event.key === 'End'
+      ? values.length - 1
+      : event.key === 'ArrowRight' || event.key === 'ArrowDown'
+        ? (currentIndex + 1) % values.length
+        : (currentIndex - 1 + values.length) % values.length;
+  select(values[nextIndex]);
+  const group = event.currentTarget.closest('[role="radiogroup"]');
+  window.setTimeout(() => (group?.querySelectorAll<HTMLButtonElement>('[role="radio"]')[nextIndex])?.focus());
+}
 
 const goalIcons: Record<LearnerGoal, React.ReactNode> = {
   support: <BriefcaseBusiness />,
@@ -122,7 +174,9 @@ export default function OnboardingPortal({ openRequest = 0 }: { openRequest?: nu
     const fresh = loadOnboardingProfile();
     const report = latestCompletedDiagnostic(loadLocalAssessmentReports());
     let next = fresh;
-    if (fresh.placement.status === 'pending' && report && report.id !== fresh.placement.reportId) {
+    if ((fresh.placement.status === 'pending' || fresh.placement.status === 'completed')
+      && report
+      && report.id !== fresh.placement.reportId) {
       const placement = calculatePlacement(fresh, report);
       next = saveOnboardingProfile({
         ...fresh,
@@ -151,7 +205,13 @@ export default function OnboardingPortal({ openRequest = 0 }: { openRequest?: nu
     return saved;
   };
 
-  const update = (patch: Partial<LearnerOnboardingProfile>) => persist({ ...profile, ...patch });
+  const update = (patch: Partial<LearnerOnboardingProfile>) => {
+    const next = { ...profile, ...patch };
+    return persist({
+      ...next,
+      firstWeekPlan: next.completedAt ? buildFirstWeekPlan(next) : next.firstWeekPlan
+    });
+  };
 
   const selectGoal = (goal: LearnerGoal) => {
     const goalTrack = goalOptions.find(item => item.id === goal)?.track || 'fundamentals';
@@ -185,8 +245,8 @@ export default function OnboardingPortal({ openRequest = 0 }: { openRequest?: nu
       setMessage('Нужны хотя бы два учебных дня в неделю.');
       return;
     }
-    if (step === 'experience' && !profile.experience) {
-      setMessage('Укажи примерный опыт. Он нужен для объяснений, но сам по себе не открывает продвинутые темы.');
+    if (step === 'experience' && (!profile.experience || !profile.priorSqlExperience || !profile.programmingExperience)) {
+      setMessage('Укажи отдельно опыт программирования и SQL. Эти ответы меняют объяснения, но не открывают темы без выполненных задач.');
       return;
     }
     setMessage('');
@@ -199,21 +259,7 @@ export default function OnboardingPortal({ openRequest = 0 }: { openRequest?: nu
   };
 
   const startPlacement = async () => {
-    const next = persist({
-      ...profile,
-      placement: {
-        ...profile.placement,
-        status: 'pending',
-        reportId: diagnostic?.id || profile.placement.reportId,
-        score: null,
-        level: null,
-        strongModuleIds: [],
-        focusModuleIds: [],
-        completedAt: null
-      },
-      completedAt: null,
-      firstWeekPlan: []
-    });
+    const next = persist(profileForPlacementRetake(profile, diagnostic?.id || null));
     sessionStorage.setItem(ONBOARDING_ASSESSMENT_INTENT_KEY, 'diagnostic');
     void syncOnboardingProfile(next).catch(() => undefined);
     setOpen(false);
@@ -255,11 +301,6 @@ export default function OnboardingPortal({ openRequest = 0 }: { openRequest?: nu
   };
 
   const repeatPlacement = () => {
-    persist({
-      ...profile,
-      placement: { ...profile.placement, status: 'pending' },
-      completedAt: null
-    });
     void startPlacement();
   };
 
@@ -278,17 +319,21 @@ export default function OnboardingPortal({ openRequest = 0 }: { openRequest?: nu
     <div className="onboarding-days"><strong>Учебные дни</strong><div>{dayOrder.map(day => <button key={day} className={profile.studyDays.includes(day) ? 'selected' : ''} aria-pressed={profile.studyDays.includes(day)} onClick={() => toggleDay(day)}>{studyDayLabels[day]}</button>)}</div><small>{profile.studyDays.length} сессии в неделю · минимум 2</small></div>
     <div className="onboarding-pace">{paceOptions.map(item => <button key={item.id} className={profile.pace === item.id ? 'selected' : ''} onClick={() => update({ pace: item.id })}><Gauge /><span><strong>{item.title}</strong><small>{item.detail}</small></span></button>)}</div>
   </section> : step === 'experience' ? <section className="onboarding-step" data-testid="onboarding-experience">
-    <div className="onboarding-heading"><small>03 · самооценка</small><h1>Какой опыт уже есть?</h1><p>Ответ регулирует темп объяснений. Он не подтверждает владение темой, не выдаёт сертификат и не открывает продвинутые модули.</p></div>
-    <div className="onboarding-choice-grid experience-grid">{experienceOptions.map(item => <button key={item.id} className={profile.experience === item.id ? 'selected' : ''} onClick={() => update({ experience: item.id })}><span><Code2 /></span><strong>{item.title}</strong><p>{item.description}</p>{profile.experience === item.id && <CheckCircle2 />}</button>)}</div>
+    <div className="onboarding-heading"><small>03 · контекст</small><h1>Что уже знакомо и куда переносить SQL?</h1><p>Ответы регулируют темп и примеры. Они не подтверждают навык, не выдают сертификат и не открывают продвинутые модули.</p></div>
+    <fieldset className="onboarding-fieldset"><legend>Опыт программирования</legend><div className="onboarding-choice-grid experience-grid" role="radiogroup" aria-label="Опыт программирования">{programmingOptions.map((item, index) => <button role="radio" aria-checked={profile.programmingExperience === item.id} tabIndex={profile.programmingExperience === item.id || !profile.programmingExperience && index === 0 ? 0 : -1} key={item.id} className={profile.programmingExperience === item.id ? 'selected' : ''} onKeyDown={event => handleRadioArrow(event, programmingOptions.map(option => option.id), profile.programmingExperience, value => update({ programmingExperience: value }))} onClick={() => update({ programmingExperience: item.id })}><span><Code2 /></span><strong>{item.title}</strong><p>{item.description}</p>{profile.programmingExperience === item.id && <CheckCircle2 />}</button>)}</div></fieldset>
+    <fieldset className="onboarding-fieldset"><legend>Предыдущий опыт SQL</legend><div className="onboarding-choice-grid experience-grid" role="radiogroup" aria-label="Предыдущий опыт SQL">{experienceOptions.map((item, index) => <button role="radio" aria-checked={profile.experience === item.id} tabIndex={profile.experience === item.id || !profile.experience && index === 0 ? 0 : -1} key={item.id} className={profile.experience === item.id ? 'selected' : ''} onKeyDown={event => handleRadioArrow(event, experienceOptions.map(option => option.id), profile.experience, value => update({ experience: value, priorSqlExperience: priorSqlByExperience[value] }))} onClick={() => update({ experience: item.id, priorSqlExperience: priorSqlByExperience[item.id] })}><span><Database /></span><strong>{item.title}</strong><p>{item.description}</p>{profile.experience === item.id && <CheckCircle2 />}</button>)}</div></fieldset>
+    <fieldset className="onboarding-fieldset"><legend>Диалект для примеров</legend><div className="onboarding-inline-options" role="radiogroup" aria-label="Диалект для примеров">{dialectOptions.map(item => <button role="radio" aria-checked={profile.dialect === item.id} tabIndex={profile.dialect === item.id ? 0 : -1} key={item.id} className={profile.dialect === item.id ? 'selected' : ''} onKeyDown={event => handleRadioArrow(event, dialectOptions.map(option => option.id), profile.dialect, value => update({ dialect: value }))} onClick={() => update({ dialect: item.id })}>{item.title}</button>)}</div></fieldset>
+    <fieldset className="onboarding-fieldset"><legend>Глубина первого маршрута</legend><div className="onboarding-choice-grid route-grid" role="radiogroup" aria-label="Глубина первого маршрута">{routeOptions.map(item => <button role="radio" aria-checked={profile.routePreference === item.id} tabIndex={profile.routePreference === item.id ? 0 : -1} key={item.id} className={profile.routePreference === item.id ? 'selected' : ''} onKeyDown={event => handleRadioArrow(event, routeOptions.map(option => option.id), profile.routePreference, value => update({ routePreference: value }))} onClick={() => update({ routePreference: item.id })}><strong>{item.title}</strong><p>{item.description}</p>{profile.routePreference === item.id && <CheckCircle2 />}</button>)}</div></fieldset>
     <div className="onboarding-integrity-note"><ShieldCheck /><div><strong>Самооценка ≠ подтверждённый навык</strong><p>Пропустить базовую тему можно только после диагностики по этому модулю, самостоятельной практики или контрольного этапа.</p></div></div>
   </section> : step === 'placement' ? <section className="onboarding-step" data-testid="onboarding-placement">
     <div className="onboarding-heading"><small>04 · исполняемая диагностика</small><h1>{profile.placement.status === 'completed' ? 'Стартовый уровень измерен' : profile.placement.status === 'pending' ? 'Заверши диагностику SQL' : 'Проверим не память терминов, а SQL'}</h1><p>Диагностика использует те же исполняемые задачи и критерии результата, что основное обучение.</p></div>
     {profile.placement.status === 'completed' ? <div className="placement-result">
       <div className="placement-score"><strong>{profile.placement.score}%</strong><span>{profile.placement.level ? placementLevelLabels[profile.placement.level] : 'Уровень не определён'}</span></div>
       <div className="placement-summary"><article><Route /><span><small>Рекомендуемый маршрут</small><strong>{recommendedTrackLabels[profile.placement.recommendedTrack]}</strong></span></article><article><Sparkles /><span><small>Сильные модули</small><strong>{profile.placement.strongModuleIds.length ? profile.placement.strongModuleIds.map(moduleTitle).join(', ') : 'пока не подтверждены'}</strong></span></article><article><Target /><span><small>Первый фокус</small><strong>{profile.placement.focusModuleIds.length ? profile.placement.focusModuleIds.map(moduleTitle).join(', ') : 'закрепление основы'}</strong></span></article></div>
+      {profile.placement.decisionReason && <div className="onboarding-integrity-note" data-testid="placement-confidence"><ShieldCheck /><div><strong>{profile.placement.diagnosticTaskCount} задач · диапазон {profile.placement.confidenceLow}–{profile.placement.confidenceHigh}%</strong><p>{profile.placement.decisionReason}</p></div></div>}
       <div className="placement-actions"><button className="primary" onClick={acceptPlacement}><Check />Принять результат и построить неделю</button><button onClick={repeatPlacement}><RefreshCw />Пройти заново</button></div>
     </div> : <div className="placement-offer">
-      <div className="placement-proof"><ClipboardPlacement /><span><strong>Короткая диагностика</strong><small>SQL выполняется локально; в отчёт попадают итоговый балл и результаты по модулям, а не рабочие данные.</small></span></div>
+      <div className="placement-proof"><ClipboardPlacement /><span><strong>Короткая диагностика · 3–7 задач</strong><small>После трёх базовых проб сложность растёт только при уверенном результате. SQL выполняется локально; рабочие данные не отправляются.</small></span></div>
       <ul><li><Check />Самооценка не влияет на итоговый балл</li><li><Check />Слабый общий результат не открывает продвинутые темы</li><li><Check />Повторная диагностика не стирает существующий прогресс</li></ul>
       <div className="placement-actions"><button data-testid="start-placement" className="primary" onClick={() => void startPlacement()}><ListChecks />{profile.placement.status === 'pending' ? 'Вернуться к диагностике' : 'Начать диагностику SQL'}</button><button data-testid="defer-placement" onClick={defer}>Начать с базового уровня без диагностики</button></div>
     </div>}

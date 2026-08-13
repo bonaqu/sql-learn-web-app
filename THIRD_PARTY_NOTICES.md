@@ -5,8 +5,8 @@ SQL Academy source code is governed by the repository `LICENSE`; the packages be
 
 Supported inventory platform: **linux-x64**
 Locked package entries: **609**
-Installed package entries covered below: **492**
-Uninstalled platform-optional lock entries recorded separately: **117**
+Installed package entries covered below: **490**
+Uninstalled platform-optional lock entries recorded separately: **119**
 Unique bundled notice/license texts: **200**
 
 ## Installed dependency inventory
@@ -108,7 +108,7 @@ Unique bundled notice/license texts: **200**
 - `@cloudflare/kv-asset-handler@0.5.0` — MIT OR Apache-2.0 — transitive — https://github.com/cloudflare/workers-sdk
 - `@cloudflare/sandbox@0.12.4` — Apache-2.0 — direct-runtime — https://github.com/cloudflare/sandbox-sdk
 - `@cloudflare/unenv-preset@2.16.1` — MIT OR Apache-2.0 — transitive — https://github.com/cloudflare/workers-sdk
-- `@cloudflare/workerd-linux-64@1.20260730.1` — Apache-2.0 — transitive — https://github.com/cloudflare/workerd
+- `@cloudflare/workerd-linux-64@1.20260811.1` — Apache-2.0 — transitive — https://github.com/cloudflare/workerd
 - `@cspotcode/source-map-support@0.8.1` — MIT — transitive — https://github.com/cspotcode/node-source-map-support
 - `@emnapi/runtime@1.11.3` — MIT — transitive — https://github.com/toyobayashi/emnapi
 - `@esbuild/linux-x64@0.28.1` — MIT — transitive — https://github.com/evanw/esbuild
@@ -118,9 +118,7 @@ Unique bundled notice/license texts: **200**
 - `@floating-ui/utils@0.2.12` — MIT — transitive — https://github.com/floating-ui/floating-ui
 - `@img/colour@1.1.0` — MIT — transitive — https://github.com/lovell/colour
 - `@img/sharp-libvips-linux-x64@1.3.1` — LGPL-3.0-or-later — transitive — https://github.com/lovell/sharp-libvips
-- `@img/sharp-libvips-linuxmusl-x64@1.3.1` — LGPL-3.0-or-later — transitive — https://github.com/lovell/sharp-libvips
 - `@img/sharp-linux-x64@0.35.2` — Apache-2.0 — transitive — https://github.com/lovell/sharp
-- `@img/sharp-linuxmusl-x64@0.35.2` — Apache-2.0 — transitive — https://github.com/lovell/sharp
 - `@img/sharp-wasm32@0.35.2` — Apache-2.0 AND LGPL-3.0-or-later AND MIT — transitive — https://github.com/lovell/sharp
 - `@isaacs/cliui@9.0.0` — BlueOak-1.0.0 — transitive — ssh://git@github.com:isaacs/cliui
 - `@jridgewell/gen-mapping@0.3.13` — MIT — transitive — https://github.com/jridgewell/sourcemaps
@@ -179,7 +177,7 @@ Unique bundled notice/license texts: **200**
 - `@rollup/rollup-linux-x64-gnu@4.62.4` — MIT — transitive — https://github.com/rollup/rollup
 - `@rollup/rollup-linux-x64-musl@4.62.4` — MIT — transitive — https://github.com/rollup/rollup
 - `@sindresorhus/is@7.2.0` — MIT — transitive — sindresorhus/is
-- `@speed-highlight/core@1.2.23` — CC0-1.0 — transitive — https://github.com/speed-highlight/core
+- `@speed-highlight/core@1.2.24` — CC0-1.0 — transitive — https://github.com/speed-highlight/core
 - `@standard-schema/spec@1.1.0` — MIT — transitive — https://github.com/standard-schema/standard-schema
 - `@standard-schema/utils@0.3.0` — MIT — transitive — https://github.com/standard-schema/standard-schema
 - `@trickfilm400/rollup-plugin-off-main-thread@3.0.0-pre1` — Apache-2.0 — transitive — https://github.com/Trickfilm400/rollup-plugin-off-main-thread
@@ -362,7 +360,7 @@ Unique bundled notice/license texts: **200**
 - `magic-string@0.30.21` — MIT — transitive — https://github.com/Rich-Harris/magic-string
 - `marked@14.0.0` — MIT — transitive — https://github.com/markedjs/marked
 - `math-intrinsics@1.1.0` — MIT — transitive — https://github.com/es-shims/math-intrinsics
-- `miniflare@5.20260730.0-alpha` — MIT — transitive — https://github.com/cloudflare/workers-sdk
+- `miniflare@5.20260811.0-alpha` — MIT — transitive — https://github.com/cloudflare/workers-sdk
 - `minimatch@10.2.6` — BlueOak-1.0.0 — transitive — git@github.com:isaacs/minimatch
 - `minimatch@5.1.9` — ISC — transitive — https://github.com/isaacs/minimatch
 - `minipass@7.1.3` — BlueOak-1.0.0 — transitive — https://github.com/isaacs/minipass
@@ -459,7 +457,7 @@ Unique bundled notice/license texts: **200**
 - `typed-array-length@1.0.8` — MIT — transitive — https://github.com/inspect-js/typed-array-length
 - `typescript@7.0.2` — Apache-2.0 — direct-development — https://github.com/microsoft/TypeScript
 - `unbox-primitive@1.1.0` — MIT — transitive — https://github.com/ljharb/unbox-primitive
-- `undici@7.28.0` — MIT — transitive — https://github.com/nodejs/undici
+- `undici@7.29.0` — MIT — transitive — https://github.com/nodejs/undici
 - `undici-types@8.3.0` — MIT — transitive — https://github.com/nodejs/undici
 - `unenv@2.0.0-rc.24` — MIT — transitive — unjs/unenv
 - `unicode-canonical-property-names-ecmascript@2.0.1` — MIT — transitive — https://github.com/mathiasbynens/unicode-canonical-property-names-ecmascript
@@ -497,8 +495,8 @@ Unique bundled notice/license texts: **200**
 - `workbox-streams@7.4.1` — MIT — transitive — https://github.com/googlechrome/workbox
 - `workbox-sw@7.4.1` — MIT — transitive — https://github.com/googlechrome/workbox
 - `workbox-window@7.4.1` — MIT — transitive — https://github.com/googlechrome/workbox
-- `workerd@1.20260730.1` — Apache-2.0 — transitive — https://github.com/cloudflare/workerd
-- `wrangler@4.118.0` — MIT OR Apache-2.0 — direct-development — https://github.com/cloudflare/workers-sdk
+- `workerd@1.20260811.1` — Apache-2.0 — transitive — https://github.com/cloudflare/workerd
+- `wrangler@4.122.0` — MIT OR Apache-2.0 — direct-development — https://github.com/cloudflare/workers-sdk
 - `ws@8.21.0` — MIT — transitive — https://github.com/websockets/ws
 - `yallist@3.1.1` — ISC — transitive — https://github.com/isaacs/yallist
 - `youch@4.1.0-beta.10` — MIT — transitive — https://github.com/poppinss/youch
@@ -508,10 +506,10 @@ Unique bundled notice/license texts: **200**
 
 These binaries are pinned by npm for other operating-system or CPU targets but are not installed in the supported Linux x64 CI/deployment tree. Their exact lock identity is retained in `docs/third-party-dependencies.json`; activating another platform requires regenerating and reviewing notices on that platform.
 
-- `@cloudflare/workerd-darwin-64@1.20260730.1` — os:darwin, cpu:x64
-- `@cloudflare/workerd-darwin-arm64@1.20260730.1` — os:darwin, cpu:arm64
-- `@cloudflare/workerd-linux-arm64@1.20260730.1` — os:linux, cpu:arm64
-- `@cloudflare/workerd-windows-64@1.20260730.1` — os:win32, cpu:x64
+- `@cloudflare/workerd-darwin-64@1.20260811.1` — os:darwin, cpu:x64
+- `@cloudflare/workerd-darwin-arm64@1.20260811.1` — os:darwin, cpu:arm64
+- `@cloudflare/workerd-linux-arm64@1.20260811.1` — os:linux, cpu:arm64
+- `@cloudflare/workerd-windows-64@1.20260811.1` — os:win32, cpu:x64
 - `@esbuild/aix-ppc64@0.28.1` — os:aix, cpu:ppc64
 - `@esbuild/android-arm@0.28.1` — os:android, cpu:arm
 - `@esbuild/android-arm64@0.28.1` — os:android, cpu:arm64
@@ -548,12 +546,14 @@ These binaries are pinned by npm for other operating-system or CPU targets but a
 - `@img/sharp-libvips-linux-riscv64@1.3.1` — os:linux, cpu:riscv64
 - `@img/sharp-libvips-linux-s390x@1.3.1` — os:linux, cpu:s390x
 - `@img/sharp-libvips-linuxmusl-arm64@1.3.1` — os:linux, cpu:arm64
+- `@img/sharp-libvips-linuxmusl-x64@1.3.1` — os:linux, cpu:x64
 - `@img/sharp-linux-arm@0.35.2` — os:linux, cpu:arm
 - `@img/sharp-linux-arm64@0.35.2` — os:linux, cpu:arm64
 - `@img/sharp-linux-ppc64@0.35.2` — os:linux, cpu:ppc64
 - `@img/sharp-linux-riscv64@0.35.2` — os:linux, cpu:riscv64
 - `@img/sharp-linux-s390x@0.35.2` — os:linux, cpu:s390x
 - `@img/sharp-linuxmusl-arm64@0.35.2` — os:linux, cpu:arm64
+- `@img/sharp-linuxmusl-x64@0.35.2` — os:linux, cpu:x64
 - `@img/sharp-webcontainers-wasm32@0.35.2` — cpu:wasm32
 - `@img/sharp-win32-arm64@0.35.2` — os:win32, cpu:arm64
 - `@img/sharp-win32-ia32@0.35.2` — os:win32, cpu:ia32
@@ -633,10 +633,9 @@ These installed packages expose license metadata in `package.json` but do not bu
 - `@cloudflare/containers@0.3.7` — MIT OR Apache-2.0
 - `@cloudflare/kv-asset-handler@0.5.0` — MIT OR Apache-2.0
 - `@cloudflare/unenv-preset@2.16.1` — MIT OR Apache-2.0
-- `@cloudflare/workerd-linux-64@1.20260730.1` — Apache-2.0
+- `@cloudflare/workerd-linux-64@1.20260811.1` — Apache-2.0
 - `@esbuild/linux-x64@0.28.1` — MIT
 - `@img/sharp-libvips-linux-x64@1.3.1` — LGPL-3.0-or-later
-- `@img/sharp-libvips-linuxmusl-x64@1.3.1` — LGPL-3.0-or-later
 - `@napi-rs/lzma-linux-x64-gnu@1.5.1` — MIT
 - `@rolldown/binding-linux-x64-gnu@1.2.2` — MIT
 - `@rolldown/binding-linux-x64-musl@1.2.2` — MIT
@@ -646,11 +645,11 @@ These installed packages expose license metadata in `package.json` but do not bu
 - `is-module@1.0.0` — MIT
 - `is-regexp@1.0.0` — MIT
 - `jake@10.9.4` — Apache-2.0
-- `miniflare@5.20260730.0-alpha` — MIT
+- `miniflare@5.20260811.0-alpha` — MIT
 - `react-remove-scroll-bar@2.3.8` — MIT
 - `victory-vendor@37.3.6` — MIT AND ISC
-- `workerd@1.20260730.1` — Apache-2.0
-- `wrangler@4.118.0` — MIT OR Apache-2.0
+- `workerd@1.20260811.1` — Apache-2.0
+- `wrangler@4.122.0` — MIT OR Apache-2.0
 
 ## Bundled license and notice texts
 
@@ -6392,7 +6391,7 @@ THE SOFTWARE.
 
 ### SHA-256 `6d489af6292662d9e36d34ce49423784984a5f6e41d7b58f49b01264df59fa03`
 
-Applies to: `@speed-highlight/core@1.2.23 (LICENSE)`
+Applies to: `@speed-highlight/core@1.2.24 (LICENSE)`
 
 ```text
 Creative Commons Legal Code
@@ -9519,7 +9518,7 @@ THIS SOFTWARE.
 
 ### SHA-256 `9ff562631a04b8cb1030c53fdf461bd749c9af0655d86e4f17eb270e935a7fe2`
 
-Applies to: `@img/sharp-linux-x64@0.35.2 (LICENSE)`, `@img/sharp-linuxmusl-x64@0.35.2 (LICENSE)`, `@img/sharp-wasm32@0.35.2 (LICENSE)`, `sharp@0.35.2 (LICENSE)`
+Applies to: `@img/sharp-linux-x64@0.35.2 (LICENSE)`, `@img/sharp-wasm32@0.35.2 (LICENSE)`, `sharp@0.35.2 (LICENSE)`
 
 ```text
 Apache License
@@ -12404,7 +12403,7 @@ SOFTWARE.
 
 ### SHA-256 `fe64958bfaef10b1c9628b4ee9f1c48170b0219bd4b2a7ef4a0c41aebd920c9e`
 
-Applies to: `undici-types@8.3.0 (LICENSE)`, `undici@7.28.0 (LICENSE)`
+Applies to: `undici-types@8.3.0 (LICENSE)`, `undici@7.29.0 (LICENSE)`
 
 ```text
 MIT License

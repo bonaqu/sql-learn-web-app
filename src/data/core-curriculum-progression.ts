@@ -30,8 +30,7 @@ export function applyCoreLessonTaskLinks(
 }
 
 export function applyCoreCheckpointTaskLinks(
-  checkpoints: readonly CurriculumCheckpoint[],
-  tasks: readonly SqlTask[]
+  checkpoints: readonly CurriculumCheckpoint[]
 ): CurriculumCheckpoint[] {
   return checkpoints.map(checkpoint => {
     if (checkpoint.id === 'checkpoint-foundation') {

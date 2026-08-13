@@ -24,9 +24,9 @@ import {
   Trophy,
   X
 } from 'lucide-react';
-import { tasks } from '../data/course-catalog';
 import {
   advanceAssessment,
+  assessmentAdaptiveDecision,
   assessmentEligibility,
   assessmentModes,
   AssessmentMode,
@@ -34,12 +34,12 @@ import {
   AssessmentSession,
   createAssessmentSession,
   currentAssessmentTask,
+  finalizeAdaptiveDiagnosticSession,
   finishAssessmentSession,
   goToAssessmentTask,
   loadAssessmentSession,
   loadLocalAssessmentReports,
   remainingSeconds,
-  saveAssessmentSession,
   saveLocalAssessmentReport,
   updateAssessmentAnswer
 } from '../lib/assessment';
@@ -116,6 +116,7 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
   const activeTask = useMemo(() => session ? currentAssessmentTask(session) : null, [session]);
   const activeAnswer = activeTask && session ? session.answers[activeTask.id] : null;
   const config = session ? assessmentModes[session.mode] : null;
+  const adaptiveDecision = session ? assessmentAdaptiveDecision(session) : null;
 
   useEffect(() => {
     if (externalLauncher) return;
@@ -333,13 +334,17 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
       skipped: true,
       completedAt: new Date().toISOString()
     });
-    if (updated.currentIndex >= updated.taskIds.length - 1) void complete(updated, 'completed');
+    const decision = assessmentAdaptiveDecision(updated);
+    if (decision?.shouldStop) void complete(finalizeAdaptiveDiagnosticSession(updated), 'completed');
+    else if (updated.currentIndex >= updated.taskIds.length - 1) void complete(updated, 'completed');
     else setSession(advanceAssessment(updated));
   };
 
   const nextTask = () => {
     if (!session) return;
-    if (session.currentIndex >= session.taskIds.length - 1) void complete(session, 'completed');
+    const decision = assessmentAdaptiveDecision(session);
+    if (decision?.shouldStop) void complete(finalizeAdaptiveDiagnosticSession(session), 'completed');
+    else if (session.currentIndex >= session.taskIds.length - 1) void complete(session, 'completed');
     else setSession(advanceAssessment(session));
   };
 
@@ -433,7 +438,7 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
           <h2>{modeConfig.title}</h2>
           <p>{modeConfig.description}</p>
           <ul>
-            <li><ListChecks />{modeConfig.taskCount} задач</li>
+            <li><ListChecks />{mode === 'diagnostic' ? '3–7 задач' : `${modeConfig.taskCount} задач`}</li>
             <li><LockKeyhole />без решения и обычного Mentor</li>
             {modeConfig.interviewer && <li><Sparkles />до 2 уточнений на задачу</li>}
           </ul>
@@ -460,15 +465,19 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
 
   const sessionView = session && activeTask && activeAnswer && config ? <main className="assessment-session" data-testid="assessment-session">
     <header className="assessment-session-header">
-      <div><span className="assessment-mode-pill">{config.shortTitle}</span><strong>{session.currentIndex + 1}/{session.taskIds.length}</strong></div>
+      <div><span className="assessment-mode-pill">{config.shortTitle}</span><strong>{session.currentIndex + 1}/{adaptiveDecision?.plannedCount || session.taskIds.length}</strong></div>
       <div className={`assessment-timer ${secondsLeft <= 300 ? 'urgent' : ''}`} role="timer" aria-label={`Осталось ${formatTimer(secondsLeft)}`} data-testid="assessment-timer"><Clock3 />{formatTimer(secondsLeft)}</div>
-      <button className="assessment-finish" onClick={() => void complete(session, 'completed')}>Завершить досрочно</button>
+      <button className="assessment-finish" onClick={() => void complete(session, session.mode === 'diagnostic' && !adaptiveDecision?.shouldStop ? 'abandoned' : 'completed')}>{session.mode === 'diagnostic' && !adaptiveDecision?.shouldStop ? 'Выйти без результата' : 'Завершить досрочно'}</button>
     </header>
 
-    <div className="assessment-progress-strip">{session.taskIds.map((taskId, index) => {
+    <div className="assessment-progress-strip">{session.taskIds.slice(0, adaptiveDecision?.plannedCount || session.taskIds.length).map((taskId, index) => {
       const answer = session.answers[taskId];
       return <button key={taskId} className={`${index === session.currentIndex ? 'active' : ''} ${answer.correct ? 'correct' : answer.skipped ? 'skipped' : ''}`} onClick={() => setSession(goToAssessmentTask(session, index))} aria-label={`Задача ${index + 1}`}><span>{index + 1}</span></button>;
     })}</div>
+
+    {adaptiveDecision && <aside className="assessment-integrity-note" data-testid="adaptive-diagnostic-status" aria-live="polite">
+      <Target /><span><strong>{adaptiveDecision.confidenceLabel}</strong><small>{adaptiveDecision.explanation} Диапазон: {adaptiveDecision.scoreBand.low}–{adaptiveDecision.scoreBand.high}%.</small></span>
+    </aside>}
 
     <section className="assessment-workspace">
       <article className="assessment-task-panel">
@@ -498,7 +507,7 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
         <div className="assessment-runbar">
           <button className="assessment-run" onClick={runSql} disabled={!engine}><Play />Проверить SQL</button>
           <button onClick={skip}><SkipForward />Пропустить</button>
-          <button onClick={nextTask} disabled={!activeAnswer.correct && !activeAnswer.skipped}>{session.currentIndex >= session.taskIds.length - 1 ? 'Завершить' : 'Следующая'}<ChevronRight /></button>
+          <button onClick={nextTask} disabled={!activeAnswer.correct && !activeAnswer.skipped}>{adaptiveDecision?.shouldStop || session.currentIndex >= session.taskIds.length - 1 ? 'Получить стартовый маршрут' : 'Следующая'}<ChevronRight /></button>
         </div>
         <div className={`assessment-feedback ${runState}`} role="status" aria-live="polite">{runState === 'success' ? <CheckCircle2 /> : runState === 'error' ? <AlertTriangle /> : <Target />}<span>{message}</span></div>
         {!!result.length && <div className="assessment-result-table" data-testid="assessment-result">
@@ -521,6 +530,11 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
       <article><Clock3 /><span><small>Время</small><strong>{formatDuration(report.durationSeconds)}</strong></span></article>
       <article><Gauge /><span><small>Readiness delta</small><strong>{report.readinessDelta >= 0 ? '+' : ''}{report.readinessDelta}</strong></span></article>
     </section>
+    {report.adaptiveDecision && <section className="assessment-report-card" data-testid="adaptive-diagnostic-result">
+      <div className="assessment-section-heading"><div><span>Граница старта</span><h2>{report.adaptiveDecision.confidenceLabel}</h2></div><Target /></div>
+      <p>{report.adaptiveDecision.explanation}</p>
+      <small>{report.adaptiveDecision.completedCount} задач · наблюдаемый диапазон {report.adaptiveDecision.scoreBand.low}–{report.adaptiveDecision.scoreBand.high}% · неопределённость уточнится в обычной практике</small>
+    </section>}
     <section className="assessment-report-grid">
       <article className="assessment-report-card">
         <div className="assessment-section-heading"><div><span>Компетенции</span><h2>Результат по модулям</h2></div><Trophy /></div>

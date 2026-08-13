@@ -112,7 +112,7 @@ test('desktop syllabus exposes tracks evidence-gated review tools executable dia
 
   await page.getByRole('tab', { name: /Экзамены/i }).click();
   await expect(page.getByTestId('syllabus-exams')).toBeVisible();
-  await expect(page.getByRole('heading', { name: 'Diagnostic SQL Check' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Стартовая диагностика SQL' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Production SQL Exam' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'SQL Academy Final' })).toBeVisible();
   await expect(page.getByRole('button', { name: /Сначала prerequisites/i }).first()).toBeDisabled();

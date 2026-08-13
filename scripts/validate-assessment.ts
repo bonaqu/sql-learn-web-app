@@ -2,11 +2,13 @@ import { readFileSync } from 'node:fs';
 import { tasks } from '../src/data/course-catalog';
 import {
   assessmentBlueprint,
+  assessmentAdaptiveDecision,
   assessmentEligibility,
   assessmentModes,
   type AssessmentMode,
   type AssessmentSession,
   buildAssessmentReport,
+  finalizeAdaptiveDiagnosticSession,
   mergeAssessmentAnswer,
   selectAssessmentTasks
 } from '../src/lib/assessment';
@@ -77,8 +79,8 @@ const session: AssessmentSession = {
   taskIds: quickTasks.map(task => task.id),
   currentIndex: quickTasks.length - 1,
   baselineReadiness: 20,
-  formId: 'QUICK-assessment-blueprint-v2-F1',
-  blueprintVersion: 'assessment-blueprint-v2',
+  formId: 'QUICK-assessment-blueprint-v3-F1',
+  blueprintVersion: 'assessment-blueprint-v3',
   thresholdVersion: 'assessment-thresholds-v2',
   selection: {
     excludedKnownSolutions: 0,
@@ -145,6 +147,46 @@ assert(afterStaleRun.elapsedSeconds === 130, 'stale run regressed elapsed time')
 const lockedExam = assessmentEligibility('exam', defaultProgress);
 assert(!lockedExam.eligible && lockedExam.missingCompleted === assessmentModes.exam.minimumCompleted, 'exam prerequisites must be enforced');
 
+const diagnosticTasks = selectAssessmentTasks('diagnostic', defaultProgress);
+const diagnosticSession: AssessmentSession = {
+  ...session,
+  id: '00000000-0000-4000-8000-000000000002',
+  mode: 'diagnostic',
+  formId: 'DIAGNOSTIC-assessment-blueprint-v3-F1',
+  taskIds: diagnosticTasks.map(task => task.id),
+  currentIndex: 2,
+  selection: {
+    excludedKnownSolutions: 0,
+    fallbackKnownSolutions: 0,
+    distinctModules: 7,
+    distinctSkills: 6
+  },
+  answers: Object.fromEntries(diagnosticTasks.map((task, index) => [task.id, {
+    taskId: task.id,
+    sql: task.starter,
+    attempts: 0,
+    incorrect: 0,
+    technicalErrors: 0,
+    correct: false,
+    skipped: index < 3,
+    elapsedSeconds: index < 3 ? 20 : 0,
+    interviewerUses: 0,
+    startedAt,
+    completedAt: index < 3 ? completedAt : undefined
+  }]))
+};
+const diagnosticDecision = assessmentAdaptiveDecision(diagnosticSession);
+assert(diagnosticDecision?.shouldStop && diagnosticDecision.completedCount === 3,
+  'Zero-level diagnostic must stop after the minimum three executable probes.');
+const finalizedDiagnostic = finalizeAdaptiveDiagnosticSession(diagnosticSession);
+assert(finalizedDiagnostic.taskIds.length === 3, 'Adaptive finalization must exclude unshown challenge tasks from scoring.');
+const diagnosticReport = buildAssessmentReport(finalizedDiagnostic, 'completed');
+assert(diagnosticReport.taskScores.length === 3, 'Adaptive report must score only observed tasks.');
+assert(diagnosticReport.adaptiveDecision?.scoreBand.low === diagnosticDecision.scoreBand.low,
+  'Adaptive report must retain the explicit uncertainty boundary.');
+assert(diagnosticReport.localDebrief.includes('Стартовая граница'),
+  'Adaptive report must explain why placement stopped.');
+
 const reportMigration = readFileSync(new URL('../migrations/0004_assessment_center.sql', import.meta.url), 'utf8');
 assert(/REFERENCES\s+users\s*\(\s*user_id\s*\)/i.test(reportMigration), 'assessment report FK must reference users.user_id');
 assert(!/REFERENCES\s+users\s*\(\s*id\s*\)/i.test(reportMigration), 'assessment report FK must not reference a nonexistent users.id');
@@ -153,4 +195,4 @@ assert(/PRIMARY KEY\s*\(\s*task_id\s*,\s*blueprint_version\s*\)/i.test(calibrati
 assert(/report_id\s+TEXT\s+PRIMARY KEY/i.test(calibrationMigration), 'deduplicating calibration receipt is missing');
 assert(!/sql\s+TEXT/i.test(calibrationMigration), 'calibration aggregate must not store learner SQL');
 
-console.log(`Assessment validation passed: ${Object.keys(assessmentModes).length} modes, calibrated form identity, monotonic session merge, uncertainty band, telemetry exclusions and privacy-first D1 contract.`);
+console.log(`Assessment validation passed: ${Object.keys(assessmentModes).length} modes, 3→5→7 adaptive placement, calibrated form identity, monotonic session merge, uncertainty band, telemetry exclusions and privacy-first D1 contract.`);

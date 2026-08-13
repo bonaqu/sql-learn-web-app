@@ -71,6 +71,25 @@ for (const goal of goals) {
   }
 }
 
+const personaTraces = [
+  { id: 'beginner', goal: 'full' as const, completed: [] as string[] },
+  { id: 'select-aware', goal: 'full' as const, completed: goalModuleRoute('full').slice(0, 3) },
+  { id: 'analyst', goal: 'analyst' as const, completed: goalModuleRoute('analyst').slice(0, SHARED_FOUNDATION_MODULE_IDS.length) },
+  { id: 'support', goal: 'support' as const, completed: goalModuleRoute('support').slice(0, SHARED_FOUNDATION_MODULE_IDS.length) },
+  { id: 'backend', goal: 'backend' as const, completed: goalModuleRoute('backend').slice(0, SHARED_FOUNDATION_MODULE_IDS.length) },
+  { id: 'interview', goal: 'interview' as const, completed: goalModuleRoute('interview').slice(0, SHARED_FOUNDATION_MODULE_IDS.length) },
+  { id: 'returning-with-debt', goal: 'analyst' as const, completed: goalModuleRoute('analyst').slice(0, 2) }
+];
+
+for (const persona of personaTraces) {
+  const first = goalModuleFrontier(persona.goal, persona.completed);
+  const second = goalModuleFrontier(persona.goal, persona.completed);
+  assert.deepEqual(second, first, `${persona.id}: identical evidence must yield an identical route trace.`);
+  assert.ok(first.nextModuleId, `${persona.id}: fixture must retain a future prerequisite-safe module.`);
+  assert.ok(first.nextModuleId && modulePrerequisiteIds(first.nextModuleId).every(prerequisite => first.completedModuleIds.includes(prerequisite)),
+    `${persona.id}: next module must remain prerequisite-safe.`);
+}
+
 const sharedLength = SHARED_FOUNDATION_MODULE_IDS.length;
 const fullRouteSignatures = new Set(goals.map(goal => (routes.get(goal) || []).join('>')));
 assert.ok(fullRouteSignatures.size >= 4,
@@ -128,6 +147,7 @@ for (const forbiddenCopy of [
 ]) assert.ok(!routeSource.includes(forbiddenCopy), `Goal-aware route retained mixed learner copy: ${forbiddenCopy}`);
 
 console.log(`Goal-aware routes validated: ${goals.length} deterministic prerequisite-safe routes, shared ${sharedLength}-module beginner foundation, ${fullRouteSignatures.size} distinct complete routes, analyst/backend divergence at index ${analystBackendDivergence}, prerequisite-closed evidence, localized route reasons and contiguous diagnostic bypass.`);
+console.log(`Persona traces validated: ${personaTraces.map(persona => `${persona.id}:${goalModuleFrontier(persona.goal, persona.completed).nextModuleId}`).join(', ')}.`);
 for (const goal of goals) {
   const route = routes.get(goal) || [];
   const divergence = goal === 'full' ? -1 : firstDifference(route, fullRoute);

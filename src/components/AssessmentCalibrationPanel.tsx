@@ -139,7 +139,7 @@ export default function AssessmentCalibrationPanel() {
 
   const landing = landingSlot ? createPortal(
     <section className="assessment-calibration-summary" data-testid="assessment-calibration-summary">
-      <div><FlaskConical /><span><small>Measurement contract</small><strong>Blueprint v2 · adaptive parallel forms</strong></span></div>
+      <div><FlaskConical /><span><small>Measurement contract</small><strong>Blueprint v3 · adaptive placement and parallel forms</strong></span></div>
       <div className="assessment-calibration-metrics">
         <span><b>{summary.calibrated}</b><small>calibrated items</small></span>
         <span><b>{summary.emerging}</b><small>emerging evidence</small></span>

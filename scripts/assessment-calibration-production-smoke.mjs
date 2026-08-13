@@ -80,21 +80,21 @@ function assessmentReport(userId, id = randomUUID()) {
       taskId: 'task-001', title: 'Smoke result contract', module: 'sql-thinking', topic: 'contract',
       correct: true, skipped: false, attempts: 1, elapsedSeconds: 120, interviewerUses: 0, score: 100,
       technicalErrors: 0, telemetryEligible: true, telemetryExclusionReason: null,
-      abilityBand: 'low', itemVersion: 'assessment-blueprint-v2', reasoningSkill: 'result-contract',
+      abilityBand: 'low', itemVersion: 'assessment-blueprint-v3', reasoningSkill: 'result-contract',
       errorClass: 'contract', expectedSeconds: 150
     },
     {
       taskId: 'task-013', title: 'Smoke aggregation', module: 'aggregates', topic: 'aggregation',
       correct: false, skipped: false, attempts: 2, elapsedSeconds: 310, interviewerUses: 0, score: 0,
       technicalErrors: 0, telemetryEligible: true, telemetryExclusionReason: null,
-      abilityBand: 'low', itemVersion: 'assessment-blueprint-v2', reasoningSkill: 'aggregation',
+      abilityBand: 'low', itemVersion: 'assessment-blueprint-v3', reasoningSkill: 'aggregation',
       errorClass: 'aggregation-grain', expectedSeconds: 240
     },
     {
       taskId: 'task-025', title: 'Smoke technical exclusion', module: 'joins', topic: 'technical',
       correct: false, skipped: false, attempts: 1, elapsedSeconds: 12, interviewerUses: 0, score: 0,
       technicalErrors: 1, telemetryEligible: false, telemetryExclusionReason: 'technical-error',
-      abilityBand: 'low', itemVersion: 'assessment-blueprint-v2', reasoningSkill: 'relationships',
+      abilityBand: 'low', itemVersion: 'assessment-blueprint-v3', reasoningSkill: 'relationships',
       errorClass: 'cardinality', expectedSeconds: 240
     }
   ];
@@ -119,14 +119,14 @@ function assessmentReport(userId, id = randomUUID()) {
     taskScores,
     moduleScores: [],
     baselineReadiness: 42,
-    formId: 'QUICK-assessment-blueprint-v2-F1',
-    blueprintVersion: 'assessment-blueprint-v2',
+    formId: 'QUICK-assessment-blueprint-v3-F1',
+    blueprintVersion: 'assessment-blueprint-v3',
     thresholdVersion: 'assessment-thresholds-v2',
     measurement: {
       version: 1,
-      blueprintVersion: 'assessment-blueprint-v2',
+      blueprintVersion: 'assessment-blueprint-v3',
       thresholdVersion: 'assessment-thresholds-v2',
-      formId: 'QUICK-assessment-blueprint-v2-F1',
+      formId: 'QUICK-assessment-blueprint-v3-F1',
       eligibleItems: 2,
       excludedItems: 1,
       calibratedItems: 0,
@@ -161,7 +161,7 @@ async function verifyD1Lifecycle(beforeEligible) {
     '--command', `SELECT
       (SELECT COUNT(*) FROM assessment_reports WHERE user_id = '${smokeUserId}') AS reports,
       (SELECT COUNT(*) FROM assessment_calibration_receipts WHERE user_id = '${smokeUserId}') AS receipts,
-      (SELECT eligible_attempts FROM assessment_item_aggregates WHERE task_id = 'task-001' AND blueprint_version = 'assessment-blueprint-v2') AS aggregate`,
+      (SELECT eligible_attempts FROM assessment_item_aggregates WHERE task_id = 'task-001' AND blueprint_version = 'assessment-blueprint-v3') AS aggregate`,
     '--yes', '--json'
   ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   writeFileSync('cloudflare-assessment-calibration-d1.json', stdout);

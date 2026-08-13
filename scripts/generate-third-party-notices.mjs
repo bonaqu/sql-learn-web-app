@@ -9,6 +9,7 @@ const packagePath = join(root, 'package.json');
 const lockPath = join(root, 'package-lock.json');
 const inventoryPath = join(root, 'docs', 'third-party-dependencies.json');
 const noticesPath = join(root, 'THIRD_PARTY_NOTICES.md');
+const inventoryPlatform = process.env.THIRD_PARTY_INVENTORY_PLATFORM || `${process.platform}-${process.arch}`;
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'));
@@ -126,7 +127,7 @@ function buildOutputs() {
 
   const inventory = {
     schemaVersion: 1,
-    supportedInventoryPlatform: `${process.platform}-${process.arch}`,
+    supportedInventoryPlatform: inventoryPlatform,
     lockfileVersion: lock.lockfileVersion,
     lockedPackageCount: lockedEntries.length,
     installedPackageCount: packages.length,
@@ -155,7 +156,7 @@ function buildOutputs() {
     'This file is generated from `package-lock.json` and the installed package metadata by `scripts/generate-third-party-notices.mjs`.',
     'SQL Academy source code is governed by the repository `LICENSE`; the packages below remain governed by their own licenses.',
     '',
-    `Supported inventory platform: **${process.platform}-${process.arch}**`,
+    `Supported inventory platform: **${inventoryPlatform}**`,
     `Locked package entries: **${lockedEntries.length}**`,
     `Installed package entries covered below: **${packages.length}**`,
     `Uninstalled platform-optional lock entries recorded separately: **${uninstalledPlatformOptional.length}**`,

@@ -1,5 +1,10 @@
 import { readFileSync } from 'node:fs';
 import type { AssessmentReport } from '../src/lib/assessment.ts';
+import {
+  ADAPTIVE_DIAGNOSTIC_TASK_IDS,
+  adaptiveDiagnosticCoverage,
+  adaptiveDiagnosticDecision
+} from '../src/lib/adaptive-placement.ts';
 import { goalModuleRoute, SHARED_FOUNDATION_MODULE_IDS } from '../src/lib/goal-aware-route.ts';
 import {
   buildFirstWeekPlan,
@@ -13,8 +18,10 @@ import {
   placementLevel,
   placementLevelLabels,
   preferredOnboardingProfile,
+  profileForPlacementRetake,
   recommendedTrackLabels,
   sanitizeOnboardingProfile,
+  updateOnboardingPreferences,
   weekPlanKindLabels,
   type LearnerGoal,
   type LearnerOnboardingProfile
@@ -77,6 +84,48 @@ assert(Object.keys(weekPlanKindLabels).length === 5, 'Every persisted week-plan 
 assert(new Set(Object.values(placementLevelLabels)).size === 4, 'Placement labels must remain distinct');
 assert(new Set(Object.values(recommendedTrackLabels)).size === 5, 'Track labels must remain distinct');
 assert(new Set(Object.values(weekPlanKindLabels)).size === 5, 'Week-plan labels must remain distinct');
+assert(empty.dialect === 'unknown', 'Unknown dialect must be a first-class safe onboarding choice');
+assert(empty.routePreference === 'full', 'A new learner must default to the full explanatory route');
+
+function adaptiveAnswers(correct: readonly boolean[]) {
+  return correct.map((value, index) => ({
+    taskId: ADAPTIVE_DIAGNOSTIC_TASK_IDS[index],
+    correct: value,
+    skipped: !value
+  }));
+}
+
+const zeroDecision = adaptiveDiagnosticDecision([]);
+assert(zeroDecision.plannedCount === 3 && !zeroDecision.shouldStop,
+  'Adaptive placement must begin with exactly three foundation probes.');
+const beginnerDecision = adaptiveDiagnosticDecision(adaptiveAnswers([false, false, false]));
+assert(beginnerDecision.shouldStop && beginnerDecision.completedCount === 3 && beginnerDecision.level === 'foundation',
+  'A zero-level learner must stop after three probes instead of taking a long diagnostic.');
+const bridgeDecision = adaptiveDiagnosticDecision(adaptiveAnswers([true, true, true]));
+assert(!bridgeDecision.shouldStop && bridgeDecision.plannedCount === 5,
+  'Three confident foundation results must increase difficulty to the working bridge.');
+const workingDecision = adaptiveDiagnosticDecision(adaptiveAnswers([true, true, false, false, false]));
+assert(workingDecision.shouldStop && workingDecision.completedCount === 5,
+  'Uncertain bridge evidence must stop at five tasks instead of escalating.');
+const challengeDecision = adaptiveDiagnosticDecision(adaptiveAnswers([true, true, true, true, true]));
+assert(!challengeDecision.shouldStop && challengeDecision.plannedCount === 7,
+  'Five confident results must open exactly two challenge probes.');
+const advancedDecision = adaptiveDiagnosticDecision(adaptiveAnswers([true, true, true, true, true, true, false]));
+assert(advancedDecision.shouldStop && advancedDecision.completedCount === 7 && advancedDecision.level === 'advanced',
+  'Seven-probe ceiling must produce an explicit advanced boundary and stop.');
+for (const decision of [beginnerDecision, workingDecision, advancedDecision]) {
+  assert(decision.scoreBand.low >= 0 && decision.scoreBand.high <= 100 && decision.scoreBand.low <= decision.scoreBand.high,
+    'Every adaptive exit must expose a bounded uncertainty interval.');
+  assert(decision.explanation.length > 40, 'Every adaptive exit must explain why the diagnostic stopped.');
+}
+assert(adaptiveDiagnosticCoverage(ADAPTIVE_DIAGNOSTIC_TASK_IDS).valid,
+  'The complete adaptive ladder must satisfy its authored skill blueprint.');
+const negativeCoverage = adaptiveDiagnosticCoverage([
+  ...ADAPTIVE_DIAGNOSTIC_TASK_IDS.slice(0, -1),
+  ADAPTIVE_DIAGNOSTIC_TASK_IDS[0]
+]);
+assert(!negativeCoverage.valid && negativeCoverage.missingSkills.includes('performance'),
+  'Negative coverage fixture must fail when the required performance probe is absent.');
 
 const sanitized = sanitizeOnboardingProfile({
   version: 1,
@@ -155,6 +204,22 @@ assert(completed.firstWeekPlan.filter(item => item.moduleId).every(item =>
   firstWeekRouteModuleIds(completed).includes(item.moduleId || '')
 ), 'Every lesson/practice session must come from the same safe goal route.');
 
+const evidenceHash = JSON.stringify({ placement: completed.placement, completedAt: completed.completedAt });
+const retakeProfile = profileForPlacementRetake(completed, 'new-report-not-completed');
+assert(JSON.stringify({ placement: retakeProfile.placement, completedAt: retakeProfile.completedAt }) === evidenceHash,
+  'Starting a retake must preserve the last valid placement until a new completed report exists.');
+const changedPreferences = updateOnboardingPreferences(completed, {
+  goal: 'analyst',
+  dialect: 'postgresql',
+  routePreference: 'fast'
+});
+assert(JSON.stringify({ placement: changedPreferences.placement, completedAt: changedPreferences.completedAt }) === evidenceHash,
+  'Goal/dialect/route changes must preserve valid placement evidence and completion provenance byte-for-byte.');
+assert(changedPreferences.goal === 'analyst' && changedPreferences.dialect === 'postgresql' && changedPreferences.routePreference === 'fast',
+  'Preference changes must recompute future emphasis without reverting the requested choices.');
+assert(changedPreferences.firstWeekPlan.some(item => item.moduleId),
+  'Preference changes must deterministically rebuild the future week.');
+
 const pending = { ...supportProfile, placement: { ...supportProfile.placement, status: 'pending' as const } };
 const pendingPlan = buildFirstWeekPlan(pending);
 assert(pendingPlan[0]?.kind === 'placement', 'Pending onboarding must put executable placement first');
@@ -225,6 +290,9 @@ for (const forbidden of [
   'Начать с foundation',
   'Support SQL',
   'Backend SQL',
+  'визуал',
+  'аудиал',
+  'кинестетик',
   'Стартовый контракт',
   '{profile.placement.level}',
   '{profile.placement.recommendedTrack}',
@@ -239,7 +307,13 @@ for (const required of [
   'Самооценка ≠ подтверждённый навык',
   'Начать с базового уровня без диагностики',
   'SQL Academy · Стартовый план',
-  'Принять стартовый план'
+  'Принять стартовый план',
+  'role="radiogroup"',
+  'Опыт программирования',
+  'Предыдущий опыт SQL',
+  'Диалект для примеров',
+  'Глубина первого маршрута',
+  '3–7 задач'
 ]) {
   assert(onboardingPortalSource.includes(required), `Onboarding UI is missing localized contract: ${required}`);
 }
@@ -250,4 +324,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-process.stdout.write(`Onboarding validated: localized learner-facing taxonomy, goal contract, safe placement prefix, dynamic analyst/backend divergence at ${analystBackendDivergence}, prerequisite-aware ${completed.firstWeekPlan.length}-session plan, defer path and conflict resolution.\n`);
+process.stdout.write(`Onboarding validated: 3→5→7 adaptive placement with uncertainty and negative coverage, localized goal/dialect/experience contract, safe placement prefix, dynamic analyst/backend divergence at ${analystBackendDivergence}, prerequisite-aware ${completed.firstWeekPlan.length}-session plan, preference evidence preservation, defer path and conflict resolution.\n`);

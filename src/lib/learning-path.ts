@@ -1,26 +1,26 @@
 import { curriculumCheckpoints } from '../data/complete-curriculum';
 import { modules, type SqlTask, tasks } from '../data/course-catalog';
 import { phaseDefinitions, phaseForModule } from '../data/learning-structure';
-import type { CheckpointRemediationState } from './checkpoint-remediation';
+import {
+  buildDailyRoute,
+  defaultLearningSessionEvidence,
+  type DailyRoute,
+  type LearningSessionEvidence
+} from './daily-route';
 import {
   buildJourneyFrontier,
-  foundationTasksForModule,
   transferTasksForModule,
   type JourneyAction,
   type JourneyFrontier
 } from './learning-journey';
 import {
-  emptyCurriculumProgress,
-  type CurriculumProgressV1
-} from './curriculum-progress';
-import type { LearnerGoal } from './learner-onboarding';
-import {
   hasIndependentTaskEvidence,
-  type Progress,
-  reviewQueue
+  type Progress
 } from './progress';
 
 export { phaseDefinitions } from '../data/learning-structure';
+export { buildDailyRoute } from './daily-route';
+export type { LearningSessionEvidence, SessionItem } from './daily-route';
 
 export type MasteryLevel = 'locked' | 'new' | 'learning' | 'practice' | 'mastered';
 
@@ -56,57 +56,12 @@ export type LearningPhase = {
   unlocked: boolean;
 };
 
-export type LearningSessionEvidence = {
-  curriculum: CurriculumProgressV1;
-  passedCheckpointIds?: readonly string[];
-  checkpointRemediations?: readonly CheckpointRemediationState[];
-  assessmentComplete?: boolean;
-  bypassedModuleIds?: readonly string[];
-  goal?: LearnerGoal | null;
-};
-
-export type SessionItem = {
-  id: string;
-  task: SqlTask | null;
-  action: JourneyAction | null;
-  reason: 'review' | 'weakness' | 'new' | 'checkpoint';
-  label: string;
-  title: string;
-  topic: string;
-  minutes: number;
-};
-
-export type DailySession = {
-  items: SessionItem[];
-  totalMinutes: number;
-  reviewCount: number;
-  newCount: number;
+export type DailySession = DailyRoute & {
   focusModule: ModuleMastery | null;
-  frontier: JourneyFrontier;
-};
-
-const difficultyMinutes: Record<SqlTask['difficulty'], number> = {
-  'База': 4,
-  'Рабочий': 6,
-  'Продвинутый': 8,
-  'Экспертный': 10
-};
-
-const stageMinutes: Record<JourneyAction['stage'], number> = {
-  lesson: 12,
-  guided: 6,
-  practice: 8,
-  review: 6,
-  checkpoint: 20,
-  interview: 10,
-  puzzle: 10,
-  assessment: 25,
-  project: 30,
-  complete: 5
 };
 
 function defaultEvidence(): LearningSessionEvidence {
-  return { curriculum: emptyCurriculumProgress() };
+  return defaultLearningSessionEvidence();
 }
 
 function clamp(value: number, min = 0, max = 100) {
@@ -257,89 +212,15 @@ export function learningPhases(
   });
 }
 
-function pushReview(items: SessionItem[], task: SqlTask | undefined) {
-  if (!task || items.some(item => item.task?.id === task.id)) return;
-  items.push({
-    id: `review:${task.id}`,
-    task,
-    action: null,
-    reason: 'review',
-    label: 'Retrieval review до нового материала',
-    title: task.title,
-    topic: task.topic,
-    minutes: difficultyMinutes[task.difficulty]
-  });
-}
-
-function actionReason(action: JourneyAction, progress: Progress): SessionItem['reason'] {
-  if (action.stage === 'checkpoint') return 'checkpoint';
-  if (action.routeReasonCode === 'checkpoint-remediation') return 'weakness';
-  if (action.task && (progress.taskStats[action.task.id]?.attempts || 0) > 0) return 'weakness';
-  return 'new';
-}
-
-function actionLabel(action: JourneyAction) {
-  if (action.routeReasonCode === 'checkpoint-remediation') {
-    return action.stage === 'checkpoint'
-      ? 'Повтор контрольного этапа после восстановления'
-      : 'Восстановление после непройденного контрольного этапа';
-  }
-  if (action.stage === 'lesson') return 'Мысленная модель и проверка понимания';
-  if (action.stage === 'guided') return 'Практика с подсказками после урока';
-  if (action.stage === 'practice') return 'Самостоятельная практика без подсказок';
-  if (action.stage === 'checkpoint') return 'Обязательный контрольный этап';
-  if (action.stage === 'interview') return 'Перенос навыка: объяснение и решение';
-  if (action.stage === 'puzzle') return 'Перенос навыка: непривычная формулировка';
-  if (action.stage === 'assessment') return 'Смешанная итоговая проверка';
-  if (action.stage === 'project') return 'Итоговый проект на рабочем сценарии';
-  if (action.stage === 'complete') return 'Поддержание профессионального уровня';
-  return 'Следующий этап маршрута';
-}
-
-function pushAction(items: SessionItem[], action: JourneyAction, progress: Progress) {
-  if (action.task) {
-    const duplicateIndex = items.findIndex(item => item.task?.id === action.task?.id);
-    if (duplicateIndex >= 0) items.splice(duplicateIndex, 1);
-  }
-  items.push({
-    id: `${action.kind}:${action.lessonId || action.checkpointId || action.projectId || action.task?.id || action.stage}`,
-    task: action.task,
-    action,
-    reason: actionReason(action, progress),
-    label: actionLabel(action),
-    title: action.title,
-    topic: action.moduleTitle || action.phaseTitle || 'SQL Academy',
-    minutes: action.task ? difficultyMinutes[action.task.difficulty] : stageMinutes[action.stage]
-  });
-}
-
 export function buildDailySession(
   progress: Progress,
   targetMinutes = 25,
   evidence: LearningSessionEvidence = defaultEvidence()
 ): DailySession {
-  const frontier = frontierFor(progress, evidence);
+  const route = buildDailyRoute(progress, targetMinutes, evidence);
+  const frontier = route.frontier;
   const mastery = moduleMastery(progress, evidence);
-  const items: SessionItem[] = [];
-  const reviews = reviewQueue(progress, 2);
   const primary = frontier.action;
-
-  for (const review of reviews) pushReview(items, review);
-  pushAction(items, primary, progress);
-
-  const compact: SessionItem[] = [];
-  let totalMinutes = 0;
-  for (const item of items) {
-    const primaryItem = item.action === primary;
-    if (!primaryItem && compact.length && totalMinutes + item.minutes > Math.max(targetMinutes, 15)) continue;
-    compact.push(item);
-    totalMinutes += item.minutes;
-  }
-
-  if (!compact.some(item => item.action === primary)) {
-    pushAction(compact, primary, progress);
-    totalMinutes = compact.reduce((sum, item) => sum + item.minutes, 0);
-  }
 
   const focusModule = primary.moduleId
     ? mastery.find(module => module.id === primary.moduleId) || null
@@ -348,12 +229,8 @@ export function buildDailySession(
         .sort((left, right) => left.index - right.index)[0] || null;
 
   return {
-    items: compact,
-    totalMinutes,
-    reviewCount: compact.filter(item => item.reason === 'review' || item.reason === 'weakness').length,
-    newCount: compact.filter(item => item.reason === 'new' || item.reason === 'checkpoint').length,
+    ...route,
     focusModule,
-    frontier
   };
 }
 

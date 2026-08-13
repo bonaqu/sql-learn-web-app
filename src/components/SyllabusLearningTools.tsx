@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   ChevronRight,
   CircleHelp,
-  Clock3,
   Code2,
   Database,
   Gauge,

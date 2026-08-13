@@ -1,5 +1,9 @@
 type LearnerGoal = 'support' | 'analyst' | 'backend' | 'interview' | 'full';
 type ExperienceLevel = 'none' | 'basics' | 'regular' | 'advanced';
+type ProgrammingExperience = 'none' | 'some' | 'professional';
+type PriorSqlExperience = 'none' | 'course' | 'work';
+type SqlDialectPreference = 'unknown' | 'sqlite' | 'postgresql' | 'mysql' | 'sqlserver';
+type LearningRoutePreference = 'full' | 'fast';
 type StudyPace = 'gentle' | 'steady' | 'intensive';
 type StudyDay = 'MO' | 'TU' | 'WE' | 'TH' | 'FR' | 'SA' | 'SU';
 type PlacementStatus = 'not-started' | 'pending' | 'completed' | 'deferred';
@@ -20,6 +24,10 @@ type LearnerOnboardingProfile = {
   version: 1;
   goal: LearnerGoal | null;
   experience: ExperienceLevel | null;
+  programmingExperience?: ProgrammingExperience | null;
+  priorSqlExperience?: PriorSqlExperience | null;
+  dialect?: SqlDialectPreference;
+  routePreference?: LearningRoutePreference;
   dailyMinutes: 15 | 25 | 40;
   studyDays: StudyDay[];
   pace: StudyPace;
@@ -31,6 +39,10 @@ type LearnerOnboardingProfile = {
     recommendedTrack: RecommendedTrack;
     strongModuleIds: string[];
     focusModuleIds: string[];
+    confidenceLow?: number | null;
+    confidenceHigh?: number | null;
+    decisionReason?: string | null;
+    diagnosticTaskCount?: number | null;
     completedAt: string | null;
   };
   firstWeekPlan: WeekPlanItem[];
@@ -42,6 +54,10 @@ type LearnerOnboardingProfile = {
 const MAX_BYTES = 40_000;
 const goals = new Set<LearnerGoal>(['support', 'analyst', 'backend', 'interview', 'full']);
 const experience = new Set<ExperienceLevel>(['none', 'basics', 'regular', 'advanced']);
+const programmingExperience = new Set<ProgrammingExperience>(['none', 'some', 'professional']);
+const priorSqlExperience = new Set<PriorSqlExperience>(['none', 'course', 'work']);
+const dialects = new Set<SqlDialectPreference>(['unknown', 'sqlite', 'postgresql', 'mysql', 'sqlserver']);
+const routePreferences = new Set<LearningRoutePreference>(['full', 'fast']);
 const paces = new Set<StudyPace>(['gentle', 'steady', 'intensive']);
 const days = new Set<StudyDay>(['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']);
 const placementStatuses = new Set<PlacementStatus>(['not-started', 'pending', 'completed', 'deferred']);
@@ -93,6 +109,10 @@ function validProfile(value: unknown): value is LearnerOnboardingProfile {
   if (profile.version !== 1
     || !(profile.goal === null || goals.has(profile.goal as LearnerGoal))
     || !(profile.experience === null || experience.has(profile.experience as ExperienceLevel))
+    || !(profile.programmingExperience === undefined || profile.programmingExperience === null || programmingExperience.has(profile.programmingExperience as ProgrammingExperience))
+    || !(profile.priorSqlExperience === undefined || profile.priorSqlExperience === null || priorSqlExperience.has(profile.priorSqlExperience as PriorSqlExperience))
+    || !(profile.dialect === undefined || dialects.has(profile.dialect as SqlDialectPreference))
+    || !(profile.routePreference === undefined || routePreferences.has(profile.routePreference as LearningRoutePreference))
     || !(profile.dailyMinutes === 15 || profile.dailyMinutes === 25 || profile.dailyMinutes === 40)
     || !Array.isArray(profile.studyDays)
     || profile.studyDays.length < 2
@@ -109,6 +129,10 @@ function validProfile(value: unknown): value is LearnerOnboardingProfile {
     || !tracks.has(placement.recommendedTrack as RecommendedTrack)
     || !validStringArray(placement.strongModuleIds, 32, 100)
     || !validStringArray(placement.focusModuleIds, 8, 100)
+    || !(placement.confidenceLow === undefined || placement.confidenceLow === null || (typeof placement.confidenceLow === 'number' && Number.isInteger(placement.confidenceLow) && placement.confidenceLow >= 0 && placement.confidenceLow <= 100))
+    || !(placement.confidenceHigh === undefined || placement.confidenceHigh === null || (typeof placement.confidenceHigh === 'number' && Number.isInteger(placement.confidenceHigh) && placement.confidenceHigh >= 0 && placement.confidenceHigh <= 100))
+    || !(placement.decisionReason === undefined || nullableString(placement.decisionReason, 600))
+    || !(placement.diagnosticTaskCount === undefined || placement.diagnosticTaskCount === null || (typeof placement.diagnosticTaskCount === 'number' && Number.isInteger(placement.diagnosticTaskCount) && placement.diagnosticTaskCount >= 0 && placement.diagnosticTaskCount <= 7))
     || !nullableString(placement.completedAt, 80)
     || !Array.isArray(profile.firstWeekPlan)
     || profile.firstWeekPlan.length > 7

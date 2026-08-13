@@ -1,0 +1,78 @@
+.onboarding-fieldset {
+  max-width: 940px;
+  margin: 0 auto 22px;
+  padding: 0;
+  border: 0;
+}
+
+.onboarding-fieldset legend {
+  margin-bottom: 10px;
+  font-size: 12px;
+  font-weight: 850;
+  color: var(--text);
+}
+
+.onboarding-fieldset .experience-grid > button {
+  min-height: 150px;
+}
+
+.route-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.route-grid > button {
+  min-height: 116px;
+}
+
+.onboarding-inline-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.onboarding-inline-options button {
+  min-height: 42px;
+  padding: 0 15px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.onboarding-inline-options button.selected {
+  border-color: color-mix(in srgb, #7963ff 60%, var(--line));
+  background: color-mix(in srgb, #7963ff 9%, var(--surface));
+  color: var(--text);
+}
+
+.onboarding-fieldset [role='radio']:focus-visible {
+  outline: 3px solid color-mix(in srgb, #9f90ff 78%, white);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-step,
+  .onboarding-choice-grid > button {
+    animation: none;
+    transition: none;
+  }
+}
+
+@media (max-width: 650px) {
+  .route-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .onboarding-inline-options {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .onboarding-fieldset .experience-grid > button {
+    min-height: 128px;
+  }
+}

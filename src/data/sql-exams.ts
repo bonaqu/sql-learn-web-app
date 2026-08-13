@@ -68,13 +68,13 @@ export const sqlTracks: SqlTrack[] = [
 export const sqlExams: SqlExam[] = [
   {
     id: 'diagnostic',
-    title: 'Diagnostic SQL Check',
-    description: 'Короткая входная диагностика. Не блокирует курс: результат определяет стартовую точку и темы для повторения.',
-    durationMinutes: 35,
+    title: 'Стартовая диагностика SQL',
+    description: 'Адаптивная входная проверка: 3 базовые задачи, затем до 4 более сложных только при уверенном результате.',
+    durationMinutes: 18,
     passingScore: 60,
-    taskIds: ['task-002', 'task-014', 'task-026', 'task-034', 'task-040', 'task-046', 'task-058', 'task-070', 'task-082', 'task-094', 'task-142', 'task-152'],
+    taskIds: ['task-002', 'task-014', 'task-026', 'task-034', 'task-040', 'task-058', 'task-094'],
     requiredModuleIds: [],
-    rules: ['Без AI Mentor', 'Без готовых решений', 'Можно пропустить вопрос', 'Одна попытка не влияет на XP'],
+    rules: ['Без AI Mentor', 'Без готовых решений', '3–7 задач по наблюдаемой уверенности', 'Одна попытка не влияет на XP'],
     readinessWeight: 10
   },
   {

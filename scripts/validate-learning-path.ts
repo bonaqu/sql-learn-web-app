@@ -154,6 +154,19 @@ function validateSession(
   if (session.totalMinutes <= 0 || session.totalMinutes > Math.max(targetMinutes + 30, 55)) {
     failures.push(`${name}: unexpected session duration ${session.totalMinutes}`);
   }
+  if (session.targetMinutes !== targetMinutes || !session.budgetExplanation.includes(`${targetMinutes}`)) {
+    failures.push(`${name}: session must explain the requested time budget.`);
+  }
+  if (session.items.some(item => !item.whyNow || !item.goalConnection)) {
+    failures.push(`${name}: every recommendation must explain why it is next and how it relates to the goal.`);
+  }
+  if (session.reviewCount + session.remediationCount + session.newCount + session.transferCount !== session.items.length) {
+    failures.push(`${name}: daily allocation counters must cover every session item exactly once.`);
+  }
+  const repeated = buildDailySession(progress, targetMinutes, evidence);
+  if (JSON.stringify(session) !== JSON.stringify(repeated)) {
+    failures.push(`${name}: identical evidence must produce a deterministic daily route.`);
+  }
   return session;
 }
 
@@ -278,6 +291,7 @@ if (!moduleMastery(completedProgress, projectEvidence).every(item => item.level 
 
 const learningPathSource = await import('node:fs').then(({ readFileSync }) =>
   readFileSync(new URL('../src/lib/learning-path.ts', import.meta.url), 'utf8'));
+const dailyRouteSource = readFileSync(new URL('../src/lib/daily-route.ts', import.meta.url), 'utf8');
 for (const marker of [
   'frontierFor(progress, evidence)',
   'routeState',
@@ -302,7 +316,7 @@ for (const forbidden of [
   'Capstone на рабочем сценарии',
   'Поддержание expert-уровня'
 ]) {
-  if (learningPathSource.includes(forbidden)) failures.push(`Learning session retained internal learner copy: ${forbidden}`);
+  if (`${learningPathSource}\n${dailyRouteSource}`.includes(forbidden)) failures.push(`Learning session retained internal learner copy: ${forbidden}`);
 }
 for (const required of [
   'Мысленная модель и проверка понимания',
@@ -312,7 +326,7 @@ for (const required of [
   'Перенос навыка: объяснение и решение',
   'Итоговый проект на рабочем сценарии'
 ]) {
-  if (!learningPathSource.includes(required)) failures.push(`Learning session is missing localized copy: ${required}`);
+  if (!`${learningPathSource}\n${dailyRouteSource}`.includes(required)) failures.push(`Learning session is missing localized copy: ${required}`);
 }
 
 const learningPathPortalSource = readFileSync(new URL('../src/components/LearningPathPortal.tsx', import.meta.url), 'utf8');

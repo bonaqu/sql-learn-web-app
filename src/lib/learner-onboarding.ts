@@ -4,6 +4,10 @@ import { goalModuleRoute, safeDiagnosticBypass, SHARED_FOUNDATION_MODULE_IDS } f
 
 export type LearnerGoal = 'support' | 'analyst' | 'backend' | 'interview' | 'full';
 export type ExperienceLevel = 'none' | 'basics' | 'regular' | 'advanced';
+export type ProgrammingExperience = 'none' | 'some' | 'professional';
+export type PriorSqlExperience = 'none' | 'course' | 'work';
+export type SqlDialectPreference = 'unknown' | 'sqlite' | 'postgresql' | 'mysql' | 'sqlserver';
+export type LearningRoutePreference = 'full' | 'fast';
 export type StudyPace = 'gentle' | 'steady' | 'intensive';
 export type StudyDay = 'MO' | 'TU' | 'WE' | 'TH' | 'FR' | 'SA' | 'SU';
 export type PlacementStatus = 'not-started' | 'pending' | 'completed' | 'deferred';
@@ -18,6 +22,10 @@ export type PlacementResult = {
   recommendedTrack: RecommendedTrack;
   strongModuleIds: string[];
   focusModuleIds: string[];
+  confidenceLow: number | null;
+  confidenceHigh: number | null;
+  decisionReason: string | null;
+  diagnosticTaskCount: number | null;
   completedAt: string | null;
 };
 
@@ -35,6 +43,10 @@ export type LearnerOnboardingProfile = {
   version: 1;
   goal: LearnerGoal | null;
   experience: ExperienceLevel | null;
+  programmingExperience: ProgrammingExperience | null;
+  priorSqlExperience: PriorSqlExperience | null;
+  dialect: SqlDialectPreference;
+  routePreference: LearningRoutePreference;
   dailyMinutes: 15 | 25 | 40;
   studyDays: StudyDay[];
   pace: StudyPace;
@@ -100,11 +112,19 @@ const defaultPlacement: PlacementResult = {
   recommendedTrack: 'fundamentals',
   strongModuleIds: [],
   focusModuleIds: [],
+  confidenceLow: null,
+  confidenceHigh: null,
+  decisionReason: null,
+  diagnosticTaskCount: null,
   completedAt: null
 };
 
 const validGoals = new Set<LearnerGoal>(goalOptions.map(item => item.id));
 const validExperience = new Set<ExperienceLevel>(['none', 'basics', 'regular', 'advanced']);
+const validProgrammingExperience = new Set<ProgrammingExperience>(['none', 'some', 'professional']);
+const validPriorSqlExperience = new Set<PriorSqlExperience>(['none', 'course', 'work']);
+const validDialects = new Set<SqlDialectPreference>(['unknown', 'sqlite', 'postgresql', 'mysql', 'sqlserver']);
+const validRoutePreferences = new Set<LearningRoutePreference>(['full', 'fast']);
 const validPaces = new Set<StudyPace>(['gentle', 'steady', 'intensive']);
 const validDays = new Set<StudyDay>(dayOrder);
 const validPlacementStatuses = new Set<PlacementStatus>(['not-started', 'pending', 'completed', 'deferred']);
@@ -131,6 +151,10 @@ export function emptyOnboardingProfile(): LearnerOnboardingProfile {
     version: 1,
     goal: null,
     experience: null,
+    programmingExperience: null,
+    priorSqlExperience: null,
+    dialect: 'unknown',
+    routePreference: 'full',
     dailyMinutes: 25,
     studyDays: ['MO', 'WE', 'FR'],
     pace: 'steady',
@@ -183,6 +207,14 @@ export function sanitizeOnboardingProfile(value: unknown): LearnerOnboardingProf
     : {};
   const goal = source.goal && validGoals.has(source.goal) ? source.goal : null;
   const experience = source.experience && validExperience.has(source.experience) ? source.experience : null;
+  const programmingExperience = source.programmingExperience && validProgrammingExperience.has(source.programmingExperience)
+    ? source.programmingExperience
+    : 'none';
+  const priorSqlExperience = source.priorSqlExperience && validPriorSqlExperience.has(source.priorSqlExperience)
+    ? source.priorSqlExperience
+    : experience === 'none' ? 'none' : experience === 'basics' ? 'course' : experience ? 'work' : null;
+  const dialect = source.dialect && validDialects.has(source.dialect) ? source.dialect : 'unknown';
+  const routePreference = source.routePreference && validRoutePreferences.has(source.routePreference) ? source.routePreference : 'full';
   const dailyMinutes = source.dailyMinutes === 15 || source.dailyMinutes === 40 ? source.dailyMinutes : 25;
   const selectedDays = uniqueStudyDays(source.studyDays);
   const studyDays = selectedDays.length >= 2 ? selectedDays : fallback.studyDays;
@@ -201,6 +233,10 @@ export function sanitizeOnboardingProfile(value: unknown): LearnerOnboardingProf
     version: 1,
     goal,
     experience,
+    programmingExperience,
+    priorSqlExperience,
+    dialect,
+    routePreference,
     dailyMinutes,
     studyDays,
     pace,
@@ -216,6 +252,16 @@ export function sanitizeOnboardingProfile(value: unknown): LearnerOnboardingProf
       focusModuleIds: Array.isArray(placementSource.focusModuleIds)
         ? Array.from(new Set(placementSource.focusModuleIds.filter((item): item is string => typeof item === 'string'))).slice(0, 8)
         : [],
+      confidenceLow: typeof placementSource.confidenceLow === 'number'
+        ? Math.min(100, Math.max(0, Math.round(placementSource.confidenceLow)))
+        : null,
+      confidenceHigh: typeof placementSource.confidenceHigh === 'number'
+        ? Math.min(100, Math.max(0, Math.round(placementSource.confidenceHigh)))
+        : null,
+      decisionReason: typeof placementSource.decisionReason === 'string' ? placementSource.decisionReason.slice(0, 600) : null,
+      diagnosticTaskCount: typeof placementSource.diagnosticTaskCount === 'number'
+        ? Math.min(7, Math.max(0, Math.round(placementSource.diagnosticTaskCount)))
+        : null,
       completedAt: typeof placementSource.completedAt === 'string' ? placementSource.completedAt : null
     },
     firstWeekPlan: sanitizePlan(source.firstWeekPlan),
@@ -274,7 +320,7 @@ export function calculatePlacement(profile: LearnerOnboardingProfile, report: As
     .sort((left, right) => left.score - right.score || left.module.localeCompare(right.module))
     .slice(0, 4)
     .map(item => item.module);
-  const level = placementLevel(report.score);
+  const level = report.adaptiveDecision?.level || placementLevel(report.score);
   return {
     status: 'completed',
     reportId: report.id,
@@ -283,12 +329,31 @@ export function calculatePlacement(profile: LearnerOnboardingProfile, report: As
     recommendedTrack: report.score >= 65 ? goalTrack(profile.goal) : 'fundamentals',
     strongModuleIds,
     focusModuleIds,
+    confidenceLow: report.adaptiveDecision?.scoreBand.low ?? report.measurement?.scoreBand.low ?? null,
+    confidenceHigh: report.adaptiveDecision?.scoreBand.high ?? report.measurement?.scoreBand.high ?? null,
+    decisionReason: report.adaptiveDecision?.explanation || null,
+    diagnosticTaskCount: report.adaptiveDecision?.completedCount ?? report.taskScores.length,
     completedAt: report.completedAt
   };
 }
 
 export function deferredPlacement(_profile: LearnerOnboardingProfile): PlacementResult {
   return { ...defaultPlacement, status: 'deferred', recommendedTrack: 'fundamentals' };
+}
+
+export function profileForPlacementRetake(profile: LearnerOnboardingProfile, latestReportId: string | null = null) {
+  if (profile.placement.status === 'completed') return profile;
+  return sanitizeOnboardingProfile({
+    ...profile,
+    placement: {
+      ...defaultPlacement,
+      status: 'pending',
+      reportId: latestReportId || profile.placement.reportId,
+      recommendedTrack: profile.placement.recommendedTrack
+    },
+    completedAt: null,
+    firstWeekPlan: []
+  });
 }
 
 function planTemplate(kind: WeekPlanItem['kind'], moduleId: string | null) {
@@ -324,9 +389,11 @@ function weekKinds(profile: LearnerOnboardingProfile, count: number): WeekPlanIt
     });
   }
   if (count === 2) return ['practice', 'review'];
-  if (count === 3) return ['orientation', 'practice', 'review'];
+  if (count === 3) return profile.routePreference === 'fast'
+    ? ['practice', 'review', 'practice']
+    : ['orientation', 'practice', 'review'];
   return Array.from({ length: count }, (_, index) => {
-    if (index === 0) return 'orientation';
+    if (index === 0) return profile.routePreference === 'fast' ? 'practice' : 'orientation';
     if (index === 1) return 'lesson';
     if (index === 2) return 'practice';
     if (index === 3) return 'review';
@@ -390,9 +457,24 @@ export function completeOnboarding(
 export function onboardingReady(profile: LearnerOnboardingProfile) {
   return Boolean(profile.goal
     && profile.experience
+    && profile.programmingExperience
+    && profile.priorSqlExperience
     && profile.studyDays.length >= 2
     && (profile.placement.status === 'completed' || profile.placement.status === 'deferred')
     && profile.completedAt);
+}
+
+export function updateOnboardingPreferences(
+  profile: LearnerOnboardingProfile,
+  patch: Partial<Pick<LearnerOnboardingProfile, 'goal' | 'dailyMinutes' | 'studyDays' | 'pace' | 'programmingExperience' | 'priorSqlExperience' | 'experience' | 'dialect' | 'routePreference'>>
+) {
+  const next = sanitizeOnboardingProfile({ ...profile, ...patch, updatedAt: now() });
+  return {
+    ...next,
+    placement: profile.placement,
+    completedAt: profile.completedAt,
+    firstWeekPlan: buildFirstWeekPlan(next)
+  };
 }
 
 export function preferredOnboardingProfile(
