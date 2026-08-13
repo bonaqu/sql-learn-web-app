@@ -112,7 +112,7 @@ export function errorClassForModule(moduleId: string): AssessmentErrorClass {
 
 function eligibleModes(task: SqlTask): CalibratedAssessmentMode[] {
   const modes: CalibratedAssessmentMode[] = ['quick'];
-  if (task.mode === 'interview' || task.mode === 'practice') modes.push('interview');
+  if (task.mode === 'interview' && task.evaluationContractId && task.learningContract) modes.push('interview');
   if (task.mode !== 'lesson' && task.mode !== 'puzzle') modes.push('exam');
   if (task.mode !== 'puzzle') modes.push('diagnostic');
   if (task.mode !== 'lesson' && task.mode !== 'puzzle') modes.push('production', 'final');
@@ -165,14 +165,11 @@ export const assessmentBlueprints: Record<CalibratedAssessmentMode, AssessmentBl
     taskCount: 5,
     minimumDistinctModules: 5,
     minimumDistinctSkills: 5,
-    slots: [
-      { reasoningSkill: 'result-contract', count: 1 },
-      { reasoningSkill: 'relationships', count: 1 },
-      { reasoningSkill: 'time-series', count: 1 },
-      { reasoningSkill: 'safe-write', count: 1 },
-      { reasoningSkill: 'operations', count: 1 }
-    ],
-    maximumFormOverlap: 0.4
+    // The authored interview bank is partitioned into four parallel forms. Keeping
+    // slots open here lets every original scenario participate while the selector
+    // still enforces five distinct reasoning skills per form.
+    slots: [],
+    maximumFormOverlap: 0
   },
   exam: {
     version: ASSESSMENT_BLUEPRINT_VERSION,

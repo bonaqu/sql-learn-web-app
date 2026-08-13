@@ -21,6 +21,7 @@ function defineAccessibleDarkTheme(monaco: MonacoApi) {
     base: 'vs-dark',
     inherit: true,
     rules: [
+      { token: 'comment', foreground: '7FBA70' },
       { token: 'string', foreground: 'FF8080' },
       { token: 'string.sql', foreground: 'FF8080' }
     ],

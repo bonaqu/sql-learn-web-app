@@ -50,12 +50,12 @@ export default defineConfig({
     },
     {
       name: 'mobile-foundation',
-      grep: /mobile task flow|mobile password|mobile assessment|mobile checkpoint|mobile accessibility|mobile verified contact/,
+      grep: /mobile task flow|mobile password|mobile checkpoint|mobile accessibility|mobile verified contact/,
       use: mobile
     },
     {
       name: 'mobile-learning',
-      grep: /mobile misconception|mobile guided journey|mobile adaptive learning|mobile goal|mobile mastery|mobile onboarding|mobile syllabus|mobile blocks unsafe|mobile analytics|mobile failed checkpoint|mobile capstone/,
+      grep: /mobile misconception|mobile guided journey|mobile adaptive learning|mobile goal|mobile mastery|mobile onboarding|mobile assessment|mobile syllabus|mobile blocks unsafe|mobile analytics|mobile failed checkpoint|mobile capstone/,
       use: mobile
     }
   ]
