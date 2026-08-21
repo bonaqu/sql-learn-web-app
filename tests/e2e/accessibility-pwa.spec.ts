@@ -123,6 +123,14 @@ test('desktop accessibility keeps a service worker registration error non-blocki
   await expectNoSeriousAxeViolations(page);
 });
 
+test('desktop accessibility account entry honors the persisted application theme before authentication', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('sql-theme', 'light'));
+  await page.goto('./');
+  await expect(page.getByTestId('account-reason')).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expectNoSeriousAxeViolations(page);
+});
+
 test('mobile accessibility keeps Assessment Center within Pixel 7 focus boundary', async ({ page }, testInfo) => {
   await authenticatePage(page, 'mobilea11y');
   await page.goto('./');

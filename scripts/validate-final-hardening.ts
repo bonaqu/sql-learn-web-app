@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const audit = readFileSync(new URL('../docs/evidence/final-hardening-audit.md', import.meta.url), 'utf8');
 const pwa = readFileSync(new URL('../src/components/PwaStatus.tsx', import.meta.url), 'utf8');
+const main = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8');
 const browserEvidence = readFileSync(new URL('./production-browser-evidence.ts', import.meta.url), 'utf8');
 const operations = readFileSync(new URL('./validate-operations.mjs', import.meta.url), 'utf8');
 
@@ -37,7 +38,11 @@ assert.match(pwa, /Онлайн-обучение продолжает работ
 assert.match(pwa, /PWA_REGISTRATION_ERROR_EVENT/);
 assert.match(pwa, /pwa-toast passive dismissible/);
 assert.doesNotMatch(pwa, /<p>\{String\(registrationError\)/);
+assert.match(main, /localStorage\.getItem\('sql-theme'\)/);
+assert.match(main, /document\.documentElement\.dataset\.theme = savedTheme/);
 assert.match(browserEvidence, /serviceWorkers:\s*'block'/);
+assert.match(browserEvidence, /localStorage\.setItem\('sql-theme', theme\)/);
+assert.match(browserEvidence, /activeTheme !== profile\.colorScheme/);
 assert.match(browserEvidence, /Cannot read\|undefined\|waiting/);
 assert.match(browserEvidence, /desktop-light/);
 assert.match(browserEvidence, /mobile-dark/);
