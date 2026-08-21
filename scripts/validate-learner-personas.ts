@@ -23,4 +23,4 @@ for (const forbidden of ['select ', 'insert ', 'password', 'email', 'session tok
   assert.ok(!serialized.includes(forbidden), `Persona evidence contains forbidden private/raw field: ${forbidden}`);
 }
 
-console.log('Learner persona validation passed: deterministic zero, partial, role-focused and returning evidence stays prerequisite-safe, SQL-free and explicitly non-human.');
+process.stdout.write('Learner persona validation passed: deterministic zero, partial, role-focused and returning evidence stays prerequisite-safe, SQL-free and explicitly non-human.\n');
