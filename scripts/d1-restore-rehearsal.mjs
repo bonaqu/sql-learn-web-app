@@ -1,6 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
+
+const require = createRequire(import.meta.url);
 
 const backup = resolve(String(process.env.D1_BACKUP_FILE || process.argv[2] || '').trim());
 const target = String(process.env.D1_RESTORE_TARGET || '').trim();
@@ -14,12 +17,13 @@ if (target === source) throw new Error('Refusing to restore into the source/prod
 if (!/(?:rehearsal|restore|staging|test)/i.test(target)) throw new Error('D1_RESTORE_TARGET must visibly identify a non-production rehearsal/staging database');
 if (confirmation !== 'RESTORE_TO_NON_PRODUCTION') throw new Error('Set ALLOW_D1_RESTORE=RESTORE_TO_NON_PRODUCTION after verifying the target database');
 
-const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 execFileSync(process.execPath, ['scripts/verify-d1-backup.mjs', backup], { stdio: 'inherit' });
-execFileSync(npx, ['wrangler', 'd1', 'execute', target, '--remote', '--config', config, '--file', backup, '--yes'], { stdio: 'inherit' });
+execFileSync(process.execPath, [
+  require.resolve('wrangler'), 'd1', 'execute', target, '--remote', '--config', config, '--file', backup, '--yes'
+], { stdio: 'inherit' });
 
-const raw = execFileSync(npx, [
-  'wrangler', 'd1', 'execute', target, '--remote', '--config', config,
+const raw = execFileSync(process.execPath, [
+  require.resolve('wrangler'), 'd1', 'execute', target, '--remote', '--config', config,
   '--command', "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name IN ('users','user_profiles','auth_sessions','progress')",
   '--yes', '--json'
 ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });

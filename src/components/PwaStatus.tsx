@@ -4,6 +4,7 @@ import { registerSW } from 'virtual:pwa-register';
 
 export const PWA_UPDATE_AVAILABLE_EVENT = 'sql-academy-pwa-update-available';
 export const APP_DIRTY_STATE_EVENT = 'sql-academy-dirty-state';
+export const PWA_REGISTRATION_ERROR_EVENT = 'sql-academy-pwa-registration-error';
 
 function hasActiveAssessment() {
   for (let index = 0; index < localStorage.length; index += 1) {
@@ -16,6 +17,14 @@ function hasActiveAssessment() {
 function isChunkLoadError(reason: unknown) {
   const message = reason instanceof Error ? `${reason.name}: ${reason.message}` : String(reason);
   return /ChunkLoadError|dynamically imported module|Loading chunk|Importing a module script failed/i.test(message);
+}
+
+function registrationErrorCopy(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error || '');
+  if (/waiting|undefined|not supported|unsupported|security|service.?worker/i.test(message)) {
+    return 'Этот режим браузера не разрешил сохранить приложение. Онлайн-обучение продолжает работать.';
+  }
+  return 'Не удалось подготовить офлайн-режим. Онлайн-обучение продолжает работать.';
 }
 
 export default function PwaStatus() {
@@ -45,7 +54,7 @@ export default function PwaStatus() {
           if (navigator.onLine) void registration.update();
         }, 60 * 60 * 1000);
       },
-      onRegisterError: error => setRegistrationError(error instanceof Error ? error.message : 'Service Worker недоступен')
+      onRegisterError: error => setRegistrationError(registrationErrorCopy(error))
     });
     return () => {
       window.clearInterval(updateTimer);
@@ -58,6 +67,9 @@ export default function PwaStatus() {
     const onOffline = () => setOnline(false);
     const onUpdate = () => setNeedRefresh(true);
     const onDirty = (event: Event) => setDirty(Boolean((event as CustomEvent<{ dirty?: boolean }>).detail?.dirty));
+    const onRegistrationError = (event: Event) => {
+      setRegistrationError(registrationErrorCopy((event as CustomEvent<{ error?: unknown }>).detail?.error));
+    };
     const onRejection = (event: PromiseRejectionEvent) => {
       if (isChunkLoadError(event.reason)) setChunkError(true);
     };
@@ -65,12 +77,14 @@ export default function PwaStatus() {
     window.addEventListener('offline', onOffline);
     window.addEventListener(PWA_UPDATE_AVAILABLE_EVENT, onUpdate);
     window.addEventListener(APP_DIRTY_STATE_EVENT, onDirty);
+    window.addEventListener(PWA_REGISTRATION_ERROR_EVENT, onRegistrationError);
     window.addEventListener('unhandledrejection', onRejection);
     return () => {
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
       window.removeEventListener(PWA_UPDATE_AVAILABLE_EVENT, onUpdate);
       window.removeEventListener(APP_DIRTY_STATE_EVENT, onDirty);
+      window.removeEventListener(PWA_REGISTRATION_ERROR_EVENT, onRegistrationError);
       window.removeEventListener('unhandledrejection', onRejection);
     };
   }, []);
@@ -121,7 +135,11 @@ export default function PwaStatus() {
         <button type="button" className="pwa-icon" onClick={() => setChunkError(false)} aria-label="Закрыть уведомление"><X /></button>
       </section>}
 
-      {registrationError && <section className="pwa-toast danger" role="alert"><ShieldAlert /><div><strong>PWA временно недоступна</strong><p>{registrationError}</p></div></section>}
+      {registrationError && <section className="pwa-toast passive dismissible" role="status" data-testid="pwa-registration-notice">
+        <CloudOff />
+        <div><strong>Офлайн-режим недоступен</strong><p>{registrationError}</p></div>
+        <button type="button" className="pwa-icon" onClick={() => setRegistrationError('')} aria-label="Закрыть уведомление"><X /></button>
+      </section>}
     </div>
   </>;
 }
