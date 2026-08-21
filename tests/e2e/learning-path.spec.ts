@@ -134,11 +134,20 @@ async function expectGoalSwitchAccessible(page: Page) {
 
 test('desktop adaptive learning path shares the canonical beginner frontier and readiness evidence', async ({ page }, testInfo) => {
   await authenticatePage(page, 'desktop-path');
+  let mentorRequests = 0;
   await page.route('**/api/mentor', async route => {
+    mentorRequests += 1;
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ answer: 'Персональный план\n• Разбери модель темы\n• Выполни связанную практику\n• Заверши контрольным этапом' })
+      body: JSON.stringify({
+        answer: 'Персональный план\n• Разбери модель темы\n• Выполни связанную практику\n• Заверши контрольным этапом',
+        source: 'workers-ai',
+        reason: 'provider-response',
+        remaining: 19,
+        exampleStatus: 'none',
+        masteryAwarded: false
+      })
     });
   });
 
@@ -161,7 +170,13 @@ test('desktop adaptive learning path shares the canonical beginner frontier and 
   await expect(learningPath.locator('.readiness-ring strong')).toHaveText('0%');
 
   await learningPath.getByRole('button', { name: 'AI-план', exact: true }).click();
+  await expect(learningPath.getByTestId('path-mentor-source')).toContainText('Локальная подсказка');
+  expect(mentorRequests).toBe(0);
+  await learningPath.getByRole('checkbox', { name: /Разрешить Cloudflare Workers AI/ }).check();
+  await learningPath.getByRole('button', { name: 'AI-план', exact: true }).click();
   await expect(learningPath.locator('.path-ai-answer')).toContainText('Персональный план');
+  await expect(learningPath.getByTestId('path-mentor-source')).toContainText('Cloudflare Workers AI');
+  expect(mentorRequests).toBe(1);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('desktop-learning-path.png') });
 
