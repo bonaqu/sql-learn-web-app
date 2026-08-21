@@ -169,6 +169,7 @@ test('desktop adaptive learning path shares the canonical beginner frontier and 
   await expect(sessionItems.first()).toContainText(/SQL-мышление/i);
   await expect(learningPath.locator('.readiness-ring strong')).toHaveText('0%');
 
+  await learningPath.getByText('Настройки маршрута', { exact: true }).click();
   await learningPath.getByRole('button', { name: 'AI-план', exact: true }).click();
   await expect(learningPath.getByTestId('path-mentor-source')).toContainText('Локальная подсказка');
   expect(mentorRequests).toBe(0);
@@ -222,11 +223,14 @@ test('desktop goal preview cancels without writes and applies only future Analys
   await page.getByTestId('learning-path-trigger').click();
   const learningPath = page.getByTestId('learning-path');
   await expect(learningPath.locator('.session-list > button').first()).toContainText(fixture.currentModuleTitle);
+  await learningPath.getByText('Настройки маршрута', { exact: true }).click();
   await learningPath.getByTestId('goal-switch-trigger').click();
   const panel = learningPath.getByTestId('goal-switch-panel');
   await expect(panel).toBeVisible();
   await expect(panel.getByTestId('goal-switch-option-data-engineering')).toContainText(/Data engineering/i);
-  await panel.getByTestId('goal-switch-option-backend').click();
+  await panel.getByTestId('goal-switch-option-analyst').focus();
+  await panel.getByTestId('goal-switch-option-analyst').press('ArrowRight');
+  await expect(panel.getByTestId('goal-switch-option-backend')).toHaveAttribute('aria-checked', 'true');
   await expect(panel.getByTestId('goal-switch-current-action')).toContainText(fixture.currentModuleTitle);
   await expect(panel.getByTestId('goal-switch-proposed-action')).toContainText(fixture.proposedModuleTitle);
   await expect(panel.getByTestId('goal-switch-impact')).toContainText(/Следующий шаг изменится/i);
@@ -239,6 +243,7 @@ test('desktop goal preview cancels without writes and applies only future Analys
   expect(afterCancel).toBe(before);
   expect(await page.evaluate(() => (window as Window & { __goalSwitchEvents?: number }).__goalSwitchEvents || 0)).toBe(0);
 
+  await learningPath.getByText('Настройки маршрута', { exact: true }).click();
   await learningPath.getByTestId('goal-switch-trigger').click();
   await learningPath.getByTestId('goal-switch-option-backend').click();
   await learningPath.getByTestId('goal-switch-apply').click();
@@ -307,6 +312,7 @@ test('mobile goal preview is accessible, responsive and cancel-only', async ({ p
 
   await page.getByTestId('learning-path-mobile-trigger').click();
   const learningPath = page.getByTestId('learning-path');
+  await learningPath.getByText('Настройки маршрута', { exact: true }).click();
   await learningPath.getByTestId('goal-switch-trigger').click();
   const panel = learningPath.getByTestId('goal-switch-panel');
   await panel.getByTestId('goal-switch-option-backend').click();

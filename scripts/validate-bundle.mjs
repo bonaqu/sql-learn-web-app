@@ -51,8 +51,8 @@ const cssGzip = totalFor(productCss, 'gzip');
 const monacoCssTotal = totalFor(monacoCss, 'bytes');
 const monacoCssGzip = totalFor(monacoCss, 'gzip');
 
-const ENTRY_RAW_BUDGET = 460 * 1024;
-const ENTRY_GZIP_BUDGET = 155 * 1024;
+const ENTRY_RAW_BUDGET = 300 * 1024;
+const ENTRY_GZIP_BUDGET = 95 * 1024;
 const CSS_RAW_BUDGET = 280 * 1024;
 const CSS_GZIP_BUDGET = 64 * 1024;
 const MONACO_CSS_RAW_BUDGET = 96 * 1024;
@@ -78,7 +78,7 @@ for (const boundary of boundaries) {
   if (!chunkFor(js, boundary)) fail(`expected a separate ${boundary} chunk`);
 }
 
-for (const heavy of ['assessment-', 'learning-path-', 'CurriculumPortal-', 'SyllabusPortal-', 'DialectLabWorkbench-', 'sqlite-', 'SqlEditor-']) {
+for (const heavy of ['AuthenticatedAcademy-', 'course-catalog-', 'progress-', 'assessment-', 'learning-path-', 'CurriculumPortal-', 'SyllabusPortal-', 'DialectLabWorkbench-', 'sqlite-', 'SqlEditor-']) {
   if (html.includes(heavy)) fail(`dist/index.html eagerly references heavy chunk ${heavy}`);
 }
 

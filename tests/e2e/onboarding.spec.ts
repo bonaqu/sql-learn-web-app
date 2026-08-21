@@ -75,12 +75,22 @@ async function openOnboarding(page: Page) {
 
 async function chooseCoreContract(page: Page) {
   const dialog = page.getByTestId('onboarding-portal');
-  await dialog.getByRole('button', { name: /SQL для поддержки/i }).click();
+  const supportGoal = dialog.getByRole('radio', { name: /SQL для поддержки/i });
+  await supportGoal.focus();
+  await supportGoal.press('ArrowRight');
+  await expect(dialog.getByRole('radio', { name: /Аналитика/i })).toHaveAttribute('aria-checked', 'true');
+  await supportGoal.click();
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
   await expect(dialog.getByTestId('onboarding-schedule')).toBeVisible();
-  await dialog.getByRole('radio', { name: /25/ }).click();
+  const shortSession = dialog.getByRole('radio', { name: /15/ });
+  await shortSession.focus();
+  await shortSession.press('ArrowRight');
+  await expect(dialog.getByRole('radio', { name: /25/ })).toHaveAttribute('aria-checked', 'true');
   await dialog.getByRole('button', { name: 'Вт', exact: true }).click();
-  await dialog.getByRole('button', { name: /Устойчивый/i }).click();
+  const gentlePace = dialog.getByRole('radio', { name: /Мягкий/i });
+  await gentlePace.focus();
+  await gentlePace.press('ArrowRight');
+  await expect(dialog.getByRole('radio', { name: /Устойчивый/i })).toHaveAttribute('aria-checked', 'true');
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
   await expect(dialog.getByTestId('onboarding-experience')).toBeVisible();
   const noProgramming = dialog.getByRole('radio', { name: /Без опыта/i });
@@ -333,10 +343,10 @@ test('mobile onboarding deferred placement starts from zero and keeps the shared
   const dialog = page.getByTestId('onboarding-portal');
   await expect(dialog).toBeVisible();
 
-  await dialog.getByRole('button', { name: /Полная академия/i }).click();
+  await dialog.getByRole('radio', { name: /Полная академия/i }).click();
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
   await dialog.getByRole('radio', { name: /15/ }).click();
-  await dialog.getByRole('button', { name: /Мягкий/i }).click();
+  await dialog.getByRole('radio', { name: /Мягкий/i }).click();
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
   await dialog.getByRole('radio', { name: /Без опыта/i }).click();
   await dialog.getByRole('radio', { name: /С нуля/i }).click();

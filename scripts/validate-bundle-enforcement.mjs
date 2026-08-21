@@ -18,7 +18,7 @@ try {
   assert.ok(entryMatch, 'negative fixture cannot locate the Vite entry script');
 
   const entryName = basename(entryMatch[1]);
-  appendFileSync(join(fixtureDist, 'assets', entryName), `\n/* injected-over-budget:${'x'.repeat(64 * 1024)} */\n`);
+  appendFileSync(join(fixtureDist, 'assets', entryName), `\n/* injected-over-budget:${'x'.repeat(80 * 1024)} */\n`);
 
   const result = spawnSync(process.execPath, [validator, '--dist', fixtureDist], {
     encoding: 'utf8',
@@ -28,7 +28,7 @@ try {
   assert.notEqual(result.status, 0, 'over-budget fixture unexpectedly passed');
   assert.match(
     output,
-    /Bundle budget failed: entry .* is [\d.]+ KiB raw; budget 460 KiB/,
+    /Bundle budget failed: entry .* is [\d.]+ KiB raw; budget 300 KiB/,
     `negative fixture failed without the precise entry budget message:\n${output}`
   );
   assert.doesNotMatch(output, /ENOENT|Cannot locate the Vite entry script/, 'space-containing fixture path was not resolved correctly');

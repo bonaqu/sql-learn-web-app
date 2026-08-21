@@ -1,0 +1,96 @@
+.path-secondary-actions {
+  position: relative;
+}
+
+.path-secondary-actions > summary {
+  min-height: 46px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .035);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  list-style: none;
+}
+
+/* Loaded after the legacy enhancement layer: keep the accessible light-theme
+   tokens authoritative even when older component rules are cached. */
+:root[data-theme='light'] {
+  --muted-2: #52525b;
+  --accent-2: #6d28d9;
+}
+
+:root[data-theme='light'] .task-number {
+  color: var(--muted-2);
+}
+
+.path-secondary-actions > summary::-webkit-details-marker {
+  display: none;
+}
+
+.path-secondary-actions > summary::after {
+  content: '+';
+  margin-left: 9px;
+}
+
+.path-secondary-actions[open] > summary::after {
+  content: '−';
+}
+
+.path-secondary-actions > div {
+  position: absolute;
+  z-index: 4;
+  top: 52px;
+  right: 0;
+  width: 220px;
+  padding: 8px;
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: var(--surface);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .28);
+}
+
+.path-secondary-actions > div button {
+  width: 100%;
+  justify-content: flex-start;
+}
+
+@media (max-width: 720px) {
+  .path-secondary-actions {
+    width: 100%;
+  }
+
+  .path-secondary-actions > summary {
+    justify-content: center;
+  }
+
+  .path-secondary-actions > div {
+    position: static;
+    width: 100%;
+    margin-top: 7px;
+  }
+
+  .path-secondary-actions > div button {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 760px) {
+  .sidebar {
+    z-index: 120;
+    width: min(86vw, 330px) !important;
+    height: 100dvh !important;
+  }
+
+  .close-mobile,
+  .mobile-menu {
+    width: 44px;
+    height: 44px;
+  }
+}

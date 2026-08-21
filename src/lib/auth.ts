@@ -1,10 +1,10 @@
-import { tasks } from '../data/course-catalog';
-import { loadProgress, Progress, STORAGE_KEY, TaskStats } from './progress';
+import type { Progress, TaskStats } from './progress';
 import type { AttemptErrorKind } from './attempt-diagnostics';
 
 export const AUTH_SESSION_KEY = 'sql-academy-auth-session-v2';
 export const AUTH_TOKEN_KEY = 'sql-academy-auth-token-v1';
 export const AUTH_CHANGED_EVENT = 'sql-academy-auth-changed';
+const PROGRESS_STORAGE_KEY = 'sql-academy-progress-v4';
 
 export type AuthSession = {
   version: 2;
@@ -87,6 +87,13 @@ export type ProgressSyncApi = {
   read: () => Promise<CloudProgress>;
   write: (progress: Progress, baseRevision: number) => Promise<SavedCloudProgress>;
 };
+
+export function taskXp(taskId: string) {
+  const number = Number(taskId.match(/^task-(\d{3})$/)?.[1]);
+  if (!Number.isInteger(number) || number < 1 || number > 240) return 0;
+  if (number <= 120) return [60, 75, 90, 105, 120, 135, 150, 165][(number - 1) % 8];
+  return [140, 160, 180, 200, 220, 240, 120][(number - 121) % 7];
+}
 
 function parseMinutes(value: number): 15 | 25 | 40 {
   return value === 15 || value === 40 ? value : 25;
@@ -410,7 +417,7 @@ export function mergeProgress(local: Progress, cloud: Progress | null): Progress
   const completed = Array.from(new Set([...local.completed, ...cloud.completed])).sort();
   const taskIds = new Set([...Object.keys(local.taskStats), ...Object.keys(cloud.taskStats)]);
   const taskStats = Object.fromEntries(Array.from(taskIds, id => [id, mergeTaskStats(local.taskStats[id], cloud.taskStats[id])]));
-  const xp = tasks.filter(task => completed.includes(task.id)).reduce((total, task) => total + task.xp, 0);
+  const xp = completed.reduce((total, taskId) => total + taskXp(taskId), 0);
   const historyDays = new Set([...local.history.map(point => point.day), ...cloud.history.map(point => point.day)]);
   const history = Array.from(historyDays, day => ({
     day,
@@ -496,6 +503,7 @@ export async function reconcileProgress(local: Progress, api: ProgressSyncApi) {
 
 export async function syncUserProgress(session = loadAuthSession()) {
   if (!session) throw new Error('Необходим вход');
+  const { loadProgress } = await import('./progress');
   const local = loadProgress();
   const reconciled = await reconcileProgress(local, {
     read: fetchCloudProgress,
@@ -504,7 +512,7 @@ export async function syncUserProgress(session = loadAuthSession()) {
   const localChanged = progressFingerprint(local) !== progressFingerprint(reconciled.progress);
   const syncedAt = new Date().toISOString();
   session = { ...session, revision: reconciled.revision, lastSyncAt: syncedAt };
-  if (localChanged) localStorage.setItem(STORAGE_KEY, JSON.stringify(reconciled.progress));
+  if (localChanged) localStorage.setItem(PROGRESS_STORAGE_KEY, JSON.stringify(reconciled.progress));
   persistAuthSession(session);
   return {
     session,

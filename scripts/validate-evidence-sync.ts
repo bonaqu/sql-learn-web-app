@@ -3,7 +3,8 @@ import {
   reportsToUpload,
   type SyncableEvidenceReport
 } from '../src/lib/evidence-sync.ts';
-import { mergeProgress, reconcileProgress, type ProgressSyncApi } from '../src/lib/auth.ts';
+import { mergeProgress, reconcileProgress, taskXp, type ProgressSyncApi } from '../src/lib/auth.ts';
+import { tasks } from '../src/data/course-catalog.ts';
 import {
   defaultProgress,
   DURABLE_MASTERY_EVIDENCE_VERSION,
@@ -16,6 +17,10 @@ import { validMasteryProgressPayload } from '../worker/mastery-progress.ts';
 
 const failures: string[] = [];
 const assert = (condition: unknown, message: string) => { if (!condition) failures.push(message); };
+
+for (const task of tasks) {
+  assert(taskXp(task.id) === task.xp, `Lightweight auth XP contract differs for ${task.id}: ${taskXp(task.id)} !== ${task.xp}`);
+}
 
 type Fixture = SyncableEvidenceReport & {
   score: number;
@@ -244,4 +249,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-process.stdout.write(`Evidence sync validated: ${merged.length} deterministic reports, ${upload.length} uploads, CAS timeline ${timeline.join(' | ')}, fail-closed legacy PUT and stable offline evidence.\n`);
+process.stdout.write(`Evidence sync validated: ${tasks.length} task XP values, ${merged.length} deterministic reports, ${upload.length} uploads, CAS timeline ${timeline.join(' | ')}, fail-closed legacy PUT and stable offline evidence.\n`);

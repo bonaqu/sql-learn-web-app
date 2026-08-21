@@ -45,7 +45,8 @@
   --border-strong: #c7c7ce;
   --text: #18181b;
   --muted: #71717a;
-  --muted-2: #a1a1aa;
+  --muted-2: #52525b;
+  --accent-2: #6d28d9;
   --accent-soft: rgba(124, 58, 237, .09);
   --success-soft: rgba(22, 163, 74, .09);
   --warning-soft: rgba(217, 119, 6, .09);
@@ -110,7 +111,7 @@ kbd {
 }
 .logo img { width: 38px; height: 38px; flex: 0 0 auto; filter: drop-shadow(0 8px 16px rgba(124, 58, 237, .28)); }
 .logo strong { letter-spacing: -.02em; }
-.close-mobile, .mobile-menu, .mobile-task-bar, .mobile-bottom-nav { display: none; }
+.close-mobile, .mobile-menu, .mobile-task-bar, .mobile-bottom-nav, .mobile-nav-backdrop { display: none; }
 
 .sidebar nav { display: grid; gap: 5px; }
 .sidebar nav button,
@@ -277,6 +278,12 @@ main { min-width: 0; }
 .task-row small { color: var(--muted); font-size: 12px; }
 .task-row svg { width: 16px; color: var(--muted); }
 .task-row svg.done { color: var(--success); }
+.practice-more { margin: 8px 2px 2px; padding: 14px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 11px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); }
+.practice-more > svg { width: 20px; color: var(--accent-2); }
+.practice-more > span { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.practice-more strong { font-size: 13px; }
+.practice-more small { color: var(--muted); font-size: 11px; line-height: 1.45; }
+.practice-more button { min-height: 44px; padding: 0 13px; border: 1px solid var(--border); border-radius: 11px; background: var(--accent-soft); color: var(--accent-2); font-size: 12px; font-weight: 750; cursor: pointer; }
 .empty-state { min-height: 300px; display: grid; place-content: center; justify-items: center; padding: 28px; color: var(--muted); text-align: center; }
 .empty-state svg { width: 36px; color: var(--success); }
 .empty-state h3 { margin: 14px 0 4px; color: var(--text); }
@@ -442,12 +449,13 @@ footer { min-height: 76px; border-top: 1px solid var(--border); padding: 18px 5v
     box-shadow: var(--shadow-lg);
   }
   .sidebar.open { transform: translateX(0); }
-  .sidebar.open::after { content: ""; position: fixed; inset: 0 0 0 100%; width: 100vw; background: rgba(0, 0, 0, .45); }
+  .mobile-nav-backdrop { position: fixed; inset: 0 0 0 min(86vw, 330px); z-index: 110; display: block; border: 0; background: rgba(0, 0, 0, .52); opacity: 0; pointer-events: none; transition: opacity .22s ease; }
+  .mobile-nav-backdrop.visible { opacity: 1; pointer-events: auto; }
   .logo { justify-content: flex-start; padding-inline: 10px; }
   .logo strong, .sidebar nav span, .sidebar-bottom span, .sidebar-bottom a { font-size: inherit; }
   .sidebar nav button, .sidebar-bottom a { justify-content: flex-start; padding-inline: 12px; }
-  .close-mobile { display: grid; place-items: center; position: absolute; right: 13px; top: 14px; width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); color: var(--text); }
-  .mobile-menu { display: grid; place-items: center; width: 42px; height: 42px; flex: 0 0 auto; border: 1px solid var(--border); border-radius: 11px; background: var(--panel); color: var(--text); }
+  .close-mobile { display: grid; place-items: center; position: absolute; right: 12px; top: 12px; width: 44px; height: 44px; border: 1px solid var(--border); border-radius: 11px; background: var(--panel-2); color: var(--text); }
+  .mobile-menu { display: grid; place-items: center; width: 44px; height: 44px; flex: 0 0 auto; border: 1px solid var(--border); border-radius: 11px; background: var(--panel); color: var(--text); }
   .topbar { padding: 0 12px; gap: 9px; }
   .search { width: auto; min-width: 0; flex: 1; padding-inline: 10px; }
   .search kbd { display: none; }
@@ -475,12 +483,14 @@ footer { min-height: 76px; border-top: 1px solid var(--border); padding: 18px 5v
   .editor-panel.fullscreen { display: block; inset: 0; z-index: 220; min-height: 100dvh; padding: 0 10px 28px; }
   .mobile-task-bar { position: sticky; top: 0; z-index: 6; margin: 0 -13px 18px; min-height: 52px; padding: 7px 13px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(14px); }
   .editor-panel.fullscreen .mobile-task-bar { margin-inline: -10px; }
-  .mobile-task-bar button { min-height: 38px; border: 0; background: transparent; color: var(--text); display: inline-flex; align-items: center; gap: 5px; padding: 5px; }
+  .mobile-task-bar button { min-height: 44px; border: 0; background: transparent; color: var(--text); display: inline-flex; align-items: center; gap: 5px; padding: 7px; }
   .mobile-task-bar button svg { width: 18px; }
   .mobile-task-bar span { color: var(--muted); font: 11px ui-monospace, SFMono-Regular, Consolas, monospace; }
   .section-heading { padding: 21px 16px 16px; }
   .task-list { padding: 8px; }
   .task-row { min-height: 70px; }
+  .practice-more { grid-template-columns: auto minmax(0, 1fr); }
+  .practice-more button { grid-column: 1 / -1; width: 100%; }
   .task-title-row { gap: 8px; }
   .task-title-row h2 { font-size: 29px; }
   .expand-editor { width: 40px; height: 40px; }
@@ -507,7 +517,7 @@ footer { min-height: 76px; border-top: 1px solid var(--border); padding: 18px 5v
   footer { padding: 18px 15px 26px; display: grid; gap: 13px; }
   footer > div { flex-wrap: wrap; }
   .mobile-bottom-nav { position: fixed; inset: auto 0 0; z-index: 100; height: 72px; padding: 7px max(8px, env(safe-area-inset-right)) calc(7px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--border); background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(18px); box-shadow: 0 -12px 35px rgba(0, 0, 0, .16); }
-  .mobile-bottom-nav button { min-width: 0; border: 0; border-radius: 10px; background: transparent; color: var(--muted); display: grid; justify-items: center; align-content: center; gap: 3px; padding: 4px; }
+  .mobile-bottom-nav button { min-width: 44px; min-height: 44px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); display: grid; justify-items: center; align-content: center; gap: 3px; padding: 4px; }
   .mobile-bottom-nav button.active { background: var(--accent-soft); color: var(--accent-2); }
   .mobile-bottom-nav svg { width: 21px; height: 21px; }
   .mobile-bottom-nav small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 10px; }

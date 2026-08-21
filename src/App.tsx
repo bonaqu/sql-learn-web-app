@@ -58,6 +58,7 @@ import { productIdentity } from './generated/product-identity';
 import {
   loadProgress,
   Progress,
+  PROGRESS_CHANGED_EVENT,
   recordAttempt,
   recordHint,
   recordSolutionView,
@@ -140,6 +141,7 @@ function App() {
   const [engine, setEngine] = useState<SqlEngine | null>(null);
   const [syncState, setSyncState] = useState<'local' | 'syncing' | 'synced'>('local');
   const [mobileNav, setMobileNav] = useState(false);
+  const [mobileViewport, setMobileViewport] = useState(() => window.matchMedia('(max-width: 760px)').matches);
   const [mobileTaskOpen, setMobileTaskOpen] = useState(false);
   const [editorFullscreen, setEditorFullscreen] = useState(false);
   const [visibleHints, setVisibleHints] = useState(0);
@@ -157,7 +159,29 @@ function App() {
   const [workspaceJourney, setWorkspaceJourney] = useState<WorkspaceJourneyState | null>(null);
   const [reviewClock, setReviewClock] = useState(() => Date.now());
   const searchRef = useRef<HTMLInputElement>(null);
+  const mobileNavCloseRef = useRef<HTMLButtonElement>(null);
+  const mobileNavTriggerRef = useRef<HTMLElement | null>(null);
   const workspaceActive = view === 'catalog' || view === 'practice' || view === 'review' || view === 'interview' || view === 'puzzle';
+
+  useEffect(() => {
+    const refreshProgress = (event: Event) => {
+      const next = (event as CustomEvent<Progress>).detail;
+      setProgress(next?.version === 4 ? next : loadProgress());
+    };
+    window.addEventListener(PROGRESS_CHANGED_EVENT, refreshProgress);
+    return () => window.removeEventListener(PROGRESS_CHANGED_EVENT, refreshProgress);
+  }, []);
+
+  const openMobileNavigation = useCallback(() => {
+    mobileNavTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setMobileNav(true);
+    window.requestAnimationFrame(() => mobileNavCloseRef.current?.focus({ preventScroll: true }));
+  }, []);
+
+  const closeMobileNavigation = useCallback((restoreFocus = true) => {
+    setMobileNav(false);
+    if (restoreFocus) window.requestAnimationFrame(() => mobileNavTriggerRef.current?.focus({ preventScroll: true }));
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -170,6 +194,26 @@ function App() {
   }, []);
 
   useEffect(() => saveProgress(progress), [progress]);
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 760px)');
+    const update = () => {
+      setMobileViewport(media.matches);
+      if (!media.matches) setMobileNav(false);
+    };
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+
+  useEffect(() => {
+    if (!mobileViewport || !mobileNav) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeMobileNavigation();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [closeMobileNavigation, mobileNav, mobileViewport]);
 
   useEffect(() => {
     setMentorHintLevel(1);
@@ -251,9 +295,9 @@ function App() {
   }, [progress, workspaceActive]);
 
   useEffect(() => {
-    document.body.style.overflow = editorFullscreen ? 'hidden' : '';
+    document.body.style.overflow = editorFullscreen || (mobileViewport && mobileNav) ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
-  }, [editorFullscreen]);
+  }, [editorFullscreen, mobileNav, mobileViewport]);
 
   const queue = useMemo(() => reviewQueue(progress, 24, reviewClock), [progress, reviewClock]);
   const selectedReviewTaskIsDue = view !== 'review' || queue.some(task => task.id === selected.id);
@@ -292,6 +336,21 @@ function App() {
     task.id,
     workspaceTaskReadiness(task, progress, workspaceJourney, workspaceModeForTask(task, view))
   ])), [filteredTasks, progress, view, workspaceJourney]);
+
+  const displayedTasks = useMemo(() => {
+    if (view !== 'practice') return filteredTasks;
+    const limit = moduleFilter === 'all' && !query.trim() ? 12 : 24;
+    const frontierId = workspaceJourney?.action.task?.id;
+    const ranked = [
+      ...filteredTasks.filter(task => task.id === frontierId),
+      ...filteredTasks.filter(task => task.id === selected.id && task.id !== frontierId),
+      ...filteredTasks.filter(task => readinessByTask.get(task.id)?.canRun && task.id !== frontierId && task.id !== selected.id),
+      ...filteredTasks
+    ];
+    return Array.from(new Map(ranked.map(task => [task.id, task])).values()).slice(0, limit);
+  }, [filteredTasks, moduleFilter, query, readinessByTask, selected.id, view, workspaceJourney?.action.task?.id]);
+
+  const hiddenPracticeTaskCount = view === 'practice' ? Math.max(0, filteredTasks.length - displayedTasks.length) : 0;
 
   const selectTask = (task: SqlTask) => {
     const targetMode = workspaceModeForTask(task, view);
@@ -564,12 +623,18 @@ function App() {
           : 'SQL-головоломки';
 
   return <><a className="skip-link" href="#main-content">Перейти к содержимому</a><div className="app">
-    <aside className={`sidebar ${mobileNav ? 'open' : ''}`} aria-label="Основная навигация">
+    <aside
+      id="mobile-navigation-drawer"
+      className={`sidebar ${mobileNav ? 'open' : ''}`}
+      aria-label="Основная навигация"
+      aria-hidden={mobileViewport && !mobileNav ? true : undefined}
+      inert={mobileViewport && !mobileNav ? true : undefined}
+    >
       <button className="logo" onClick={() => navigate('home')} aria-label={`${productIdentity.productName} — главная`}>
         <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" />
         <strong>{productIdentity.shortName}</strong>
       </button>
-      <button className="close-mobile" onClick={() => setMobileNav(false)} aria-label="Закрыть меню"><X /></button>
+      <button ref={mobileNavCloseRef} className="close-mobile" onClick={() => closeMobileNavigation()} aria-label="Закрыть меню"><X /></button>
       <nav aria-label="Разделы академии">
         <span className="primary-nav-label">Обучение</span>
         <Nav icon={<Home />} label="Сегодня" active={view === 'home'} onClick={() => navigate('home')} />
@@ -596,10 +661,11 @@ function App() {
         <span className="privacy">{productIdentity.licenseLabel} · {productIdentity.privacyLabel}</span>
       </div>
     </aside>
+    <button className={`mobile-nav-backdrop ${mobileNav ? 'visible' : ''}`} tabIndex={-1} aria-hidden="true" onClick={() => closeMobileNavigation()} />
 
-    <main id="main-content" tabIndex={-1}>
+    <main id="main-content" tabIndex={-1} inert={mobileViewport && mobileNav ? true : undefined}>
       <header className="topbar">
-        <button className="mobile-menu" onClick={() => setMobileNav(true)} aria-label="Открыть меню"><Menu /></button>
+        <button className="mobile-menu" onClick={openMobileNavigation} aria-label="Открыть меню" aria-controls="mobile-navigation-drawer" aria-expanded={mobileNav}><Menu /></button>
         {view === 'home' ? <div className="topbar-context"><Compass /><span>Один следующий шаг вместо каталога функций</span></div> : <div className="search">
           <Search size={18} />
           <input ref={searchRef} value={query} onChange={event => setQuery(event.target.value)} placeholder="Поиск по задачам и темам…" aria-label="Поиск по задачам и темам" />
@@ -641,7 +707,11 @@ function App() {
             <div className="section-heading">
               <div>
                 <h1>{workspaceTitle}</h1>
-                <p>{view === 'review' ? `${queue.length} задач в адаптивной очереди` : `${filteredTasks.length} задач · доступные можно запускать, остальные показывают будущий этап`}</p>
+                <p>{view === 'review'
+                  ? `${queue.length} задач в адаптивной очереди`
+                  : view === 'practice'
+                    ? `${displayedTasks.length} задач в рабочем наборе${hiddenPracticeTaskCount ? ` · ещё ${hiddenPracticeTaskCount} в каталоге` : ''}`
+                    : `${filteredTasks.length} задач · доступные можно запускать, остальные показывают будущий этап`}</p>
               </div>
               <select value={moduleFilter} onChange={event => setModuleFilter(event.target.value)} aria-label="Фильтр по модулю">
                 <option value="all">Все модули</option>
@@ -650,7 +720,7 @@ function App() {
             </div>
             <div className="task-list">
               {!filteredTasks.length && <div className="empty-state"><ShieldCheck /><h3>Очередь пуста</h3><p>Решай новые задачи — сложные темы появятся здесь автоматически.</p></div>}
-              {filteredTasks.map(task => {
+              {displayedTasks.map(task => {
                 const stats = progress.taskStats[task.id];
                 const readiness = readinessByTask.get(task.id);
                 const preview = readiness && !readiness.canRun;
@@ -668,6 +738,11 @@ function App() {
                   {preview ? <LockKeyhole className="preview-lock" /> : completed.has(task.id) ? <CheckCircle2 className="done" /> : <ChevronRight />}
                 </button>;
               })}
+              {hiddenPracticeTaskCount > 0 && <div className="practice-more" data-testid="practice-focused-disclosure">
+                <BookOpen />
+                <span><strong>Сейчас показан короткий рабочий набор</strong><small>Будущие и закрытые темы остаются доступными без сотен кнопок на одном экране.</small></span>
+                <button type="button" onClick={() => navigate('catalog')}>Открыть каталог · {hiddenPracticeTaskCount}</button>
+              </div>}
             </div>
           </div>
 
@@ -813,11 +888,11 @@ function App() {
       </footer>
     </main>
 
-    <nav className="mobile-bottom-nav" aria-label="Мобильная навигация">
+    <nav className="mobile-bottom-nav" aria-label="Мобильная навигация" inert={mobileViewport && mobileNav ? true : undefined}>
       <MobileNav icon={<Home />} label="Сегодня" active={view === 'home'} onClick={() => navigate('home')} />
       <button type="button" data-testid="learning-path-mobile-trigger" onTouchStart={() => preloadDeferredFeature('learning-path')} onFocus={() => preloadDeferredFeature('learning-path')} onClick={() => openDeferredFeature('learning-path')}><span className="mobile-nav-icon"><Route /></span><small>Маршрут</small></button>
       <MobileNav icon={<BrainCircuit />} label="Практика" active={view === 'practice'} onClick={() => navigate('practice')} />
-      <button type="button" data-testid="mobile-more-trigger" onClick={() => setMobileNav(true)}><span className="mobile-nav-icon"><Menu /></span><small>Ещё</small></button>
+      <button type="button" data-testid="mobile-more-trigger" onClick={openMobileNavigation} aria-controls="mobile-navigation-drawer" aria-expanded={mobileNav}><span className="mobile-nav-icon"><Menu /></span><small>Ещё</small></button>
     </nav>
   </div></>;
 }
