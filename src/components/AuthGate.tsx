@@ -49,6 +49,7 @@ import { useDialogFocus } from '../lib/dialog-focus';
 
 const PENDING_REGISTRATION_KEY = 'sql-academy-pending-registration-v1';
 const PENDING_RECOVERY_KEY = 'sql-academy-pending-recovery-v1';
+const PROGRESS_CHANGED_EVENT = 'sql-academy-progress-changed';
 
 type AuthMode = 'login' | 'register' | 'reset';
 type GateState = 'loading' | 'guest' | 'recovery' | 'authenticated';
@@ -192,10 +193,14 @@ function AuthScreen({ onAuthenticated }: { onAuthenticated: (session: AuthSessio
     <section className="auth-brand-panel">
       <div className="auth-brand"><img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" /><strong>SQL Academy</strong></div>
       <div className="auth-brand-copy">
-        <span className="auth-kicker">Support Engineering Track</span>
-        <h1>Твой SQL-прогресс — только после входа.</h1>
-        <p>Логин и пароль синхронизируют задачи, освоение тем, учебный путь и будущие экзамены между всеми устройствами.</p>
-        <div className="auth-proof"><span><ShieldCheck />без email и телефона</span><span><Cloud />Cloudflare D1 sync</span><span><KeyRound />8 recovery-кодов</span></div>
+        <span className="auth-kicker">Бесплатная SQL-платформа</span>
+        <h1>Учись решать рабочие SQL-задачи.</h1>
+        <p>240 проверяемых задач, 44 связанных урока, адаптивное повторение и локальный SQLite прямо в браузере.</p>
+        <div className="auth-account-reason" data-testid="account-reason">
+          <ShieldCheck />
+          <span><strong>Зачем вход до первой задачи</strong><small>Аккаунт сохраняет попытки и результаты проверок без потери или смешивания прогресса между устройствами. Платформа бесплатна, карта не нужна.</small></span>
+        </div>
+        <div className="auth-proof"><span><ShieldCheck />без рекламы и оплаты</span><span><Cloud />прогресс между устройствами</span><span><KeyRound />без обязательного email</span></div>
       </div>
       <small>Пароль не передаётся и не хранится в открытом виде. Recovery-коды одноразовые.</small>
     </section>
@@ -530,7 +535,15 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     const stored = loadAuthSession();
     if (!stored) { setState('guest'); return; }
     void validateSession()
-      .then(({ session: validated }) => setAuthenticated(validated))
+      .then(async ({ session: validated }) => {
+        try {
+          const synced = await syncUserProgress(validated);
+          setAuthenticated(synced.session);
+        } catch (error) {
+          if ((error as Error & { status?: number }).status === 401) throw error;
+          setAuthenticated(validated);
+        }
+      })
       .catch(() => { clearAuthSession(); setAuthenticated(null); });
   }, [pending, setAuthenticated]);
 
@@ -540,7 +553,9 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       try {
         const result = await syncUserProgress(loadAuthSession());
         setSession(result.session);
-        if (result.localChanged) window.setTimeout(() => window.location.reload(), 250);
+        if (result.localChanged) {
+          window.dispatchEvent(new CustomEvent(PROGRESS_CHANGED_EVENT, { detail: result.progress }));
+        }
       } catch (error) {
         if ((error as Error & { status?: number }).status === 401) setAuthenticated(null);
       }
@@ -550,9 +565,9 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       if (syncTimer.current) window.clearTimeout(syncTimer.current);
       syncTimer.current = window.setTimeout(() => void run(), 1600);
     };
-    window.addEventListener('sql-academy-progress-changed', progressChanged);
+    window.addEventListener(PROGRESS_CHANGED_EVENT, progressChanged);
     return () => {
-      window.removeEventListener('sql-academy-progress-changed', progressChanged);
+      window.removeEventListener(PROGRESS_CHANGED_EVENT, progressChanged);
       if (syncTimer.current) window.clearTimeout(syncTimer.current);
     };
   }, [session?.userId, session?.token, setAuthenticated, state]);

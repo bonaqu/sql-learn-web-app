@@ -515,8 +515,13 @@ export default function LearningPathPortal({
           <p>{readinessLabel(readiness)}. Следующая цель — <strong>{nextPhase?.title || 'закрепление курса'}</strong>.</p>
           <div className="path-hero-actions">
             <button className="path-primary" onClick={() => session.items[0] && startSessionItem(session.items[0])} disabled={!session.items.length || Boolean(activeTask)}><Play />Начать сессию</button>
-            <button onClick={() => void askMentor()} disabled={mentorLoading}><Sparkles />AI-план</button>
-            <button onClick={() => setGoalSwitchOpen(true)} data-testid="goal-switch-trigger"><Route />Изменить цель</button>
+            <details className="path-secondary-actions">
+              <summary>Настройки маршрута</summary>
+              <div>
+                <button onClick={() => void askMentor()} disabled={mentorLoading}><Sparkles />AI-план</button>
+                <button onClick={() => setGoalSwitchOpen(true)} data-testid="goal-switch-trigger"><Route />Изменить цель</button>
+              </div>
+            </details>
           </div>
         </div>
         <div className="readiness-ring" style={{ '--readiness': `${readiness * 3.6}deg` } as React.CSSProperties}>
@@ -590,14 +595,20 @@ export default function LearningPathPortal({
             const passed = Boolean(phaseEvidence?.checkpointPassed);
             const phaseReadiness = phaseEvidence?.readiness ?? phase.mastery;
             return <article className={`phase-card ${phase.unlocked ? '' : 'locked'}`} key={phase.id}>
-              <button className="phase-summary" onClick={() => phase.unlocked && setExpandedPhase(expanded ? '' : phase.id)}>
+              <button
+                className="phase-summary"
+                onClick={() => setExpandedPhase(expanded ? '' : phase.id)}
+                disabled={!phase.unlocked}
+                aria-expanded={phase.unlocked ? expanded : undefined}
+                aria-controls={phase.unlocked ? `path-phase-${phase.id}` : undefined}
+              >
                 <span className="phase-number">{phase.unlocked ? String(phaseIndex + 1).padStart(2, '0') : <LockKeyhole />}</span>
                 <span className="phase-title"><strong>{phase.title}</strong><small>{phase.subtitle}</small></span>
                 <span className="phase-progress"><i><b style={{ width: `${phaseReadiness}%` }} /></i><small>{phaseReadiness}% подтверждено</small></span>
                 <span className={passed ? 'checkpoint passed' : 'checkpoint'}>{passed ? <Check /> : <Flag />}{passed ? 'Пройден' : 'Контроль'}</span>
                 <ChevronRight className={expanded ? 'rotated' : ''} />
               </button>
-              {expanded && <div className="phase-modules">
+              {expanded && <div className="phase-modules" id={`path-phase-${phase.id}`}>
                 {phaseEvidence?.blockers.length ? <div className="focus-explanation"><LockKeyhole /><div><strong>Что блокирует этап</strong><p>{phaseEvidence.blockers.join(' · ')}</p></div></div> : null}
                 {phaseModules.map(module => {
                   const evidence = evidenceGraph.modules.find(item => item.moduleId === module.id);

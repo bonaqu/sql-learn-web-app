@@ -85,6 +85,28 @@ test('desktop accessibility and PWA resilience preserve keyboard work', async ({
   await page.screenshot({ path: testInfo.outputPath('desktop-accessibility-pwa.png'), fullPage: true });
 });
 
+test('desktop accessibility exposes slow loading and recoverable auth error states', async ({ page }) => {
+  await page.route('**/api/auth/login', async route => {
+    await new Promise(resolve => setTimeout(resolve, 650));
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'Сервис входа временно недоступен. Повтори попытку.' })
+    });
+  });
+  await page.goto('./');
+  await page.getByTestId('auth-username').fill('slow_network_probe');
+  await page.getByTestId('auth-password').fill('Not-a-production-password-2026');
+  const submit = page.getByTestId('auth-submit');
+  await submit.click();
+  await expect(submit).toBeDisabled();
+  await expect(submit.locator('.spin')).toBeVisible();
+  const alert = page.getByRole('alert');
+  await expect(alert).toContainText('Сервис входа временно недоступен');
+  await expect(submit).toBeEnabled();
+  await expectNoSeriousAxeViolations(page);
+});
+
 test('mobile accessibility keeps Assessment Center within Pixel 7 focus boundary', async ({ page }, testInfo) => {
   await authenticatePage(page, 'mobilea11y');
   await page.goto('./');
@@ -101,4 +123,52 @@ test('mobile accessibility keeps Assessment Center within Pixel 7 focus boundary
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(overflow).toBe(false);
   await page.screenshot({ path: testInfo.outputPath('mobile-accessibility-assessment.png'), fullPage: true });
+});
+
+test('mobile accessibility keeps navigation inert focus-restored and Practice compact', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('./');
+  await expect(page.getByTestId('account-reason')).toContainText(/платформа бесплатна/i);
+  await expectNoSeriousAxeViolations(page);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
+  const authTargets = await page.locator('.auth-tabs button, .password-field button, .auth-primary').evaluateAll(elements =>
+    elements.map(element => ({ width: element.getBoundingClientRect().width, height: element.getBoundingClientRect().height }))
+  );
+  expect(authTargets.every(target => target.width >= 44 && target.height >= 44)).toBe(true);
+
+  await authenticatePage(page, 'mobilephase12');
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto('./');
+  await expect(guidedHome(page)).toBeVisible();
+
+  const drawer = page.locator('#mobile-navigation-drawer');
+  await expect(drawer).toHaveAttribute('aria-hidden', 'true');
+  expect(await drawer.evaluate(element => (element as HTMLElement).inert)).toBe(true);
+
+  const moreTrigger = page.getByTestId('mobile-more-trigger');
+  await moreTrigger.click();
+  await expect(page.getByRole('button', { name: 'Закрыть меню' })).toBeFocused();
+  await expect(drawer).not.toHaveAttribute('aria-hidden', 'true');
+  expect(await page.locator('#main-content').evaluate(element => (element as HTMLElement).inert)).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(moreTrigger).toBeFocused();
+  await expect(drawer).toHaveAttribute('aria-hidden', 'true');
+
+  const mobileTargets = await page.locator('.mobile-menu, .close-mobile, .mobile-bottom-nav button').evaluateAll(elements =>
+    elements.map(element => ({ width: element.getBoundingClientRect().width, height: element.getBoundingClientRect().height }))
+  );
+  expect(mobileTargets.every(target => target.width >= 44 && target.height >= 44), JSON.stringify(mobileTargets)).toBe(true);
+
+  await page.getByRole('button', { name: 'Открыть меню' }).click();
+  await drawer.getByRole('button', { name: 'Практика' }).click();
+  await expect(page.getByRole('heading', { name: 'Практика' })).toBeVisible();
+  await expect(page.locator('.task-row')).toHaveCount(12);
+  await expect(page.getByTestId('practice-focused-disclosure')).toBeVisible();
+  await expect(drawer).toHaveAttribute('aria-hidden', 'true');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
+
+  await page.getByRole('button', { name: 'Переключить тему' }).click();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expectNoSeriousAxeViolations(page);
+  await page.screenshot({ path: testInfo.outputPath('mobile-phase12-light-practice.png'), fullPage: true });
 });

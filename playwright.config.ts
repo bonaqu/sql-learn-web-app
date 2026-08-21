@@ -45,7 +45,7 @@ export default defineConfig({
     },
     {
       name: 'desktop-learning',
-      grep: /desktop curriculum|desktop guided journey|desktop adaptive learning|desktop goal|desktop mastery|desktop onboarding|desktop assessment|desktop diagnostic exam|desktop syllabus|desktop keeps SQLite|desktop analytics|desktop failed checkpoint|desktop capstone/,
+      grep: /desktop curriculum|desktop guided journey|desktop adaptive learning|desktop goal|desktop mastery|desktop onboarding|desktop assessment|desktop diagnostic exam|desktop syllabus|desktop keeps SQLite|desktop analytics|desktop failed checkpoint|desktop capstone|desktop performance/,
       use: desktop
     },
     {

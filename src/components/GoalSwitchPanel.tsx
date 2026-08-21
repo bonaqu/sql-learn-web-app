@@ -48,6 +48,27 @@ function ModuleChips({ moduleIds, empty }: { moduleIds: string[]; empty: string 
   return <div className="goal-switch-chips">{moduleIds.slice(0, 6).map(moduleId => <span key={moduleId}>{moduleTitle(moduleId)}</span>)}</div>;
 }
 
+function handleGoalArrow(
+  event: React.KeyboardEvent<HTMLButtonElement>,
+  select: (goal: LearnerGoal) => void
+) {
+  if (!['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const values = goalOptions.map(option => option.id);
+  const group = event.currentTarget.closest('[role="radiogroup"]');
+  const radios = [...(group?.querySelectorAll<HTMLButtonElement>('[role="radio"]') || [])];
+  const currentIndex = Math.max(0, radios.indexOf(event.currentTarget));
+  const nextIndex = event.key === 'Home'
+    ? 0
+    : event.key === 'End'
+      ? values.length - 1
+      : event.key === 'ArrowRight' || event.key === 'ArrowDown'
+        ? (currentIndex + 1) % values.length
+        : (currentIndex - 1 + values.length) % values.length;
+  select(values[nextIndex]);
+  window.setTimeout(() => radios[nextIndex]?.focus());
+}
+
 export default function GoalSwitchPanel({
   profile,
   progress,
@@ -111,7 +132,14 @@ export default function GoalSwitchPanel({
         key={option.id}
         role="radio"
         aria-checked={selectedGoal === option.id}
+        tabIndex={selectedGoal === option.id ? 0 : -1}
         className={selectedGoal === option.id ? 'selected' : ''}
+        onKeyDown={event => handleGoalArrow(event, goal => {
+          setSelectedGoal(goal);
+          setApplied(false);
+          setSyncState('idle');
+          setMessage('');
+        })}
         onClick={() => {
           setSelectedGoal(option.id);
           setApplied(false);

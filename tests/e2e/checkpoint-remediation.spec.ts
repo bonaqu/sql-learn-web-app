@@ -321,6 +321,7 @@ test('desktop failed checkpoint controls Today, Learning Path, goal preview and 
   await expectNoOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('desktop-checkpoint-remediation.png'), fullPage: true });
 
+  await path.getByText('Настройки маршрута', { exact: true }).click();
   await path.getByTestId('goal-switch-trigger').click();
   const switchPanel = path.getByTestId('goal-switch-panel');
   await switchPanel.getByTestId('goal-switch-option-backend').click();

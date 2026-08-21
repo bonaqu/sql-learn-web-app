@@ -5,10 +5,10 @@ import { openAllTools } from './navigation-helper';
 async function completeDeferredOnboarding(page: import('@playwright/test').Page) {
   const dialog = page.getByTestId('onboarding-portal');
   await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: /Полная академия/i }).click();
+  await dialog.getByRole('radio', { name: /Полная академия/i }).click();
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
   await dialog.getByRole('radio', { name: /25/ }).click();
-  await dialog.getByRole('button', { name: /Устойчивый/i }).click();
+  await dialog.getByRole('radio', { name: /Устойчивый/i }).click();
   await dialog.getByRole('button', { name: /Продолжить/i }).click();
   await dialog.getByRole('radio', { name: /Без опыта/i }).click();
   await dialog.getByRole('radio', { name: /С нуля/i }).click();

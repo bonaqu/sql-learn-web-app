@@ -298,12 +298,16 @@ export default function CapabilityAuthScreen({ onAuthenticated }: { onAuthentica
     <section className="auth-brand-panel">
       <div className="auth-brand"><img src={`${import.meta.env.BASE_URL}logo.svg`} alt="" /><strong>SQL Academy</strong></div>
       <div className="auth-brand-copy">
-        <span className="auth-kicker">Support Engineering Track</span>
-        <h1>Твой SQL-прогресс — только после входа.</h1>
-        <p>Логин и пароль синхронизируют задачи, освоение тем, учебный путь и будущие экзамены между всеми устройствами.</p>
-        <div className="auth-proof"><span><ShieldCheck />контакты только при готовом провайдере</span><span><Cloud />Cloudflare D1 sync</span><span><KeyRound />8 recovery-кодов</span></div>
+        <span className="auth-kicker">Бесплатная SQL-платформа</span>
+        <h1>Учись решать рабочие SQL-задачи.</h1>
+        <p>240 проверяемых задач, 44 связанных урока, адаптивное повторение и локальный SQLite прямо в браузере.</p>
+        <div className="auth-account-reason" data-testid="account-reason">
+          <ShieldCheck />
+          <span><strong>Зачем вход до первой задачи</strong><small>Аккаунт сохраняет попытки и результаты проверок без потери или смешивания прогресса между устройствами. Платформа бесплатна, карта не нужна.</small></span>
+        </div>
+        <div className="auth-proof"><span><ShieldCheck />без рекламы и оплаты</span><span><Cloud />прогресс между устройствами</span><span><KeyRound />без обязательного email</span></div>
       </div>
-      <small>Пароль не хранится в открытом виде. Email или телефон никогда не заменяют пароль и recovery-коды.</small>
+      <small>Пароль не хранится в открытом виде. Email или телефон необязательны и никогда не заменяют пароль и recovery-коды.</small>
     </section>
 
     <section className="auth-form-panel">
