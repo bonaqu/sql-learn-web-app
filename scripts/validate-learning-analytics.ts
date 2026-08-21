@@ -173,4 +173,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log('Learning analytics validation passed: non-cumulative weekly evidence, explicit assistance/placement metrics, SQL-free module/item/mastery/experiment snapshots, opt-in, layered k=5 suppression, uncertainty-aware reports and lifecycle contracts.');
+process.stdout.write('Learning analytics validation passed: non-cumulative weekly evidence, explicit assistance/placement metrics, SQL-free module/item/mastery/experiment snapshots, opt-in, layered k=5 suppression, uncertainty-aware reports and lifecycle contracts.\n');

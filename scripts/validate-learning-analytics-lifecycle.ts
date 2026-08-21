@@ -169,4 +169,4 @@ database.prepare('DELETE FROM users WHERE user_id = ?').run('lifecycle-user-3');
 assert.equal(database.prepare('SELECT COUNT(*) AS count FROM learning_analytics_preferences WHERE user_id = ?').get('lifecycle-user-3')?.count, 0);
 assert.equal(database.prepare('SELECT COUNT(*) AS count FROM learning_analytics_snapshots WHERE user_id = ?').get('lifecycle-user-3')?.count, 0);
 
-console.log('Learning analytics D1 lifecycle passed: v1 read compatibility, five-contributor item release, strict SQL/free-text rejection, published task/lesson mapping, export, opt-out, explicit deletion and account cascade.');
+process.stdout.write('Learning analytics D1 lifecycle passed: v1 read compatibility, five-contributor item release, strict SQL/free-text rejection, published task/lesson mapping, export, opt-out, explicit deletion and account cascade.\n');

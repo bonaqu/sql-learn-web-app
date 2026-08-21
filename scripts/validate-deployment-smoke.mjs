@@ -215,4 +215,4 @@ if (errors.length) {
   process.exit(1);
 }
 
-console.log('Deployment smoke validation passed: Cloudflare Free keeps every learning lifecycle production-tested, analytics is default-off and SQL-free with layered module/item/mastery/experiment k=5 suppression, 22 dialect previews create zero false mastery, and real PostgreSQL/MySQL execution remains mandatory in Docker CI.');
+process.stdout.write('Deployment smoke validation passed: Cloudflare Free keeps every learning lifecycle production-tested, analytics is default-off and SQL-free with layered module/item/mastery/experiment k=5 suppression, 22 dialect previews create zero false mastery, and real PostgreSQL/MySQL execution remains mandatory in Docker CI.\n');

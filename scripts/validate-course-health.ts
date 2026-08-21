@@ -90,4 +90,4 @@ for (const forbidden of ['sql', 'email', 'password', 'token', 'session length', 
   assert.ok(!serialized.includes(`"${forbidden}"`), `Course-health schema unexpectedly contains ${forbidden}`);
 }
 
-console.log('Course-health validation passed: zero/low-sample/partial scenarios, Wilson uncertainty, task-vs-lesson diagnosis, hint escalation, placement mismatch, retention collapse and actionable non-blaming issues.');
+process.stdout.write('Course-health validation passed: zero/low-sample/partial scenarios, Wilson uncertainty, task-vs-lesson diagnosis, hint escalation, placement mismatch, retention collapse and actionable non-blaming issues.\n');
