@@ -1,0 +1,64 @@
+{
+  "contract": "learner-persona-evidence-v1",
+  "seed": "sql-academy-personas-2026-08-21",
+  "generatedAt": "2026-08-17T09:00:00.000Z",
+  "personas": [
+    {
+      "version": 1,
+      "id": "zero",
+      "seed": "sql-academy-personas-2026-08-21",
+      "goal": "full",
+      "completed": 0,
+      "action": "new",
+      "nextTaskId": "task-001",
+      "prerequisiteSafe": true,
+      "analyticsEvents": 1,
+      "completedLessons": 0,
+      "rawSqlStored": false,
+      "generatedAt": "2026-08-17T09:00:00.000Z"
+    },
+    {
+      "version": 1,
+      "id": "partial",
+      "seed": "sql-academy-personas-2026-08-21",
+      "goal": "support",
+      "completed": 12,
+      "action": "continue",
+      "nextTaskId": "task-007",
+      "prerequisiteSafe": true,
+      "analyticsEvents": 7,
+      "completedLessons": 2,
+      "rawSqlStored": false,
+      "generatedAt": "2026-08-17T09:00:00.000Z"
+    },
+    {
+      "version": 1,
+      "id": "role-focused",
+      "seed": "sql-academy-personas-2026-08-21",
+      "goal": "analyst",
+      "completed": 120,
+      "action": "role-transfer",
+      "nextTaskId": "task-121",
+      "prerequisiteSafe": true,
+      "analyticsEvents": 7,
+      "completedLessons": 20,
+      "rawSqlStored": false,
+      "generatedAt": "2026-08-17T09:00:00.000Z"
+    },
+    {
+      "version": 1,
+      "id": "returning",
+      "seed": "sql-academy-personas-2026-08-21",
+      "goal": "backend",
+      "completed": 30,
+      "action": "review",
+      "nextTaskId": "task-001",
+      "prerequisiteSafe": true,
+      "analyticsEvents": 7,
+      "completedLessons": 5,
+      "rawSqlStored": false,
+      "generatedAt": "2026-08-17T09:00:00.000Z"
+    }
+  ],
+  "boundary": "Automated personas verify product and prerequisite contracts; they do not prove human learning efficacy."
+}

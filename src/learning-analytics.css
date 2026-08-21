@@ -321,6 +321,37 @@
   overflow-wrap: anywhere;
 }
 
+.learning-item-health-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.learning-item-health-list details {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel-2) 88%, transparent);
+}
+
+.learning-item-health-list summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  min-block-size: 44px;
+  align-items: center;
+  cursor: pointer;
+}
+
+.learning-item-health-list summary span,
+.learning-item-health-list small {
+  color: var(--muted);
+}
+
+.learning-item-health-list p {
+  margin: 8px 0;
+}
+
 .learning-analytics-message {
   margin: 16px 0 0;
   padding: 12px 14px;
@@ -382,6 +413,11 @@
   .learning-experiment-row span,
   .learning-module-row span {
     text-align: left;
+  }
+
+  .learning-item-health-list summary {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 }
 

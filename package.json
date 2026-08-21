@@ -54,7 +54,7 @@
     "validate:dialect-hydration": "tsx scripts/validate-dialect-hydration.ts",
     "validate:dialect-preview-observability": "tsx scripts/validate-dialect-preview-observability.ts",
     "validate:real-dialect-engines": "tsx scripts/validate-real-dialect-engines.ts",
-    "validate:analytics": "tsx scripts/validate-learning-analytics.ts && tsx scripts/validate-security-ai.ts",
+    "validate:analytics": "tsx scripts/validate-learning-analytics.ts && tsx scripts/validate-course-health.ts && tsx scripts/validate-learning-analytics-lifecycle.ts && tsx scripts/validate-learner-personas.ts && tsx scripts/validate-security-ai.ts",
     "validate:security-ai": "tsx scripts/validate-security-ai.ts",
     "validate:curriculum": "tsx scripts/validate-curriculum.ts",
     "validate:concepts": "tsx scripts/validate-concept-inventory.ts",

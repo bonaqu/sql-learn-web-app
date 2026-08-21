@@ -12,7 +12,12 @@ import {
   Trash2,
   X
 } from 'lucide-react';
-import { modules } from '../data/course-catalog';
+import { modules, tasks } from '../data/course-catalog';
+import {
+  courseHealthItemView,
+  courseHealthSignals,
+  uncertaintyLabel
+} from '../lib/course-health';
 import { useDialogFocus } from '../lib/dialog-focus';
 import {
   deleteCloudLearningAnalytics,
@@ -52,6 +57,10 @@ const MASTERY_LABELS = {
 
 function moduleTitle(moduleId: string) {
   return modules.find(([id]) => id === moduleId)?.[1] || moduleId;
+}
+
+function taskTitle(taskId: string) {
+  return tasks.find(item => item.id === taskId)?.title || taskId;
 }
 
 function percent(numerator: number, denominator: number) {
@@ -136,6 +145,8 @@ export default function LearningAnalyticsPortal({ openRequest = 0 }: { openReque
   const progress = useMemo(() => loadProgress(), [openRequest, open, state.updatedAt]);
   const report = useMemo(() => localLearningAnalyticsReport(state, progress), [state, progress]);
   const recommendations = useMemo(() => cohort ? buildCourseActions(cohort) : [], [cohort]);
+  const itemViews = useMemo(() => Array.isArray(cohort?.items) ? cohort.items.map(courseHealthItemView) : [], [cohort]);
+  const itemSignals = useMemo(() => Array.isArray(cohort?.items) ? courseHealthSignals(cohort.items) : [], [cohort]);
   const visibleInterventions = report.interventions.filter(item => !dismissed.has(`${item.id}:${item.moduleId || ''}`));
 
   useDialogFocus(open, shellRef, () => setOpen(false));
@@ -181,7 +192,7 @@ export default function LearningAnalyticsPortal({ openRequest = 0 }: { openReque
         setCohort(null);
         setMessage('Отправка aggregates выключена. Серверные snapshots удалены.');
       } else {
-        setMessage('Opt-in включён. На сервер уйдут только module-level counters, coarse mastery buckets и allowlisted experiment variant — без SQL и task IDs.');
+        setMessage('Opt-in включён. На сервер уйдут только счётчики, опубликованные task/lesson IDs, coarse mastery buckets и allowlisted experiment variant — без SQL, текста и identity.');
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Не удалось изменить sharing.');
@@ -196,7 +207,7 @@ export default function LearningAnalyticsPortal({ openRequest = 0 }: { openReque
     try {
       await syncLearningAnalyticsSnapshot(progress, state.userId);
       setCohort(await loadCohortAnalyticsReport());
-      setMessage('Coarse snapshot синхронизирован. Module, mastery и experiment cohorts меньше пяти скрыты.');
+      setMessage('Coarse snapshot синхронизирован. Module, item, mastery и experiment cohorts меньше пяти скрыты независимо.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Синхронизация недоступна.');
     } finally {
@@ -305,6 +316,9 @@ export default function LearningAnalyticsPortal({ openRequest = 0 }: { openReque
             <div><dt>Retained</dt><dd>{report.retainedPasses}</dd></div>
             <div><dt>Lapses</dt><dd>{report.lapses}</dd></div>
             <div><dt>Remediation success</dt><dd>{report.remediationSuccesses}/{report.remediationStarts}</dd></div>
+            <div><dt>Hint dependence</dt><dd>{report.hintDependencies}</dd></div>
+            <div><dt>Solution dependence</dt><dd>{report.solutionDependencies}</dd></div>
+            <div><dt>Placement match</dt><dd>{report.placementMatches}/{report.placementChecks}</dd></div>
           </dl>
         </article>
 
@@ -327,7 +341,7 @@ export default function LearningAnalyticsPortal({ openRequest = 0 }: { openReque
       <article className="learning-analytics-sharing">
         <div>
           <h3>Обезличенные course aggregates</h3>
-          <p>Минимальный cohort: 5 contributors. Малые module/week, mastery/week и experiment/week slices не возвращаются.</p>
+          <p>Минимальный cohort: 5 contributors. Малые module/week, task/week, mastery/week и experiment/week slices не возвращаются.</p>
         </div>
         <div className="learning-sharing-choice" role="group" aria-label="Настройка отправки аналитики">
           <button type="button" className={state.sharing === 'off' ? 'active' : ''} onClick={() => changeSharing('off')} disabled={busy}><EyeOff /> Выключено</button>
@@ -379,6 +393,29 @@ export default function LearningAnalyticsPortal({ openRequest = 0 }: { openReque
             <strong>{moduleTitle(row.moduleId)}</strong>
             <span>{row.contributors} contributors · {row.independent}/{row.attempted} independent · {row.retained}/{row.independent} retained</span>
           </div>)}
+        </section>
+
+        <section className="learning-cohort-section" aria-labelledby="item-health-title" data-testid="learning-item-health">
+          <h4 id="item-health-title">Lesson / task health</h4>
+          <p>Sample size и 90% Wilson interval обязательны. Сигналы показывают правдоподобные объяснения, а не назначают виноватого learner или автора.</p>
+          {!itemViews.length && <p>Недостаточно contributors. Suppressed task slices: {cohort.suppressedItems || 0}.</p>}
+          {!!itemSignals.length && <div className="learning-course-actions">
+            {itemSignals.slice(0, 8).map(item => <div key={item.id} className={`learning-course-action ${item.priority === 'P1' ? 'important' : 'notice'}`}>
+              <AlertTriangle />
+              <div>
+                <strong>{item.priority} · {item.kind}</strong>
+                <p>{item.interpretation}</p>
+                <small>Альтернатива: {item.alternative} Действие: {item.action}</small>
+              </div>
+            </div>)}
+          </div>}
+          <div className="learning-item-health-list">
+            {itemViews.slice(0, 12).map(item => <details key={`${item.periodStart}:${item.taskId}`}>
+              <summary><strong>{taskTitle(item.taskId)}</strong><span>n={item.contributors} · independent {Math.round(item.independentInterval.rate * 100)}%</span></summary>
+              <p>{uncertaintyLabel(item)}</p>
+              <small>{item.lessonId} · hints {item.hinted}/{item.contributors} · solutions {item.solutionViewed}/{item.contributors} · misconceptions {item.misconceptions} · retained {item.retained}/{item.independent} · placement {item.placementMatches}/{item.placementChecks}</small>
+            </details>)}
+          </div>
         </section>
       </article>}
 

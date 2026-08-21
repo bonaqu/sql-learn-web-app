@@ -1,31 +1,47 @@
 import {
   ANALYTICS_DIAGNOSTIC_KINDS,
   ANALYTICS_EXPERIMENT_IDS,
+  ANALYTICS_LESSON_IDS,
   ANALYTICS_MODULE_IDS,
+  ANALYTICS_TASK_IDS,
   ANALYTICS_VARIANTS,
+  analyticsLessonForTaskId,
   type AnalyticsDiagnosticKind,
   type AnalyticsVariant
 } from './learning-analytics-contract';
 
 const MAX_BODY_BYTES = 72_000;
 const MAX_ROWS = ANALYTICS_MODULE_IDS.length;
+const MAX_ITEMS = ANALYTICS_TASK_IDS.length;
 const MINIMUM_COHORT = 5;
 const REPORT_WEEKS = 12;
 const MODULE_IDS = new Set<string>(ANALYTICS_MODULE_IDS);
+const TASK_IDS = new Set<string>(ANALYTICS_TASK_IDS);
+const LESSON_IDS = new Set<string>(ANALYTICS_LESSON_IDS);
 const DIAGNOSTIC_KINDS = new Set<string>(ANALYTICS_DIAGNOSTIC_KINDS);
 const EXPERIMENT_IDS = new Set<string>(ANALYTICS_EXPERIMENT_IDS);
 const VARIANTS = new Set<string>(ANALYTICS_VARIANTS);
-const SNAPSHOT_KEYS = new Set(['version', 'periodStart', 'courseVersion', 'rows', 'mastery', 'experiments']);
+const SNAPSHOT_V1_KEYS = new Set(['version', 'periodStart', 'courseVersion', 'rows', 'mastery', 'experiments']);
+const SNAPSHOT_V2_KEYS = new Set(['version', 'periodStart', 'courseVersion', 'rows', 'items', 'mastery', 'experiments']);
 const MASTERY_KEYS = new Set(['same-session', 'same-day', '2-7-days', '8-30-days', 'over-30-days']);
-const ROW_KEYS = new Set([
+const ROW_V1_KEYS = new Set([
   'moduleId', 'opened', 'attempted', 'understood', 'independent', 'retained', 'lapses',
   'remediations', 'remediationSuccesses', 'studyMinutesBucket', 'overload', 'stalled',
   'reviewDebt', 'topDiagnosticKind'
 ]);
+const ROW_V2_KEYS = new Set([
+  ...ROW_V1_KEYS,
+  'hintDependent', 'solutionDependent', 'placementChecks', 'placementMatches'
+]);
+const ITEM_KEYS = new Set([
+  'taskId', 'lessonId', 'attempted', 'independent', 'hinted', 'solutionViewed',
+  'misconceptions', 'remediations', 'remediationSuccesses', 'retained',
+  'placementChecks', 'placementMatches'
+]);
 
 type Sharing = 'off' | 'coarse-opt-in';
 type MasteryBuckets = Record<'same-session' | 'same-day' | '2-7-days' | '8-30-days' | 'over-30-days', number>;
-type SnapshotRow = {
+type LegacySnapshotRow = {
   moduleId: string;
   opened: number;
   attempted: number;
@@ -41,11 +57,32 @@ type SnapshotRow = {
   reviewDebt: 0 | 1;
   topDiagnosticKind: AnalyticsDiagnosticKind | null;
 };
+type SnapshotRow = LegacySnapshotRow & {
+  hintDependent: number;
+  solutionDependent: number;
+  placementChecks: number;
+  placementMatches: number;
+};
+type ItemRow = {
+  taskId: string;
+  lessonId: string;
+  attempted: number;
+  independent: number;
+  hinted: 0 | 1;
+  solutionViewed: 0 | 1;
+  misconceptions: number;
+  remediations: number;
+  remediationSuccesses: number;
+  retained: 0 | 1;
+  placementChecks: number;
+  placementMatches: number;
+};
 type Snapshot = {
-  version: 1;
+  version: 1 | 2;
   periodStart: string;
   courseVersion: 3;
   rows: SnapshotRow[];
+  items: ItemRow[];
   mastery: MasteryBuckets;
   experiments: Record<string, AnalyticsVariant>;
 };
@@ -101,10 +138,10 @@ function validMastery(value: unknown): value is MasteryBuckets {
   return exactKeys(mastery, MASTERY_KEYS) && [...MASTERY_KEYS].every(key => boundedInteger(mastery[key]));
 }
 
-function validRow(value: unknown): value is SnapshotRow {
+function validLegacyRow(value: unknown): value is LegacySnapshotRow {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const row = value as Record<string, unknown>;
-  return exactKeys(row, ROW_KEYS)
+  return exactKeys(row, ROW_V1_KEYS)
     && typeof row.moduleId === 'string'
     && MODULE_IDS.has(row.moduleId)
     && ['opened', 'attempted', 'understood', 'independent', 'retained', 'lapses', 'remediations', 'remediationSuccesses']
@@ -122,17 +159,53 @@ function validRow(value: unknown): value is SnapshotRow {
     && Number(row.remediationSuccesses) <= Number(row.remediations);
 }
 
+function validRow(value: unknown): value is SnapshotRow {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  const legacy = Object.fromEntries([...ROW_V1_KEYS].map(key => [key, row[key]]));
+  return exactKeys(row, ROW_V2_KEYS)
+    && validLegacyRow(legacy)
+    && ['hintDependent', 'solutionDependent', 'placementChecks', 'placementMatches'].every(key => boundedInteger(row[key]))
+    && Number(row.hintDependent) <= Number(row.attempted)
+    && Number(row.solutionDependent) <= Number(row.attempted)
+    && Number(row.placementMatches) <= Number(row.placementChecks);
+}
+
+function validItem(value: unknown): value is ItemRow {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return exactKeys(row, ITEM_KEYS)
+    && typeof row.taskId === 'string' && TASK_IDS.has(row.taskId)
+    && typeof row.lessonId === 'string' && LESSON_IDS.has(row.lessonId)
+    && analyticsLessonForTaskId(row.taskId) === row.lessonId
+    && ['attempted', 'independent', 'misconceptions', 'remediations', 'remediationSuccesses', 'placementChecks', 'placementMatches']
+      .every(key => boundedInteger(row[key]))
+    && (row.hinted === 0 || row.hinted === 1)
+    && (row.solutionViewed === 0 || row.solutionViewed === 1)
+    && (row.retained === 0 || row.retained === 1)
+    && Number(row.independent) <= Number(row.attempted)
+    && Number(row.retained) <= Number(row.independent)
+    && Number(row.remediationSuccesses) <= Number(row.remediations)
+    && Number(row.placementMatches) <= Number(row.placementChecks);
+}
+
 function validSnapshot(value: unknown): value is Snapshot {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const snapshot = value as Record<string, unknown>;
-  if (!exactKeys(snapshot, SNAPSHOT_KEYS)
-    || snapshot.version !== 1
+  const isV1 = snapshot.version === 1;
+  const isV2 = snapshot.version === 2;
+  if ((!isV1 && !isV2)
+    || !exactKeys(snapshot, isV1 ? SNAPSHOT_V1_KEYS : SNAPSHOT_V2_KEYS)
     || snapshot.courseVersion !== 3
     || !validPeriod(snapshot.periodStart)
     || !Array.isArray(snapshot.rows)
     || snapshot.rows.length > MAX_ROWS
-    || !snapshot.rows.every(validRow)
-    || new Set(snapshot.rows.map(row => (row as SnapshotRow).moduleId)).size !== snapshot.rows.length
+    || !snapshot.rows.every(isV1 ? validLegacyRow : validRow)
+    || new Set(snapshot.rows.map(row => (row as LegacySnapshotRow).moduleId)).size !== snapshot.rows.length
+    || (isV2 && (!Array.isArray(snapshot.items)
+      || snapshot.items.length > MAX_ITEMS
+      || !snapshot.items.every(validItem)
+      || new Set(snapshot.items.map(row => (row as ItemRow).taskId)).size !== snapshot.items.length))
     || !validMastery(snapshot.mastery)
     || !snapshot.experiments
     || typeof snapshot.experiments !== 'object'
@@ -144,11 +217,21 @@ function validSnapshot(value: unknown): value is Snapshot {
 function parseStored(row: StoredRow): Snapshot | null {
   try {
     const value = JSON.parse(row.payload) as unknown;
-    return validSnapshot(value)
-      && value.periodStart === row.period_start
-      && value.courseVersion === row.course_version
-      ? value
-      : null;
+    if (!validSnapshot(value)
+      || value.periodStart !== row.period_start
+      || value.courseVersion !== row.course_version) return null;
+    if (value.version === 2) return value;
+    return {
+      ...value,
+      rows: value.rows.map(item => ({
+        ...item,
+        hintDependent: 0,
+        solutionDependent: 0,
+        placementChecks: 0,
+        placementMatches: 0
+      })),
+      items: []
+    };
   } catch {
     return null;
   }
@@ -211,7 +294,13 @@ async function writeSnapshot(request: Request, env: Cloudflare.Env, userId: stri
       payload = excluded.payload,
       updated_at = excluded.updated_at`)
     .bind(userId, body.snapshot.periodStart, body.snapshot.courseVersion, serialized, updatedAt).run();
-  return json({ ok: true, periodStart: body.snapshot.periodStart, rows: body.snapshot.rows.length, updatedAt });
+  return json({
+    ok: true,
+    periodStart: body.snapshot.periodStart,
+    rows: body.snapshot.rows.length,
+    items: body.snapshot.items?.length || 0,
+    updatedAt
+  });
 }
 
 function reportCutoff() {
@@ -246,11 +335,31 @@ async function cohortReport(env: Cloudflare.Env) {
     lapses: number;
     remediations: number;
     remediationSuccesses: number;
+    hintDependent: number;
+    solutionDependent: number;
+    placementChecks: number;
+    placementMatches: number;
     studyMinutes: number;
     overload: number;
     stalled: number;
     reviewDebt: number;
     diagnostics: Map<AnalyticsDiagnosticKind, number>;
+  }>();
+  const itemGroups = new Map<string, {
+    periodStart: string;
+    taskId: string;
+    lessonId: string;
+    contributors: number;
+    attempted: number;
+    independent: number;
+    hinted: number;
+    solutionViewed: number;
+    misconceptions: number;
+    remediations: number;
+    remediationSuccesses: number;
+    retained: number;
+    placementChecks: number;
+    placementMatches: number;
   }>();
   const masteryGroups = new Map<string, { periodStart: string; contributors: number; mastery: MasteryBuckets }>();
   const experimentGroups = new Map<string, {
@@ -282,6 +391,10 @@ async function cohortReport(env: Cloudflare.Env) {
         lapses: 0,
         remediations: 0,
         remediationSuccesses: 0,
+        hintDependent: 0,
+        solutionDependent: 0,
+        placementChecks: 0,
+        placementMatches: 0,
         studyMinutes: 0,
         overload: 0,
         stalled: 0,
@@ -297,6 +410,10 @@ async function cohortReport(env: Cloudflare.Env) {
       group.lapses += row.lapses;
       group.remediations += row.remediations;
       group.remediationSuccesses += row.remediationSuccesses;
+      group.hintDependent += row.hintDependent;
+      group.solutionDependent += row.solutionDependent;
+      group.placementChecks += row.placementChecks;
+      group.placementMatches += row.placementMatches;
       group.studyMinutes += row.studyMinutesBucket;
       group.overload += row.overload;
       group.stalled += row.stalled;
@@ -305,6 +422,38 @@ async function cohortReport(env: Cloudflare.Env) {
         group.diagnostics.set(row.topDiagnosticKind, (group.diagnostics.get(row.topDiagnosticKind) || 0) + 1);
       }
       groups.set(key, group);
+    }
+
+    for (const item of snapshot.items) {
+      const key = `${snapshot.periodStart}:${item.taskId}`;
+      const group = itemGroups.get(key) || {
+        periodStart: snapshot.periodStart,
+        taskId: item.taskId,
+        lessonId: item.lessonId,
+        contributors: 0,
+        attempted: 0,
+        independent: 0,
+        hinted: 0,
+        solutionViewed: 0,
+        misconceptions: 0,
+        remediations: 0,
+        remediationSuccesses: 0,
+        retained: 0,
+        placementChecks: 0,
+        placementMatches: 0
+      };
+      group.contributors += 1;
+      group.attempted += item.attempted;
+      group.independent += item.independent;
+      group.hinted += item.hinted;
+      group.solutionViewed += item.solutionViewed;
+      group.misconceptions += item.misconceptions;
+      group.remediations += item.remediations;
+      group.remediationSuccesses += item.remediationSuccesses;
+      group.retained += item.retained;
+      group.placementChecks += item.placementChecks;
+      group.placementMatches += item.placementMatches;
+      itemGroups.set(key, group);
     }
 
     const mastery = masteryGroups.get(snapshot.periodStart) || {
@@ -361,6 +510,10 @@ async function cohortReport(env: Cloudflare.Env) {
       lapses: group.lapses,
       remediations: group.remediations,
       remediationSuccesses: group.remediationSuccesses,
+      hintDependent: group.hintDependent,
+      solutionDependent: group.solutionDependent,
+      placementChecks: group.placementChecks,
+      placementMatches: group.placementMatches,
       studyMinutesAverage: Math.round(group.studyMinutes / group.contributors),
       overload: group.overload,
       stalled: group.stalled,
@@ -368,6 +521,15 @@ async function cohortReport(env: Cloudflare.Env) {
       topDiagnosticKind
     }];
   }).sort((left, right) => right.periodStart.localeCompare(left.periodStart) || left.moduleId.localeCompare(right.moduleId));
+
+  let suppressedItems = 0;
+  const items = [...itemGroups.values()].flatMap(group => {
+    if (group.contributors < MINIMUM_COHORT) {
+      suppressedItems += 1;
+      return [];
+    }
+    return [{ ...group, suppressed: false as const }];
+  }).sort((left, right) => right.periodStart.localeCompare(left.periodStart) || left.lessonId.localeCompare(right.lessonId) || left.taskId.localeCompare(right.taskId));
 
   let suppressedMasteryPeriods = 0;
   const mastery = [...masteryGroups.values()].flatMap(group => {
@@ -390,13 +552,15 @@ async function cohortReport(env: Cloudflare.Env) {
     || left.variant.localeCompare(right.variant));
 
   return json({
-    version: 1,
+    version: 2,
     minimumCohort: MINIMUM_COHORT,
     generatedAt: new Date().toISOString(),
     rows,
+    items,
     mastery,
     experiments,
     suppressedRows,
+    suppressedItems,
     suppressedMasteryPeriods,
     suppressedExperiments
   });
@@ -408,7 +572,7 @@ async function exportAnalytics(env: Cloudflare.Env, userId: string) {
     FROM learning_analytics_snapshots WHERE user_id = ? ORDER BY period_start`)
     .bind(userId).all<StoredRow>();
   const snapshots = (result.results || []).map(parseStored).filter((item): item is Snapshot => Boolean(item));
-  return json({ version: 1, sharing: current.sharing, snapshots });
+  return json({ version: 2, sharing: current.sharing, snapshots });
 }
 
 async function deleteAnalytics(env: Cloudflare.Env, userId: string) {

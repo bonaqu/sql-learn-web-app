@@ -9,6 +9,8 @@ const failureFile = 'cloudflare-learning-analytics-failure.txt';
 const username = `analytics_${Date.now().toString(36)}`.slice(0, 30);
 const password = `Analytics-${crypto.randomUUID()}-8z!`;
 const isolatedModuleId = 'incident-investigation';
+const isolatedTaskId = 'task-240';
+const isolatedLessonId = 'lesson-incident-investigation-applied';
 const isolatedExperimentId = 'remediation-copy-v1';
 const isolatedVariant = 'variant-b';
 let token = '';
@@ -51,7 +53,7 @@ function expectStatus(result, status, label) {
 
 function snapshot(extraRow = {}, extraSnapshot = {}) {
   return {
-    version: 1,
+    version: 2,
     periodStart,
     courseVersion: 3,
     rows: [{
@@ -64,12 +66,30 @@ function snapshot(extraRow = {}, extraSnapshot = {}) {
       lapses: 1,
       remediations: 1,
       remediationSuccesses: 1,
+      hintDependent: 1,
+      solutionDependent: 0,
+      placementChecks: 1,
+      placementMatches: 1,
       studyMinutesBucket: 15,
       overload: 1,
       stalled: 0,
       reviewDebt: 0,
       topDiagnosticKind: 'result-shape',
       ...extraRow
+    }],
+    items: [{
+      taskId: isolatedTaskId,
+      lessonId: isolatedLessonId,
+      attempted: 2,
+      independent: 1,
+      hinted: 1,
+      solutionViewed: 0,
+      misconceptions: 1,
+      remediations: 1,
+      remediationSuccesses: 1,
+      retained: 0,
+      placementChecks: 1,
+      placementMatches: 1
     }],
     mastery: {
       'same-session': 1,
@@ -121,6 +141,7 @@ function d1Count(table) {
 function assertReleasedCohortsMeetThreshold(report) {
   const released = [
     ...(Array.isArray(report.rows) ? report.rows : []),
+    ...(Array.isArray(report.items) ? report.items : []),
     ...(Array.isArray(report.mastery) ? report.mastery : []),
     ...(Array.isArray(report.experiments) ? report.experiments : [])
   ];
@@ -183,7 +204,7 @@ try {
     method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ snapshot: snapshot() })
   });
   expectStatus(stored, 200, 'write snapshot');
-  if (stored.body?.rows !== 1) throw new Error(`snapshot row count mismatch: ${stored.text}`);
+  if (stored.body?.rows !== 1 || stored.body?.items !== 1) throw new Error(`snapshot row/item count mismatch: ${stored.text}`);
 
   await mark('export-round-trip');
   const exported = await request('/api/learning-analytics/export');
@@ -193,6 +214,7 @@ try {
   if (exported.body?.sharing !== 'coarse-opt-in' || exported.body?.snapshots?.length !== 1) throw new Error(`export mismatch: ${exported.text}`);
   if (storedSnapshot?.periodStart !== periodStart
     || storedSnapshot?.mastery?.['same-session'] !== 1
+    || storedSnapshot?.items?.[0]?.taskId !== isolatedTaskId
     || storedSnapshot?.experiments?.[isolatedExperimentId] !== isolatedVariant) {
     throw new Error(`isolated mastery or experiment round-trip mismatch: ${exported.text}`);
   }
@@ -206,11 +228,13 @@ try {
   if (report.body?.minimumCohort !== 5) throw new Error(`unexpected minimum cohort: ${report.text}`);
   assertReleasedCohortsMeetThreshold(report.body || {});
   const leakedModule = report.body?.rows?.some(row => row.periodStart === periodStart && row.moduleId === isolatedModuleId);
+  const leakedItem = report.body?.items?.some(row => row.periodStart === periodStart && row.taskId === isolatedTaskId);
   const leakedMastery = report.body?.mastery?.some(row => row.periodStart === periodStart);
   const leakedExperiment = report.body?.experiments?.some(row => row.periodStart === periodStart
     && row.experimentId === isolatedExperimentId && row.variant === isolatedVariant);
-  if (leakedModule || leakedMastery || leakedExperiment
+  if (leakedModule || leakedItem || leakedMastery || leakedExperiment
     || report.body?.suppressedRows < 1
+    || report.body?.suppressedItems < 1
     || report.body?.suppressedMasteryPeriods < 1
     || report.body?.suppressedExperiments < 1) {
     throw new Error(`small module/mastery/experiment cohorts were not suppressed in isolated period: ${report.text}`);
@@ -256,6 +280,7 @@ try {
     experimentRoundTrip: true,
     allReleasedCohortsMeetMinimum: true,
     isolatedSmallCohortsSuppressed: true,
+    itemRoundTripAndSuppression: true,
     allSmallCohortsSuppressed: true,
     optOutDeleted: true,
     cascadeVerified: true,
