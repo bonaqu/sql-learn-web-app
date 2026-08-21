@@ -84,6 +84,7 @@ requireText(smoke, 'tokenPresent', 'non-secret token evidence');
 requireText(smoke, 'curriculumVersion === 1', 'deployed schema propagation check');
 requireText(securityAiSmoke, "frame-ancestors 'none'", 'production shell CSP assertion');
 requireText(securityAiSmoke, 'access-control-allow-origin', 'untrusted origin denial assertion');
+requireText(securityAiSmoke, "headers: { origin: 'https://attacker.invalid' } }, [403]", 'untrusted origin fail-closed status');
 requireText(securityAiSmoke, "reason !== 'consent-required'", 'explicit AI consent assertion');
 requireText(securityAiSmoke, "source !== 'workers-ai'", 'Workers AI provider assertion');
 requireText(securityAiSmoke, 'privateLiteral', 'AI context redaction assertion');
