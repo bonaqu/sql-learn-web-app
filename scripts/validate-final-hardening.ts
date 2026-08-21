@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 const audit = readFileSync(new URL('../docs/evidence/final-hardening-audit.md', import.meta.url), 'utf8');
 const pwa = readFileSync(new URL('../src/components/PwaStatus.tsx', import.meta.url), 'utf8');
 const main = readFileSync(new URL('../src/main.tsx', import.meta.url), 'utf8');
+const authCss = readFileSync(new URL('../src/auth.css', import.meta.url), 'utf8');
 const browserEvidence = readFileSync(new URL('./production-browser-evidence.ts', import.meta.url), 'utf8');
 const operations = readFileSync(new URL('./validate-operations.mjs', import.meta.url), 'utf8');
 
@@ -40,6 +41,8 @@ assert.match(pwa, /pwa-toast passive dismissible/);
 assert.doesNotMatch(pwa, /<p>\{String\(registrationError\)/);
 assert.match(main, /localStorage\.getItem\('sql-theme'\)/);
 assert.match(main, /document\.documentElement\.dataset\.theme = savedTheme/);
+assert.match(authCss, /auth-brand-panel[^}]*color:#f8fafc/);
+assert.match(authCss, /auth-brand-panel \.auth-kicker\{color:#c4b5fd\}/);
 assert.match(browserEvidence, /serviceWorkers:\s*'block'/);
 assert.match(browserEvidence, /localStorage\.setItem\('sql-theme', theme\)/);
 assert.match(browserEvidence, /activeTheme !== profile\.colorScheme/);

@@ -88,6 +88,8 @@ try {
     await page.getByText('Онлайн', { exact: true }).waitFor({ state: 'visible' });
     const activeTheme = await page.evaluate(() => document.documentElement.dataset.theme);
     if (activeTheme !== profile.colorScheme) throw new Error(`${profile.id} rendered ${activeTheme || 'no'} app theme`);
+    const heroHeadingColor = await page.locator('.auth-brand-copy h1').evaluate(element => getComputedStyle(element).color);
+    if (heroHeadingColor !== 'rgb(248, 250, 252)') throw new Error(`${profile.id} rendered low-contrast hero text: ${heroHeadingColor}`);
     const pwaNotice = page.getByTestId('pwa-registration-notice');
     if (await pwaNotice.isVisible()) {
       const noticeText = await pwaNotice.innerText();

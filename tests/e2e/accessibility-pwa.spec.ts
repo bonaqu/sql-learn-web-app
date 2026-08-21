@@ -128,6 +128,8 @@ test('desktop accessibility account entry honors the persisted application theme
   await page.goto('./');
   await expect(page.getByTestId('account-reason')).toBeVisible();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await expect(page.locator('.auth-brand-copy h1')).toHaveCSS('color', 'rgb(248, 250, 252)');
+  await expect(page.locator('.auth-brand-copy .auth-kicker')).toHaveCSS('color', 'rgb(196, 181, 253)');
   await expectNoSeriousAxeViolations(page);
 });
 
