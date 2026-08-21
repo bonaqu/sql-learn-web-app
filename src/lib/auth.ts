@@ -3,6 +3,7 @@ import { loadProgress, Progress, STORAGE_KEY, TaskStats } from './progress';
 import type { AttemptErrorKind } from './attempt-diagnostics';
 
 export const AUTH_SESSION_KEY = 'sql-academy-auth-session-v2';
+export const AUTH_TOKEN_KEY = 'sql-academy-auth-token-v1';
 export const AUTH_CHANGED_EVENT = 'sql-academy-auth-changed';
 
 export type AuthSession = {
@@ -119,10 +120,11 @@ export function sessionFromResponse(response: AuthResponse): AuthSession {
 export function loadAuthSession(): AuthSession | null {
   try {
     const parsed = JSON.parse(localStorage.getItem(AUTH_SESSION_KEY) || 'null') as Partial<AuthSession> | null;
-    if (!parsed || parsed.version !== 2 || !parsed.token || !parsed.id || !parsed.userId || !parsed.username) return null;
-    return {
+    const token = sessionStorage.getItem(AUTH_TOKEN_KEY) || parsed?.token || '';
+    if (!parsed || parsed.version !== 2 || !token || !parsed.id || !parsed.userId || !parsed.username) return null;
+    const session: AuthSession = {
       version: 2,
-      token: parsed.token,
+      token,
       id: parsed.id,
       userId: parsed.userId,
       username: parsed.username,
@@ -135,13 +137,17 @@ export function loadAuthSession(): AuthSession | null {
       revision: Math.max(0, Number(parsed.revision) || 0),
       lastSyncAt: parsed.lastSyncAt
     };
+    if (parsed.token) persistAuthSession(session);
+    return session;
   } catch {
     return null;
   }
 }
 
 function persistAuthSession(session: AuthSession) {
-  localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+  sessionStorage.setItem(AUTH_TOKEN_KEY, session.token);
+  const { token: _ephemeralToken, ...metadata } = session;
+  localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(metadata));
 }
 
 export function saveAuthSession(session: AuthSession) {
@@ -150,6 +156,7 @@ export function saveAuthSession(session: AuthSession) {
 
 export function clearAuthSession() {
   localStorage.removeItem(AUTH_SESSION_KEY);
+  sessionStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem('sql-academy-account-session-v1');
   window.dispatchEvent(new CustomEvent(AUTH_CHANGED_EVENT, { detail: null }));
 }

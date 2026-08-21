@@ -91,6 +91,7 @@ jobs:
           STAGING_FEATURE_TURNSTILE=on \
           STAGING_FEATURE_ADMIN_CONSOLE=on \
           STAGING_FEATURE_ADMIN_ALERTS=on \
+          STAGING_AI_MENTOR_ENABLED=on \
           STAGING_ADMIN_ALERT_CRON='0 * * * *' \
           STAGING_CONTACT_REGISTRATION_POLICY=required-for-new-registration \
           STAGING_TURNSTILE_EXPECTED_HOSTNAMES=staging.example.com \

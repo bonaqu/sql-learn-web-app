@@ -57,6 +57,14 @@ import {
 } from '../lib/learner-onboarding';
 import { loadProgress, type Progress, PROGRESS_CHANGED_EVENT } from '../lib/progress';
 import {
+  loadMentorAiConsent,
+  mentorSourceLabel,
+  parseMentorResponse,
+  saveMentorAiConsent,
+  type MentorExampleStatus,
+  type MentorSource
+} from '../lib/mentor-ai';
+import {
   buildSkillEvidenceGraph,
   type ModuleSkillEvidence
 } from '../lib/skill-evidence';
@@ -65,11 +73,10 @@ import { openCheckpointCenter } from './CheckpointLauncher';
 import GoalSwitchPanel from './GoalSwitchPanel';
 
 import '../checkpoint-remediation.css';
+import '../mentor-ai.css';
 
 const TARGET_KEY = 'sql-academy-session-target-v1';
 const PROFILE_KEY = 'sql-academy-profile-id';
-
-type MentorPlanSource = 'local' | 'ai';
 
 function profileId() {
   const existing = localStorage.getItem(PROFILE_KEY);
@@ -161,7 +168,10 @@ export default function LearningPathPortal({
   );
   const [expandedPhase, setExpandedPhase] = useState<string>('foundation');
   const [mentorAnswer, setMentorAnswer] = useState(() => localPlan(loadProgress()));
-  const [mentorSource, setMentorSource] = useState<MentorPlanSource>('local');
+  const [mentorSource, setMentorSource] = useState<MentorSource>('local');
+  const [mentorReason, setMentorReason] = useState('consent-required');
+  const [mentorExampleStatus, setMentorExampleStatus] = useState<MentorExampleStatus>('none');
+  const [mentorConsent, setMentorConsent] = useState(loadMentorAiConsent);
   const [mentorLoading, setMentorLoading] = useState(false);
   const [activeTask, setActiveTask] = useState<string | null>(null);
   const previousOverflow = useRef('');
@@ -374,10 +384,13 @@ export default function LearningPathPortal({
   };
 
   const askMentor = async () => {
-    setMentorLoading(true);
     setMentorSource('local');
+    setMentorReason('consent-required');
+    setMentorExampleStatus('none');
     const fallback = localPlan(progress, sessionEvidence);
     setMentorAnswer(fallback);
+    if (!mentorConsent) return;
+    setMentorLoading(true);
     try {
       const context = mentorPlanContext(progress, sessionEvidence);
       const evidenceContext = evidenceGraph.modules
@@ -430,22 +443,22 @@ export default function LearningPathPortal({
           lastFeedback: `Готовность по подтверждённым результатам ${readiness}%.`,
           attempts: context.weakest.reduce((sum, item) => sum + item.errors, 0),
           hintsUsed: context.weakest.reduce((sum, item) => sum + item.hints, 0),
-          allowSolution: false
+          hintLevel: 1,
+          allowSolution: false,
+          aiConsent: true
         })
       });
-      if (!response.ok) throw new Error('Mentor unavailable');
-      const payload = await response.json() as { answer?: string };
-      const answer = payload.answer?.trim();
-      if (answer) {
-        setMentorAnswer(answer);
-        setMentorSource('ai');
-      } else {
-        setMentorAnswer(fallback);
-        setMentorSource('local');
-      }
+      const payload = parseMentorResponse(await response.json().catch(() => null));
+      if (!payload) throw new Error('Mentor unavailable');
+      setMentorAnswer(payload.answer);
+      setMentorSource(payload.source);
+      setMentorReason(payload.reason);
+      setMentorExampleStatus(payload.exampleStatus);
     } catch {
       setMentorAnswer(fallback);
       setMentorSource('local');
+      setMentorReason('provider-timeout-or-error');
+      setMentorExampleStatus('none');
     } finally {
       setMentorLoading(false);
     }
@@ -550,8 +563,12 @@ export default function LearningPathPortal({
         <aside className="path-ai-card path-card">
           <div className="path-section-heading"><div><span className="path-eyebrow">AI-наставник</span><h2>План следующего шага</h2><p>Основан на пяти видах подтверждённых результатов, а не случайном совете.</p></div><BrainCircuit /></div>
           <pre className={mentorLoading ? 'path-ai-answer loading' : 'path-ai-answer'} aria-live="polite">{mentorLoading ? 'Анализирую карту учебных результатов…' : mentorAnswer}</pre>
+          <label className="path-ai-consent"><input type="checkbox" checked={mentorConsent} onChange={event => {
+            setMentorConsent(event.target.checked);
+            saveMentorAiConsent(event.target.checked);
+          }} /><span><strong>Разрешить Cloudflare Workers AI</strong><small>Учебный контекст покинет устройство. Не добавляй рабочие или личные данные.</small></span></label>
           <button className="path-ai-refresh" onClick={() => void askMentor()} disabled={mentorLoading}><RefreshCw className={mentorLoading ? 'spin' : ''} />Пересчитать AI-план</button>
-          <small><ShieldCheck /> Без имени, адреса электронной почты и данных работодателя.</small>
+          <small data-testid="path-mentor-source" role="status"><ShieldCheck /> {mentorSourceLabel(mentorSource, mentorReason, mentorExampleStatus)}</small>
         </aside>
       </section>
 
