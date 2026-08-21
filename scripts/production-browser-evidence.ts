@@ -1,4 +1,5 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium, type Page } from '@playwright/test';
 import { assertPerformanceBudget, performanceBudgets, type PerformanceMetric } from './performance-budgets';
@@ -66,51 +67,63 @@ async function metrics(page: Page, responseStatus: number): Promise<TraceMetrics
 }
 
 await mkdir(outputDirectory, { recursive: true });
-const browser = await chromium.launch({ headless: true });
-const evidence: Array<{ id: string; metrics: TraceMetrics; consoleErrors: string[]; screenshot: string }> = [];
+const evidence: Array<{
+  id: string;
+  metrics: TraceMetrics;
+  consoleErrors: string[];
+  screenshot: string;
+  screenshotSha256: string;
+}> = [];
 
-try {
-  for (const profile of profiles) {
+for (const profile of profiles) {
+  // A separate process keeps every capture genuinely cold and isolates
+  // browser-process state between viewport/theme profiles.
+  const browser = await chromium.launch({ headless: true });
+  try {
     const context = await browser.newContext({
       viewport: profile.viewport,
       colorScheme: profile.colorScheme,
       serviceWorkers: 'block'
     });
-    const page = await context.newPage();
-    const consoleErrors: string[] = [];
-    page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
-    page.on('pageerror', error => consoleErrors.push(error.message));
-    await page.addInitScript(observerScript);
-    await page.addInitScript(theme => localStorage.setItem('sql-theme', theme), profile.colorScheme);
-    const response = await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 45_000 });
-    if (!response?.ok()) throw new Error(`${profile.id} returned HTTP ${response?.status() || 0}`);
-    await page.getByTestId('account-reason').waitFor({ state: 'visible' });
-    await page.getByText('Онлайн', { exact: true }).waitFor({ state: 'visible' });
-    const activeTheme = await page.evaluate(() => document.documentElement.dataset.theme);
-    if (activeTheme !== profile.colorScheme) throw new Error(`${profile.id} rendered ${activeTheme || 'no'} app theme`);
-    const heroHeadingColor = await page.locator('.auth-brand-copy h1').evaluate(element => getComputedStyle(element).color);
-    if (heroHeadingColor !== 'rgb(248, 250, 252)') throw new Error(`${profile.id} rendered low-contrast hero text: ${heroHeadingColor}`);
-    const pwaNotice = page.getByTestId('pwa-registration-notice');
-    if (await pwaNotice.isVisible()) {
-      const noticeText = await pwaNotice.innerText();
-      if (!noticeText.includes('Онлайн-обучение продолжает работать') || /Cannot read|undefined|waiting/i.test(noticeText)) {
-        throw new Error(`${profile.id} exposed an unsafe PWA fallback: ${noticeText}`);
+    try {
+      const page = await context.newPage();
+      const consoleErrors: string[] = [];
+      page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
+      page.on('pageerror', error => consoleErrors.push(error.message));
+      await page.addInitScript(observerScript);
+      await page.addInitScript(theme => localStorage.setItem('sql-theme', theme), profile.colorScheme);
+      const response = await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 45_000 });
+      if (!response?.ok()) throw new Error(`${profile.id} returned HTTP ${response?.status() || 0}`);
+      await page.getByTestId('account-reason').waitFor({ state: 'visible' });
+      await page.getByText('Онлайн', { exact: true }).waitFor({ state: 'visible' });
+      const activeTheme = await page.evaluate(() => document.documentElement.dataset.theme);
+      if (activeTheme !== profile.colorScheme) throw new Error(`${profile.id} rendered ${activeTheme || 'no'} app theme`);
+      const heroHeadingColor = await page.locator('.auth-brand-copy h1').evaluate(element => getComputedStyle(element).color);
+      if (heroHeadingColor !== 'rgb(248, 250, 252)') throw new Error(`${profile.id} rendered low-contrast hero text: ${heroHeadingColor}`);
+      const pwaNotice = page.getByTestId('pwa-registration-notice');
+      if (await pwaNotice.isVisible()) {
+        const noticeText = await pwaNotice.innerText();
+        if (!noticeText.includes('Онлайн-обучение продолжает работать') || /Cannot read|undefined|waiting/i.test(noticeText)) {
+          throw new Error(`${profile.id} exposed an unsafe PWA fallback: ${noticeText}`);
+        }
+        await pwaNotice.getByRole('button', { name: 'Закрыть уведомление' }).click();
+        await pwaNotice.waitFor({ state: 'hidden' });
       }
-      await pwaNotice.getByRole('button', { name: 'Закрыть уведомление' }).click();
-      await pwaNotice.waitFor({ state: 'hidden' });
+      const measured = await metrics(page, response.status());
+      if (measured.lcpMs <= 0) throw new Error(`${profile.id} did not report LCP`);
+      if (measured.horizontalOverflowPx !== 0) throw new Error(`${profile.id} has ${measured.horizontalOverflowPx}px horizontal overflow`);
+      if (consoleErrors.length) throw new Error(`${profile.id} console/page errors: ${consoleErrors.join(' | ')}`);
+      assertPerformanceBudget('firstVisit', measured);
+      const screenshot = resolve(outputDirectory, `${profile.id}.png`);
+      await page.screenshot({ path: screenshot, fullPage: true });
+      const screenshotSha256 = createHash('sha256').update(await readFile(screenshot)).digest('hex');
+      evidence.push({ id: profile.id, metrics: measured, consoleErrors, screenshot, screenshotSha256 });
+    } finally {
+      await context.close();
     }
-    const measured = await metrics(page, response.status());
-    if (measured.lcpMs <= 0) throw new Error(`${profile.id} did not report LCP`);
-    if (measured.horizontalOverflowPx !== 0) throw new Error(`${profile.id} has ${measured.horizontalOverflowPx}px horizontal overflow`);
-    if (consoleErrors.length) throw new Error(`${profile.id} console/page errors: ${consoleErrors.join(' | ')}`);
-    assertPerformanceBudget('firstVisit', measured);
-    const screenshot = resolve(outputDirectory, `${profile.id}.png`);
-    await page.screenshot({ path: screenshot, fullPage: true });
-    evidence.push({ id: profile.id, metrics: measured, consoleErrors, screenshot });
-    await context.close();
+  } finally {
+    await browser.close();
   }
-} finally {
-  await browser.close();
 }
 
 const report = {
