@@ -96,7 +96,7 @@ Four deterministic personas and item-health fixtures prove instrumentation, priv
 | Evidence | Locked result before Phase 14 publication | Gate |
 | --- | ---: | --- |
 | Main entry | 235.6 KiB raw / 72.6 KiB gzip | within entry budget |
-| Product CSS | 234 KiB raw / 46.7 KiB gzip | within CSS budget |
+| Product CSS | 234.1 KiB raw / 46.7 KiB gzip | within CSS budget |
 | Desktop light | LCP 1020 ms, CLS 0, TBT 0, transfer 110 KiB | pass |
 | Desktop dark | LCP 804 ms, CLS 0, TBT 0, transfer 110 KiB | pass |
 | Mobile light | LCP 868 ms, CLS 0, TBT 0, transfer 110 KiB | pass |
