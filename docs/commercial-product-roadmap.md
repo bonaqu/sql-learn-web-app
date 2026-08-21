@@ -65,6 +65,18 @@ The repository now contains the provider-neutral challenge core, transactional a
 
 Verified-contact routes and UI stay hidden while their server capability is disabled or incomplete. Current production remains provider-disabled with optional contact policy. Real email/SMS deliverability, sender reputation, bounce monitoring and required-contact activation remain buyer/operator acceptance work under #133. No passwordless login is claimed.
 
+## Phase 5 — course health and learner evidence
+
+- [x] Define privacy-minimized independent, assistance, misconception, remediation, retention, review-debt, stall and placement metrics; reject clicks/session length/XP as mastery.
+- [x] Add published task/lesson health with `k=5` suppression, sample size, Wilson uncertainty and competing interpretations.
+- [x] Extend export, opt-out, explicit deletion and account cascade to every new item aggregate without a second storage lifecycle.
+- [x] Add deterministic zero, partial, role-focused and returning persona contracts plus desktop/mobile browser journeys.
+- [x] Document a consented two-session pilot, stop/rollback rules, evidence schema and duplicate-aware P0/P1/P2 issue template.
+- [ ] Coordinate real consenting participants and attach Session A plus delayed Session B evidence under #82.
+- [ ] Collect the first publishable `k>=5` item-health cohort without weakening privacy suppression under #82.
+
+The original privacy-first analytics implementation is tracked in #55. Phase 5 extends it from module aggregates to uncertainty-aware lesson/task health; it does not convert synthetic personas into a claim about human learning.
+
 ## Completion rule
 
 A phase is complete only after:

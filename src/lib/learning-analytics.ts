@@ -1,4 +1,6 @@
 import { modules, tasks } from '../data/course-catalog';
+import { advancedCurriculumLessons } from '../data/advanced-curriculum';
+import { curriculumLessons } from '../data/curriculum';
 import type { AttemptErrorKind } from './attempt-diagnostics';
 import { loadAuthSession } from './auth';
 import type { Progress } from './progress';
@@ -23,6 +25,7 @@ export type LearningAnalyticsEventType =
   | 'lapse_detected'
   | 'remediation_started'
   | 'remediation_completed'
+  | 'placement_checked'
   | 'session_ended';
 
 export type LearningAnalyticsEvent = {
@@ -37,6 +40,8 @@ export type LearningAnalyticsEvent = {
   correct?: boolean;
   independent?: boolean;
   remediation?: 'hint' | 'solution' | 'retry' | 'review';
+  placementOutcome?: 'supported' | 'mismatch-high' | 'mismatch-low';
+  placementMatch?: boolean;
   durationBucket?: 'under-5m' | '5-15m' | '15-30m' | '30-60m' | '60m-plus';
 };
 
@@ -72,6 +77,10 @@ export type LocalLearningAnalyticsReport = {
   lapses: number;
   remediationStarts: number;
   remediationSuccesses: number;
+  hintDependencies: number;
+  solutionDependencies: number;
+  placementChecks: number;
+  placementMatches: number;
   misconceptionCounts: Partial<Record<AttemptErrorKind, number>>;
   timeToMastery: TimeToMasteryBuckets;
   interventions: LearningIntervention[];
@@ -87,6 +96,10 @@ export type LearningAnalyticsSnapshotRow = {
   lapses: number;
   remediations: number;
   remediationSuccesses: number;
+  hintDependent: number;
+  solutionDependent: number;
+  placementChecks: number;
+  placementMatches: number;
   studyMinutesBucket: 0 | 5 | 15 | 30 | 60;
   overload: 0 | 1;
   stalled: 0 | 1;
@@ -94,11 +107,27 @@ export type LearningAnalyticsSnapshotRow = {
   topDiagnosticKind: AttemptErrorKind | null;
 };
 
+export type LearningItemHealthSnapshotRow = {
+  taskId: string;
+  lessonId: string;
+  attempted: number;
+  independent: number;
+  hinted: 0 | 1;
+  solutionViewed: 0 | 1;
+  misconceptions: number;
+  remediations: number;
+  remediationSuccesses: number;
+  retained: 0 | 1;
+  placementChecks: number;
+  placementMatches: number;
+};
+
 export type LearningAnalyticsSnapshot = {
-  version: 1;
+  version: 2;
   periodStart: string;
   courseVersion: 3;
   rows: LearningAnalyticsSnapshotRow[];
+  items: LearningItemHealthSnapshotRow[];
   mastery: TimeToMasteryBuckets;
   experiments: Record<string, ExperimentVariant>;
 };
@@ -111,6 +140,12 @@ export type CohortAnalyticsRow = Omit<LearningAnalyticsSnapshotRow, 'studyMinute
 };
 
 export type CohortMasteryRow = TimeToMasteryBuckets & {
+  periodStart: string;
+  contributors: number;
+  suppressed: false;
+};
+
+export type CohortItemHealthRow = LearningItemHealthSnapshotRow & {
   periodStart: string;
   contributors: number;
   suppressed: false;
@@ -130,13 +165,15 @@ export type CohortExperimentRow = {
 };
 
 export type CohortAnalyticsReport = {
-  version: 1;
+  version: 1 | 2;
   minimumCohort: number;
   generatedAt: string;
   rows: CohortAnalyticsRow[];
+  items: CohortItemHealthRow[];
   mastery: CohortMasteryRow[];
   experiments: CohortExperimentRow[];
   suppressedRows: number;
+  suppressedItems: number;
   suppressedMasteryPeriods: number;
   suppressedExperiments: number;
 };
@@ -144,7 +181,7 @@ export type CohortAnalyticsReport = {
 const eventTypes = new Set<LearningAnalyticsEventType>([
   'session_started', 'task_opened', 'attempted', 'understood', 'diagnostic_observed',
   'independent_pass', 'retention_checked', 'lapse_detected', 'remediation_started',
-  'remediation_completed', 'session_ended'
+  'remediation_completed', 'placement_checked', 'session_ended'
 ]);
 const diagnosticKinds = new Set<AttemptErrorKind>([
   'syntax', 'schema', 'runtime', 'result-shape', 'row-set', 'ordering', 'values',
@@ -153,6 +190,14 @@ const diagnosticKinds = new Set<AttemptErrorKind>([
 const moduleIds = new Set(modules.map(([id]) => id));
 const taskById = new Map(tasks.map(task => [task.id, task]));
 const taskByTitle = new Map(tasks.map(task => [task.title, task]));
+const coreLessonByModuleId = new Map<string, string>(curriculumLessons.map(lesson => [lesson.module, lesson.id]));
+const advancedLessonByTaskId = new Map<string, string>(
+  advancedCurriculumLessons.flatMap(lesson => lesson.practiceTaskIds.map(taskId => [taskId, lesson.id] as const))
+);
+const lessonByTaskId = new Map(tasks.flatMap(task => {
+  const lessonId = advancedLessonByTaskId.get(task.id) || coreLessonByModuleId.get(task.module);
+  return lessonId ? [[task.id, lessonId] as const] : [];
+}));
 
 const nowIso = () => new Date().toISOString();
 const storageKey = (userId: string) => `${STORAGE_PREFIX}${userId}`;
@@ -171,6 +216,8 @@ function sanitizeEvent(value: unknown): LearningAnalyticsEvent | null {
   const moduleId = typeof item.moduleId === 'string' && moduleIds.has(item.moduleId) ? item.moduleId : task?.module;
   const diagnosticKind = item.diagnosticKind && diagnosticKinds.has(item.diagnosticKind) ? item.diagnosticKind : undefined;
   const remediation = item.remediation && ['hint', 'solution', 'retry', 'review'].includes(item.remediation) ? item.remediation : undefined;
+  const placementOutcome = item.placementOutcome && ['supported', 'mismatch-high', 'mismatch-low'].includes(item.placementOutcome)
+    ? item.placementOutcome : undefined;
   const durationBucket = item.durationBucket && ['under-5m', '5-15m', '15-30m', '30-60m', '60m-plus'].includes(item.durationBucket)
     ? item.durationBucket : undefined;
   return {
@@ -185,6 +232,8 @@ function sanitizeEvent(value: unknown): LearningAnalyticsEvent | null {
     ...(typeof item.correct === 'boolean' ? { correct: item.correct } : {}),
     ...(typeof item.independent === 'boolean' ? { independent: item.independent } : {}),
     ...(remediation ? { remediation } : {}),
+    ...(placementOutcome ? { placementOutcome } : {}),
+    ...(typeof item.placementMatch === 'boolean' ? { placementMatch: item.placementMatch } : {}),
     ...(durationBucket ? { durationBucket } : {})
   };
 }
@@ -269,6 +318,8 @@ function sameEvent(left: LearningAnalyticsEvent, right: LearningAnalyticsEvent) 
     && left.correct === right.correct
     && left.independent === right.independent
     && left.remediation === right.remediation
+    && left.placementOutcome === right.placementOutcome
+    && left.placementMatch === right.placementMatch
     && Math.abs(new Date(left.occurredAt).getTime() - new Date(right.occurredAt).getTime()) <= DUPLICATE_WINDOW_MS;
 }
 
@@ -405,6 +456,10 @@ export function localLearningAnalyticsReport(state: LearningAnalyticsState, prog
     lapses: state.events.filter(event => event.type === 'lapse_detected').length,
     remediationStarts: state.events.filter(event => event.type === 'remediation_started').length,
     remediationSuccesses: state.events.filter(event => event.type === 'remediation_completed').length,
+    hintDependencies: state.events.filter(event => event.type === 'remediation_started' && event.remediation === 'hint').length,
+    solutionDependencies: state.events.filter(event => event.type === 'remediation_started' && event.remediation === 'solution').length,
+    placementChecks: state.events.filter(event => event.type === 'placement_checked').length,
+    placementMatches: state.events.filter(event => event.type === 'placement_checked' && event.placementMatch).length,
     misconceptionCounts,
     timeToMastery: timeToMastery(state.events),
     interventions: interventions(state, progress)
@@ -462,6 +517,10 @@ export function buildLearningAnalyticsSnapshot(state: LearningAnalyticsState, pr
       lapses: events.filter(event => event.type === 'lapse_detected').length,
       remediations: events.filter(event => event.type === 'remediation_started').length,
       remediationSuccesses: events.filter(event => event.type === 'remediation_completed').length,
+      hintDependent: uniqueTasks(events.filter(event => event.remediation === 'hint'), ['remediation_started']),
+      solutionDependent: uniqueTasks(events.filter(event => event.remediation === 'solution'), ['remediation_started']),
+      placementChecks: events.filter(event => event.type === 'placement_checked').length,
+      placementMatches: events.filter(event => event.type === 'placement_checked' && event.placementMatch).length,
       studyMinutesBucket: minuteBucket(sessionMinutes(events)),
       overload: relevant.some(item => item.id === 'overload') ? 1 : 0,
       stalled: relevant.some(item => item.id === 'stalled-module') ? 1 : 0,
@@ -469,11 +528,33 @@ export function buildLearningAnalyticsSnapshot(state: LearningAnalyticsState, pr
       topDiagnosticKind
     });
   }
+  const items: LearningItemHealthSnapshotRow[] = [];
+  for (const task of tasks) {
+    const events = periodEvents.filter(event => event.taskId === task.id);
+    if (!events.length) continue;
+    const lessonId = lessonByTaskId.get(task.id);
+    if (!lessonId) continue;
+    items.push({
+      taskId: task.id,
+      lessonId,
+      attempted: events.filter(event => event.type === 'attempted').length,
+      independent: events.filter(event => event.type === 'independent_pass' || event.type === 'retention_checked').length,
+      hinted: events.some(event => event.type === 'remediation_started' && event.remediation === 'hint') ? 1 : 0,
+      solutionViewed: events.some(event => event.type === 'remediation_started' && event.remediation === 'solution') ? 1 : 0,
+      misconceptions: events.filter(event => event.type === 'diagnostic_observed').length,
+      remediations: events.filter(event => event.type === 'remediation_started').length,
+      remediationSuccesses: events.filter(event => event.type === 'remediation_completed').length,
+      retained: events.some(event => event.type === 'retention_checked') ? 1 : 0,
+      placementChecks: events.filter(event => event.type === 'placement_checked').length,
+      placementMatches: events.filter(event => event.type === 'placement_checked' && event.placementMatch).length
+    });
+  }
   return {
-    version: 1,
+    version: 2,
     periodStart,
     courseVersion: 3,
     rows,
+    items,
     mastery: timeToMastery(state.events, periodStartMs),
     experiments: { ...state.experimentVariants }
   };
@@ -527,7 +608,7 @@ export async function deleteCloudLearningAnalytics() {
 }
 
 export async function exportCloudLearningAnalytics() {
-  return responseJson<{ version: 1; sharing: LearningAnalyticsSharing; snapshots: LearningAnalyticsSnapshot[] }>(await fetch('/api/learning-analytics/export'));
+  return responseJson<{ version: 2; sharing: LearningAnalyticsSharing; snapshots: LearningAnalyticsSnapshot[] }>(await fetch('/api/learning-analytics/export'));
 }
 
 export function exportLocalLearningAnalytics(state: LearningAnalyticsState) {

@@ -25,10 +25,11 @@ The local log never includes SQL source, result rows, task text, free-form notes
 Sharing defaults to `off`. A learner can explicitly enable `coarse-opt-in`. The server then receives one replaceable weekly snapshot per account containing:
 
 - module-level funnel counters and bounded flags;
+- published task/lesson IDs with bounded attempt, independence, assistance, misconception, retention and placement-match counters;
 - five coarse time-to-mastery buckets;
 - deterministic variants for allowlisted content experiments.
 
-It does not receive task IDs, exact event timestamps, learner SQL, result rows, free-form text or the local event log. The snapshot payload contains no user ID; D1 links the stored row to the authenticated account only for truthful export and deletion.
+Task and lesson IDs describe public course content, not learner input. The server does not receive exact event timestamps, learner SQL, result rows, diagnostic text, free-form notes or the local event log. The snapshot payload contains no user ID; D1 links the stored row to the authenticated account only for truthful export and deletion.
 
 Snapshots remain linked to the account until opt-out, explicit deletion or account deletion. Course-health output aggregates snapshots at query time.
 
@@ -37,7 +38,7 @@ Snapshots remain linked to the account until opt-out, explicit deletion or accou
 | Threat | Control |
 | --- | --- |
 | SQL or employer data copied into analytics | Schema has no SQL/free-text field; strict allowlist validation rejects unknown keys at snapshot, mastery and row levels. |
-| Identity exposed through a small cohort | Every module/week, mastery/week and experiment/week slice below five contributors is suppressed independently. |
+| Identity exposed through a small cohort | Every module/week, task/week, mastery/week and experiment/week slice below five contributors is suppressed independently. |
 | Silent tracking | Default `off`; UI explains the payload before opt-in; disabling sharing deletes server snapshots. |
 | Event log grows indefinitely | Local history is capped at 5,000 events and 180 days. |
 | Duplicate browser events inflate metrics | Event IDs are unique, collector records state deltas, and near-duplicates are de-duplicated. |
@@ -63,6 +64,7 @@ The UI shows the exact reason and recommended action. No opaque model decides wh
 The report may expose only aggregate evidence:
 
 - module funnel, lapses, remediation outcomes and bounded overload/stalled/review-debt counts;
+- task/lesson health with hint/solution dependence, misconceptions, delayed retention and placement-match counts;
 - weekly time-to-mastery buckets;
 - weekly allowlisted experiment variants with attempted, independent, retained and remediation totals.
 
@@ -73,10 +75,11 @@ Action suggestions are deterministic heuristics over already-released cohort row
 The minimum cohort is five distinct account snapshots. Suppression is applied independently to:
 
 1. the same week and module;
-2. the same week for time-to-mastery;
-3. the same week, allowlisted experiment and variant.
+2. the same week and published task ID;
+3. the same week for time-to-mastery;
+4. the same week, allowlisted experiment and variant.
 
-Suppressed groups contribute only to `suppressedRows`, `suppressedMasteryPeriods` or `suppressedExperiments`; their metrics and dimensions are not returned. Experiment rows are deliberately not crossed with module ID to reduce singling-out risk.
+Suppressed groups contribute only to `suppressedRows`, `suppressedItems`, `suppressedMasteryPeriods` or `suppressedExperiments`; their metrics and dimensions are not returned. Experiment rows are deliberately not crossed with module or task ID to reduce singling-out risk.
 
 This is not a formal differential-privacy guarantee, so the API also restricts dimensions to published values, caps the report to twelve weeks and does not accept arbitrary filters.
 
@@ -84,7 +87,7 @@ This is not a formal differential-privacy guarantee, so the API also restricts d
 
 - Local events: maximum 180 days / 5,000 events.
 - Server snapshots: retained until opt-out, explicit analytics deletion or account deletion.
-- Course-health API reads at most the latest 12 weeks.
+- Course-health API reads at most the latest 12 weeks. Item aggregates share the snapshot row and therefore the same export, opt-out, explicit-delete and account-cascade lifecycle.
 - Account deletion cascades both analytics tables.
 
 ## Non-goals

@@ -28,6 +28,37 @@ function durationBucket(startedAt: string | undefined) {
   return '60m-plus' as const;
 }
 
+async function recordPlacementCheck(
+  task: typeof tasks[number],
+  next: TaskStats,
+  attempts: number,
+  incorrect: number,
+  independent: number
+) {
+  if (attempts <= 0 || !next.lastAttemptAt) return;
+  const { loadOnboardingProfile } = await import('../lib/learner-onboarding');
+  const profile = loadOnboardingProfile();
+  const placement = profile.placement;
+  if (placement.status !== 'completed' || !placement.level || !placement.completedAt) return;
+  if (new Date(next.lastAttemptAt).getTime() < new Date(placement.completedAt).getTime()) return;
+  const taskRank = task.difficulty === 'База' ? 1 : task.difficulty === 'Рабочий' ? 2 : 3;
+  const expectedRank = placement.level === 'foundation' || placement.level === 'developing'
+    ? 1
+    : placement.level === 'working' ? 2 : 3;
+  const placementOutcome = independent > 0 && taskRank > expectedRank
+    ? 'mismatch-high' as const
+    : independent === 0 && incorrect > 0 && taskRank <= expectedRank
+      ? 'mismatch-low' as const
+      : 'supported' as const;
+  appendLearningEvent({
+    type: 'placement_checked',
+    taskId: task.id,
+    moduleId: task.module,
+    placementOutcome,
+    placementMatch: placementOutcome === 'supported'
+  });
+}
+
 function recordTaskDelta(taskId: string, next: TaskStats, previous: TaskStats | undefined, nextProgress: Progress, previousProgress: Progress) {
   const task = tasks.find(item => item.id === taskId);
   if (!task) return;
@@ -37,6 +68,8 @@ function recordTaskDelta(taskId: string, next: TaskStats, previous: TaskStats | 
   const hints = delta(next.hintsUsed, previous?.hintsUsed);
   const solutions = delta(next.solutionViews, previous?.solutionViews);
   const newlyUnderstood = nextProgress.completed.includes(taskId) && !previousProgress.completed.includes(taskId);
+
+  void recordPlacementCheck(task, next, attempts, incorrect, independent);
 
   for (let index = 0; index < attempts; index += 1) {
     appendLearningEvent({

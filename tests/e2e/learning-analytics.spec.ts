@@ -3,6 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { authenticatePage } from './auth-helper';
 import { openAdvancedTool } from './navigation-helper';
+import { buildLearnerPersona, type LearnerPersonaId } from '../../src/lib/learner-personas';
 
 function analyticsState(userId: string) {
   const sessionId = 'playwright-analytics-session';
@@ -51,6 +52,24 @@ async function seedAnalytics(page: Page, userId: string) {
     sessionId: 'playwright-analytics-session',
     value: analyticsState(userId)
   });
+}
+
+async function seedPersona(page: Page, userId: string, id: LearnerPersonaId) {
+  const fixture = buildLearnerPersona(id, userId);
+  await page.addInitScript(value => {
+    localStorage.setItem('sql-academy-progress-v4', JSON.stringify(value.progress));
+    localStorage.setItem(`sql-academy-onboarding-v1:${value.userId}`, JSON.stringify(value.onboarding));
+    localStorage.setItem(`sql-academy-curriculum-progress-v1:${value.userId}`, JSON.stringify(value.curriculum));
+    localStorage.setItem(`sql-academy-learning-analytics-v1:${value.userId}`, JSON.stringify(value.analytics));
+    sessionStorage.setItem(`sql-academy-learning-analytics-session-v1:${value.userId}`, 'persona-session-0001');
+  }, {
+    userId,
+    progress: fixture.progress,
+    onboarding: fixture.onboarding,
+    curriculum: fixture.curriculum,
+    analytics: fixture.analytics
+  });
+  return fixture;
 }
 
 async function openAnalytics(page: Page, mobile = false) {
@@ -103,19 +122,21 @@ test('desktop analytics stays local by default and sends only coarse actionable 
 
   const payload = JSON.parse(snapshotBody) as { snapshot: Record<string, unknown> };
   const serialized = snapshotBody.toUpperCase();
-  expect(serialized).not.toContain('TASK-001');
-  expect(serialized).not.toContain('TASK-002');
+  expect(serialized).toContain('TASK-001');
+  expect(serialized).toContain('LESSON-SQL-THINKING');
   expect(serialized).not.toContain(userId.toUpperCase());
   expect(serialized).not.toContain('SELECT ');
   expect(payload.snapshot).toHaveProperty('mastery.same-session', 1);
+  expect(payload.snapshot).toHaveProperty('items.0.lessonId', 'lesson-sql-thinking');
   expect(payload.snapshot).toHaveProperty('experiments.remediation-copy-v1', 'control');
-  expect(Object.keys(payload.snapshot).sort()).toEqual(['courseVersion', 'experiments', 'mastery', 'periodStart', 'rows', 'version'].sort());
+  expect(Object.keys(payload.snapshot).sort()).toEqual(['courseVersion', 'experiments', 'items', 'mastery', 'periodStart', 'rows', 'version'].sort());
 
   const cohort = page.getByTestId('learning-cohort-report');
   await expect(cohort).toContainText(/Недостаточно contributors|suppressed/i);
   await expect(cohort).toContainText('Course actions');
   await expect(cohort).toContainText('Time-to-mastery');
   await expect(cohort).toContainText('Experiment guardrails');
+  await expect(cohort).toContainText('Lesson / task health');
   await expect(cohort).toContainText('не автоматический «победитель»');
 
   const downloadPromise = page.waitForEvent('download');
@@ -137,6 +158,80 @@ test('desktop analytics stays local by default and sends only coarse actionable 
   const stored = await page.evaluate(key => localStorage.getItem(key), `sql-academy-learning-analytics-v1:${userId}`);
   expect(stored).toBeNull();
 });
+
+test('desktop analytics item health shows sample uncertainty and competing explanations', async ({ page }, testInfo) => {
+  const auth = await authenticatePage(page, 'analyticshealth');
+  await seedAnalytics(page, String(auth.session.userId));
+  await page.route('**/api/learning-analytics/report', route => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      version: 2,
+      minimumCohort: 5,
+      generatedAt: '2026-08-17T09:00:00.000Z',
+      rows: [],
+      items: [
+        { periodStart: '2026-08-17', taskId: 'task-001', lessonId: 'lesson-sql-thinking', contributors: 5, attempted: 5, independent: 1, hinted: 4, solutionViewed: 2, misconceptions: 4, remediations: 5, remediationSuccesses: 1, retained: 0, placementChecks: 5, placementMatches: 2, suppressed: false },
+        { periodStart: '2026-08-17', taskId: 'task-002', lessonId: 'lesson-sql-thinking', contributors: 20, attempted: 40, independent: 35, hinted: 2, solutionViewed: 0, misconceptions: 1, remediations: 2, remediationSuccesses: 2, retained: 10, placementChecks: 10, placementMatches: 9, suppressed: false }
+      ],
+      mastery: [],
+      experiments: [],
+      suppressedRows: 0,
+      suppressedItems: 0,
+      suppressedMasteryPeriods: 0,
+      suppressedExperiments: 0
+    })
+  }));
+  await openAnalytics(page);
+  const portal = page.getByTestId('learning-analytics-portal');
+  await portal.getByRole('button', { name: 'Coarse opt-in' }).click();
+  await portal.getByRole('button', { name: 'Обновить course health' }).click();
+  const health = page.getByTestId('learning-item-health');
+  await expect(health).toContainText('lesson-success-task-failure');
+  await expect(health).toContainText('Альтернатива:');
+  await health.locator('details').first().locator('summary').click();
+  await expect(health).toContainText('Мало данных: n=5');
+  await expect(health).toContainText('90% interval');
+  await expectAccessible(page);
+  await page.screenshot({ path: testInfo.outputPath('desktop-course-item-health.png'), fullPage: true });
+});
+
+for (const personaId of ['zero', 'partial', 'role-focused', 'returning'] as const) {
+  test(`desktop analytics and mobile analytics seeded ${personaId} persona follow a deterministic prerequisite-safe journey`, async ({ page }, testInfo) => {
+    const auth = await authenticatePage(page, `persona${personaId.replace('-', '')}`);
+    const fixture = await seedPersona(page, String(auth.session.userId), personaId);
+    await page.goto('./');
+
+    const today = page.getByTestId('guided-today');
+    await expect(today).toBeVisible();
+    await expect(today.locator('.guided-progress-card')).toContainText(`${fixture.progress.completed.length} из 240 задач`);
+    const action = page.getByTestId('guided-journey-action');
+    await expect(action).toBeVisible();
+    await expect(action).not.toHaveAttribute('data-stage', 'loading', { timeout: 15_000 });
+    if (personaId === 'returning') {
+      await expect(action).toHaveAttribute('data-stage', 'review');
+      await expect(action.getByRole('button', { name: 'Начать повторение' })).toBeEnabled();
+    } else {
+      await expect(action.getByRole('button')).toBeEnabled();
+    }
+
+    const evidence = await page.evaluate(userId => {
+      const analytics = localStorage.getItem(`sql-academy-learning-analytics-v1:${userId}`) || '';
+      const progress = JSON.parse(localStorage.getItem('sql-academy-progress-v4') || '{}') as { completed?: string[] };
+      return { analytics, completed: progress.completed?.length || 0 };
+    }, String(auth.session.userId));
+    expect(evidence.completed).toBe(fixture.progress.completed.length);
+    expect(evidence.analytics.toUpperCase()).not.toContain('SELECT ');
+    expect(fixture.expected.prerequisiteSafe).toBe(true);
+
+    await openAdvancedTool(page, 'learning-analytics-trigger');
+    const portal = page.getByTestId('learning-analytics-portal');
+    await expect(portal).toBeVisible();
+    await expect(portal).toContainText('Локальный evidence');
+    await expectAccessible(page);
+    await page.screenshot({ path: testInfo.outputPath(`persona-${personaId}.png`), fullPage: true });
+  });
+}
 
 test('mobile analytics has no horizontal overflow, traps focus and closes back to its launcher', async ({ page }, testInfo) => {
   const auth = await authenticatePage(page, 'analyticsmobile');
