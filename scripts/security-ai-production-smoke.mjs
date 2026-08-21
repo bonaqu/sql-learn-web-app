@@ -66,8 +66,11 @@ try {
   assertSecurityHeaders(shell.response, 'Static shell');
 
   stage('api-headers-and-origin-denial');
-  const health = await request('/api/health', { headers: { origin: 'https://attacker.invalid' } });
+  const health = await request('/api/health', { headers: { origin: 'https://attacker.invalid' } }, [403]);
   assertSecurityHeaders(health.response, 'API response');
+  if (health.body?.error !== 'Origin is not allowed') {
+    throw new Error('Untrusted origin did not receive the fail-closed API contract');
+  }
   if (health.response.headers.has('access-control-allow-origin')) {
     throw new Error('Untrusted origin received an Access-Control-Allow-Origin header');
   }
