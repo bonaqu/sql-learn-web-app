@@ -95,7 +95,7 @@ Four deterministic personas and item-health fixtures prove instrumentation, priv
 
 | Evidence | Locked result before Phase 14 publication | Gate |
 | --- | ---: | --- |
-| Main entry | 235.5 KiB raw / 72.5 KiB gzip | within entry budget |
+| Main entry | 235.6 KiB raw / 72.6 KiB gzip | within entry budget |
 | Product CSS | 234 KiB raw / 46.7 KiB gzip | within CSS budget |
 | Desktop light | LCP 1020 ms, CLS 0, TBT 0, transfer 110 KiB | pass |
 | Desktop dark | LCP 804 ms, CLS 0, TBT 0, transfer 110 KiB | pass |
@@ -121,4 +121,4 @@ The same four-profile runner is repeated after deployment; its JSON/PNG artifact
 | R3 | Workstation boundary | Docker is absent locally | exact-head Quality must run all 22 PostgreSQL/MySQL contracts and negative fixtures |
 | R4 | Buyer operations | Durable backup custody and D1 Time Travel window belong to the deploying account | store an encrypted backup and record the current Cloudflare window during handoff |
 
-Phase release chain before this reviewed tree: #185/#186/#187/#188/#189 (`391056f`), #190 (`36e6662`), #195 (`04155ae`), #196 (`c79641c`), #197/#198/#199/#200 (`81f6c13`), #201 (`b917bd2`), #202 (`4778c8d`), #203 (`1f46cd0`), #204 (`2a79fe6`), #205/#206 (`95504dd`), #207/#212 (`531d7a7`), #213 (`6e8cf54`), #214/#215 (`26035bb`). Phase 14's exact head/merge/deployment record is intentionally external and immutable in PR #216 plus issue #82.
+Phase release chain before this reviewed tree: #185/#186/#187/#188/#189 (`391056f`), #190 (`36e6662`), #195 (`04155ae`), #196 (`c79641c`), #197/#198/#199/#200 (`81f6c13`), #201 (`b917bd2`), #202 (`4778c8d`), #203 (`1f46cd0`), #204 (`2a79fe6`), #205/#206 (`95504dd`), #207/#212 (`531d7a7`), #213 (`6e8cf54`), #214/#215 (`26035bb`). Phase 14's exact head/merge/deployment record is intentionally external and immutable in PR #216, its visual-evidence follow-up and issue #82.

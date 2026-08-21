@@ -81,10 +81,13 @@ try {
     page.on('console', message => { if (message.type() === 'error') consoleErrors.push(message.text()); });
     page.on('pageerror', error => consoleErrors.push(error.message));
     await page.addInitScript(observerScript);
+    await page.addInitScript(theme => localStorage.setItem('sql-theme', theme), profile.colorScheme);
     const response = await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 45_000 });
     if (!response?.ok()) throw new Error(`${profile.id} returned HTTP ${response?.status() || 0}`);
     await page.getByTestId('account-reason').waitFor({ state: 'visible' });
     await page.getByText('Онлайн', { exact: true }).waitFor({ state: 'visible' });
+    const activeTheme = await page.evaluate(() => document.documentElement.dataset.theme);
+    if (activeTheme !== profile.colorScheme) throw new Error(`${profile.id} rendered ${activeTheme || 'no'} app theme`);
     const pwaNotice = page.getByTestId('pwa-registration-notice');
     if (await pwaNotice.isVisible()) {
       const noticeText = await pwaNotice.innerText();

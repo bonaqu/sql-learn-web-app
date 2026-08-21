@@ -23,6 +23,11 @@ import './phase12-ux.css';
 
 const AuthenticatedAcademy = lazy(() => import('./components/AuthenticatedAcademy'));
 
+const savedTheme = localStorage.getItem('sql-theme');
+if (savedTheme === 'light' || savedTheme === 'dark') {
+  document.documentElement.dataset.theme = savedTheme;
+}
+
 function AcademyLoadingState() {
   return <main className="auth-loading" role="status" aria-live="polite">Загружаем учебное пространство…</main>;
 }
