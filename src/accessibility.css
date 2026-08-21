@@ -100,7 +100,8 @@
 }
 
 .pwa-toast.update,
-.pwa-toast.danger {
+.pwa-toast.danger,
+.pwa-toast.dismissible {
   pointer-events: auto;
 }
 

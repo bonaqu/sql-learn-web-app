@@ -1,7 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
+
+const require = createRequire(import.meta.url);
 
 const database = String(process.env.D1_DATABASE_NAME || 'sql-academy').trim();
 const config = String(process.env.D1_CONFIG || (existsSync('wrangler.deploy.jsonc') ? 'wrangler.deploy.jsonc' : 'wrangler.jsonc')).trim();
@@ -13,8 +16,9 @@ if (!/^[a-zA-Z0-9_-]{2,80}$/.test(database)) throw new Error('D1_DATABASE_NAME i
 if (existsSync(output) || existsSync(manifestPath)) throw new Error(`Backup output already exists: ${output}`);
 mkdirSync(dirname(output), { recursive: true });
 
-const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-execFileSync(npx, ['wrangler', 'd1', 'export', database, '--remote', '--config', config, '--output', output], { stdio: 'inherit' });
+execFileSync(process.execPath, [
+  require.resolve('wrangler'), 'd1', 'export', database, '--remote', '--config', config, '--output', output
+], { stdio: 'inherit' });
 
 const bytes = readFileSync(output);
 const sql = bytes.toString('utf8');

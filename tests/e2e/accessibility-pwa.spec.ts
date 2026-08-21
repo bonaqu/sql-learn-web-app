@@ -107,6 +107,22 @@ test('desktop accessibility exposes slow loading and recoverable auth error stat
   await expectNoSeriousAxeViolations(page);
 });
 
+test('desktop accessibility keeps a service worker registration error non-blocking and natural', async ({ page }) => {
+  await page.goto('./');
+  await expect(page.getByTestId('account-reason')).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent('sql-academy-pwa-registration-error', {
+    detail: { error: "Cannot read properties of undefined (reading 'waiting')" }
+  })));
+  const notice = page.getByTestId('pwa-registration-notice');
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText('Офлайн-режим недоступен');
+  await expect(notice).toContainText('Онлайн-обучение продолжает работать');
+  await expect(notice).not.toContainText(/Cannot read|undefined|waiting/i);
+  await notice.getByRole('button', { name: 'Закрыть уведомление' }).click();
+  await expect(notice).toBeHidden();
+  await expectNoSeriousAxeViolations(page);
+});
+
 test('mobile accessibility keeps Assessment Center within Pixel 7 focus boundary', async ({ page }, testInfo) => {
   await authenticatePage(page, 'mobilea11y');
   await page.goto('./');

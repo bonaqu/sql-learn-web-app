@@ -31,7 +31,13 @@ try {
     throw new Error('Tampered backup was not rejected by checksum validation');
   }
 
+  const backupSource = readFileSync('scripts/d1-backup.mjs', 'utf8');
   const restoreSource = readFileSync('scripts/d1-restore-rehearsal.mjs', 'utf8');
+  for (const [name, source] of [['backup', backupSource], ['restore', restoreSource]]) {
+    for (const contract of ["createRequire(import.meta.url)", "require.resolve('wrangler')", 'execFileSync(process.execPath']) {
+      if (!source.includes(contract)) throw new Error(`${name} must launch project-local Wrangler through Node: ${contract}`);
+    }
+  }
   for (const guard of ['RESTORE_TO_NON_PRODUCTION', 'Refusing to restore into the source/production database name', 'rehearsal|restore|staging|test', 'verify-d1-backup.mjs']) {
     if (!restoreSource.includes(guard)) throw new Error(`Restore rehearsal guard is missing: ${guard}`);
   }
