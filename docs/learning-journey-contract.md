@@ -83,7 +83,8 @@ A completed failed report creates a temporary remediation state owned by its che
 - The **latest completed attempt** controls pass or fail state. A later failure reactivates remediation even after an older pass; a later pass clears it.
 - Historical `bestScore` may remain visible for reporting, but it cannot override a later failed attempt for routing, eligibility or phase completion.
 - Remediation modules are intersected with checkpoint membership, deduplicated and ordered by lowest module score, then canonical route order.
-- A repair counts only when the exact weak task receives new independent evidence after the failed report timestamp.
+- Every weak module receives a deterministic discriminating Practice task and a separate Interview/Puzzle transfer task; neither may be a task from the failed checkpoint.
+- The Practice step counts only with new independent evidence after the failed report timestamp. Transfer counts only with independent evidence later than that Practice evidence, so a pre-solved or out-of-order task cannot repair the module.
 - Placement or diagnostic bypass is ignored for a module explicitly contradicted by the failed checkpoint.
 - Completing remediation does not mark the checkpoint passed. It only unlocks an explicit checkpoint retry.
 - Transfer, specialization and later checkpoints remain closed until a real later attempt passes.
@@ -164,4 +165,4 @@ A change is a route regression when any primary surface:
 - parses raw checkpoint `moduleScores`, `taskScores` or attempt ordering in UI code;
 - hides why the step is next.
 
-All five goals, failed→repair→retry→pass transitions, beginner and advanced placement bands, workspace gates and desktop/mobile resume must be validated on one exact head before merge.
+All five goals, failed→discriminate→transfer→retry→pass transitions, beginner and advanced placement bands, workspace gates and desktop/mobile resume must be validated on one exact head before merge.

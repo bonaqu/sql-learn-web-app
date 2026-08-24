@@ -39,7 +39,10 @@ for (const marker of [
   'weakTaskMap',
   'checkpointRemediationsFromReports',
   'unresolvedCheckpointRemediationModules',
-  'lastIndependentAt > completedAt'
+  'nextCheckpointRemediationStep',
+  'discriminatingTaskId',
+  'transferTaskId',
+  'timestamp > Date.parse(after)'
 ]) {
   assert.ok(remediation.includes(marker),
     `Checkpoint remediation domain ownership is missing ${marker}.`);
@@ -104,6 +107,11 @@ for (const marker of [
   'goal-switch-proposed-action',
   "data-route-reason', 'checkpoint-remediation'",
   "data-stage', 'checkpoint'",
+  "data-stage', 'practice'",
+  'completeRemediationTask',
+  'discriminatingTaskTitle',
+  'transferTaskTitle',
+  'outOfOrder',
   'appendPassedReport',
   'AxeBuilder',
   'expectNoOverflow'
@@ -116,7 +124,7 @@ for (const marker of [
   'latest completed attempt',
   'bestScore',
   'Raw checkpoint report fields',
-  'failed→repair→retry→pass'
+  'failed→discriminate→transfer→retry→pass'
 ]) {
   assert.ok(journeyContract.includes(marker),
     `Learning journey contract is missing remediation rule ${marker}.`);

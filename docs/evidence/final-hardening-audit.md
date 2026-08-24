@@ -1,6 +1,6 @@
 # Final hardening audit
 
-Audit date: 2026-08-24. Scope: the 14-phase SQL Academy learning-system programme from planning baseline `8a713ebb8035e699b8bf66456fc538184abff95c` through the current independent re-audit. A Git commit cannot contain its own hash, so immutable merge, workflow, deployment and live-browser evidence is recorded in the corresponding pull request and GitHub issue after publication.
+Audit date: 2026-08-25. Scope: the 14-phase SQL Academy learning-system programme from planning baseline `8a713ebb8035e699b8bf66456fc538184abff95c` through the current independent re-audit. A Git commit cannot contain its own hash, so immutable merge, workflow, deployment and live-browser evidence is recorded in the corresponding pull request and GitHub issue after publication.
 
 Status vocabulary:
 
@@ -20,7 +20,7 @@ Status vocabulary:
 | 6 | Smart SQL evaluation | **Partially verified** | 120 core tasks have versioned multi-fixture contracts; advanced disposable scripts now use isolated learner/reference databases, safety policy, output/final-temp-state comparison and negative mutants, but task-specific hidden/adversarial contracts remain follow-up work |
 | 7 | Hint system | Verified | bounded hint/solution provenance in task contracts, assessment reports, durable-evidence invalidation and analytics separation |
 | 8 | AI tutor / mentor | Verified | Mentor, Assessment Interviewer and Debrief share explicit consent, one application flag, D1 quota, redaction, untrusted-data envelope, timeout, strict output validation and local fallback contracts |
-| 9 | Misconception engine | Verified | misconception taxonomy in task contracts; `scripts/validate-course-health.ts`; remediation and learner-analytics validators |
+| 9 | Misconception engine | Verified | misconception taxonomy in task contracts; `scripts/validate-course-health.ts`; all-checkpoint two-stage discriminating-practice/transfer proof in `scripts/validate-checkpoint-remediation.ts`; ordered desktop/mobile recovery in `tests/e2e/checkpoint-remediation.spec.ts` |
 | 10 | Mastery means demonstrated knowledge | Verified | direct core evidence and delayed retrieval are contracted; all eight checkpoint, phase, access and certificate gates require the current immutable completed report and reject completion-only, assisted and migrated task history |
 | 11 | Spaced review, retrieval and interleaving | Verified | `scripts/validate-review-scheduling.ts`; daily-route and durable-mastery contracts; `tests/e2e/mastery-loop.spec.ts` |
 | 12 | Daily learning loop | Verified | `docs/adaptive-placement-and-daily-route.md`; deterministic allocation validator; guided-journey browser coverage |
@@ -52,7 +52,7 @@ Status vocabulary:
 
 ### Curriculum truth
 
-The prerequisite graph, syntax frontier, lesson bridges, 120 core contracts, advanced authored catalog, unseen checkpoints, five capstones and four interview forms are checked by deterministic validators. Core tasks use positive plus hidden/adversarial fixtures. Advanced scripts now pass through the real application evaluator in separate disposable databases, with unsafe-command denial and semantic output/temp-state comparison; this is a runtime-integrity bridge, not a claim that all 120 advanced tasks already have authored hidden fixtures. The complete prediction/faded/transfer lesson cycle currently covers 3/44 lessons, so the broader lesson-structure requirement remains partial.
+The prerequisite graph, syntax frontier, lesson bridges, 120 core contracts, advanced authored catalog, unseen checkpoints, five capstones and four interview forms are checked by deterministic validators. Core tasks use positive plus hidden/adversarial fixtures. Advanced scripts now pass through the real application evaluator in separate disposable databases, with unsafe-command denial and semantic output/temp-state comparison; this is a runtime-integrity bridge, not a claim that all 120 advanced tasks already have authored hidden fixtures. Failed checkpoints now retain weak IDs from both checkpoint banks and the course catalog, then require a new discriminating Practice task followed by a distinct later Interview/Puzzle transfer before retry. The complete prediction/faded/transfer lesson cycle currently covers 3/44 lessons, so the broader lesson-structure requirement remains partial.
 
 ### UX and state coverage
 

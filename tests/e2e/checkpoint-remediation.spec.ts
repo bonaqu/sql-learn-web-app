@@ -6,6 +6,7 @@ import { tasks } from '../../src/data/course-catalog';
 import { evaluationContractForTask } from '../../src/data/foundation-evaluation-contracts';
 import { lessonChecks } from '../../src/data/lesson-checks';
 import { phaseDefinitions } from '../../src/data/learning-structure';
+import { checkpointRemediationsFromReports } from '../../src/lib/checkpoint-remediation';
 import { foundationTasksForModule } from '../../src/lib/learning-journey';
 import {
   FOUNDATION_EVIDENCE_CONTRACT_VERSION,
@@ -105,10 +106,10 @@ function fixture(userId: string) {
   const failedAt = new Date(Date.now() - 45_000).toISOString();
   const beforeFailure = new Date(Date.parse(failedAt) - 60_000).toISOString();
   const weakTasks = checkpoint.taskIds.flatMap(taskId => {
-    const task = tasks.find(item => item.id === taskId);
+    const task = checkpointTaskById(taskId) || tasks.find(item => item.id === taskId);
     return task ? [task] : [];
   });
-  const weakModules = Array.from(new Set(weakTasks.map(task => task.module))).slice(0, 2);
+  const weakModules = Array.from(new Set(weakTasks.map(task => task.module))).slice(0, 1);
   const weakModuleSet = new Set<string>(weakModules);
   const targetedTasks = weakTasks.filter(task => weakModuleSet.has(task.module));
   const taskStats = Object.fromEntries(foundationTasks.map(task => [task.id, {
@@ -212,6 +213,12 @@ function fixture(userId: string) {
       new Date(Date.parse(beforeFailure) - (checkpointIndex - index) * 120_000).toISOString(),
       1
     ));
+  const remediation = checkpointRemediationsFromReports([failedReport], userId)[0];
+  if (!remediation?.modules.length) throw new Error('Expected failed checkpoint remediation fixture.');
+  const weakest = remediation.modules[0];
+  const discriminatingTask = tasks.find(task => task.id === weakest.discriminatingTaskId);
+  const transferTask = tasks.find(task => task.id === weakest.transferTaskId);
+  if (!discriminatingTask || !transferTask) throw new Error('Expected complete remediation task pair.');
   return {
     phase,
     checkpoint,
@@ -220,9 +227,13 @@ function fixture(userId: string) {
     curriculum,
     failedReport,
     reports: [...priorPassedReports, failedReport],
-    targetedTaskIds: targetedTasks.map(task => task.id),
-    weakestModule: weakModules[0],
-    weakestTaskTitle: targetedTasks[0]?.title || '',
+    failedTaskTitles: targetedTasks.map(task => task.title),
+    weakestModule: weakest.moduleId,
+    discriminatingTaskId: discriminatingTask.id,
+    discriminatingTaskTitle: discriminatingTask.title,
+    transferTaskId: transferTask.id,
+    transferTaskTitle: transferTask.title,
+    transferStage: transferTask.mode === 'puzzle' ? 'puzzle' : 'interview',
     failedAt
   };
 }
@@ -253,30 +264,29 @@ async function expectRemediationAccessible(page: Page) {
   expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
 }
 
-async function repairTargetedTasks(page: Page, userId: string, value: ReturnType<typeof fixture>) {
-  const repairedAt = new Date(Date.parse(value.failedAt) + 30_000).toISOString();
-  const evidenceByTaskId = Object.fromEntries(value.targetedTaskIds.map(taskId => [taskId, foundationEvidence(taskId)]));
-  await page.evaluate(({ ids, evidence, when, eventName }) => {
+async function completeRemediationTask(page: Page, taskId: string, when: string) {
+  const evidence = foundationEvidence(taskId);
+  await page.evaluate(({ id, contractEvidence, completedAt, eventName }) => {
     const raw = localStorage.getItem('sql-academy-progress-v4');
     const progress = raw ? JSON.parse(raw) : null;
     if (!progress) throw new Error('Missing progress fixture.');
-    for (const taskId of ids) {
-      const previous = progress.taskStats[taskId] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
-      progress.taskStats[taskId] = {
-        ...previous,
-        attempts: previous.attempts + 1,
-        solutionViews: 0,
-        independentPasses: Math.max(1, previous.independentPasses || 0) + 1,
-        lastIndependentAt: when,
-        completedAt: previous.completedAt || when,
-        lastAttemptAt: when,
-        ...evidence[taskId]
-      };
-      if (!progress.completed.includes(taskId)) progress.completed.push(taskId);
-    }
+    const previous = progress.taskStats[id] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
+    progress.taskStats[id] = {
+      ...previous,
+      attempts: previous.attempts + 1,
+      hintsUsed: 0,
+      solutionViews: 0,
+      solutionViewedAt: undefined,
+      independentPasses: Math.max(1, previous.independentPasses || 0) + 1,
+      lastIndependentAt: completedAt,
+      completedAt: previous.completedAt || completedAt,
+      lastAttemptAt: completedAt,
+      ...contractEvidence
+    };
+    if (!progress.completed.includes(id)) progress.completed.push(id);
     localStorage.setItem('sql-academy-progress-v4', JSON.stringify(progress));
     window.dispatchEvent(new CustomEvent(eventName, { detail: progress }));
-  }, { id: userId, ids: value.targetedTaskIds, evidence: evidenceByTaskId, when: repairedAt, eventName: PROGRESS_EVENT });
+  }, { id: taskId, contractEvidence: evidence, completedAt: when, eventName: PROGRESS_EVENT });
 }
 
 async function appendPassedReport(page: Page, userId: string, value: ReturnType<typeof fixture>) {
@@ -309,14 +319,16 @@ test('desktop failed checkpoint controls Today, Learning Path, goal preview and 
   await expect(todayBanner).toContainText(value.checkpoint.title);
   const todayAction = page.getByTestId('guided-journey-action');
   await expect(todayAction).toHaveAttribute('data-route-reason', 'checkpoint-remediation');
-  await expect(todayAction).toContainText(value.weakestTaskTitle);
+  await expect(todayAction).toHaveAttribute('data-stage', 'practice');
+  await expect(todayAction).toContainText(value.discriminatingTaskTitle);
+  for (const failedTitle of value.failedTaskTitles) await expect(todayAction).not.toContainText(failedTitle);
 
   await page.getByTestId('learning-path-trigger').click();
   const path = page.getByTestId('learning-path');
   const banner = path.getByTestId('checkpoint-remediation-banner');
   await expect(banner).toBeVisible();
   await expect(banner).toContainText('52%');
-  await expect(path.locator('.session-list > button').first()).toContainText(value.weakestTaskTitle);
+  await expect(path.locator('.session-list > button').first()).toContainText(value.discriminatingTaskTitle);
   await expectRemediationAccessible(page);
   await expectNoOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('desktop-checkpoint-remediation.png'), fullPage: true });
@@ -325,12 +337,38 @@ test('desktop failed checkpoint controls Today, Learning Path, goal preview and 
   await path.getByTestId('goal-switch-trigger').click();
   const switchPanel = path.getByTestId('goal-switch-panel');
   await switchPanel.getByTestId('goal-switch-option-backend').click();
-  await expect(switchPanel.getByTestId('goal-switch-current-action')).toContainText(value.weakestTaskTitle);
-  await expect(switchPanel.getByTestId('goal-switch-proposed-action')).toContainText(value.weakestTaskTitle);
+  await expect(switchPanel.getByTestId('goal-switch-current-action')).toContainText(value.discriminatingTaskTitle);
+  await expect(switchPanel.getByTestId('goal-switch-proposed-action')).toContainText(value.discriminatingTaskTitle);
   await expect(switchPanel.getByTestId('goal-switch-impact')).toContainText(/Текущий обязательный шаг не изменится/i);
   await switchPanel.getByTestId('goal-switch-cancel').click();
 
-  await repairTargetedTasks(page, String(auth.session.userId), value);
+  await completeRemediationTask(
+    page,
+    value.transferTaskId,
+    new Date(Date.parse(value.failedAt) + 15_000).toISOString()
+  );
+  await page.reload();
+  const outOfOrder = page.getByTestId('guided-journey-action');
+  await expect(outOfOrder).toHaveAttribute('data-stage', 'practice');
+  await expect(outOfOrder).toContainText(value.discriminatingTaskTitle);
+
+  await completeRemediationTask(
+    page,
+    value.discriminatingTaskId,
+    new Date(Date.parse(value.failedAt) + 30_000).toISOString()
+  );
+  await page.reload();
+  const transfer = page.getByTestId('guided-journey-action');
+  await expect(transfer).toHaveAttribute('data-route-reason', 'checkpoint-remediation');
+  await expect(transfer).toHaveAttribute('data-stage', value.transferStage);
+  await expect(transfer).toContainText(value.transferTaskTitle);
+  await expect(transfer).not.toContainText(value.discriminatingTaskTitle);
+
+  await completeRemediationTask(
+    page,
+    value.transferTaskId,
+    new Date(Date.parse(value.failedAt) + 45_000).toISOString()
+  );
   await page.reload();
   await expect(page.getByTestId('guided-checkpoint-remediation')).toBeVisible();
   const retry = page.getByTestId('guided-journey-action');
@@ -352,7 +390,10 @@ test('mobile failed checkpoint remediation remains readable and accessible', asy
   await page.getByTestId('learning-path-mobile-trigger').click();
   const path = page.getByTestId('learning-path');
   await expect(path.getByTestId('checkpoint-remediation-banner')).toContainText('52%');
-  await expect(path.locator('.session-list > button').first()).toContainText(value.weakestTaskTitle);
+  await expect(path.locator('.session-list > button').first()).toContainText(value.discriminatingTaskTitle);
+  for (const failedTitle of value.failedTaskTitles) {
+    await expect(path.locator('.session-list > button').first()).not.toContainText(failedTitle);
+  }
   await expectRemediationAccessible(page);
   await expectNoOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('mobile-checkpoint-remediation.png'), fullPage: true });

@@ -7,7 +7,7 @@ import {
 import { modules, tasks, type SqlTask } from '../data/course-catalog';
 import { canonicalModuleIds, phaseDefinitions, phaseForModule } from '../data/learning-structure';
 import {
-  nextCheckpointRemediationTaskId,
+  nextCheckpointRemediationStep,
   unresolvedCheckpointRemediationModules,
   type CheckpointRemediationState
 } from './checkpoint-remediation';
@@ -333,14 +333,17 @@ function remediationAction(
     if (missingFoundation) {
       return withRemediation(missingFoundation, state, unresolved.map(item => item.moduleId));
     }
-    const taskId = nextCheckpointRemediationTaskId(state, module.moduleId, progress);
-    const task = taskId ? tasks.find(item => item.id === taskId) || null : null;
+    const step = nextCheckpointRemediationStep(state, module.moduleId, progress);
+    const task = step ? tasks.find(item => item.id === step.taskId) || null : null;
     if (!task) continue;
+    const isTransfer = step?.kind === 'transfer';
     return withRemediation(taskAction(
       task,
-      'review',
-      `Контрольная точка «${state.checkpointTitle}» показала слабое удержание модуля «${module.moduleTitle}» (${module.score}%). Повтори задачу самостоятельно после отчёта, без подсказки и эталона.`,
-      'Исправить слабое место'
+      isTransfer ? (task.mode === 'puzzle' ? 'puzzle' : 'interview') : 'practice',
+      isTransfer
+        ? `Новая практика по модулю «${module.moduleTitle}» подтверждена. Теперь перенеси навык в отдельную незнакомую задачу без подсказки и эталона.`
+        : `Контрольная точка «${state.checkpointTitle}» показала слабое различение в модуле «${module.moduleTitle}» (${module.score}%). Реши новую диагностическую задачу, которой не было в контрольном этапе, без подсказки и эталона.`,
+      isTransfer ? 'Проверить перенос навыка' : 'Разобрать слабое различие'
     ), state, unresolved.map(item => item.moduleId));
   }
   return null;
