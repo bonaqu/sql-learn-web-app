@@ -209,10 +209,13 @@ function App() {
   useEffect(() => {
     if (!mobileViewport || !mobileNav) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeMobileNavigation();
+      const modalOwnedEvent = event.composedPath().some(target =>
+        target instanceof HTMLElement && target.matches('[role="dialog"][aria-modal="true"]')
+      );
+      if (event.key === 'Escape' && !event.defaultPrevented && !modalOwnedEvent) closeMobileNavigation();
     };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
   }, [closeMobileNavigation, mobileNav, mobileViewport]);
 
   useEffect(() => {

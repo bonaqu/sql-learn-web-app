@@ -105,9 +105,15 @@ test('desktop curriculum beginner loop reaches offline SQL and an independent ne
   await expect(loop.getByText(/Готово: 14 строк/)).toBeVisible();
 
   const faded = loop.getByTestId('beginner-faded-practice');
-  await faded.getByRole('textbox', { name: /SQL с пропуском/i }).fill('SELECT ticket_id, status\nFROM tickets\nORDER BY ticket_id;');
+  await faded.getByRole('textbox', { name: /SQL с пропуском/i }).fill("SELECT 'ticket_id resolution_minutes from tickets';");
   await faded.getByRole('button', { name: 'Проверить мой SQL' }).click();
-  await expect(faded).toContainText('форма результата задана явно');
+  await expect(faded.locator('.beginner-loop-feedback')).toHaveClass(/error/);
+  await expect(faded).toContainText('Неверные столбцы');
+  await faded.getByRole('textbox', { name: /SQL с пропуском/i }).fill('SELECT ticket_id, resolution_minutes\nFROM tickets\nORDER BY ticket_id;');
+  await faded.getByRole('button', { name: 'Проверить мой SQL' }).click();
+  await expect(faded.locator('.beginner-loop-feedback')).toHaveClass(/success/);
+  await expect(faded).toContainText('неизвестное время осталось NULL');
+  await expect(faded.getByTestId('beginner-faded-result')).toBeVisible();
   await page.context().setOffline(false);
 
   await loop.getByRole('button', { name: 'Решить самостоятельно' }).click();

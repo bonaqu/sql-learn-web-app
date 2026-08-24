@@ -1,5 +1,6 @@
 export type TaskMode = 'lesson' | 'practice' | 'interview' | 'puzzle';
 export type Difficulty = 'База' | 'Рабочий' | 'Продвинутый' | 'Экспертный';
+export type TaskEvaluationPolicy = 'read-only-query' | 'disposable-script';
 
 export interface ModuleGuide {
   summary: string;
@@ -33,6 +34,7 @@ export interface SqlTask {
   solution: string;
   hints: string[];
   guide: ModuleGuide;
+  evaluationPolicy?: TaskEvaluationPolicy;
   evaluationContractId?: string;
   learningContract?: LearningTaskContract;
 }

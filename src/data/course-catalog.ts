@@ -22,6 +22,7 @@ export type {
   Difficulty,
   ModuleGuide,
   SqlTask,
+  TaskEvaluationPolicy,
   TaskMode
 } from './course';
 

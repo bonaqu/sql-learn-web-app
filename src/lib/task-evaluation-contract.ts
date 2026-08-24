@@ -64,6 +64,88 @@ function statements(source: string) {
   return result;
 }
 
+const SQL_IDENTIFIER_SOURCE = '(?:"(?:""|[^"])+"|\\[(?:\\]\\]|[^\\]])+\\]|`(?:``|[^`])+`|[A-Za-z_][A-Za-z0-9_$]*)';
+
+function normalizedIdentifier(source: string) {
+  const value = source.trim();
+  if (value.startsWith('"') && value.endsWith('"')) return value.slice(1, -1).replace(/""/g, '"').toLowerCase();
+  if (value.startsWith('[') && value.endsWith(']')) return value.slice(1, -1).replace(/]]/g, ']').toLowerCase();
+  if (value.startsWith('`') && value.endsWith('`')) return value.slice(1, -1).replace(/``/g, '`').toLowerCase();
+  return value.toLowerCase();
+}
+
+function cleanedStatements(source: string) {
+  return statements(source).map(statement => statement
+    .replace(/--[^\r\n]*/g, ' ')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .trim()).filter(Boolean);
+}
+
+function disposableScriptPolicyViolation(source: string) {
+  if (!source.trim()) return 'SQL-скрипт пуст.';
+  if (source.length > 40_000) return 'SQL-скрипт превышает лимит 40 000 символов.';
+  const cleaned = cleanedStatements(source);
+  if (!cleaned.length) return 'SQL-скрипт не содержит исполняемых команд.';
+  if (cleaned.length > 200) return 'В одноразовой лаборатории разрешено не больше 200 команд.';
+
+  const tempObjects = new Set<string>();
+  const createTemp = new RegExp(`^CREATE\\s+(?:TEMP|TEMPORARY)\\s+(?:TABLE|VIEW|INDEX)\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?(${SQL_IDENTIFIER_SOURCE})(?=\\s|\\(|$)`, 'i');
+  for (const statement of cleaned) {
+    const match = createTemp.exec(statement);
+    if (match) tempObjects.add(normalizedIdentifier(match[1]));
+  }
+
+  const target = (statement: string, expression: RegExp) => {
+    const match = expression.exec(statement);
+    return match ? normalizedIdentifier(match[1]) : null;
+  };
+  const insertTarget = new RegExp(`^(?:INSERT(?:\\s+OR\\s+(?:ROLLBACK|ABORT|REPLACE|FAIL|IGNORE))?|REPLACE)\\s+INTO\\s+(${SQL_IDENTIFIER_SOURCE})(?=\\s|\\(|$)`, 'i');
+  const updateTarget = new RegExp(`^UPDATE(?:\\s+OR\\s+(?:ROLLBACK|ABORT|REPLACE|FAIL|IGNORE))?\\s+(${SQL_IDENTIFIER_SOURCE})(?=\\s|$)`, 'i');
+  const deleteTarget = new RegExp(`^DELETE\\s+FROM\\s+(${SQL_IDENTIFIER_SOURCE})(?=\\s|$)`, 'i');
+  const alterTarget = new RegExp(`^ALTER\\s+TABLE\\s+(${SQL_IDENTIFIER_SOURCE})(?=\\s|$)`, 'i');
+  const dropTarget = new RegExp(`^DROP\\s+(?:TABLE|VIEW|INDEX)\\s+(?:IF\\s+EXISTS\\s+)?(${SQL_IDENTIFIER_SOURCE})(?=\\s|$)`, 'i');
+  const withMutationTarget = new RegExp(`\\b(?:INSERT(?:\\s+OR\\s+(?:ROLLBACK|ABORT|REPLACE|FAIL|IGNORE))?|REPLACE)\\s+INTO\\s+(${SQL_IDENTIFIER_SOURCE})(?=\\s|\\(|$)|\\bUPDATE(?:\\s+OR\\s+(?:ROLLBACK|ABORT|REPLACE|FAIL|IGNORE))?\\s+(${SQL_IDENTIFIER_SOURCE})(?=\\s|$)|\\bDELETE\\s+FROM\\s+(${SQL_IDENTIFIER_SOURCE})(?=\\s|$)`, 'i');
+  const indexTable = new RegExp(`\\bON\\s+(${SQL_IDENTIFIER_SOURCE})\\s*\\(`, 'i');
+
+  for (const statement of cleaned) {
+    const withoutStrings = statement.replace(/'(?:''|[^'])*'/g, "''");
+    if (/\b(?:ATTACH|DETACH|VACUUM|REINDEX|PRAGMA|LOAD_EXTENSION|ANALYZE)\b/i.test(withoutStrings)) {
+      return 'Одноразовая лаборатория запрещает ATTACH, DETACH, PRAGMA и другие команды, меняющие окружение.';
+    }
+    if (/^CREATE\s+(?:TEMP|TEMPORARY)\s+(?:TABLE|VIEW|INDEX)\b/i.test(statement)) {
+      const created = createTemp.exec(statement);
+      if (!created) return 'Используй простое имя для временного объекта лаборатории.';
+      if (/^CREATE\s+(?:TEMP|TEMPORARY)\s+INDEX\b/i.test(statement)) {
+        const table = target(statement, indexTable);
+        if (!table || !tempObjects.has(table)) return 'TEMP INDEX можно создавать только для временной таблицы этого скрипта.';
+      }
+      continue;
+    }
+    if (/^CREATE\b/i.test(statement)) return 'Создавай объекты только через CREATE TEMP TABLE, VIEW или INDEX.';
+
+    const mutationTarget = target(statement, insertTarget)
+      || target(statement, updateTarget)
+      || target(statement, deleteTarget)
+      || target(statement, alterTarget)
+      || target(statement, dropTarget);
+    if (mutationTarget) {
+      if (!tempObjects.has(mutationTarget)) return 'Изменять можно только временные объекты, объявленные внутри этого скрипта.';
+      continue;
+    }
+    if (/^WITH\b/i.test(statement) && /\b(?:INSERT|UPDATE|DELETE|REPLACE)\b/i.test(withoutStrings)) {
+      const match = withMutationTarget.exec(withoutStrings);
+      const withTarget = match ? normalizedIdentifier(match[1] || match[2] || match[3]) : null;
+      if (!withTarget || !tempObjects.has(withTarget)) {
+        return 'Изменяющий WITH-запрос должен работать только с явно объявленной временной таблицей.';
+      }
+      continue;
+    }
+    if (/^(?:SELECT|WITH|EXPLAIN\s+QUERY\s+PLAN|BEGIN\b|COMMIT\b|END\b|ROLLBACK\b|SAVEPOINT\b|RELEASE\b)/i.test(statement)) continue;
+    return 'Команда не входит в безопасный набор одноразовой SQL-лаборатории.';
+  }
+  return null;
+}
+
 function statementPolicyViolation(source: string, contract: TaskEvaluationContract) {
   const cleaned = statements(source).map(statement => statement
     .replace(/--[^\r\n]*/g, ' ')
@@ -256,6 +338,112 @@ function comparableFallback(results: QueryExecResult[]) {
   })));
 }
 
+function quoteIdentifier(value: string) {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+function comparableTempState(database: InstanceType<TaskSqlEngine['Database']>) {
+  const catalog = database.exec("SELECT type, name FROM sqlite_temp_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY type, name;");
+  const rows = catalog[0]?.values || [];
+  const objects = rows.map(row => {
+    const type = String(row[0]);
+    const name = String(row[1]);
+    const info = database.exec(`PRAGMA temp.table_info(${quoteIdentifier(name)});`);
+    const output = database.exec(`SELECT * FROM temp.${quoteIdentifier(name)};`);
+    const values = (output[0]?.values || []).map(item => [...item]);
+    values.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+    return {
+      type,
+      name: name.toLowerCase(),
+      columns: (info[0]?.values || []).map(column => [column[1], column[2], column[3], column[4], column[5]]),
+      values
+    };
+  });
+  return JSON.stringify(objects);
+}
+
+function executeDisposableScript(engine: TaskSqlEngine, source: string, role: 'learner' | 'reference') {
+  let database: InstanceType<TaskSqlEngine['Database']>;
+  try {
+    database = new engine.Database();
+  } catch (reason) {
+    throw new TaskSqlExecutionError('technical', `SQLite engine initialization failed: ${errorMessage(reason)}`, { cause: reason });
+  }
+  try {
+    try {
+      database.run(trainingSeedSql);
+    } catch (reason) {
+      throw new TaskSqlExecutionError('technical', `Disposable lab initialization failed: ${errorMessage(reason)}`, { cause: reason });
+    }
+    try {
+      const output = database.exec(source);
+      return { output, tempState: comparableTempState(database) };
+    } catch (reason) {
+      const kind = role === 'learner' ? 'learner' : 'technical';
+      const label = role === 'learner' ? 'Learner SQL' : 'Reference SQL';
+      throw new TaskSqlExecutionError(kind, `${label} (disposable-lab): ${errorMessage(reason)}`, { cause: reason });
+    }
+  } finally {
+    try { database.close(); } catch { /* Every advanced script runs in its own disposable database. */ }
+  }
+}
+
+function evaluateDisposableScript(engine: TaskSqlEngine, task: SqlTask, source: string): TaskEvaluationResult {
+  const policyViolation = disposableScriptPolicyViolation(source);
+  if (policyViolation) {
+    return {
+      correct: false,
+      output: [],
+      diagnostic: diagnostic('unsafe-mutation', 'disposable-lab', 'Небезопасный скрипт', policyViolation, 'Оставь изменения внутри явно созданных TEMP-объектов.', 'runtime'),
+      evidence: null
+    };
+  }
+  const referenceViolation = disposableScriptPolicyViolation(task.solution);
+  if (referenceViolation) {
+    throw new TaskSqlExecutionError('technical', `Reference SQL violates disposable lab policy: ${referenceViolation}`);
+  }
+
+  let learner;
+  try {
+    learner = executeDisposableScript(engine, source, 'learner');
+  } catch (reason) {
+    if (reason instanceof TaskSqlExecutionError && reason.kind === 'technical') throw reason;
+    const message = errorMessage(reason);
+    const syntax = /syntax|incomplete input|near /i.test(message);
+    return {
+      correct: false,
+      output: [],
+      diagnostic: diagnostic(
+        syntax ? 'syntax-error' : 'runtime-error',
+        'disposable-lab',
+        syntax ? 'Синтаксическая ошибка' : 'Ошибка выполнения',
+        message,
+        syntax ? 'Проверь ключевые слова, запятые, скобки и порядок команд.' : 'Проверь имена временных объектов и порядок шагов лаборатории.',
+        syntax ? 'syntax' : 'runtime'
+      ),
+      evidence: null
+    };
+  }
+  const reference = executeDisposableScript(engine, task.solution, 'reference');
+  if (comparableFallback(learner.output) !== comparableFallback(reference.output)) {
+    return {
+      correct: false,
+      output: learner.output,
+      diagnostic: diagnostic('wrong-values', 'disposable-lab-output', 'Неверный итог лаборатории', 'Табличный результат отличается от контрольного результата.', 'Проверь последовательность шагов и финальный SELECT.', 'values'),
+      evidence: null
+    };
+  }
+  if (learner.tempState !== reference.tempState) {
+    return {
+      correct: false,
+      output: learner.output,
+      diagnostic: diagnostic('wrong-values', 'disposable-lab-state', 'Неверное состояние лаборатории', 'Временные таблицы или их итоговые данные отличаются от контрольного состояния.', 'Проверь CREATE TEMP, изменения и откат до финальной проверки.', 'runtime'),
+      evidence: null
+    };
+  }
+  return { correct: true, output: learner.output, diagnostic: null, evidence: null };
+}
+
 export function executeTaskSql(engine: TaskSqlEngine, source: string, role: 'learner' | 'reference' = 'learner') {
   const fallbackContract: TaskEvaluationContract = {
     version: TASK_EVALUATION_CONTRACT_VERSION,
@@ -279,6 +467,7 @@ export function evaluateTaskSql(
   source: string,
   _surface: TaskEvaluationSurface
 ): TaskEvaluationResult {
+  if (task.evaluationPolicy === 'disposable-script') return evaluateDisposableScript(engine, task, source);
   const contract = task.evaluationContractId ? taskEvaluationContract(task.evaluationContractId) : null;
   if (!contract) {
     const output = executeTaskSql(engine, source, 'learner');

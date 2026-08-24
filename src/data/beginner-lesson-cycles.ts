@@ -30,7 +30,7 @@ export interface BeginnerLessonCycle {
     title: string;
     prompt: string;
     starterSql: string;
-    requiredFragments: string[];
+    evaluationTaskId: string;
     successFeedback: string;
     retryFeedback: string;
   };
@@ -68,11 +68,11 @@ export const beginnerLessonCycles: Record<BeginnerCycleModule, BeginnerLessonCyc
     },
     fadedPractice: {
       title: 'Дополни запрос с меньшей подсказкой',
-      prompt: 'Оставь только номер и статус каждого обращения. Замени пропуск именами столбцов.',
-      starterSql: 'SELECT ___\nFROM tickets\nORDER BY ticket_id;',
-      requiredFragments: ['ticket_id', 'status', 'from tickets'],
-      successFeedback: 'Готово: форма результата задана явно, и одна строка по-прежнему означает одно обращение.',
-      retryFeedback: 'Нужны оба поля — ticket_id и status — и источник tickets. Звёздочка здесь скрыла бы контракт.'
+      prompt: 'Покажи номер и время решения каждого обращения. Не подменяй неизвестное время и не теряй строки.',
+      starterSql: 'SELECT ticket_id, ___\nFROM tickets\nORDER BY ticket_id;',
+      evaluationTaskId: 'task-004',
+      successFeedback: 'Готово: результат сохранил все обращения, а неизвестное время осталось NULL.',
+      retryFeedback: 'Верни ticket_id и resolution_minutes для каждого обращения; NULL должен остаться NULL.'
     },
     visualizations: [
       {
@@ -125,11 +125,11 @@ export const beginnerLessonCycles: Record<BeginnerCycleModule, BeginnerLessonCyc
     },
     fadedPractice: {
       title: 'Дополни проверку NULL',
-      prompt: 'Покажи открытые обращения, у которых время решения ещё не заполнено.',
-      starterSql: "SELECT ticket_id, status, resolution_minutes\nFROM tickets\nWHERE status = 'Open' AND ___\nORDER BY ticket_id;",
-      requiredFragments: ['resolution_minutes is null', "status = 'open'", 'from tickets'],
+      prompt: 'Покажи обращения, у которых время решения ещё не заполнено.',
+      starterSql: 'SELECT ticket_id, resolution_minutes\nFROM tickets\nWHERE ___\nORDER BY ticket_id;',
+      evaluationTaskId: 'task-016',
       successFeedback: 'Готово: IS NULL явно выбирает строки без значения; обычное сравнение с NULL этого не сделает.',
-      retryFeedback: 'Заполни пропуск условием resolution_minutes IS NULL и сохрани фильтр status = \'Open\'.'
+      retryFeedback: 'Заполни пропуск условием resolution_minutes IS NULL и не добавляй лишний фильтр.'
     },
     visualizations: [
       {
@@ -153,8 +153,8 @@ export const beginnerLessonCycles: Record<BeginnerCycleModule, BeginnerLessonCyc
         note: 'WHERE пропускает только TRUE. Для NULL используй IS NULL или IS NOT NULL.'
       }
     ],
-    supportedTaskId: 'task-013', independentTaskId: 'task-014',
-    independentContext: 'Новый приоритет и сервис заставляют заново собрать условие; готового выражения рядом нет.',
+    supportedTaskId: 'task-013', independentTaskId: 'task-015',
+    independentContext: 'В самостоятельной задаче меняются столбцы и появляется новое условие OR по сервисам; готового выражения рядом нет.',
     misconception: {
       title: '«NULL можно сравнить через = или <>»',
       mismatch: 'Проверка NULL = NULL не возвращает TRUE. Поэтому строка не проходит WHERE.',
@@ -183,11 +183,11 @@ export const beginnerLessonCycles: Record<BeginnerCycleModule, BeginnerLessonCyc
     },
     fadedPractice: {
       title: 'Назови вычисляемый столбец',
-      prompt: 'Дополни выражение, чтобы получить запас SLA под именем reserve_minutes.',
-      starterSql: 'SELECT ticket_id,\n       sla_minutes - resolution_minutes AS ___\nFROM tickets\nWHERE resolution_minutes IS NOT NULL\nORDER BY ticket_id;',
-      requiredFragments: ['as reserve_minutes', 'sla_minutes - resolution_minutes', 'is not null'],
-      successFeedback: 'Готово: вычисление получило устойчивое имя, а строки без фактического времени исключены явно.',
-      retryFeedback: 'После AS укажи reserve_minutes; сохрани разность sla_minutes - resolution_minutes и IS NOT NULL.'
+      prompt: 'Дополни выражение, чтобы получить двойное окно SLA под именем double_sla_minutes.',
+      starterSql: 'SELECT ticket_id,\n       sla_minutes * 2 AS ___\nFROM tickets\nORDER BY ticket_id;',
+      evaluationTaskId: 'task-010',
+      successFeedback: 'Готово: вычисление получило устойчивое имя, а количество обращений не изменилось.',
+      retryFeedback: 'После AS укажи double_sla_minutes и сохрани вычисление sla_minutes * 2.'
     },
     visualizations: [
       {

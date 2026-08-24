@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import initSqlJs from 'sql.js';
 import { beginnerLessonCycles, type BeginnerLessonCycle } from '../src/data/beginner-lesson-cycles';
 import { curriculumLessons } from '../src/data/complete-curriculum';
 import { foundationCorridorTaskIds } from '../src/data/foundation-evaluation-contracts';
 import { tasks } from '../src/data/course-catalog';
+import { evaluateTaskSql } from '../src/lib/task-evaluation-contract';
 
 const expectedModules = ['sql-thinking', 'filtering', 'select'] as const;
 const forbiddenVisibleTerms = /\b(mastery|frontier|foundation|evidence|placement|independent|guided|preview|mental model)\b/i;
+const require = createRequire(import.meta.url);
+const wasmPath = require.resolve('sql.js/dist/sql-wasm.wasm');
+const SQL = await initSqlJs({ locateFile: () => wasmPath });
 
 const noviceJourneySources = [
   '../src/App.tsx',
@@ -35,7 +41,7 @@ function violations(cycle: Partial<BeginnerLessonCycle>) {
   if (!cycle.prediction?.prompt || cycle.prediction.options.length < 3 || cycle.prediction.correctIndex < 0) result.push('prediction');
   if (!cycle.prediction?.correctFeedback || !cycle.prediction.incorrectFeedback) result.push('prediction feedback');
   if (!cycle.workedExample?.sql || !cycle.workedExample.context || !cycle.workedExample.observation) result.push('worked example');
-  if (!cycle.fadedPractice?.starterSql.includes('___') || !cycle.fadedPractice.requiredFragments.length) result.push('faded practice');
+  if (!cycle.fadedPractice?.starterSql.includes('___') || !cycle.fadedPractice.evaluationTaskId) result.push('faded practice');
   if (!cycle.supportedTaskId || !cycle.independentTaskId || cycle.supportedTaskId === cycle.independentTaskId) result.push('practice handoff');
   if (!cycle.independentContext || /solution|эталон:\s*select/i.test(cycle.independentContext)) result.push('independent transfer');
   if (!cycle.misconception?.mismatch || !cycle.misconception.counterexample || !cycle.misconception.revisitSectionId) result.push('misconception remediation');
@@ -53,8 +59,23 @@ for (const moduleId of expectedModules) {
   assert.equal(curriculumLessons.find(lesson => lesson.module === moduleId)?.beginnerCycle, cycle, `${moduleId}: cycle is not attached to lesson`);
   assert.ok(cycle.objective.length >= 55 && cycle.successCriterion.length >= 70, `${moduleId}: objective is not measurable enough`);
   assert.ok(cycle.workedExample.context !== cycle.independentContext, `${moduleId}: independent context repeats worked example`);
-  assert.ok(tasks.some(task => task.id === cycle.supportedTaskId && task.module === moduleId), `${moduleId}: supported task invalid`);
-  assert.ok(tasks.some(task => task.id === cycle.independentTaskId && task.module === moduleId), `${moduleId}: independent task invalid`);
+  const supportedTask = tasks.find(task => task.id === cycle.supportedTaskId && task.module === moduleId);
+  const independentTask = tasks.find(task => task.id === cycle.independentTaskId && task.module === moduleId);
+  const evaluationTask = tasks.find(task => task.id === cycle.fadedPractice.evaluationTaskId && task.module === moduleId);
+  assert.ok(supportedTask, `${moduleId}: supported task invalid`);
+  assert.ok(independentTask, `${moduleId}: independent task invalid`);
+  assert.ok(evaluationTask?.evaluationContractId, `${moduleId}: faded practice needs a semantic evaluation contract`);
+  assert.notEqual(evaluationTask?.id, supportedTask?.id, `${moduleId}: faded practice repeats the supported task`);
+  assert.notEqual(evaluationTask?.id, independentTask?.id, `${moduleId}: faded practice leaks the independent task`);
+  assert.notEqual(
+    evaluationTask?.solution.toLowerCase().replace(/\s+/g, ' ').trim(),
+    independentTask?.solution.toLowerCase().replace(/\s+/g, ' ').trim(),
+    `${moduleId}: faded and independent solutions are identical`
+  );
+  const canonical = evaluateTaskSql(SQL, evaluationTask!, evaluationTask!.solution, 'practice');
+  assert.equal(canonical.correct, true, `${moduleId}: faded canonical SQL fails its semantic contract`);
+  assert.ok((canonical.evidence?.fixtureIds.length || 0) >= 3, `${moduleId}: faded practice lacks multi-fixture evidence`);
+  assert.ok((canonical.evidence?.hiddenFixtureIds.length || 0) >= 2, `${moduleId}: faded practice lacks hidden/adversarial evidence`);
   const visibleCopy = JSON.stringify(cycle);
   assert.equal(forbiddenVisibleTerms.test(visibleCopy), false, `${moduleId}: learner copy exposes internal terminology`);
   allCoveredTaskIds.push(...cycle.coveredTaskIds);
@@ -63,6 +84,18 @@ for (const moduleId of expectedModules) {
     const mutation = { ...cycle, [field]: undefined } as Partial<BeginnerLessonCycle>;
     assert.ok(violations(mutation).length > 0, `${moduleId}: removing ${field} must break validation`);
   }
+}
+
+const semanticMutants: Record<(typeof expectedModules)[number], string> = {
+  'sql-thinking': "SELECT 'ticket_id resolution_minutes from tickets';",
+  filtering: 'SELECT ticket_id, resolution_minutes FROM tickets WHERE 1 = 0;',
+  select: 'SELECT ticket_id, sla_minutes * 2 AS double_sla_minutes FROM tickets LIMIT 1;'
+};
+for (const moduleId of expectedModules) {
+  const task = tasks.find(item => item.id === beginnerLessonCycles[moduleId].fadedPractice.evaluationTaskId)!;
+  const result = evaluateTaskSql(SQL, task, semanticMutants[moduleId], 'practice');
+  assert.equal(result.correct, false, `${moduleId}: plausible but semantically wrong faded SQL received a green result`);
+  assert.ok(result.diagnostic, `${moduleId}: wrong faded SQL needs actionable diagnostic feedback`);
 }
 
 assert.deepEqual(new Set(allCoveredTaskIds), new Set(foundationCorridorTaskIds), 'Every foundation corridor task must appear exactly once in the editorial map');
@@ -89,6 +122,8 @@ assert.match(loopSource, /<fieldset>/, 'Prediction requires semantic fieldset');
 assert.match(loopSource, /<caption>/, 'Visual tables require captions');
 assert.match(loopSource, /aria-live="polite"/, 'Dynamic feedback requires live status');
 assert.match(loopSource, /initSqlJs/, 'Lesson loop must use shared local SQLite runtime');
+assert.match(loopSource, /evaluateTaskSql/, 'Faded practice must use the shared semantic evaluator');
+assert.doesNotMatch(loopSource, /requiredFragments/, 'Faded practice must not fall back to SQL substring checks');
 assert.doesNotMatch(loopSource + portalSource + conceptSource, /https:\/\/sql\.js\.org/, 'Lesson flow must not fetch SQLite WASM from the network');
 assert.doesNotMatch(portalSource, />Отметить раздел изученным<\/button>\s*}\s*<\/section>/, 'Foundation flow must not rely on article-completion clicks');
 assert.match(cssSource, /@media \(max-width: 520px\)/, 'Phone layout missing');

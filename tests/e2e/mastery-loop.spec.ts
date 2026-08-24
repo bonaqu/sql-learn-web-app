@@ -33,9 +33,9 @@ async function completeFirstLessonTheory(page: import('@playwright/test').Page) 
   await loop.getByRole('button', { name: 'Выполнить пример' }).click();
   await expect(loop.getByTestId('beginner-example-result')).toBeVisible();
   const faded = loop.getByTestId('beginner-faded-practice');
-  await faded.getByRole('textbox', { name: /SQL с пропуском/i }).fill('SELECT ticket_id, status FROM tickets ORDER BY ticket_id;');
+  await faded.getByRole('textbox', { name: /SQL с пропуском/i }).fill('SELECT ticket_id, resolution_minutes FROM tickets ORDER BY ticket_id;');
   await faded.getByRole('button', { name: 'Проверить мой SQL' }).click();
-  await expect(faded).toContainText('форма результата задана явно');
+  await expect(faded).toContainText('неизвестное время осталось NULL');
 
   const conceptPanel = studio.getByTestId('concept-check-panel');
   const cards = conceptPanel.locator('.concept-check-card');
