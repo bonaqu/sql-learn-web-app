@@ -1,0 +1,69 @@
+{
+  "_templateNotice": "DELETE THIS FIELD. This file is intentionally invalid until real consented aggregate values replace every placeholder.",
+  "version": 1,
+  "status": "session-a-only",
+  "releaseSha": "REPLACE_WITH_FULL_LOWERCASE_40_CHARACTER_SHA",
+  "reportingWindow": {
+    "sessionAStart": "YYYY-MM-DD",
+    "sessionAEnd": "YYYY-MM-DD",
+    "sessionBStart": null,
+    "sessionBEnd": null
+  },
+  "consentAttestation": {
+    "affirmative": false,
+    "revocable": false,
+    "analyticsOptional": false,
+    "compensationIndependentOfAnalytics": false
+  },
+  "privacyAttestation": {
+    "noDirectIdentifiers": false,
+    "noContactData": false,
+    "noCredentials": false,
+    "noRawSqlOrResults": false,
+    "noRecordings": false,
+    "noExactTimestamps": false,
+    "receiptsStoredOutsideRepository": false,
+    "temporaryNotesDestroyed": false
+  },
+  "cohort": {
+    "totalConsented": 0,
+    "publishedBands": [],
+    "suppressedParticipants": 0
+  },
+  "sessionA": {
+    "completed": 0,
+    "independentSuccess": {
+      "eligible": 0,
+      "observed": 0,
+      "interval90": [0, 1]
+    },
+    "transfer": {
+      "eligible": 0,
+      "observed": 0,
+      "interval90": [0, 1]
+    },
+    "nextStepClarity": {
+      "eligible": 0,
+      "observed": 0,
+      "interval90": [0, 1]
+    },
+    "productFrictionAbandonment": {
+      "eligible": 0,
+      "observed": 0,
+      "interval90": [0, 1]
+    },
+    "assistance": {
+      "hinted": 0,
+      "solutionViewed": 0,
+      "observerInterventions": 0
+    }
+  },
+  "sessionB": null,
+  "incidents": {
+    "p0": 0,
+    "p1": 0,
+    "p2": 0,
+    "issueNumbers": []
+  },
+  "journeys": []
+}

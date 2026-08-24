@@ -199,6 +199,10 @@ const lessonByTaskId = new Map(tasks.flatMap(task => {
   return lessonId ? [[task.id, lessonId] as const] : [];
 }));
 
+export function analyticsLessonForTaskId(taskId: string) {
+  return lessonByTaskId.get(taskId);
+}
+
 const nowIso = () => new Date().toISOString();
 const storageKey = (userId: string) => `${STORAGE_PREFIX}${userId}`;
 const activeSessionKey = (userId: string) => `${ACTIVE_SESSION_PREFIX}${userId}`;

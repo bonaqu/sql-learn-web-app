@@ -8,6 +8,8 @@ No consenting participant results exist in this repository. Automated personas v
 
 Owner coordination record: `PENDING`. Result files may be attached under `docs/evidence/pilot/` only after the consent checklist is complete. Do not commit names, contact details, recordings, raw SQL, employer data or screen captures containing private data.
 
+Turnkey owner materials are in `docs/human-learning-pilot-field-kit.md`. Start from `docs/human-learning-pilot-report.template.json`, then validate the reviewed aggregate with `npm run validate:pilot-evidence -- <file>`. The validator checks structure and privacy-safe arithmetic; it cannot authenticate consent or replace owner review.
+
 ## Participant bands
 
 Target 12–20 consenting adults, with no coercive employment relationship to the observer:

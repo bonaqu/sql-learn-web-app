@@ -27,6 +27,9 @@ const base: CourseHealthItemAggregate = {
 
 const dictionary = readFileSync(new URL('../docs/learning-metrics-dictionary.md', import.meta.url), 'utf8');
 const pilot = readFileSync(new URL('../docs/human-learning-pilot.md', import.meta.url), 'utf8');
+const pilotFieldKit = readFileSync(new URL('../docs/human-learning-pilot-field-kit.md', import.meta.url), 'utf8');
+const pilotTemplate = readFileSync(new URL('../docs/human-learning-pilot-report.template.json', import.meta.url), 'utf8');
+const pilotEvidenceReadme = readFileSync(new URL('../docs/evidence/pilot/README.md', import.meta.url), 'utf8');
 const register = readFileSync(new URL('../docs/evidence/course-health-register.md', import.meta.url), 'utf8');
 const issues = readFileSync(new URL('../docs/course-health-issue-register.md', import.meta.url), 'utf8');
 
@@ -39,6 +42,12 @@ for (const outcome of ['Independent task success', 'Delayed retention', 'Transfe
 }
 assert.match(pilot, /NOT STARTED — EXTERNAL ACCEPTANCE GATE/);
 assert.match(pilot, /Stop the session immediately/);
+assert.match(pilot, /validate:pilot-evidence/);
+assert.match(pilotFieldKit, /Plain-language consent notice/);
+assert.match(pilotFieldKit, /Passing the validator proves schema.*It does not authenticate participants/s);
+assert.match(pilotTemplate, /DELETE THIS FIELD/);
+assert.match(pilotEvidenceReadme, /No participant result file is present/);
+assert.match(pilotEvidenceReadme, /Never commit consent receipts/);
 assert.match(register, /no participants\/results/);
 assert.match(issues, /P0.*privacy leakage/s);
 assert.match(issues, /GitHub #82/);
