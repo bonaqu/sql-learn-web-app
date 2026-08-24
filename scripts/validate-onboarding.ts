@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { AssessmentReport } from '../src/lib/assessment.ts';
 import {
-  ADAPTIVE_DIAGNOSTIC_TASK_IDS,
+  ADAPTIVE_DIAGNOSTIC_REFERENCE_TASK_IDS,
   adaptiveDiagnosticCoverage,
   adaptiveDiagnosticDecision
 } from '../src/lib/adaptive-placement.ts';
@@ -89,7 +89,7 @@ assert(empty.routePreference === 'full', 'A new learner must default to the full
 
 function adaptiveAnswers(correct: readonly boolean[]) {
   return correct.map((value, index) => ({
-    taskId: ADAPTIVE_DIAGNOSTIC_TASK_IDS[index],
+    taskId: ADAPTIVE_DIAGNOSTIC_REFERENCE_TASK_IDS[index],
     correct: value,
     skipped: !value
   }));
@@ -118,11 +118,11 @@ for (const decision of [beginnerDecision, workingDecision, advancedDecision]) {
     'Every adaptive exit must expose a bounded uncertainty interval.');
   assert(decision.explanation.length > 40, 'Every adaptive exit must explain why the diagnostic stopped.');
 }
-assert(adaptiveDiagnosticCoverage(ADAPTIVE_DIAGNOSTIC_TASK_IDS).valid,
+assert(adaptiveDiagnosticCoverage(ADAPTIVE_DIAGNOSTIC_REFERENCE_TASK_IDS).valid,
   'The complete adaptive ladder must satisfy its authored skill blueprint.');
 const negativeCoverage = adaptiveDiagnosticCoverage([
-  ...ADAPTIVE_DIAGNOSTIC_TASK_IDS.slice(0, -1),
-  ADAPTIVE_DIAGNOSTIC_TASK_IDS[0]
+  ...ADAPTIVE_DIAGNOSTIC_REFERENCE_TASK_IDS.slice(0, -1),
+  ADAPTIVE_DIAGNOSTIC_REFERENCE_TASK_IDS[0]
 ]);
 assert(!negativeCoverage.valid && negativeCoverage.missingSkills.includes('performance'),
   'Negative coverage fixture must fail when the required performance probe is absent.');

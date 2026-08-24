@@ -79,9 +79,10 @@ The profile contains learning preferences and assessment references only. It doe
 
 Re-placement:
 
-- sets placement to `pending`;
+- keeps the last completed placement valid while the retake is in progress; a learner without completed evidence is marked `pending`;
 - opens the existing Diagnostic SQL Check;
 - preserves all prior educational evidence;
+- selects the next blueprint-equivalent v4 form instead of repeating the known task set;
 - recalculates the recommended route from the newest completed diagnostic;
 - rebuilds the first-week plan only after the learner accepts the result.
 
@@ -92,6 +93,7 @@ The deterministic validator must cover:
 - safe profile sanitization;
 - placement thresholds;
 - latest-completed report selection;
+- four non-overlapping blueprint-equivalent retake forms and stale-autosave isolation;
 - self-report not bypassing weak executable evidence;
 - strong/focus module selection;
 - defer behavior;

@@ -15,6 +15,7 @@ import {
 } from '../src/lib/assessment-selection';
 import { defaultProgress, type Progress } from '../src/lib/progress';
 import { tasks } from '../src/data/course-catalog';
+import { adaptiveDiagnosticCoverage } from '../src/lib/adaptive-placement';
 
 const failures: string[] = [];
 const assert = (condition: unknown, message: string) => { if (!condition) failures.push(message); };
@@ -39,7 +40,7 @@ for (const item of assessmentItemBank) {
   assert(item.eligibleModes.length >= 1, `${item.taskId}: no eligible assessment mode`);
 }
 
-for (const mode of ['quick', 'interview', 'exam', 'production', 'final'] as const) {
+for (const mode of ['quick', 'interview', 'exam', 'diagnostic', 'production', 'final'] as const) {
   const syntheticUser = `canonical-${mode}-forms-0000000000000000`;
   const forms = Array.from({ length: 4 }, (_, index) => {
     const priorAttempts: AssessmentSelectionReport[] = Array.from({ length: index }, (__, attemptIndex) => ({
@@ -63,6 +64,12 @@ for (const mode of ['quick', 'interview', 'exam', 'production', 'final'] as cons
     assert(form.blueprintVersion === assessmentBlueprints[mode].version, `${mode}: blueprint version drift`);
     assert(form.distinctModules >= assessmentBlueprints[mode].minimumDistinctModules, `${mode}: insufficient module coverage`);
     assert(form.distinctSkills >= assessmentBlueprints[mode].minimumDistinctSkills, `${mode}: insufficient skill coverage`);
+    if (mode === 'diagnostic') {
+      assert(adaptiveDiagnosticCoverage(form.tasks.map(task => task.id)).valid,
+        `${form.formId}: adaptive 3→5→7 skill order drifted`);
+      assert(form.tasks.every(task => task.evaluationContractId && task.learningContract),
+        `${form.formId}: diagnostic probe lacks an authored hidden contract`);
+    }
   }
   for (let left = 0; left < forms.length; left += 1) {
     for (let right = left + 1; right < forms.length; right += 1) {
@@ -111,7 +118,7 @@ assert(afterExpired.fallbackKnownSolutions === 0, 'Expired report must not force
 function aggregate(taskId: string, overrides: Partial<AssessmentItemAggregate>): AssessmentItemAggregate {
   return {
     taskId,
-    blueprintVersion: 'assessment-blueprint-v3',
+    blueprintVersion: 'assessment-blueprint-v4',
     eligibleAttempts: MINIMUM_CALIBRATION_EVIDENCE,
     correctCount: 18,
     firstAttemptCorrect: 12,
@@ -189,7 +196,7 @@ const zeroEvidence = buildAssessmentMeasurement({
   eligibleItems: 0,
   excludedItems: 3,
   taskIds: assessmentItemBank.slice(0, 3).map(item => item.taskId),
-  formId: 'QUICK-assessment-blueprint-v3-F1',
+  formId: 'QUICK-assessment-blueprint-v4-F1',
   snapshot: calibrationSnapshot([])
 });
 assert(zeroEvidence.accuracyInterval.low === 0 && zeroEvidence.accuracyInterval.high === 100, 'Zero eligible evidence must have full accuracy uncertainty');

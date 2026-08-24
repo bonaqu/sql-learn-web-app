@@ -1,7 +1,7 @@
 import { assessmentItem, type AssessmentReasoningSkill } from '../data/assessment-blueprints';
 
 export const ADAPTIVE_DIAGNOSTIC_VERSION = 'adaptive-diagnostic-v1';
-export const ADAPTIVE_DIAGNOSTIC_TASK_IDS = [
+export const ADAPTIVE_DIAGNOSTIC_REFERENCE_TASK_IDS = [
   'task-002',
   'task-014',
   'task-026',
@@ -67,15 +67,13 @@ function levelFor(correct: number, completed: number): AdaptivePlacementLevel {
 export function adaptiveDiagnosticDecision(
   answers: readonly AdaptiveDiagnosticAnswer[]
 ): AdaptiveDiagnosticDecision {
-  const answerByTask = new Map(answers.map(answer => [answer.taskId, answer]));
-  const completed: string[] = [];
-  for (const taskId of ADAPTIVE_DIAGNOSTIC_TASK_IDS) {
-    const answer = answerByTask.get(taskId);
-    if (!answer || (!answer.correct && !answer.skipped)) break;
-    completed.push(taskId);
+  const completed: AdaptiveDiagnosticAnswer[] = [];
+  for (const answer of answers.slice(0, 7)) {
+    if (!answer.correct && !answer.skipped) break;
+    completed.push(answer);
   }
   const completedCount = completed.length;
-  const correctCount = completed.filter(taskId => answerByTask.get(taskId)?.correct).length;
+  const correctCount = completed.filter(answer => answer.correct).length;
   const scoreBand = wilsonBand(correctCount, completedCount);
   const level = levelFor(correctCount, completedCount);
 
@@ -163,7 +161,16 @@ export function adaptiveDiagnosticCoverage(taskIds: readonly string[]) {
   const considered = taskIds.slice(0, length);
   const skills = new Set(considered.map(taskId => assessmentItem(taskId)?.reasoningSkill).filter(Boolean));
   const missingSkills = requiredSkillsByLength[length].filter(skill => !skills.has(skill));
-  const orderedPrefix = considered.every((taskId, index) => taskId === ADAPTIVE_DIAGNOSTIC_TASK_IDS[index]);
+  const expectedSkills: readonly AssessmentReasoningSkill[] = [
+    'result-contract',
+    'row-selection',
+    'aggregation',
+    'aggregation',
+    'relationships',
+    'time-series',
+    'performance'
+  ];
+  const orderedPrefix = considered.every((taskId, index) => assessmentItem(taskId)?.reasoningSkill === expectedSkills[index]);
   return {
     length,
     distinctSkills: skills.size,
@@ -175,5 +182,5 @@ export function adaptiveDiagnosticCoverage(taskIds: readonly string[]) {
 
 export function completedAdaptiveTaskIds(answers: readonly AdaptiveDiagnosticAnswer[]) {
   const decision = adaptiveDiagnosticDecision(answers);
-  return ADAPTIVE_DIAGNOSTIC_TASK_IDS.slice(0, decision.completedCount);
+  return answers.slice(0, decision.completedCount).map(answer => answer.taskId);
 }

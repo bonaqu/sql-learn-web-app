@@ -51,7 +51,8 @@ function completedKnownTasks(reports: AssessmentSelectionReport[]) {
 }
 
 function modePool(mode: CalibratedAssessmentMode) {
-  return tasks.filter(task => assessmentItem(task.id)?.eligibleModes.includes(mode));
+  return tasks.filter(task => assessmentItem(task.id)?.eligibleModes.includes(mode)
+    && (mode !== 'diagnostic' || Boolean(task.evaluationContractId && task.learningContract)));
 }
 
 function difficultyFit(task: SqlTask, slot?: AssessmentBlueprintSlot) {
@@ -262,9 +263,13 @@ export function assessmentFormCoverage(mode: CalibratedAssessmentMode, form: Sql
     const skill = assessmentItem(task.id)?.reasoningSkill || 'unknown';
     skillCounts.set(skill, (skillCounts.get(skill) || 0) + 1);
   }
-  const missingSlots = blueprint.slots.flatMap(slot => {
-    const missing = Math.max(0, slot.count - (skillCounts.get(slot.reasoningSkill) || 0));
-    return Array.from({ length: missing }, () => slot.reasoningSkill);
+  const requiredSkillCounts = new Map<string, number>();
+  for (const slot of blueprint.slots) {
+    requiredSkillCounts.set(slot.reasoningSkill, (requiredSkillCounts.get(slot.reasoningSkill) || 0) + slot.count);
+  }
+  const missingSlots = Array.from(requiredSkillCounts.entries()).flatMap(([skill, required]) => {
+    const missing = Math.max(0, required - (skillCounts.get(skill) || 0));
+    return Array.from({ length: missing }, () => skill);
   });
   const skills = form.map(task => assessmentItem(task.id)?.reasoningSkill).filter(Boolean);
   return {

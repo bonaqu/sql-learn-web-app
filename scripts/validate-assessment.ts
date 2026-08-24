@@ -60,7 +60,7 @@ for (const mode of Object.keys(assessmentModes) as AssessmentMode[]) {
   assert(config.thresholdVersion === assessmentBlueprint(mode).thresholdVersion, `${mode}: config/threshold version drift`);
   if (mode === 'interview') assert(first.every(task => task.mode === 'interview' && task.evaluationContractId), 'interview: every task must be original Interview content with a hidden contract');
   if (mode === 'exam') assert(first.every(task => task.mode !== 'lesson' && task.mode !== 'puzzle'), 'exam: invalid task mode');
-  if (config.fixedTaskIds) assert(JSON.stringify(first.map(task => task.id)) === JSON.stringify(config.fixedTaskIds), mode + ': fixed pool changed');
+  if (mode === 'diagnostic') assert(first.every(task => task.evaluationContractId && task.learningContract), 'diagnostic: every parallel-form probe needs an authored hidden contract');
 }
 
 const quickTasks = selectAssessmentTasks('quick', defaultProgress);
@@ -79,8 +79,8 @@ const session: AssessmentSession = {
   taskIds: quickTasks.map(task => task.id),
   currentIndex: quickTasks.length - 1,
   baselineReadiness: 20,
-  formId: 'QUICK-assessment-blueprint-v3-F1',
-  blueprintVersion: 'assessment-blueprint-v3',
+  formId: 'QUICK-assessment-blueprint-v4-F1',
+  blueprintVersion: 'assessment-blueprint-v4',
   thresholdVersion: 'assessment-thresholds-v2',
   selection: {
     excludedKnownSolutions: 0,
@@ -152,7 +152,7 @@ const diagnosticSession: AssessmentSession = {
   ...session,
   id: '00000000-0000-4000-8000-000000000002',
   mode: 'diagnostic',
-  formId: 'DIAGNOSTIC-assessment-blueprint-v3-F1',
+  formId: 'DIAGNOSTIC-assessment-blueprint-v4-F1',
   taskIds: diagnosticTasks.map(task => task.id),
   currentIndex: 2,
   selection: {
@@ -192,7 +192,7 @@ const interviewSession: AssessmentSession = {
   ...session,
   id: '00000000-0000-4000-8000-000000000003',
   mode: 'interview',
-  formId: 'INTERVIEW-assessment-blueprint-v3-F1',
+  formId: 'INTERVIEW-assessment-blueprint-v4-F1',
   deadlineAt: new Date(Date.now() + 35 * 60_000).toISOString(),
   taskIds: interviewTasks.map(task => task.id),
   currentIndex: interviewTasks.length - 1,

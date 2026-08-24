@@ -42,7 +42,6 @@ export type AssessmentModeConfig = {
   minimumModules: number;
   passingScore: number;
   requiredModuleIds?: string[];
-  fixedTaskIds?: string[];
   blueprintVersion: string;
   thresholdVersion: string;
 };
@@ -195,9 +194,9 @@ export const assessmentModes: Record<AssessmentMode, AssessmentModeConfig> = {
   },
   diagnostic: {
     mode: 'diagnostic', title: sqlExams[0].title, shortTitle: 'Diagnostic', description: sqlExams[0].description,
-    durationMinutes: sqlExams[0].durationMinutes, taskCount: sqlExams[0].taskIds.length, interviewer: false,
+    durationMinutes: sqlExams[0].durationMinutes, taskCount: assessmentBlueprints.diagnostic.taskCount, interviewer: false,
     minimumCompleted: 0, minimumModules: 0, passingScore: sqlExams[0].passingScore,
-    requiredModuleIds: sqlExams[0].requiredModuleIds, fixedTaskIds: sqlExams[0].taskIds,
+    requiredModuleIds: sqlExams[0].requiredModuleIds,
     blueprintVersion: ASSESSMENT_BLUEPRINT_VERSION, thresholdVersion: ASSESSMENT_THRESHOLD_VERSION
   },
   production: {
