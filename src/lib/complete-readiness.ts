@@ -5,7 +5,6 @@ import { bestCapstoneReport } from './capstone-report-policy';
 import { loadLocalCapstoneReports } from './capstone-reports';
 import { checkpointAttemptSnapshotFromReports } from './checkpoint-attempt-policy';
 import {
-  legacyCheckpointPassed,
   loadLocalCheckpointReports,
   type CheckpointReport
 } from './checkpoints';
@@ -34,7 +33,6 @@ export type CompleteReadiness = {
   lessonCompletion: number;
   checkpointCompletion: number;
   reportedCheckpoints: number;
-  legacyCheckpoints: number;
   projectCompletion: number;
   examReadiness: number;
   examScores: Partial<Record<AssessmentMode, number>>;
@@ -75,11 +73,9 @@ export function calculateCompleteReadiness(
   const checkpointEvidence = curriculumCheckpoints.map(checkpoint => {
     const state = checkpointStates.get(checkpoint.id) || null;
     const reported = state?.currentAttempt.passed === true;
-    const legacy = !state && legacyCheckpointPassed(checkpoint.id, progress);
-    return { reported, legacy, passed: reported || legacy };
+    return { reported, passed: reported };
   });
   const reportedCheckpoints = checkpointEvidence.filter(item => item.reported).length;
-  const legacyCheckpoints = checkpointEvidence.filter(item => item.legacy).length;
   const passedCheckpoints = checkpointEvidence.filter(item => item.passed).length;
   const checkpointCompletion = clamp(
     passedCheckpoints / Math.max(1, curriculumCheckpoints.length) * 100
@@ -121,9 +117,7 @@ export function calculateCompleteReadiness(
     },
     {
       id: 'checkpoints',
-      title: legacyCheckpoints
-        ? `Checkpoints: ${reportedCheckpoints} current reports + ${legacyCheckpoints} migrated`
-        : 'Исполняемые checkpoints · current attempts',
+      title: 'Исполняемые checkpoints · current attempts',
       current: passedCheckpoints,
       target: curriculumCheckpoints.length,
       passed: passedCheckpoints === curriculumCheckpoints.length,
@@ -161,7 +155,6 @@ export function calculateCompleteReadiness(
     lessonCompletion,
     checkpointCompletion,
     reportedCheckpoints,
-    legacyCheckpoints,
     projectCompletion,
     examReadiness,
     examScores,

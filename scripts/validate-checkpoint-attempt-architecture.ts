@@ -11,6 +11,8 @@ const remediation = source('../src/lib/checkpoint-remediation.ts');
 const journeyEvidence = source('../src/lib/journey-evidence.ts');
 const skillEvidence = source('../src/lib/skill-evidence.ts');
 const completeReadiness = source('../src/lib/complete-readiness.ts');
+const curriculumAccess = source('../src/lib/curriculum-access.ts');
+const learningJourney = source('../src/lib/learning-journey.ts');
 const checkpointCenter = source('../src/components/CheckpointCenterPortal.tsx');
 const checkpointWorker = source('../worker/checkpoints.ts');
 const browserContract = source('../tests/e2e/checkpoint-current-attempt.spec.ts');
@@ -32,7 +34,7 @@ for (const marker of [
 for (const marker of [
   'currentCheckpointReport',
   'checkpointAttemptState',
-  'current ? current.passed : legacyCheckpointPassed',
+  'return current?.passed === true',
   'compareCheckpointAttempts'
 ]) {
   assert.ok(checkpoints.includes(marker),
@@ -42,6 +44,8 @@ assert.match(checkpoints, /export function bestCheckpointReport/,
   'Historical best report API must remain available for reporting.');
 assert.doesNotMatch(checkpoints, /bestCheckpointReport\(checkpointId, reports\)\?\.passed/,
   'Historical best must not decide current checkpoint pass state.');
+assert.doesNotMatch(checkpoints, /legacyCheckpointPassed|progress\.completed/,
+  'Checkpoint pass state must never be inferred from mutable task progress.');
 
 assert.match(remediation, /checkpointRemediationsFromAttemptSnapshot/,
   'Remediation must consume the canonical attempt snapshot.');
@@ -74,11 +78,13 @@ for (const marker of [
 }
 assert.doesNotMatch(skillEvidence, /bestCheckpointReport|bestCompletedModuleCheckpointScore/,
   'Skill evidence must not use historical best as current checkpoint state or score.');
+assert.doesNotMatch(skillEvidence, /legacyCheckpointPassed|legacy-checkpoint-task|checkpointSource: 'legacy'/,
+  'Skill evidence must not retain a task-completion checkpoint bypass.');
 
 for (const marker of [
   'checkpointAttemptSnapshotFromReports',
   'state?.currentAttempt.passed',
-  '!state && legacyCheckpointPassed',
+  'reportedCheckpoints',
   'certificateEligible'
 ]) {
   assert.ok(completeReadiness.includes(marker),
@@ -86,6 +92,17 @@ for (const marker of [
 }
 assert.doesNotMatch(completeReadiness, /bestCheckpointReport/,
   'Certificate readiness must not use historical best to satisfy current checkpoint completion.');
+assert.doesNotMatch(completeReadiness, /legacyCheckpointPassed|legacyCheckpoints|progress\.completed/,
+  'Certificate readiness must not infer checkpoint completion from task history.');
+
+assert.match(curriculumAccess, /currentCheckpointReport\(checkpoint\.id, checkpointReports\)\?\.passed === true/,
+  'Curriculum access must use the current checkpoint report.');
+assert.doesNotMatch(curriculumAccess, /bestCheckpointReport|legacyCheckpointPassed|checkpointLegacyPassed/,
+  'Curriculum access must not use historical best or legacy task completion as a gate.');
+assert.match(learningJourney, /return passed\.has\(checkpointId\)/,
+  'Journey phase completion must consume only canonical passed checkpoint IDs.');
+assert.doesNotMatch(learningJourney, /checkpoint\.taskIds\.every|legacyCheckpointPassed/,
+  'Journey phase completion must not reconstruct checkpoint pass from task evidence.');
 
 for (const marker of [
   'checkpointAttemptSnapshotFromReports',
@@ -151,7 +168,8 @@ for (const marker of [
   'current attempt state',
   'historical best',
   'latest `completedAt`',
-  'Legacy task completion',
+  'Migration and integrity boundary',
+  'There is no inferred checkpoint pass',
   'certificate eligibility',
   'ORDER BY completed_at DESC, attempt_number DESC, id DESC',
   'second authenticated browser'

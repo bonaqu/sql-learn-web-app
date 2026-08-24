@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { checkpointTaskById } from '../../src/data/checkpoint-task-bank';
 import { curriculumCheckpoints } from '../../src/data/complete-curriculum';
+import { tasks } from '../../src/data/course-catalog';
 import { evaluationContractForTask } from '../../src/data/foundation-evaluation-contracts';
 import {
   FOUNDATION_EVIDENCE_CONTRACT_VERSION,
@@ -49,6 +50,30 @@ function checkpointReadyProgress() {
   };
 }
 
+function migratedAssistedProgress() {
+  const completed = tasks.map(task => task.id);
+  const now = new Date().toISOString();
+  return {
+    version: 4,
+    completed,
+    taskStats: Object.fromEntries(completed.map(id => [id, {
+      attempts: 1,
+      incorrect: 0,
+      hintsUsed: 1,
+      solutionViews: 1,
+      assistedPasses: 1,
+      completedAt: now,
+      lastAttemptAt: now,
+      lastAssistedAt: now
+    }])),
+    xp: 9999,
+    streak: 30,
+    history: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => ({ day, solved: 20 })),
+    lastTask: completed.at(-1),
+    lastStudyDate: now.slice(0, 10)
+  };
+}
+
 async function waitForHydration(page: import('@playwright/test').Page) {
   await expect.poll(async () => page.evaluate(key => {
     const session = JSON.parse(localStorage.getItem(key) || 'null');
@@ -71,6 +96,38 @@ async function expectNoHorizontalOverflow(page: import('@playwright/test').Page)
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(overflow).toBe(false);
 }
+
+async function expectMigratedProgressRequiresCheckpointReport(page: import('@playwright/test').Page) {
+  await page.addInitScript(({ key, value }) => localStorage.setItem(key, JSON.stringify(value)), {
+    key: PROGRESS_KEY,
+    value: migratedAssistedProgress()
+  });
+  await page.goto('./');
+  await waitForHydration(page);
+  await openAdvancedTool(page, 'checkpoint-trigger');
+  await expect(page.getByTestId('checkpoint-landing')).toBeVisible();
+  const passCount = page.getByTestId('checkpoint-current-pass-count');
+  await expect(passCount.locator('strong')).toHaveText('0');
+  await expect(passCount.locator('span')).toHaveText(`из ${curriculumCheckpoints.length} пройдено сейчас`);
+  for (const checkpoint of curriculumCheckpoints) {
+    await expect(page.getByTestId(`checkpoint-required-${checkpoint.id}`)).toHaveText('нет подтверждённой попытки');
+  }
+  await expect(page.getByTestId(`start-${curriculumCheckpoints[0].id}`)).toBeEnabled();
+  await expect(page.getByTestId(`checkpoint-${curriculumCheckpoints[1].id}`)).toContainText(`Сначала пройди «${curriculumCheckpoints[0].title}»`);
+  await expectNoHorizontalOverflow(page);
+}
+
+test('desktop checkpoint requires immutable reports after migrated assisted task completion', async ({ page }, testInfo) => {
+  await authenticatePage(page, 'checkpointintegrity');
+  await expectMigratedProgressRequiresCheckpointReport(page);
+  await page.screenshot({ path: testInfo.outputPath('desktop-checkpoint-report-required.png'), fullPage: true });
+});
+
+test('mobile checkpoint requires immutable reports after migrated assisted task completion', async ({ page }, testInfo) => {
+  await authenticatePage(page, 'mobilecheckpointintegrity');
+  await expectMigratedProgressRequiresCheckpointReport(page);
+  await page.screenshot({ path: testInfo.outputPath('mobile-checkpoint-report-required.png'), fullPage: true });
+});
 
 test('desktop checkpoint retries offline evidence sync and hydrates Learning Path on a second device', async ({ page, browser }, testInfo) => {
   const auth = await authenticatePage(page, 'checkpoint');

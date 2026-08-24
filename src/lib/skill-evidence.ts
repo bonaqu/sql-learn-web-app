@@ -14,7 +14,6 @@ import {
 } from './checkpoint-attempt-policy';
 import {
   checkpointPassed,
-  legacyCheckpointPassed,
   type CheckpointReport
 } from './checkpoints';
 import type { CurriculumProgressV1 } from './curriculum-progress';
@@ -61,7 +60,7 @@ export type PhaseSkillEvidence = {
   readiness: number;
   checkpointId: string;
   checkpointPassed: boolean;
-  checkpointSource: 'report' | 'legacy' | 'none';
+  checkpointSource: 'report' | 'none';
   checkpointCurrentScore: number | null;
   checkpointHistoricalBestScore: number | null;
   checkpointAttemptNumber: number | null;
@@ -143,13 +142,8 @@ export function buildSkillEvidenceGraph(
     const directPassedCheckpoints = moduleCheckpoints.filter(checkpoint =>
       checkpointStates.get(checkpoint.id)?.currentAttempt.passed === true
     );
-    const legacyPassedCheckpoints = moduleCheckpoints.filter(checkpoint =>
-      !checkpointStates.has(checkpoint.id)
-      && legacyCheckpointPassed(checkpoint.id, progress)
-    );
     const checkpointScore = Math.max(
       ...moduleAttemptStates.map(state => currentModuleCheckpointScore(state, moduleId)),
-      ...legacyPassedCheckpoints.map(checkpoint => checkpoint.passingScore),
       0
     );
 
@@ -169,13 +163,9 @@ export function buildSkillEvidenceGraph(
       ? completedRelatedProjects.reduce((sum, item) => sum + item.report.score, 0) / relatedProjects.length
       : 0;
 
-    const checkpointSourceIds = [
-      ...moduleAttemptStates.map(state => state.currentAttempt.id),
-      ...legacyPassedCheckpoints.map(checkpoint => `legacy:${checkpoint.id}`)
-    ];
+    const checkpointSourceIds = moduleAttemptStates.map(state => state.currentAttempt.id);
     const checkpointSourceKinds: ReadinessEvidenceSource[] = [
-      ...(moduleAttemptStates.length ? ['checkpoint-report' as const] : []),
-      ...(legacyPassedCheckpoints.length ? ['legacy-checkpoint-task' as const] : [])
+      ...(moduleAttemptStates.length ? ['checkpoint-report' as const] : [])
     ];
 
     const evidence: Record<EvidenceKind, EvidenceMetric> = {
@@ -200,7 +190,7 @@ export function buildSkillEvidenceGraph(
       checkpoint: metric(
         'checkpoint',
         checkpointScore,
-        directPassedCheckpoints.length + legacyPassedCheckpoints.length,
+        directPassedCheckpoints.length,
         moduleCheckpoints.length,
         moduleCheckpoints.length > 0,
         checkpointSourceIds,
@@ -282,9 +272,8 @@ export function buildSkillEvidenceGraph(
     if (!checkpoint) throw new Error(`Missing checkpoint definition for phase ${definition.id}`);
     const attemptState = checkpointStates.get(checkpoint.id) || null;
     const reportPassed = attemptState?.currentAttempt.passed === true;
-    const legacyPassed = !attemptState && legacyCheckpointPassed(checkpoint.id, progress);
-    const passed = reportPassed || legacyPassed;
-    const checkpointSource = reportPassed ? 'report' : legacyPassed ? 'legacy' : 'none';
+    const passed = reportPassed;
+    const checkpointSource = reportPassed ? 'report' : 'none';
     const readiness = clamp(
       phaseModules.reduce((sum, item) => sum + item.readiness, 0) / Math.max(1, phaseModules.length)
     );
@@ -318,11 +307,9 @@ export function buildSkillEvidenceGraph(
         `Результат контрольного этапа не ниже ${checkpoint.passingScore}%`,
         checkpointSource === 'report'
           ? 'Источник: текущая завершённая попытка контрольного этапа, синхронизируемая между устройствами'
-          : checkpointSource === 'legacy'
-            ? 'Источник: перенесённый результат из старой версии; рекомендуется подтвердить новым отчётом'
-            : attemptState
-              ? 'Последняя завершённая попытка не пройдена; исторический максимум не открывает текущий этап'
-              : 'Подтверждённый результат контрольного этапа ещё не получен',
+          : attemptState
+            ? 'Последняя завершённая попытка не пройдена; исторический максимум не открывает текущий этап'
+            : 'Подтверждённый результат контрольного этапа ещё не получен',
         attemptState
           ? `Текущая попытка #${attemptState.currentAttempt.attemptNumber}: ${attemptState.currentAttempt.score}%. Исторический максимум: ${attemptState.historicalBestScore}%`
           : 'Новый исполняемый отчёт отсутствует'

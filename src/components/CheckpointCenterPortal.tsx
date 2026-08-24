@@ -447,6 +447,7 @@ export default function CheckpointCenterPortal({ openRequest = 0 }: { openReques
             <li><Target />проходной балл {checkpoint.passingScore}%</li>
             <li><Gauge />readiness этапа {eligibility.phaseReadiness}%</li>
             {current && <li data-testid={`checkpoint-current-score-${checkpoint.id}`}>{currentPassed ? <CheckCircle2 /> : <AlertTriangle />}текущая попытка #{current.attemptNumber}: {current.score}%</li>}
+            {!current && <li data-testid={`checkpoint-required-${checkpoint.id}`}><AlertTriangle />нет подтверждённой попытки</li>}
             {state && <li data-testid={`checkpoint-historical-best-${checkpoint.id}`}><History />исторический максимум {state.historicalBestScore}%</li>}
           </ul>
           {eligibility.eligible

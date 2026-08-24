@@ -156,26 +156,6 @@ export function checkpointSessionTask(taskId: string) {
   return checkpointTaskById(taskId) || tasks.find(task => task.id === taskId) || null;
 }
 
-function legacyCheckpointTask(checkpoint: CurriculumCheckpoint): SqlTask | null {
-  const candidates = tasks.filter(task => checkpointContainsModule(checkpoint, task.module));
-  return [...candidates].sort((left, right) => {
-    const weight = (task: SqlTask) => task.mode === 'interview'
-      ? 3
-      : task.mode === 'puzzle'
-        ? 2
-        : task.mode === 'practice'
-          ? 1
-          : 0;
-    return weight(right) - weight(left) || right.id.localeCompare(left.id);
-  })[0] || null;
-}
-
-export function legacyCheckpointPassed(checkpointId: string, progress: Progress) {
-  const checkpoint = checkpointById(checkpointId);
-  const task = checkpoint ? legacyCheckpointTask(checkpoint) : null;
-  return Boolean(task && progress.completed.includes(task.id));
-}
-
 export function bestCheckpointReport(checkpointId: string, reports: CheckpointReport[]) {
   return reports
     .filter(report => report.checkpointId === checkpointId && report.status === 'completed')
@@ -196,9 +176,9 @@ export function currentCheckpointReport(checkpointId: string, reports: Checkpoin
   ) || null;
 }
 
-export function checkpointPassed(checkpointId: string, progress: Progress, reports: CheckpointReport[]) {
+export function checkpointPassed(checkpointId: string, _progress: Progress, reports: CheckpointReport[]) {
   const current = currentCheckpointReport(checkpointId, reports);
-  return current ? current.passed : legacyCheckpointPassed(checkpointId, progress);
+  return current?.passed === true;
 }
 
 export function checkpointEligibility(
