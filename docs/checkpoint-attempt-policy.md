@@ -69,15 +69,11 @@ Checkpoint Center displays both values explicitly:
 - `Текущая попытка #N: score`;
 - `Исторический максимум: best`.
 
-## Legacy fallback
+## Migration and integrity boundary
 
-Legacy task completion may infer a checkpoint pass only when there is no valid completed attempt for that checkpoint.
+Task history migrated from older progress formats remains visible in `progress.completed` and task statistics, but it is not checkpoint evidence. There is no inferred checkpoint pass from a task checkbox, an assisted pass, an independent task pass or a completed checkpoint task bank item.
 
-Once any valid completed report exists:
-
-- its current pass/fail state is authoritative;
-- legacy task completion cannot override a failure;
-- expired and abandoned sessions do not count as completed attempts and therefore do not suppress fallback by themselves.
+Only the current immutable completed checkpoint report can satisfy a checkpoint gate. When a migrated learner has no such report, the UI preserves their task history and asks for a new checkpoint attempt. This fail-closed rule avoids silently granting mastery when old progress has no provenance proving that a controlled checkpoint session happened.
 
 ## Cross-device contract
 

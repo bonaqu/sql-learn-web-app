@@ -6,7 +6,6 @@ export type ReadinessEvidenceSource =
   | 'lesson-progress'
   | 'task-progress'
   | 'checkpoint-report'
-  | 'legacy-checkpoint-task'
   | 'assessment-report'
   | 'capstone-report'
   | 'project-progress';
@@ -114,7 +113,6 @@ export type PrerequisiteEvidenceInput = {
   taskMastery: number;
   lessonCompleted: boolean;
   checkpointReportPassed: boolean;
-  legacyCheckpointPassed: boolean;
   diagnosticModuleScore: number;
   diagnosticGlobalScore: number;
   independentContracts: number;
@@ -125,7 +123,6 @@ export type PrerequisiteEvidenceSource =
   | 'tasks'
   | 'lessons'
   | 'checkpoint-report'
-  | 'checkpoint-legacy'
   | 'diagnostic-module'
   | 'diagnostic-global'
   | 'missing';

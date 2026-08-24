@@ -60,7 +60,8 @@ assert.doesNotMatch(evidence, /latestByCheckpoint|report\.passed !== true|comple
 
 for (const marker of [
   "'checkpoint-remediation'",
-  'failedCheckpointIds',
+  'passedCheckpointIds',
+  'allCheckpointRemediations',
   'withRemediation',
   'checkpointRemediation',
   'unresolvedCheckpointRemediationModules'
@@ -68,6 +69,8 @@ for (const marker of [
   assert.ok(journey.includes(marker),
     `Canonical Journey remediation frontier is missing ${marker}.`);
 }
+assert.doesNotMatch(journey, /checkpoint\.taskIds\.every|legacyCheckpointPassed/,
+  'Journey remediation and pass gates must not reconstruct checkpoint state from task progress.');
 
 assert.match(guidedHome, /frontier\.checkpointRemediation/,
   'Today must consume normalized remediation from the Journey frontier.');

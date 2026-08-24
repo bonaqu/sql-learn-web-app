@@ -6,8 +6,7 @@ import {
 import { sqlExams } from '../data/sql-exams';
 import type { AssessmentReport } from './assessment';
 import {
-  bestCheckpointReport,
-  legacyCheckpointPassed,
+  currentCheckpointReport,
   loadLocalCheckpointReports,
   type CheckpointReport
 } from './checkpoints';
@@ -34,7 +33,6 @@ export type ModuleAccessEvidence = {
   lessonsCompleted: number;
   lessonsTotal: number;
   checkpointReportPassed: boolean;
-  checkpointLegacyPassed: boolean;
   diagnosticModuleScore: number;
   diagnosticGlobalScore: number;
   source: PrerequisiteEvidenceSource;
@@ -85,17 +83,13 @@ export function moduleAccessEvidence(
     checkpoint.moduleIds.some(candidate => candidate === moduleId)
   );
   const checkpointReportPassed = relatedCheckpoints.some(checkpoint =>
-    Boolean(bestCheckpointReport(checkpoint.id, checkpointReports)?.passed)
-  );
-  const checkpointLegacyPassed = !checkpointReportPassed && relatedCheckpoints.some(checkpoint =>
-    legacyCheckpointPassed(checkpoint.id, progress)
+    currentCheckpointReport(checkpoint.id, checkpointReports)?.passed === true
   );
 
   const candidateSource = prerequisiteEvidenceSource({
     taskMastery: mastery,
     lessonCompleted: lessons.length > 0 && lessonsCompleted === lessons.length,
     checkpointReportPassed,
-    legacyCheckpointPassed: checkpointLegacyPassed,
     diagnosticModuleScore,
     diagnosticGlobalScore,
     independentContracts,
@@ -112,7 +106,6 @@ export function moduleAccessEvidence(
     lessonsCompleted,
     lessonsTotal: lessons.length,
     checkpointReportPassed,
-    checkpointLegacyPassed,
     diagnosticModuleScore,
     diagnosticGlobalScore,
     source,

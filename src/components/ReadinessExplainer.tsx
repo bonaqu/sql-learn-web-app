@@ -36,7 +36,6 @@ const sourceLabels: Record<ReadinessEvidenceSource, string> = {
   'lesson-progress': 'завершённые уроки',
   'task-progress': 'самостоятельные задачи',
   'checkpoint-report': 'завершённый отчёт контрольного этапа',
-  'legacy-checkpoint-task': 'перенесённый результат из старой версии',
   'assessment-report': 'завершённый отчёт итоговой проверки',
   'capstone-report': 'неизменяемый отчёт о пройденном итоговом проекте',
   'project-progress': 'старая отметка проекта (не подтверждает навык)'

@@ -15,7 +15,7 @@ import {
   mergeCheckpointReports,
   type CheckpointReport
 } from '../src/lib/checkpoints';
-import type { Progress, TaskStats } from '../src/lib/progress';
+import { migrateProgress, type Progress, type TaskStats } from '../src/lib/progress';
 
 const checkpoint = curriculumCheckpoints[0];
 const nextCheckpoint = curriculumCheckpoints[1];
@@ -72,6 +72,33 @@ function completeProgress(): Progress {
   };
 }
 
+function completionOnlyProgress(): Progress {
+  return {
+    version: 4,
+    completed: tasks.map(task => task.id),
+    taskStats: {},
+    xp: 0,
+    streak: 1,
+    history: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => ({ day, solved: 0 }))
+  };
+}
+
+function assistedProgress(): Progress {
+  return {
+    ...completionOnlyProgress(),
+    taskStats: Object.fromEntries(tasks.map(task => [task.id, {
+      attempts: 1,
+      incorrect: 0,
+      hintsUsed: 1,
+      solutionViews: 1,
+      assistedPasses: 1,
+      completedAt: '2026-08-03T17:00:00.000Z',
+      lastAttemptAt: '2026-08-03T17:00:00.000Z',
+      lastAssistedAt: '2026-08-03T17:00:00.000Z'
+    }]))
+  };
+}
+
 const olderPass = report({
   id: 'older-pass',
   completedAt: '2026-08-03T18:00:00.000Z',
@@ -99,9 +126,39 @@ assert.equal(snapshot.states[0].historicalBestScore, 91,
 assert.equal(currentCheckpointReport(checkpoint.id, [olderPass, newerFail])?.id, 'newer-fail');
 assert.equal(bestCheckpointReport(checkpoint.id, [newerFail, olderPass])?.id, 'older-pass');
 assert.equal(checkpointPassed(checkpoint.id, completeProgress(), [olderPass, newerFail]), false,
-  'A completed failed current attempt must block legacy task-completion fallback.');
-assert.equal(checkpointPassed(checkpoint.id, completeProgress(), []), true,
-  'Legacy task-completion fallback remains available only when no completed report exists.');
+  'A completed failed current attempt must remain authoritative over task history.');
+
+for (const target of curriculumCheckpoints) {
+  assert.equal(checkpointPassed(target.id, completionOnlyProgress(), []), false,
+    `${target.id}: a v4 task completion list without a checkpoint report must fail closed.`);
+  assert.equal(checkpointPassed(target.id, assistedProgress(), []), false,
+    `${target.id}: assisted task completion without a checkpoint report must not grant mastery.`);
+  assert.equal(checkpointPassed(target.id, completeProgress(), []), false,
+    `${target.id}: independent task evidence is preserved as practice history, not checkpoint evidence.`);
+}
+
+const migratedTaskIds = tasks.map(task => task.id);
+const migratedProgress = migrateProgress({
+  version: 3,
+  completed: migratedTaskIds,
+  attempts: Object.fromEntries(migratedTaskIds.map(taskId => [taskId, 1])),
+  xp: 4321,
+  streak: 12
+});
+assert.deepEqual(migratedProgress.completed, migratedTaskIds,
+  'Progress migration must preserve the learner task-completion history.');
+assert.equal(migratedProgress.xp, 4321);
+assert.equal(migratedProgress.streak, 12);
+for (const target of curriculumCheckpoints) {
+  assert.equal(checkpointPassed(target.id, migratedProgress, []), false,
+    `${target.id}: preserved migrated history must not silently grant checkpoint mastery.`);
+}
+
+const reportRequiredEligibility = checkpointEligibility(nextCheckpoint.id, completeProgress(), []);
+assert.equal(reportRequiredEligibility.previousPassed, false,
+  'All task evidence without an immutable checkpoint report must not open the next checkpoint.');
+assert.equal(reportRequiredEligibility.eligible, false);
+assert.ok(reportRequiredEligibility.blockers.some(blocker => blocker.includes(checkpoint.title)));
 
 const blockedEligibility = checkpointEligibility(nextCheckpoint.id, completeProgress(), [olderPass, newerFail]);
 assert.equal(blockedEligibility.previousCheckpointId, checkpoint.id);
@@ -202,4 +259,4 @@ assert.deepEqual(
 assert.equal(checkpointAttemptState(checkpoint.id, mergedForward, userId)?.currentAttempt.id, 'later-pass');
 assert.equal(checkpointAttemptState('checkpoint-does-not-exist', [olderPass], userId), null);
 
-console.log('Checkpoint attempt policy validated: latest state, historical best separation, eligibility, legacy fallback, deterministic ties and order-independent local/cloud snapshots.');
+console.log(`Checkpoint attempt policy validated: latest state, historical best separation, report-only eligibility across ${curriculumCheckpoints.length} checkpoints, assisted/completion-only rejection, deterministic ties and order-independent local/cloud snapshots.`);
