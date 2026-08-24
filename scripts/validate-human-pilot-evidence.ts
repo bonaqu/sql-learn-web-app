@@ -90,6 +90,7 @@ function validateMetric(value: unknown, label: string, maximum: number) {
   assert.ok(Array.isArray(item.interval90) && item.interval90.length === 2, `${label}.interval90 must contain [low, high]`);
   const received = item.interval90.map(Number);
   assert.deepEqual(received, interval90(observed, eligible), `${label}.interval90 must be the computed 90% Wilson interval`);
+  return { eligible, observed };
 }
 
 function validateEvidence(input: unknown, source: string) {
@@ -142,10 +143,10 @@ function validateEvidence(input: unknown, source: string) {
   ], `${source}.sessionA`);
   const sessionACompleted = integer(sessionA.completed, `${source}.sessionA.completed`);
   assert.ok(sessionACompleted <= totalConsented, `${source}.sessionA.completed cannot exceed consented participants`);
-  validateMetric(sessionA.independentSuccess, `${source}.sessionA.independentSuccess`, sessionACompleted);
-  validateMetric(sessionA.transfer, `${source}.sessionA.transfer`, sessionACompleted);
-  validateMetric(sessionA.nextStepClarity, `${source}.sessionA.nextStepClarity`, sessionACompleted);
-  validateMetric(sessionA.productFrictionAbandonment, `${source}.sessionA.productFrictionAbandonment`, sessionACompleted);
+  const sessionAIndependent = validateMetric(sessionA.independentSuccess, `${source}.sessionA.independentSuccess`, sessionACompleted);
+  const sessionATransfer = validateMetric(sessionA.transfer, `${source}.sessionA.transfer`, sessionACompleted);
+  const sessionAClarity = validateMetric(sessionA.nextStepClarity, `${source}.sessionA.nextStepClarity`, sessionACompleted);
+  const sessionAFriction = validateMetric(sessionA.productFrictionAbandonment, `${source}.sessionA.productFrictionAbandonment`, sessionACompleted);
   const assistance = record(sessionA.assistance, `${source}.sessionA.assistance`);
   exactKeys(assistance, ['hinted', 'solutionViewed', 'observerInterventions'], `${source}.sessionA.assistance`);
   for (const key of ['hinted', 'solutionViewed', 'observerInterventions'] as const) {
@@ -159,6 +160,14 @@ function validateEvidence(input: unknown, source: string) {
     assert.equal(window.sessionBEnd, null, `${source}.reportingWindow.sessionBEnd must be null`);
   } else {
     assert.ok(sessionACompleted >= 5, `${source} complete evidence needs at least five Session A completions`);
+    for (const [label, metric] of [
+      ['independent success', sessionAIndependent],
+      ['transfer', sessionATransfer],
+      ['next-step clarity', sessionAClarity],
+      ['product-friction abandonment', sessionAFriction]
+    ] as const) {
+      assert.ok(metric.eligible >= 5, `${source} complete evidence needs n >= 5 for Session A ${label}`);
+    }
     const sessionBStart = isoDate(window.sessionBStart, `${source}.reportingWindow.sessionBStart`);
     const sessionBEnd = isoDate(window.sessionBEnd, `${source}.reportingWindow.sessionBEnd`);
     assert.ok(sessionBEnd >= sessionBStart, `${source} Session B window is reversed`);
@@ -173,8 +182,10 @@ function validateEvidence(input: unknown, source: string) {
     assert.ok(eligible <= sessionACompleted, `${source}.sessionB.eligible cannot exceed Session A completions`);
     assert.equal(returned + missingFollowUp, eligible, `${source} Session B returned and missing follow-up must reconcile`);
     assert.ok(returned >= 5, `${source} complete delayed evidence requires at least five returning participants`);
-    validateMetric(sessionB.delayedRetention, `${source}.sessionB.delayedRetention`, returned);
-    validateMetric(sessionB.transfer, `${source}.sessionB.transfer`, returned);
+    const delayedRetention = validateMetric(sessionB.delayedRetention, `${source}.sessionB.delayedRetention`, returned);
+    const delayedTransfer = validateMetric(sessionB.transfer, `${source}.sessionB.transfer`, returned);
+    assert.ok(delayedRetention.eligible >= 5, `${source} complete evidence needs n >= 5 for delayed retention`);
+    assert.ok(delayedTransfer.eligible >= 5, `${source} complete evidence needs n >= 5 for delayed transfer`);
   }
 
   const incidents = record(root.incidents, `${source}.incidents`);
@@ -187,6 +198,8 @@ function validateEvidence(input: unknown, source: string) {
 
   assert.ok(Array.isArray(root.journeys), `${source}.journeys must be an array`);
   const seenJourneys = new Set<string>();
+  let sessionAJourneys = 0;
+  let sessionBJourneys = 0;
   for (const [index, rawJourney] of root.journeys.entries()) {
     const journey = record(rawJourney, `${source}.journeys[${index}]`);
     exactKeys(journey, [
@@ -208,12 +221,20 @@ function validateEvidence(input: unknown, source: string) {
     const key = `${String(journey.session)}:${String(journey.taskId)}:${String(journey.lessonId)}`;
     assert.ok(!seenJourneys.has(key), `${source} repeats journey ${key}`);
     seenJourneys.add(key);
+    if (journey.session === 'A') sessionAJourneys += 1;
+    else sessionBJourneys += 1;
     const contributors = integer(journey.contributors, `${source}.journeys[${index}].contributors`, 5);
     const sessionMaximum = journey.session === 'A' ? sessionACompleted : sessionBReturned;
     assert.ok(contributors <= sessionMaximum, `${source} journey contributors cannot exceed the corresponding session`);
     for (const countKey of ['independentSuccesses', 'transferSuccesses', 'hintUses', 'solutionViews', 'observerInterventions'] as const) {
       assert.ok(integer(journey[countKey], `${source}.journeys[${index}].${countKey}`) <= contributors, `${source} journey ${countKey} cannot exceed contributors`);
     }
+  }
+  if (root.status === 'complete') {
+    assert.ok(sessionAJourneys > 0, `${source} complete evidence needs at least one publishable Session A journey`);
+    assert.ok(sessionBJourneys > 0, `${source} complete evidence needs at least one publishable Session B journey`);
+  } else if (sessionACompleted >= 5) {
+    assert.ok(sessionAJourneys > 0, `${source} publishable Session A evidence needs at least one journey`);
   }
 }
 
@@ -308,6 +329,14 @@ function expectRejected(mutate: (fixture: UnknownRecord) => void, label: string)
 }
 
 validateEvidence(validFixture, 'synthetic-valid-fixture');
+const sessionAOnlyFixture = clonedFixture();
+sessionAOnlyFixture.status = 'session-a-only';
+sessionAOnlyFixture.sessionB = null;
+const sessionAOnlyWindow = record(sessionAOnlyFixture.reportingWindow, 'session-a-only.reportingWindow');
+sessionAOnlyWindow.sessionBStart = null;
+sessionAOnlyWindow.sessionBEnd = null;
+sessionAOnlyFixture.journeys = (sessionAOnlyFixture.journeys as UnknownRecord[]).filter(journey => journey.session === 'A');
+validateEvidence(sessionAOnlyFixture, 'synthetic-session-a-only-fixture');
 expectRejected(fixture => { fixture.email = 'learner@example.com'; }, 'direct-identifier-field');
 expectRejected(fixture => {
   const cohort = record(fixture.cohort, 'fixture.cohort');
@@ -330,6 +359,20 @@ expectRejected(fixture => {
   const journeys = fixture.journeys as UnknownRecord[];
   journeys[0].lessonId = curriculumLessons.find(lesson => lesson.id !== 'lesson-sql-thinking')?.id;
 }, 'mismatched-task-lesson');
+expectRejected(fixture => {
+  const sessionA = record(fixture.sessionA, 'fixture.sessionA');
+  sessionA.independentSuccess = metric(0, 0);
+}, 'complete-without-session-a-kpi-denominator');
+expectRejected(fixture => {
+  const sessionB = record(fixture.sessionB, 'fixture.sessionB');
+  sessionB.delayedRetention = metric(0, 0);
+}, 'complete-without-delayed-kpi-denominator');
+expectRejected(fixture => {
+  fixture.journeys = (fixture.journeys as UnknownRecord[]).filter(journey => journey.session !== 'A');
+}, 'complete-without-session-a-journey');
+expectRejected(fixture => {
+  fixture.journeys = (fixture.journeys as UnknownRecord[]).filter(journey => journey.session !== 'B');
+}, 'complete-without-session-b-journey');
 
 const requestedFiles = process.argv.slice(2).filter(argument => argument !== '--').map(path => resolve(path));
 const evidenceFiles = requestedFiles.length
@@ -343,7 +386,7 @@ for (const path of evidenceFiles) {
 }
 
 if (evidenceFiles.length === 0) {
-  process.stdout.write('Human-pilot evidence kit passed: strict allowlist, consent/privacy attestations, k>=5 publication, Wilson intervals, delayed-window and catalog-ID negative fixtures; external participant gate remains unresolved.\n');
+  process.stdout.write('Human-pilot evidence kit passed: strict allowlist, consent/privacy attestations, complete-report KPI/journey evidence, k>=5 publication, Wilson intervals, delayed-window and catalog-ID negative fixtures; external participant gate remains unresolved.\n');
 } else {
   process.stdout.write(`Human-pilot evidence validation passed for ${evidenceFiles.length} aggregate file(s). Structural validation does not authenticate consent or prove efficacy; owner review and issue #82 evidence remain required.\n`);
 }

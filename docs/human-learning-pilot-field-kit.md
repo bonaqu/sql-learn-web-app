@@ -63,6 +63,6 @@ After each session:
 
 6. Review the file manually for source custody and consent authenticity.
 7. Attach the aggregate, release SHA, validator result and any linked incident numbers to issue #82.
-8. Change `status` to `complete` only after valid Session B evidence exists.
+8. Change `status` to `complete` only after Session B exists, every required Session A/B KPI has a publishable denominator of at least five, and both sessions contain at least one privacy-safe canonical journey row.
 
 Passing the validator proves schema, arithmetic, privacy-field and catalog-reference constraints. It does not authenticate participants, consent receipts or educational efficacy.

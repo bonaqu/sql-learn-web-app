@@ -30,4 +30,4 @@
 
 Human results, when authorized, must contain only release SHA, coded band, aggregate denominators/numerators, Wilson intervals, bounded assistance provenance, task/lesson IDs, outcome definitions and issue links. Names, contacts, raw SQL, exact timestamps, recordings and employer/client data are forbidden.
 
-Published band and journey rows require at least five contributors. Smaller bands are represented only by the combined `suppressedParticipants` count. Structural validation does not authenticate consent or prove efficacy.
+Published band and journey rows require at least five contributors. Smaller bands are represented only by the combined `suppressedParticipants` count. A `complete` report additionally requires non-empty `n >= 5` denominators for every KPI and a publishable Session A plus Session B journey. Structural validation does not authenticate consent or prove efficacy.
