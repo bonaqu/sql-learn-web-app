@@ -35,7 +35,7 @@ jobs:
       - name: Backfill open Dependabot pull requests
         shell: bash
         run: |
-          gh pr list             --state open             --author "app/dependabot"             --json number             --jq '.[].number' |
+          gh pr list --state open --author "app/dependabot" --json number --jq '.[].number' |
           while read -r pr_number; do
             gh pr edit "${pr_number}" --add-label dependencies
           done
