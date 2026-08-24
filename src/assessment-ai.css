@@ -1,0 +1,50 @@
+.assessment-ai-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg) 88%, #7555ff 12%);
+  cursor: pointer;
+}
+
+.assessment-ai-consent input {
+  inline-size: 18px;
+  block-size: 18px;
+  margin: 2px 0 0;
+  accent-color: #7555ff;
+  flex: none;
+}
+
+.assessment-ai-consent span {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-inline-size: 0;
+}
+
+.assessment-ai-consent strong {
+  font-size: 12px;
+}
+
+.assessment-ai-consent small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.assessment-ai-consent:has(input:focus-visible) {
+  outline: 3px solid rgba(121, 85, 255, .35);
+  outline-offset: 2px;
+}
+
+.assessment-debrief-card .assessment-ai-consent {
+  margin-block: 14px;
+}
+
+@media (max-width: 720px) {
+  .assessment-ai-consent {
+    padding: 11px;
+  }
+}

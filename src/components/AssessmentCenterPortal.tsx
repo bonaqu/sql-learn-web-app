@@ -50,12 +50,14 @@ import {
   evaluateAssessmentSql
 } from '../lib/assessment-runtime';
 import { loadAuthSession } from '../lib/auth';
+import { loadAiConsent, saveAiConsent } from '../lib/mentor-ai';
 import { overallReadiness } from '../lib/learning-path';
 import { loadProgress } from '../lib/progress';
 import { useDialogFocus } from '../lib/dialog-focus';
 import { interviewSessionForTask } from '../data/interview-session-bank';
 import { INTERVIEW_PROSE_LIMITS, interviewProseComplete } from '../lib/interview-rubric';
 import '../assessment-phase10.css';
+import '../assessment-ai.css';
 
 const Editor = lazy(() => import('./SqlEditor'));
 type RunState = 'idle' | 'success' | 'error';
@@ -104,9 +106,11 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
   const [runState, setRunState] = useState<RunState>('idle');
   const [message, setMessage] = useState('Выполни запрос и сравни результат с условиями задачи.');
   const [interviewerQuestion, setInterviewerQuestion] = useState('');
-  const [interviewerAnswer, setInterviewerAnswer] = useState('AI Interviewer может уточнить требования, но не выдаёт решение.');
+  const [interviewerAnswer, setInterviewerAnswer] = useState('Локальный interviewer уточняет требования без передачи данных во внешний AI.');
   const [interviewerLoading, setInterviewerLoading] = useState(false);
   const [debriefLoading, setDebriefLoading] = useState(false);
+  const [aiConsent, setAiConsent] = useState(() => loadAiConsent());
+  const [aiNotice, setAiNotice] = useState('');
   const [historyLoading, setHistoryLoading] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
   const previousOverflow = useRef('');
@@ -122,6 +126,14 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
   const adaptiveDecision = session ? assessmentAdaptiveDecision(session) : null;
   const interviewDefinition = activeTask ? interviewSessionForTask(activeTask.id) : null;
   const canAdvance = Boolean(activeAnswer && (activeAnswer.skipped || (activeAnswer.correct && (!config?.interviewer || interviewProseComplete(activeAnswer)))));
+
+  const changeAiConsent = (granted: boolean) => {
+    saveAiConsent(granted);
+    setAiConsent(granted);
+    setAiNotice(granted
+      ? 'Согласие действует только в этой вкладке и может быть отозвано в любой момент.'
+      : 'Согласие отозвано. Дальше используются только локальные ответы.');
+  };
 
   useEffect(() => {
     if (externalLauncher) return;
@@ -357,9 +369,14 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
 
   const askInterviewer = async () => {
     if (!session || !activeTask || !activeAnswer || !config?.interviewer || activeAnswer.interviewerUses >= 2 || !interviewerQuestion.trim()) return;
-    setInterviewerLoading(true);
     const fallback = 'Уточни ожидаемую форму результата: что означает одна строка, какие столбцы обязательны и нужен ли стабильный порядок. Я не буду подсказывать готовый SQL.';
-    setInterviewerAnswer(fallback);
+    if (!aiConsent) {
+      setInterviewerAnswer(`Локальный ответ · данные не покидали устройство\n${fallback}`);
+      setSession(updateAssessmentAnswer(session, activeTask.id, { interviewerUses: activeAnswer.interviewerUses + 1 }));
+      return;
+    }
+    setInterviewerLoading(true);
+    setInterviewerAnswer(`Локальный ответ\n${fallback}`);
     try {
       const response = await fetch('/api/assessment/interviewer', {
         method: 'POST',
@@ -372,14 +389,16 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
           topic: activeTask.topic,
           sql: editorSql,
           question: interviewerQuestion.trim(),
-          attempts: activeAnswer.attempts
+          attempts: activeAnswer.attempts,
+          aiConsent: true
         })
       });
-      if (!response.ok) throw new Error('interviewer');
-      const payload = await response.json() as { answer?: string };
-      setInterviewerAnswer(payload.answer?.trim() || fallback);
+      const payload = await response.json() as { answer?: string; source?: 'local' | 'workers-ai'; reason?: string };
+      if (!payload.answer?.trim()) throw new Error('interviewer');
+      const source = payload.source === 'workers-ai' ? 'Cloudflare Workers AI' : 'Локальный ответ';
+      setInterviewerAnswer(`${source}\n${payload.answer.trim()}`);
     } catch {
-      setInterviewerAnswer(fallback);
+      setInterviewerAnswer(`Локальный ответ · AI сейчас недоступен\n${fallback}`);
     } finally {
       const next = updateAssessmentAnswer(session, activeTask.id, { interviewerUses: activeAnswer.interviewerUses + 1 });
       setSession(next);
@@ -389,16 +408,23 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
 
   const requestDebrief = async () => {
     if (!report) return;
+    if (!aiConsent) {
+      setAiNotice('Показан локальный debrief. Включи согласие, только если хочешь отправить очищенные метрики в Cloudflare Workers AI.');
+      return;
+    }
     setDebriefLoading(true);
     try {
       const response = await fetch('/api/assessment/debrief', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(report)
+        body: JSON.stringify({ aiConsent: true, report })
       });
-      if (!response.ok) throw new Error('debrief');
-      const payload = await response.json() as { answer?: string };
-      const next = { ...report, aiDebrief: payload.answer?.trim() || report.localDebrief };
+      const payload = await response.json() as { answer?: string; source?: 'local' | 'workers-ai'; reason?: string };
+      if (payload.source !== 'workers-ai' || !payload.answer?.trim()) {
+        setAiNotice('Cloudflare Workers AI не использован: сохранён локальный debrief без передачи результата провайдера.');
+        return;
+      }
+      const next = { ...report, aiDebrief: payload.answer.trim() };
       setReport(next);
       setHistory(saveLocalAssessmentReport(next));
       await fetch('/api/assessment/reports', {
@@ -406,8 +432,9 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(next)
       });
+      setAiNotice('Debrief получен от Cloudflare Workers AI. Он не меняет score, mastery или прогресс.');
     } catch {
-      setReport(current => current ? { ...current, aiDebrief: current.localDebrief } : current);
+      setAiNotice('AI сейчас недоступен. Локальный debrief сохранён и остаётся основным.');
     } finally {
       setDebriefLoading(false);
     }
@@ -496,6 +523,10 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
         <div className="assessment-integrity-note" data-testid="assessment-locked-tools"><LockKeyhole /><span><strong>Assessment integrity</strong><small>Подсказки, эталон и обычный AI Mentor недоступны до завершения.</small></span></div>
         {config.interviewer && <div className="assessment-interviewer" data-testid="assessment-interviewer">
           <div><BrainCircuit /><span><strong>AI Interviewer</strong><small>Осталось уточнений: {Math.max(0, 2 - activeAnswer.interviewerUses)}</small></span></div>
+          <label className="assessment-ai-consent">
+            <input type="checkbox" checked={aiConsent} onChange={event => changeAiConsent(event.target.checked)} />
+            <span><strong>Разрешить Cloudflare Workers AI</strong><small>Внешнему AI уйдут только очищенные данные задачи и SQL без комментариев и литералов. Согласие действует в этой вкладке.</small></span>
+          </label>
           <textarea aria-label="Уточняющий вопрос AI Interviewer" value={interviewerQuestion} onChange={event => setInterviewerQuestion(event.target.value)} placeholder="Задай уточняющий вопрос о требованиях…" maxLength={600} />
           <button onClick={() => void askInterviewer()} disabled={interviewerLoading || activeAnswer.interviewerUses >= 2 || !interviewerQuestion.trim()}><Sparkles />{interviewerLoading ? 'Формулирую уточнение…' : 'Спросить'}</button>
           <p>{interviewerAnswer}</p>
@@ -591,7 +622,13 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
       <article className="assessment-report-card assessment-debrief-card">
         <div className="assessment-section-heading"><div><span>Debrief</span><h2>Что делать дальше</h2></div><BrainCircuit /></div>
         <pre>{report.aiDebrief || report.localDebrief}</pre>
+        <small data-testid="assessment-debrief-source">{report.aiDebrief ? 'Cloudflare Workers AI · не влияет на score или прогресс' : 'Локальный debrief · данные не покидали устройство'}</small>
+        <label className="assessment-ai-consent">
+          <input type="checkbox" checked={aiConsent} onChange={event => changeAiConsent(event.target.checked)} />
+          <span><strong>Разрешить Cloudflare Workers AI</strong><small>Передаются только очищенные измерительные метрики без SQL, user ID и текстов ответов. Отключить можно сразу после запроса.</small></span>
+        </label>
         <button onClick={() => void requestDebrief()} disabled={debriefLoading}><Sparkles />{debriefLoading ? 'Анализирую…' : report.aiDebrief ? 'Обновить AI Debrief' : 'Получить AI Debrief'}</button>
+        {aiNotice && <small role="status">{aiNotice}</small>}
         {syncMessage && <small>{syncMessage}</small>}
       </article>
     </section>

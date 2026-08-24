@@ -10,15 +10,23 @@ export type MentorResponse = {
   masteryAwarded: false;
 };
 
-const CONSENT_KEY = 'sql-academy-mentor-ai-consent-v1';
+export const AI_CONSENT_KEY = 'sql-academy-mentor-ai-consent-v1';
+
+export function loadAiConsent() {
+  return sessionStorage.getItem(AI_CONSENT_KEY) === 'granted';
+}
+
+export function saveAiConsent(granted: boolean) {
+  if (granted) sessionStorage.setItem(AI_CONSENT_KEY, 'granted');
+  else sessionStorage.removeItem(AI_CONSENT_KEY);
+}
 
 export function loadMentorAiConsent() {
-  return sessionStorage.getItem(CONSENT_KEY) === 'granted';
+  return loadAiConsent();
 }
 
 export function saveMentorAiConsent(granted: boolean) {
-  if (granted) sessionStorage.setItem(CONSENT_KEY, 'granted');
-  else sessionStorage.removeItem(CONSENT_KEY);
+  saveAiConsent(granted);
 }
 
 export function mentorSourceLabel(source: MentorSource, reason = '', exampleStatus: MentorExampleStatus = 'none') {

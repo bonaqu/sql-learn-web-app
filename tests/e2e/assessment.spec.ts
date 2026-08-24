@@ -118,9 +118,11 @@ test('desktop assessment waits for evidence hydration, uses an adaptive form and
   await expect(page.getByTestId('assessment-measurement-panel')).toContainText(/90% interval точности/i);
   await expect(page.getByTestId('assessment-measurement-panel')).toContainText(/Диапазон отражает неопределённость/i);
   await expect(page.getByText('Skill report синхронизирован с аккаунтом.')).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: /Разрешить Cloudflare Workers AI/ })).not.toBeChecked();
   await page.getByRole('button', { name: /Получить AI Debrief/ }).click();
   await expect(page.locator('.assessment-debrief-card pre')).not.toContainText('Анализирую');
   await expect(page.locator('.assessment-debrief-card pre')).toContainText(/измерительный диапазон/i);
+  await expect(page.locator('.assessment-debrief-card')).toContainText(/Показан локальный debrief/i);
   await page.screenshot({ path: testInfo.outputPath('desktop-assessment-calibrated-report.png'), fullPage: true });
 
   const secondContext = await browser.newContext();
@@ -205,6 +207,21 @@ test('desktop assessment enforces exam integrity and restores an expired session
 
 test('desktop assessment interview allows bounded clarification without exposing a solution', async ({ page }) => {
   await authenticatePage(page, 'interview');
+  let interviewerAiCalls = 0;
+  await page.route('**/api/assessment/interviewer', async route => {
+    interviewerAiCalls += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        answer: 'Что должна означать одна строка результата и как разрешить равный порядок?',
+        source: 'workers-ai',
+        reason: 'provider-response',
+        remaining: 18,
+        masteryAwarded: false
+      })
+    });
+  });
   await page.addInitScript(({ key, value }) => localStorage.setItem(key, JSON.stringify(value)), {
     key: PROGRESS_KEY,
     value: practicedProgress()
@@ -215,6 +232,8 @@ test('desktop assessment interview allows bounded clarification without exposing
   await expect(page.getByTestId('assessment-mode-interview')).toContainText('обычном учебном Interview таймера нет');
   await page.getByTestId('start-interview').click();
   await expect(page.getByTestId('assessment-interviewer')).toBeVisible();
+  const aiConsent = page.getByRole('checkbox', { name: /Разрешить Cloudflare Workers AI/ });
+  await expect(aiConsent).not.toBeChecked();
   await expect(page.getByTestId('assessment-timer')).toContainText(/^3[0-5]:\d{2}$/);
   const selectedModes = await page.evaluate(() => {
     const key = Object.keys(localStorage).find(item => item.startsWith('sql-academy-assessment-session-v1:')) || '';
@@ -227,9 +246,19 @@ test('desktop assessment interview allows bounded clarification without exposing
   const askButton = page.getByRole('button', { name: 'Спросить' });
   await expect(askButton).toBeEnabled();
   await askButton.click();
-  await expect(page.locator('.assessment-interviewer p')).not.toContainText('AI Interviewer может');
+  await expect(page.locator('.assessment-interviewer p')).toContainText('Локальный ответ · данные не покидали устройство');
+  expect(interviewerAiCalls).toBe(0);
   await expect(page.locator('.assessment-interviewer')).toContainText('Осталось уточнений: 1');
   await expect(page.locator('.assessment-interviewer p')).not.toContainText(/SELECT\s/i);
+  await aiConsent.check();
+  await page.getByPlaceholder('Задай уточняющий вопрос о требованиях…').fill('Что означает одна строка результата?');
+  await askButton.click();
+  await expect(page.locator('.assessment-interviewer p')).toContainText('Cloudflare Workers AI');
+  await expect(page.locator('.assessment-interviewer')).toContainText('Осталось уточнений: 0');
+  expect(interviewerAiCalls).toBe(1);
+  await aiConsent.uncheck();
+  await expect(aiConsent).not.toBeChecked();
+  expect(await page.evaluate(() => sessionStorage.getItem('sql-academy-mentor-ai-consent-v1'))).toBeNull();
   const rubric = page.getByTestId('assessment-explanation-rubric');
   await expect(rubric).toContainText('AI не выставляет prose-score');
   await page.getByLabel('Объяснение grain и шагов').fill('Одна строка соответствует заявке; сначала фиксирую grain, затем фильтрую и задаю полный порядок результата.');
