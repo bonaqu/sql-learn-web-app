@@ -60,6 +60,7 @@ export function useDialogFocus(
       if (topmostModalDialog() !== container) return;
       if (event.key === 'Escape' && closeOnEscape) {
         event.preventDefault();
+        event.stopImmediatePropagation();
         closeRef.current();
         return;
       }

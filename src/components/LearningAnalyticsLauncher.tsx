@@ -39,6 +39,9 @@ export default function LearningAnalyticsLauncher() {
     data-testid="learning-analytics-trigger"
     onMouseEnter={() => preloadDeferredFeature('analytics')}
     onFocus={() => preloadDeferredFeature('analytics')}
-    onClick={() => openDeferredFeature('analytics')}
+    onClick={event => {
+      event.currentTarget.focus({ preventScroll: true });
+      openDeferredFeature('analytics');
+    }}
   ><BarChart3 /><span>Моя аналитика</span></button>, slot);
 }

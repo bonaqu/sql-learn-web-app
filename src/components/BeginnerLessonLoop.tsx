@@ -2,18 +2,16 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Code2, Eye, Play, Route, Sparkles, Target } from 'lucide-react';
 import type { QueryExecResult } from 'sql.js';
 import type { CurriculumLesson } from '../data/complete-curriculum';
+import { tasks } from '../data/course-catalog';
 import { trainingSeedSql } from '../data/training-dataset';
 import initSqlJs from '../lib/sql-browser';
+import { evaluateTaskSql } from '../lib/task-evaluation-contract';
 
 type SqlTable = { columns: string[]; values: unknown[][] };
 
 function formatValue(value: unknown) {
   if (value === null) return 'NULL';
   return String(value);
-}
-
-function normalizedSql(sql: string) {
-  return sql.toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
 export default function BeginnerLessonLoop({ lesson, onStageComplete, onOpenTask, onRevisit }: {
@@ -29,9 +27,10 @@ export default function BeginnerLessonLoop({ lesson, onStageComplete, onOpenTask
   const [fadedSql, setFadedSql] = useState(cycle.fadedPractice.starterSql);
   const [running, setRunning] = useState<'worked' | 'faded' | null>(null);
   const [sqlReady, setSqlReady] = useState(false);
-  const [result, setResult] = useState<SqlTable[]>([]);
+  const [workedResult, setWorkedResult] = useState<SqlTable[]>([]);
+  const [fadedResult, setFadedResult] = useState<SqlTable[]>([]);
   const [message, setMessage] = useState('Измени запрос, если хочешь, затем выполни его локально.');
-  const [fadedFeedback, setFadedFeedback] = useState<string | null>(null);
+  const [fadedFeedback, setFadedFeedback] = useState<{ correct: boolean; message: string } | null>(null);
 
   useEffect(() => {
     setPrediction(null);
@@ -39,7 +38,8 @@ export default function BeginnerLessonLoop({ lesson, onStageComplete, onOpenTask
     setWorkedSql(cycle.workedExample.sql);
     setFadedSql(cycle.fadedPractice.starterSql);
     setRunning(null);
-    setResult([]);
+    setWorkedResult([]);
+    setFadedResult([]);
     setMessage('Измени запрос, если хочешь, затем выполни его локально.');
     setFadedFeedback(null);
   }, [cycle]);
@@ -57,36 +57,46 @@ export default function BeginnerLessonLoop({ lesson, onStageComplete, onOpenTask
   };
 
   const runSql = async (kind: 'worked' | 'faded', sql: string) => {
-    if (kind === 'faded') {
-      const normalized = normalizedSql(sql);
-      const complete = cycle.fadedPractice.requiredFragments.every(fragment => normalized.includes(fragment));
-      if (!complete) {
-        setFadedFeedback(cycle.fadedPractice.retryFeedback);
-        return;
-      }
-    }
     setRunning(kind);
-    setResult([]);
+    if (kind === 'worked') setWorkedResult([]);
+    else {
+      setFadedResult([]);
+      setFadedFeedback(null);
+    }
     setMessage('SQLite выполняет запрос на учебных данных…');
     try {
       const sqlEngine = await initSqlJs();
+      if (kind === 'faded') {
+        const evaluationTask = tasks.find(task => task.id === cycle.fadedPractice.evaluationTaskId);
+        if (!evaluationTask) throw new Error('Контракт проверки упражнения не найден.');
+        const evaluation = evaluateTaskSql(sqlEngine, evaluationTask, sql, 'practice');
+        setFadedResult(evaluation.output as SqlTable[]);
+        if (evaluation.correct) {
+          onStageComplete(lesson.sections[2].id);
+          setFadedFeedback({ correct: true, message: cycle.fadedPractice.successFeedback });
+        } else {
+          const detail = evaluation.diagnostic
+            ? `${evaluation.diagnostic.title}. ${evaluation.diagnostic.explanation} ${evaluation.diagnostic.nextStep}`
+            : cycle.fadedPractice.retryFeedback;
+          setFadedFeedback({ correct: false, message: detail });
+        }
+        return;
+      }
       const database = new sqlEngine.Database();
       try {
         database.run(trainingSeedSql);
         const output = database.exec(sql) as QueryExecResult[];
-        setResult(output as SqlTable[]);
+        setWorkedResult(output as SqlTable[]);
         const rowCount = output.reduce((sum, block) => sum + block.values.length, 0);
         setMessage(output.length ? `Готово: ${rowCount} строк. ${cycle.workedExample.observation}` : 'Запрос выполнен без табличного результата.');
-        if (kind === 'worked') onStageComplete(lesson.sections[1].id);
-        else {
-          onStageComplete(lesson.sections[2].id);
-          setFadedFeedback(cycle.fadedPractice.successFeedback);
-        }
+        onStageComplete(lesson.sections[1].id);
       } finally {
         database.close();
       }
     } catch (reason) {
-      setMessage(`Не удалось выполнить SQL: ${reason instanceof Error ? reason.message : String(reason)}`);
+      const detail = `Не удалось выполнить SQL: ${reason instanceof Error ? reason.message : String(reason)}`;
+      if (kind === 'faded') setFadedFeedback({ correct: false, message: detail });
+      else setMessage(detail);
     } finally {
       setRunning(null);
     }
@@ -117,14 +127,15 @@ export default function BeginnerLessonLoop({ lesson, onStageComplete, onOpenTask
       <div className="beginner-loop-card-title"><Code2 /><div><small>Шаг 2 · пример с запуском</small><h3>{cycle.workedExample.title}</h3><p>{cycle.workedExample.context}</p></div></div>
       <label className="beginner-sql-editor"><span>SQL — можно изменить перед запуском</span><textarea value={workedSql} onChange={event => setWorkedSql(event.target.value)} spellCheck={false} aria-label={`SQL примера: ${cycle.workedExample.title}`} /></label>
       <div className="beginner-loop-actions"><button type="button" onClick={() => void runSql('worked', workedSql)} disabled={running !== null || !sqlReady}><Play />{running === 'worked' ? 'Выполняю…' : sqlReady ? 'Выполнить пример' : 'Готовлю SQLite…'}</button><span role="status" aria-live="polite">{message}</span></div>
-      {!!result.length && <div className="beginner-loop-result" data-testid="beginner-example-result">{result.map((block, blockIndex) => <div className="result-table-wrap" key={blockIndex}><table><caption>Результат запроса: {cycle.workedExample.title}</caption><thead><tr>{block.columns.map(column => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{block.values.map((row, rowIndex) => <tr key={rowIndex}>{row.map((value, columnIndex) => <td key={columnIndex}>{formatValue(value)}</td>)}</tr>)}</tbody></table></div>)}</div>}
+      {!!workedResult.length && <div className="beginner-loop-result" data-testid="beginner-example-result">{workedResult.map((block, blockIndex) => <div className="result-table-wrap" key={blockIndex}><table><caption>Результат запроса: {cycle.workedExample.title}</caption><thead><tr>{block.columns.map(column => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{block.values.map((row, rowIndex) => <tr key={rowIndex}>{row.map((value, columnIndex) => <td key={columnIndex}>{formatValue(value)}</td>)}</tr>)}</tbody></table></div>)}</div>}
     </article>}
 
     {predictionChecked && <article className="beginner-loop-card faded" data-testid="beginner-faded-practice">
       <div className="beginner-loop-card-title"><Sparkles /><div><small>Шаг 3 · подсказка сокращается</small><h3>{cycle.fadedPractice.title}</h3><p>{cycle.fadedPractice.prompt}</p></div></div>
       <label className="beginner-sql-editor"><span>Замени ___ и запусти</span><textarea value={fadedSql} onChange={event => setFadedSql(event.target.value)} spellCheck={false} aria-label={`SQL с пропуском: ${cycle.fadedPractice.title}`} /></label>
       <div className="beginner-loop-actions"><button type="button" onClick={() => void runSql('faded', fadedSql)} disabled={running !== null || !sqlReady}><Play />{running === 'faded' ? 'Проверяю…' : 'Проверить мой SQL'}</button></div>
-      {fadedFeedback && <div className={`beginner-loop-feedback ${fadedFeedback === cycle.fadedPractice.successFeedback ? 'success' : 'error'}`} role="status" aria-live="polite">{fadedFeedback === cycle.fadedPractice.successFeedback ? <CheckCircle2 /> : <AlertTriangle />}<p>{fadedFeedback}</p></div>}
+      {fadedFeedback && <div className={`beginner-loop-feedback ${fadedFeedback.correct ? 'success' : 'error'}`} role="status" aria-live="polite">{fadedFeedback.correct ? <CheckCircle2 /> : <AlertTriangle />}<p>{fadedFeedback.message}</p></div>}
+      {!!fadedResult.length && <div className="beginner-loop-result" data-testid="beginner-faded-result">{fadedResult.map((block, blockIndex) => <div className="result-table-wrap" key={blockIndex}><table><caption>Результат упражнения: {cycle.fadedPractice.title}</caption><thead><tr>{block.columns.map(column => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{block.values.map((row, rowIndex) => <tr key={rowIndex}>{row.map((value, columnIndex) => <td key={columnIndex}>{formatValue(value)}</td>)}</tr>)}</tbody></table></div>)}</div>}
     </article>}
 
     <div className="beginner-visual-grid">{cycle.visualizations.map(visual => <details className="beginner-visual" key={visual.id}><summary>{visual.title}</summary><div className="result-table-wrap"><table><caption>{visual.caption}</caption><thead><tr>{visual.columns.map(column => <th scope="col" key={column}>{column}</th>)}<th scope="col">Решение</th></tr></thead><tbody>{visual.rows.map((row, rowIndex) => <tr className={row.state} key={rowIndex}>{row.values.map((value, columnIndex) => <td key={columnIndex}>{value}</td>)}<td><strong>{row.stateLabel}</strong></td></tr>)}</tbody></table></div><p>{visual.note}</p></details>)}</div>

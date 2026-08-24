@@ -262,6 +262,7 @@ export const advancedTasks: SqlTask[] = advancedModules.flatMap(([module, topic]
       mode: modes[(globalIndex + taskIndex) % modes.length],
       xp: 120 + (globalIndex % 7) * 20,
       guide: advancedGuides[module],
+      evaluationPolicy: 'disposable-script',
       ...recipes[module](taskIndex)
     };
   })
