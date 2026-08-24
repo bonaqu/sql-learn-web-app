@@ -95,6 +95,25 @@ try {
   if (noConsent.body?.source !== 'local' || noConsent.body?.reason !== 'consent-required' || noConsent.body?.masteryAwarded !== false) {
     throw new Error('Mentor consent guard contract failed');
   }
+  const assessmentNoConsent = await request('/api/assessment/interviewer', {
+    method: 'POST',
+    headers: authorized,
+    body: JSON.stringify({
+      sessionId: '00000000-0000-4000-8000-000000000055',
+      taskId: 'task-015',
+      title: 'Диагностика очереди',
+      description: 'Найди заявки без ответа.',
+      topic: 'NULL и фильтрация',
+      sql: "SELECT ticket_id FROM tickets WHERE secret = 'private-value'",
+      question: 'Нужен ли стабильный порядок?',
+      attempts: 1
+    })
+  });
+  if (assessmentNoConsent.body?.source !== 'local'
+    || assessmentNoConsent.body?.reason !== 'consent-required'
+    || assessmentNoConsent.body?.masteryAwarded !== false) {
+    throw new Error('Assessment AI consent guard contract failed');
+  }
   await request('/api/mentor', {
     method: 'POST', headers: authorized, body: JSON.stringify({ aiConsent: true, sql: 'x'.repeat(8_001) })
   }, [413]);
@@ -132,6 +151,7 @@ try {
     apiHeadersVerified: true,
     untrustedOriginDenied: true,
     explicitConsentVerified: true,
+    assessmentConsentGuardVerified: true,
     oversizedPayloadRejected: true,
     provider: 'workers-ai',
     redactionVerified: true,

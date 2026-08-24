@@ -86,6 +86,7 @@ requireText(securityAiSmoke, "frame-ancestors 'none'", 'production shell CSP ass
 requireText(securityAiSmoke, 'access-control-allow-origin', 'untrusted origin denial assertion');
 requireText(securityAiSmoke, "headers: { origin: 'https://attacker.invalid' } }, [403]", 'untrusted origin fail-closed status');
 requireText(securityAiSmoke, "reason !== 'consent-required'", 'explicit AI consent assertion');
+requireText(securityAiSmoke, 'Assessment AI consent guard contract failed', 'assessment AI consent assertion');
 requireText(securityAiSmoke, "source !== 'workers-ai'", 'Workers AI provider assertion');
 requireText(securityAiSmoke, 'privateLiteral', 'AI context redaction assertion');
 requireText(securityAiSmoke, 'revokedSessionRejected: true', 'session revocation summary');
