@@ -19,9 +19,9 @@ Status vocabulary:
 | 5 | Correct lesson structure | **Partially verified** | prediction → runnable example → contracted faded practice → distinct independent task is executable for 3/44 lessons; the other 41 lessons still use the lighter article/check flow |
 | 6 | Smart SQL evaluation | **Partially verified** | 120 core tasks have versioned multi-fixture contracts; advanced disposable scripts now use isolated learner/reference databases, safety policy, output/final-temp-state comparison and negative mutants, but task-specific hidden/adversarial contracts remain follow-up work |
 | 7 | Hint system | Verified | bounded hint/solution provenance in task contracts, assessment reports, durable-evidence invalidation and analytics separation |
-| 8 | AI tutor / mentor | **Partially verified** | `/api/mentor` has consent, flag, redaction and quota gates; independent re-audit found assessment interviewer/debrief paths do not yet share that complete boundary |
+| 8 | AI tutor / mentor | Verified | Mentor, Assessment Interviewer and Debrief share explicit consent, one application flag, D1 quota, redaction, untrusted-data envelope, timeout, strict output validation and local fallback contracts |
 | 9 | Misconception engine | Verified | misconception taxonomy in task contracts; `scripts/validate-course-health.ts`; remediation and learner-analytics validators |
-| 10 | Mastery means demonstrated knowledge | **Partially verified** | direct core evidence and delayed retrieval are contracted; current checkpoint fallback can still accept one ordinary completed task when no report exists and must be restricted to genuine migrated evidence |
+| 10 | Mastery means demonstrated knowledge | Verified | direct core evidence and delayed retrieval are contracted; all eight checkpoint, phase, access and certificate gates require the current immutable completed report and reject completion-only, assisted and migrated task history |
 | 11 | Spaced review, retrieval and interleaving | Verified | `scripts/validate-review-scheduling.ts`; daily-route and durable-mastery contracts; `tests/e2e/mastery-loop.spec.ts` |
 | 12 | Daily learning loop | Verified | `docs/adaptive-placement-and-daily-route.md`; deterministic allocation validator; guided-journey browser coverage |
 | 13 | Motivation without replacing pedagogy | Verified | calm progress/recovery UX in `docs/calm-accessible-fast-ux.md`; no XP/click/session-time mastery proxies in the metrics dictionary |
@@ -35,9 +35,9 @@ Status vocabulary:
 | 21 | Performance | Verified | locked budgets in `scripts/performance-budgets.ts`, bundle enforcement, production cold-profile evidence runner and PWA first-reload smoke |
 | 22 | Technical stack and free-first constraint | Verified | local SQLite, Cloudflare Worker/D1/KV/AI bindings, no paid-only core dependency; `docs/dependency-governance.md` |
 | 23 | Cloudflare skills and boundaries | Verified | Worker compatibility, D1 lifecycle, resource health, dry-run deploy and production lifecycle smoke contracts |
-| 24 | GitHub skills and delivery process | Verified | protected default branch, exact-head Quality, Pages and Cloudflare workflow gates for every phase |
+| 24 | GitHub skills and delivery process | Verified | protected default branch, exact-head Quality, Pages and Cloudflare workflow gates; executable failure compensation watches the actual production workflow and rejects success, unrelated and retired-name fixtures |
 | 25 | Skills/plugins discipline | Verified | run-owned applied-skills record and phase evidence; no unavailable plugin was substituted for product proof |
-| 26 | Security and privacy | **Partially verified** | auth/origin/retention/export/delete and Mentor boundaries are contracted; assessment AI consent, shared feature flag, redaction and atomic application-wide quota remain an open P0 |
+| 26 | Security and privacy | Verified | auth/origin/retention/export/delete are contracted; Mentor, Interviewer and Debrief share explicit consent, server-side minimization/redaction, strict output and one atomic application-wide D1 quota |
 | 27 | Learning analytics | Verified | `docs/learning-metrics-dictionary.md`; privacy-minimal allowlists, item k-anonymity, lifecycle and persona validators |
 | 28 | Content quality | Verified | 240-task title/source scan, curriculum/editorial matrix, syntax frontier, duplicate/provenance and authored-topic validators |
 | 29 | Avoid needless complexity | Verified | free-first architecture, lazy heavy tools, native disclosure/dialog semantics and validator-backed contracts instead of parallel scoring stacks |

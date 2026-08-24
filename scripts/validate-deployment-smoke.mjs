@@ -23,6 +23,7 @@ const dialectRealAdapter = readFileSync('worker/dialect-real-engine.ts', 'utf8')
 const freeWrangler = readFileSync('wrangler.jsonc', 'utf8');
 const paidWrangler = readFileSync('wrangler.real-engines.jsonc', 'utf8');
 const qualityWorkflow = readFileSync('.github/workflows/quality.yml', 'utf8');
+const failureWorkflow = readFileSync('.github/workflows/cloudflare-failure-status.yml', 'utf8');
 
 const errors = [];
 const requireText = (source, text, label) => {
@@ -34,6 +35,9 @@ const forbidText = (source, text, label) => {
 
 requireText(core, 'curriculumVersion: 1', 'health curriculum version');
 requireText(workflow, 'Deploy Cloudflare Free Stack', 'explicit free-tier workflow name');
+requireText(failureWorkflow, 'workflows: ["Deploy Cloudflare Free Stack"]', 'exact production failure watcher');
+requireText(failureWorkflow, 'cloudflareFailureStatusForWorkflowRun', 'tested deployment failure compensation contract');
+forbidText(failureWorkflow, 'Deploy Cloudflare Full Stack', 'retired non-existent deployment workflow watcher');
 requireText(workflow, 'node scripts/cloudflare-production-smoke.mjs', 'production smoke entrypoint');
 requireText(workflow, 'node scripts/security-ai-production-smoke.mjs', 'security and AI smoke entrypoint');
 requireText(workflow, 'node scripts/concept-progress-production-smoke.mjs', 'concept history smoke entrypoint');

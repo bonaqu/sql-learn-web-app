@@ -2,7 +2,7 @@ name: Report Cloudflare Deployment Failure
 
 on:
   workflow_run:
-    workflows: ["Deploy Cloudflare Full Stack"]
+    workflows: ["Deploy Cloudflare Free Stack"]
     types: [completed]
 
 permissions:
@@ -14,20 +14,31 @@ jobs:
     if: ${{ github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion != 'success' }}
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout trusted compensation contract
+        uses: actions/checkout@v4
+
       - name: Publish diagnostic failure status
         uses: actions/github-script@v9
-        env:
-          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          RUN_URL: ${{ github.event.workflow_run.html_url }}
-          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
         with:
           script: |
+            const path = require('path');
+            const { pathToFileURL } = require('url');
+            const contractUrl = pathToFileURL(path.join(
+              process.env.GITHUB_WORKSPACE,
+              'scripts/cloudflare-failure-status-contract.mjs'
+            )).href;
+            const { cloudflareFailureStatusForWorkflowRun } = await import(contractUrl);
+            const run = context.payload.workflow_run;
+            const status = cloudflareFailureStatusForWorkflowRun({
+              name: run.name,
+              event: run.event,
+              conclusion: run.conclusion,
+              headSha: run.head_sha,
+              htmlUrl: run.html_url
+            });
+            if (!status) throw new Error('Cloudflare failure compensation received a non-matching workflow run');
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              sha: process.env.HEAD_SHA,
-              state: 'failure',
-              context: 'deployment/cloudflare',
-              description: `Cloudflare deployment ${process.env.CONCLUSION} — open diagnostics`,
-              target_url: process.env.RUN_URL
+              ...status
             });
