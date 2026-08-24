@@ -14,7 +14,7 @@ Status vocabulary:
 | ---: | --- | --- | --- |
 | 1 | Do not trust existing course content | Verified | `docs/core-task-contract-review.md`; `scripts/validate-core-task-progression.ts`; authored advanced validators; positive and negative evaluator fixtures |
 | 2 | Deep research of SQL learning | Verified | `.supergoal/.../RESEARCH.md`; `docs/learning-journey-audit.md`; `docs/curriculum-editorial-matrix.md`; primary-source dialect evidence in `docs/interview-and-dialect-evidence.md` |
-| 3 | Onboarding and personalization | Verified | `docs/onboarding-placement.md`; `scripts/validate-onboarding.ts`; `tests/e2e/onboarding.spec.ts` |
+| 3 | Onboarding and personalization | Verified | `docs/onboarding-placement.md`; four non-overlapping diagnostic v4 forms in `scripts/validate-assessment-calibration.ts`; completed-report retake and stale-autosave isolation in `tests/e2e/assessment.spec.ts` |
 | 4 | Personalized learning graph | Verified | `docs/learning-journey-contract.md`; goal-route/switch validators; `tests/e2e/learning-path.spec.ts` |
 | 5 | Correct lesson structure | **Partially verified** | prediction → runnable example → contracted faded practice → distinct independent task is executable for 3/44 lessons; the other 41 lessons still use the lighter article/check flow |
 | 6 | Smart SQL evaluation | **Partially verified** | 120 core tasks have versioned multi-fixture contracts; advanced disposable scripts now use isolated learner/reference databases, safety policy, output/final-temp-state comparison and negative mutants, but task-specific hidden/adversarial contracts remain follow-up work |

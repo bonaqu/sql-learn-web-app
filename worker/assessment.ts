@@ -119,7 +119,7 @@ const STATUSES = new Set<AssessmentStatus>(['completed', 'expired', 'abandoned']
 const ABILITY_BANDS = new Set<AbilityBand>(['low', 'mid', 'high']);
 const EXCLUSIONS = new Set<Exclude<TelemetryExclusion, null>>(['status', 'not-attempted', 'skipped', 'interviewer', 'technical-error']);
 const ADAPTIVE_STOP_REASONS = new Set(['minimum-probe-incomplete', 'foundation-observed', 'bridge-needed', 'challenge-needed', 'maximum-evidence-reached']);
-const CURRENT_BLUEPRINT_VERSION = 'assessment-blueprint-v3';
+const CURRENT_BLUEPRINT_VERSION = 'assessment-blueprint-v4';
 const MAX_REPORT_BYTES = 220_000;
 const MAX_AI_BYTES = 24_000;
 

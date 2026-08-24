@@ -226,11 +226,13 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
       elapsedTicks.current += 1;
       if (elapsedTicks.current >= 5 && activeTask) {
         elapsedTicks.current = 0;
-        const next = updateAssessmentAnswer(session, activeTask.id, {
-          elapsedSeconds: (session.answers[activeTask.id]?.elapsedSeconds || 0) + 5,
+        const stored = loadAssessmentSession(session.userId);
+        if (!stored || stored.id !== session.id) return;
+        const next = updateAssessmentAnswer(stored, activeTask.id, {
+          elapsedSeconds: (stored.answers[activeTask.id]?.elapsedSeconds || 0) + 5,
           sql: editorSql
         });
-        setSession(next);
+        setSession(current => current?.id === next.id ? next : current);
       }
       if (left <= 0) {
         window.clearInterval(timer);
@@ -244,8 +246,10 @@ export default function AssessmentCenterPortal({ externalLauncher = false, openR
     if (!session || !activeTask) return;
     if (persistTimer.current) window.clearTimeout(persistTimer.current);
     persistTimer.current = window.setTimeout(() => {
-      const next = updateAssessmentAnswer(session, activeTask.id, { sql: editorSql });
-      setSession(next);
+      const stored = loadAssessmentSession(session.userId);
+      if (!stored || stored.id !== session.id) return;
+      const next = updateAssessmentAnswer(stored, activeTask.id, { sql: editorSql });
+      setSession(current => current?.id === next.id ? next : current);
     }, 350);
     return () => {
       if (persistTimer.current) window.clearTimeout(persistTimer.current);

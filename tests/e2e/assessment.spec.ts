@@ -65,7 +65,7 @@ test('desktop assessment waits for evidence hydration, uses an adaptive form and
   await expect(page.getByTestId('assessment-landing')).toBeVisible();
   const calibrationSummary = page.getByTestId('assessment-calibration-summary');
   await expect(calibrationSummary).toBeVisible();
-  await expect(calibrationSummary).toContainText(/Blueprint v3|authored difficulty/i);
+  await expect(calibrationSummary).toContainText(/Blueprint v4|authored difficulty/i);
   const quickStart = page.getByTestId('start-quick');
   await expect(quickStart).toBeDisabled();
   await expect(calibrationSummary).toContainText(/Синхронизирую reports/i);
@@ -90,8 +90,8 @@ test('desktop assessment waits for evidence hydration, uses an adaptive form and
     taskIds: string[];
     selection: { distinctModules: number; distinctSkills: number };
   };
-  expect(session.formId).toMatch(/^QUICK-assessment-blueprint-v3-F[1-4]$/);
-  expect(session.blueprintVersion).toBe('assessment-blueprint-v3');
+  expect(session.formId).toMatch(/^QUICK-assessment-blueprint-v4-F[1-4]$/);
+  expect(session.blueprintVersion).toBe('assessment-blueprint-v4');
   expect(session.thresholdVersion).toBe('assessment-thresholds-v2');
   expect(session.taskIds).toHaveLength(3);
   expect(new Set(session.taskIds).size).toBe(3);
@@ -159,8 +159,12 @@ test('desktop diagnostic exam adaptively stops a zero-level learner after three 
     const session = JSON.parse(localStorage.getItem(key) || 'null');
     return session?.mode === 'diagnostic'
       && session?.taskIds?.length === 7
-      && session?.formId?.startsWith('DIAGNOSTIC-assessment-blueprint-v3-');
+      && session?.formId?.startsWith('DIAGNOSTIC-assessment-blueprint-v4-');
   }, sessionKey)).toBe(true);
+  const firstDiagnostic = await page.evaluate(key => {
+    const session = JSON.parse(localStorage.getItem(key) || 'null');
+    return { formId: String(session.formId), taskIds: session.taskIds as string[] };
+  }, sessionKey);
   await page.reload();
   await expect(page.getByTestId('assessment-session')).toBeVisible();
   await expect(page.locator('.assessment-mode-pill')).toHaveText('Diagnostic');
@@ -173,6 +177,31 @@ test('desktop diagnostic exam adaptively stops a zero-level learner after three 
   await expect(page.getByTestId('adaptive-diagnostic-result')).toContainText(/3 задач/i);
   await expect(page.getByTestId('adaptive-diagnostic-result')).toContainText(/безопасного старта с основ/i);
   await expect.poll(() => page.evaluate(key => localStorage.getItem(key), sessionKey)).toBeNull();
+  const reportsKey = `sql-academy-assessment-reports-v1:${String(auth.session.userId)}`;
+  await expect.poll(() => page.evaluate(key => {
+    const reports = JSON.parse(localStorage.getItem(key) || '[]');
+    return reports.filter((item: { mode?: string }) => item.mode === 'diagnostic').length;
+  }, reportsKey)).toBe(1);
+  const storedDiagnosticForm = await page.evaluate(key => {
+    const reports = JSON.parse(localStorage.getItem(key) || '[]');
+    return reports.find((item: { mode?: string }) => item.mode === 'diagnostic')?.formId as string | undefined;
+  }, reportsKey);
+  expect(storedDiagnosticForm).toBe(firstDiagnostic.formId);
+
+  await page.getByRole('button', { name: /К Assessment Center/i }).click();
+  const retakeButton = page.getByTestId('start-diagnostic');
+  await expect(retakeButton).toBeVisible();
+  await expect(retakeButton).toBeEnabled();
+  await retakeButton.evaluate(button => button.click());
+  await expect(page.getByTestId('assessment-session')).toBeVisible();
+  const retake = await page.evaluate(key => {
+    const session = JSON.parse(localStorage.getItem(key) || 'null');
+    return { formId: String(session.formId), taskIds: session.taskIds as string[] };
+  }, sessionKey);
+  expect(retake.formId).not.toBe(firstDiagnostic.formId);
+  expect(retake.taskIds).not.toEqual(firstDiagnostic.taskIds);
+  expect(retake.taskIds).toHaveLength(7);
+  expect(new Set(retake.taskIds).size).toBe(7);
 });
 
 test('desktop assessment enforces exam integrity and restores an expired session as a report', async ({ page }) => {
