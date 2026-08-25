@@ -1,4 +1,9 @@
 import { authenticateSession, type AuthenticatedUser } from './auth';
+import {
+  preservesTaskCounterComponents,
+  validTaskCounterComponents,
+  type TaskCounterComponents
+} from '../src/lib/progress-counters';
 
 type AttemptErrorKind =
   | 'syntax'
@@ -42,6 +47,7 @@ type TaskStatsPayload = {
   independentPasses?: number;
   lastIndependentAt?: string;
   errorKinds?: Partial<Record<AttemptErrorKind, number>>;
+  counterComponents?: TaskCounterComponents;
   lastDiagnostic?: AttemptDiagnosticPayload;
   lastAttemptAt?: string;
   completedAt?: string;
@@ -182,6 +188,7 @@ function validTaskStats(value: unknown, taskId: string): value is TaskStatsPaylo
     && (stats.independentPasses === undefined || boundedInteger(stats.independentPasses, 10_000))
     && (stats.lastIndependentAt === undefined || boundedString(stats.lastIndependentAt, 80))
     && validErrorKinds(stats.errorKinds)
+    && validTaskCounterComponents(stats)
     && (stats.lastDiagnostic === undefined || validAttemptDiagnostic(stats.lastDiagnostic))
     && (stats.lastAttemptAt === undefined || boundedString(stats.lastAttemptAt, 80))
     && (stats.completedAt === undefined || boundedString(stats.completedAt, 80))
@@ -223,6 +230,11 @@ function validProgress(payload: unknown): payload is ProgressPayload {
 }
 
 export const validMasteryProgressPayload = validProgress;
+
+function preservesStoredCounters(previous: ProgressPayload, next: ProgressPayload) {
+  return Object.entries(previous.taskStats).every(([taskId, stats]) =>
+    preservesTaskCounterComponents(stats, next.taskStats[taskId] || {}));
+}
 
 async function readJson(request: Request) {
   try {
@@ -274,6 +286,25 @@ async function authenticatedProgress(
       return json({ error: 'Progress conflict', revision: current?.revision || 0, updatedAt: current?.updated_at || null }, 409);
     }
   } else {
+    const current = await env.DB.prepare('SELECT payload, revision, updated_at FROM progress WHERE profile_id = ?')
+      .bind(auth.userId).first<{ payload: string; revision: number; updated_at: string }>();
+    if (!current || current.revision !== baseRevision) {
+      return json({ error: 'Progress conflict', revision: current?.revision || 0, updatedAt: current?.updated_at || null }, 409);
+    }
+    let previous: ProgressPayload;
+    try {
+      previous = JSON.parse(current.payload) as ProgressPayload;
+    } catch {
+      return json({ error: 'Stored progress is corrupted' }, 500);
+    }
+    if (!preservesStoredCounters(previous, body.progress)) {
+      return json({
+        error: 'Progress counter components are stale',
+        code: 'PROGRESS_COUNTERS_STALE',
+        revision: current.revision,
+        updatedAt: current.updated_at
+      }, 409);
+    }
     const updated = await env.DB.prepare(`UPDATE progress SET payload = ?, updated_at = ?, revision = revision + 1
       WHERE profile_id = ? AND revision = ?`).bind(serialized, updatedAt, auth.userId, baseRevision).run();
     if ((updated.meta.changes || 0) !== 1) {

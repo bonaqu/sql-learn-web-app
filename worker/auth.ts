@@ -1,3 +1,21 @@
+import {
+  preservesTaskCounterComponents,
+  validTaskCounterComponents,
+  type TaskCounterComponents
+} from '../src/lib/progress-counters';
+
+type AttemptErrorKind =
+  | 'syntax'
+  | 'schema'
+  | 'runtime'
+  | 'result-shape'
+  | 'row-set'
+  | 'ordering'
+  | 'values'
+  | 'null-filter'
+  | 'aggregation'
+  | 'join-cardinality';
+
 type TaskStatsPayload = {
   attempts: number;
   incorrect: number;
@@ -19,6 +37,8 @@ type TaskStatsPayload = {
   durableUntil?: string;
   independentPasses?: number;
   lastIndependentAt?: string;
+  errorKinds?: Partial<Record<AttemptErrorKind, number>>;
+  counterComponents?: TaskCounterComponents;
   lastAttemptAt?: string;
   completedAt?: string;
   evidenceContractVersion?: string;
@@ -83,6 +103,18 @@ const USERNAME_PATTERN = /^[a-z0-9](?:[a-z0-9._-]{1,30}[a-z0-9])?$/;
 const RESERVED_USERNAMES = new Set(['admin', 'administrator', 'root', 'system', 'support', 'sqlacademy', 'sql-academy', 'api', 'security']);
 const SESSION_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const TASK_ID_PATTERN = /^task-[0-9]{3}$/;
+const ATTEMPT_ERROR_KINDS = new Set<AttemptErrorKind>([
+  'syntax',
+  'schema',
+  'runtime',
+  'result-shape',
+  'row-set',
+  'ordering',
+  'values',
+  'null-filter',
+  'aggregation',
+  'join-cardinality'
+]);
 const RECOVERY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const RECOVERY_RAW_LENGTH = 24;
 const PASSWORD_MIN_LENGTH = 15;
@@ -116,6 +148,13 @@ const validFixtureIds = (value: unknown) => value === undefined || (Array.isArra
   && value.length <= 12
   && value.every(item => boundedString(item, 96))
   && new Set(value).size === value.length);
+
+function validErrorKinds(value: unknown) {
+  if (value === undefined) return true;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.entries(value).every(([kind, count]) =>
+    ATTEMPT_ERROR_KINDS.has(kind as AttemptErrorKind) && boundedInteger(count, 10_000));
+}
 
 function validRetrievalState(stats: Partial<TaskStatsPayload>, taskId: string) {
   if (stats.retrievalEvidenceVersion === undefined) {
@@ -187,6 +226,8 @@ function validTaskStats(value: unknown, taskId: string): value is TaskStatsPaylo
     && (stats.durableUntil === undefined || boundedString(stats.durableUntil, 80))
     && (stats.independentPasses === undefined || boundedInteger(stats.independentPasses, 10_000))
     && (stats.lastIndependentAt === undefined || boundedString(stats.lastIndependentAt, 80))
+    && validErrorKinds(stats.errorKinds)
+    && validTaskCounterComponents(stats)
     && (stats.lastAttemptAt === undefined || typeof stats.lastAttemptAt === 'string')
     && (stats.completedAt === undefined || typeof stats.completedAt === 'string')
     && (stats.evidenceContractVersion === undefined || boundedString(stats.evidenceContractVersion, 96))
@@ -218,6 +259,11 @@ function validProgress(payload: unknown): payload is ProgressPayload {
     && Object.entries(value.taskStats).every(([taskId, stats]) => TASK_ID_PATTERN.test(taskId) && validTaskStats(stats, taskId))
     && (value.lastTask === undefined || TASK_ID_PATTERN.test(value.lastTask))
     && (value.lastStudyDate === undefined || typeof value.lastStudyDate === 'string');
+}
+
+function preservesStoredCounters(previous: ProgressPayload, next: ProgressPayload) {
+  return Object.entries(previous.taskStats).every(([taskId, stats]) =>
+    preservesTaskCounterComponents(stats, next.taskStats[taskId] || {}));
 }
 
 function normalizeUsername(value: unknown) {
@@ -825,6 +871,25 @@ async function userProgress(request: Request, env: Cloudflare.Env, auth: Authent
       return json({ error: 'Progress conflict', revision: current?.revision || 0, updatedAt: current?.updated_at || null }, 409);
     }
   } else {
+    const existing = await env.DB.prepare('SELECT payload, revision, updated_at FROM progress WHERE profile_id = ?')
+      .bind(auth.userId).first<{ payload: string; revision: number; updated_at: string }>();
+    if (!existing || existing.revision !== body.baseRevision) {
+      return json({ error: 'Progress conflict', revision: existing?.revision || 0, updatedAt: existing?.updated_at || null }, 409);
+    }
+    let previous: ProgressPayload;
+    try {
+      previous = JSON.parse(existing.payload) as ProgressPayload;
+    } catch {
+      return json({ error: 'Stored progress is corrupted' }, 500);
+    }
+    if (!preservesStoredCounters(previous, body.progress)) {
+      return json({
+        error: 'Progress counter components are stale',
+        code: 'PROGRESS_COUNTERS_STALE',
+        revision: existing.revision,
+        updatedAt: existing.updated_at
+      }, 409);
+    }
     const updated = await env.DB.prepare(`UPDATE progress SET payload = ?, updated_at = ?, revision = revision + 1
       WHERE profile_id = ? AND revision = ?`).bind(serialized, sqliteTime(), auth.userId, body.baseRevision).run();
     if ((updated.meta.changes || 0) !== 1) {

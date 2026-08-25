@@ -10,8 +10,12 @@ import {
   DURABLE_MASTERY_EVIDENCE_VERSION,
   hasDurableTaskEvidence,
   migrateProgress,
+  recordAttempt,
+  recordHint,
   type Progress
 } from '../src/lib/progress.ts';
+import { diagnosticForKind } from '../src/lib/attempt-diagnostics.ts';
+import { preservesTaskCounterComponents } from '../src/lib/progress-counters.ts';
 import core from '../worker/core.ts';
 import { validMasteryProgressPayload } from '../worker/mastery-progress.ts';
 
@@ -77,10 +81,36 @@ function progressFor(taskId: string, completedAt: string): Progress {
   };
 }
 
-const deviceA = progressFor('task-001', '2026-07-25T10:00:00.000Z');
-const deviceB = progressFor('task-002', '2026-07-25T11:00:00.000Z');
-let cloudProgress: Progress | null = null;
-let cloudRevision = 0;
+const sharedTask = tasks.find(task => task.id === 'task-001')!;
+const sharedBaseline = migrateProgress({
+  ...progressFor(sharedTask.id, '2026-07-25T09:00:00.000Z'),
+  taskStats: {
+    [sharedTask.id]: {
+      attempts: 5,
+      incorrect: 2,
+      hintsUsed: 1,
+      independentPasses: 1,
+      errorKinds: { syntax: 2 },
+      lastIndependentAt: '2026-07-25T09:00:00.000Z',
+      lastAttemptAt: '2026-07-25T09:00:00.000Z',
+      completedAt: '2026-07-25T09:00:00.000Z'
+    }
+  }
+});
+let deviceA = recordHint(structuredClone(sharedBaseline), sharedTask.id, 'replica-device-a');
+deviceA = recordAttempt(deviceA, sharedTask, false, {
+  diagnostic: diagnosticForKind('syntax'),
+  replicaId: 'replica-device-a',
+  at: '2026-07-25T10:00:00.000Z'
+});
+let deviceB = recordHint(structuredClone(sharedBaseline), sharedTask.id, 'replica-device-b');
+deviceB = recordAttempt(deviceB, sharedTask, true, {
+  independent: true,
+  replicaId: 'replica-device-b',
+  at: '2026-07-25T11:00:00.000Z'
+});
+let cloudProgress: Progress | null = structuredClone(sharedBaseline);
+let cloudRevision = 1;
 let injectedConcurrentWrite = false;
 const timeline: string[] = [];
 const api: ProgressSyncApi = {
@@ -96,7 +126,7 @@ const api: ProgressSyncApi = {
     if (!injectedConcurrentWrite) {
       injectedConcurrentWrite = true;
       cloudProgress = structuredClone(deviceA);
-      cloudRevision = 1;
+      cloudRevision = 2;
       timeline.push(`PUT base=${baseRevision} -> 409/r${cloudRevision}`);
       const conflict = new Error('Progress conflict') as Error & { status?: number };
       conflict.status = 409;
@@ -117,12 +147,40 @@ const api: ProgressSyncApi = {
 
 const deviceBBefore = JSON.stringify(deviceB);
 const reconciled = await reconcileProgress(deviceB, api);
-assert(timeline.join(' | ') === 'GET r0 | PUT base=0 -> 409/r1 | GET r1 | PUT base=1 -> 200/r2',
+assert(timeline.join(' | ') === 'GET r1 | PUT base=1 -> 409/r2 | GET r2 | PUT base=2 -> 200/r3',
   `Unexpected two-device CAS timeline: ${timeline.join(' | ')}`);
-assert(reconciled.revision === 2 && reconciled.wrote, 'Conflict recovery must write one new canonical revision');
-assert(JSON.stringify(reconciled.progress.completed) === JSON.stringify(['task-001', 'task-002']),
-  'Conflict recovery must preserve the union of device evidence');
+assert(reconciled.revision === 3 && reconciled.wrote, 'Conflict recovery must write one new canonical revision');
+const sharedStats = reconciled.progress.taskStats[sharedTask.id];
+assert(sharedStats.attempts === 7 && sharedStats.incorrect === 3 && sharedStats.hintsUsed === 3,
+  `Concurrent same-task totals must be additive, got attempts=${sharedStats.attempts}, incorrect=${sharedStats.incorrect}, hints=${sharedStats.hintsUsed}`);
+assert(sharedStats.independentPasses === 2 && sharedStats.errorKinds?.syntax === 3,
+  'Concurrent success and diagnostic counters must preserve both device deltas');
+assert(Boolean(sharedStats.counterComponents?.legacy
+    && sharedStats.counterComponents['replica-device-a']
+    && sharedStats.counterComponents['replica-device-b']),
+  'Canonical same-task evidence must retain the shared baseline and both anonymous replicas');
+assert(JSON.stringify(Object.keys(sharedStats.counterComponents || {}))
+    === JSON.stringify([...Object.keys(sharedStats.counterComponents || {})].sort()),
+  'Replica component order must be canonical to prevent revision-only sync loops');
 assert(JSON.stringify(deviceB) === deviceBBefore, 'Reconciliation must not mutate local evidence in place');
+
+assert(validMasteryProgressPayload(reconciled.progress), 'D1 must accept internally consistent replica counters');
+const inconsistentCounters = structuredClone(reconciled.progress);
+inconsistentCounters.taskStats[sharedTask.id].attempts += 1;
+assert(!validMasteryProgressPayload(inconsistentCounters), 'D1 must reject scalar totals that disagree with replica components');
+const unboundedCounters = structuredClone(reconciled.progress);
+unboundedCounters.taskStats[sharedTask.id].counterComponents = Object.fromEntries(
+  Array.from({ length: 33 }, (_, index) => [`replica-overflow-${String(index).padStart(8, '0')}`, { attempts: 0, incorrect: 0, hintsUsed: 0 }])
+);
+assert(!validMasteryProgressPayload(unboundedCounters), 'D1 must reject unbounded per-task replica growth');
+const downgradedCounters = structuredClone(reconciled.progress.taskStats[sharedTask.id]);
+delete downgradedCounters.counterComponents;
+assert(!preservesTaskCounterComponents(sharedStats, downgradedCounters),
+  'A scalar-only cached client must not downgrade an established replica map');
+const decreasedCounters = structuredClone(sharedStats);
+decreasedCounters.counterComponents!['replica-device-a'].attempts = 0;
+assert(!preservesTaskCounterComponents(sharedStats, decreasedCounters),
+  'A write must not decrease an established replica component');
 
 let noOpWrites = 0;
 const noOp = await reconcileProgress(reconciled.progress, {

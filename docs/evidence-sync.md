@@ -67,10 +67,14 @@ Authenticated course progress uses `GET|PUT /api/mastery/progress` (the compatib
 
 On HTTP 409 the browser re-reads D1, deterministically unions local and cloud completion/evidence, then retries once from the new revision. Local storage and the visible sync state change only after reconciliation succeeds. Network failure therefore leaves local work intact and does not report a successful sync.
 
+Task counters use a bounded grow-only replica map inside the existing progress JSON. A legacy scalar snapshot is migrated to the deterministic `legacy` component; each browser installation then increments only its anonymous random `replica-*` component. Merge takes the maximum only for the same replica and sums different replicas, so a shared baseline of 5 plus one attempt on device A and one attempt on device B becomes 7 rather than the lossy scalar maximum of 6. Attempts, errors, hints, solution views, assisted/independent passes, retrieval successes/lapses and diagnostic-kind counts share this contract.
+
+Replica IDs contain no account, session, contact or device-name data. Each task is limited to 32 components, every component and derived total is bounded, and both progress endpoints reject unknown IDs, excess components and any scalar total that disagrees with its component sum. Scalar-only history remains readable and migrates without a D1 schema change. Once a canonical row contains replica components, a cached old client cannot delete or decrease them: the Worker returns `409 PROGRESS_COUNTERS_STALE`, keeps the canonical revision unchanged and leaves that client's local work available for recovery after update.
+
 The older profile-scoped `PUT /api/progress` contract is now fail-closed with HTTP 428 and `PROGRESS_REVISION_REQUIRED`; its `GET` remains read-only for recovery diagnostics. This is a code-only compatibility migration: migration `0002_anonymous_accounts.sql` already added `progress.revision`, so no historical D1 migration is rewritten and no new schema migration is required. A cached pre-change client cannot overwrite a newer row; after one reload, the current bundle retries through the revisioned contract.
 
 Regression evidence is split across:
 
-- `scripts/validate-evidence-sync.ts` for a deterministic 409 → re-read → union → revision-2 trace, offline immutability and legacy fail-closed behavior;
-- `tests/e2e/evidence-sync.spec.ts` for the same interleaving against the local Wrangler/D1 runtime, plus cached-client reload and empty Review state;
-- `scripts/mastery-progress-production-smoke.mjs` for deployed D1 revision, legacy-overwrite rejection, union preservation and account cleanup.
+- `scripts/validate-evidence-sync.ts` for a deterministic shared-baseline 409 → re-read → additive merge → revision-3 trace, inconsistent/unbounded payload rejection, offline immutability and legacy fail-closed behavior;
+- `tests/e2e/evidence-sync.spec.ts` for the same two-device same-task interleaving against the local Wrangler/D1 runtime, plus cached-client reload and empty Review state;
+- `scripts/mastery-progress-production-smoke.mjs` for deployed D1 revision, inconsistent-counter and legacy-overwrite rejection, exact additive totals and account cleanup.
