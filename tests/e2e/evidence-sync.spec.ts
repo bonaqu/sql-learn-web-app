@@ -1,52 +1,44 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { authenticatePage } from './auth-helper';
+import { tasks } from '../../src/data/course-catalog';
+import { diagnosticForKind } from '../../src/lib/attempt-diagnostics';
+import { mergeProgress } from '../../src/lib/auth';
+import {
+  defaultProgress,
+  migrateProgress,
+  recordAttempt,
+  recordHint,
+  type Progress
+} from '../../src/lib/progress';
 
 const WORKER_URL = process.env.PLAYWRIGHT_WORKER_URL || `http://127.0.0.1:${process.env.PLAYWRIGHT_WORKER_PORT || '8792'}`;
 const PROGRESS_KEY = 'sql-academy-progress-v4';
 
-type Progress = {
-  version: 4;
-  completed: string[];
-  taskStats: Record<string, {
-    attempts: number;
-    incorrect: number;
-    hintsUsed: number;
-    independentPasses?: number;
-    lastIndependentAt?: string;
-    lastAttemptAt?: string;
-    completedAt?: string;
-  }>;
-  xp: number;
-  streak: number;
-  history: Array<{ day: string; solved: number }>;
-  lastTask?: string;
-  lastStudyDate?: string;
-};
-
 const blankHistory = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map(day => ({ day, solved: 0 }));
 
-function progressFor(taskId: string, at: string): Progress {
-  return {
-    version: 4,
-    completed: [taskId],
+function sharedBaseline(): Progress {
+  return migrateProgress({
+    ...defaultProgress,
+    completed: ['task-001'],
     taskStats: {
-      [taskId]: {
-        attempts: 1,
-        incorrect: 0,
-        hintsUsed: 0,
+      'task-001': {
+        attempts: 5,
+        incorrect: 2,
+        hintsUsed: 1,
         independentPasses: 1,
-        lastIndependentAt: at,
-        lastAttemptAt: at,
-        completedAt: at
+        errorKinds: { syntax: 2 },
+        lastIndependentAt: '2026-07-25T09:00:00.000Z',
+        lastAttemptAt: '2026-07-25T09:00:00.000Z',
+        completedAt: '2026-07-25T09:00:00.000Z'
       }
     },
-    xp: 60,
+    xp: tasks.find(task => task.id === 'task-001')!.xp,
     streak: 1,
     history: blankHistory,
-    lastTask: taskId,
-    lastStudyDate: at.slice(0, 10)
-  };
+    lastTask: 'task-001',
+    lastStudyDate: '2026-07-25'
+  });
 }
 
 async function expectNoSeriousAxeViolations(page: Page) {
@@ -60,42 +52,55 @@ async function expectNoSeriousAxeViolations(page: Page) {
 test('desktop mastery evidence sync resolves a real D1 stale-device conflict without loss', async ({ page }, testInfo) => {
   const auth = await authenticatePage(page, 'evidence');
   const token = String(auth.session.token || '');
-  const deviceA = progressFor('task-001', '2026-07-25T10:00:00.000Z');
-  const deviceB = progressFor('task-002', '2026-07-25T11:00:00.000Z');
+  const task = tasks.find(item => item.id === 'task-001')!;
+  const baseline = sharedBaseline();
+  let deviceA = recordHint(structuredClone(baseline), task.id, 'replica-device-a');
+  deviceA = recordAttempt(deviceA, task, false, {
+    diagnostic: diagnosticForKind('syntax'),
+    replicaId: 'replica-device-a',
+    at: '2026-07-25T10:00:00.000Z'
+  });
+  let deviceB = recordHint(structuredClone(baseline), task.id, 'replica-device-b');
+  deviceB = recordAttempt(deviceB, task, true, {
+    independent: true,
+    replicaId: 'replica-device-b',
+    at: '2026-07-25T11:00:00.000Z'
+  });
   const headers = { authorization: `Bearer ${token}` };
   const timeline: Array<{ device: string; method: string; baseRevision?: number; status: number; revision?: number }> = [];
 
   const firstWrite = await page.request.put(`${WORKER_URL}/api/mastery/progress`, {
     headers,
-    data: { progress: deviceA, baseRevision: 0 }
+    data: { progress: baseline, baseRevision: 0 }
   });
   const firstBody = await firstWrite.json() as { revision?: number };
   timeline.push({ device: 'A', method: 'PUT', baseRevision: 0, status: firstWrite.status(), revision: firstBody.revision });
   expect(firstWrite.ok(), JSON.stringify(firstBody)).toBe(true);
   expect(firstBody.revision).toBe(1);
 
+  const deviceAWrite = await page.request.put(`${WORKER_URL}/api/mastery/progress`, {
+    headers,
+    data: { progress: deviceA, baseRevision: 1 }
+  });
+  const deviceABody = await deviceAWrite.json() as { revision?: number };
+  timeline.push({ device: 'A', method: 'PUT', baseRevision: 1, status: deviceAWrite.status(), revision: deviceABody.revision });
+  expect(deviceAWrite.ok(), JSON.stringify(deviceABody)).toBe(true);
+  expect(deviceABody.revision).toBe(2);
+
   const staleWrite = await page.request.put(`${WORKER_URL}/api/mastery/progress`, {
     headers,
-    data: { progress: deviceB, baseRevision: 0 }
+    data: { progress: deviceB, baseRevision: 1 }
   });
   const staleBody = await staleWrite.json() as { revision?: number };
-  timeline.push({ device: 'B', method: 'PUT', baseRevision: 0, status: staleWrite.status(), revision: staleBody.revision });
+  timeline.push({ device: 'B', method: 'PUT', baseRevision: 1, status: staleWrite.status(), revision: staleBody.revision });
   expect(staleWrite.status()).toBe(409);
-  expect(staleBody.revision).toBe(1);
+  expect(staleBody.revision).toBe(2);
 
   const reread = await page.request.get(`${WORKER_URL}/api/mastery/progress`, { headers });
   const rereadBody = await reread.json() as { revision: number; progress: Progress };
   timeline.push({ device: 'B', method: 'GET', status: reread.status(), revision: rereadBody.revision });
   expect(reread.ok(), JSON.stringify(rereadBody)).toBe(true);
-  const merged: Progress = {
-    ...rereadBody.progress,
-    completed: [...new Set([...rereadBody.progress.completed, ...deviceB.completed])].sort(),
-    taskStats: { ...rereadBody.progress.taskStats, ...deviceB.taskStats },
-    xp: rereadBody.progress.xp + deviceB.xp,
-    streak: Math.max(rereadBody.progress.streak, deviceB.streak),
-    lastTask: deviceB.lastTask,
-    lastStudyDate: deviceB.lastStudyDate
-  };
+  const merged = mergeProgress(deviceB, rereadBody.progress);
   const mergedWrite = await page.request.put(`${WORKER_URL}/api/mastery/progress`, {
     headers,
     data: { progress: merged, baseRevision: rereadBody.revision }
@@ -103,18 +108,42 @@ test('desktop mastery evidence sync resolves a real D1 stale-device conflict wit
   const mergedBody = await mergedWrite.json() as { revision: number; progress: Progress };
   timeline.push({ device: 'B', method: 'PUT', baseRevision: rereadBody.revision, status: mergedWrite.status(), revision: mergedBody.revision });
   expect(mergedWrite.ok(), JSON.stringify(mergedBody)).toBe(true);
-  expect(mergedBody.revision).toBe(2);
-  expect(mergedBody.progress.completed).toEqual(['task-001', 'task-002']);
+  expect(mergedBody.revision).toBe(3);
+  expect(mergedBody.progress.completed).toEqual(['task-001']);
 
   const canonicalResponse = await page.request.get(`${WORKER_URL}/api/mastery/progress`, {
     headers: { authorization: `Bearer ${token}` }
   });
   expect(canonicalResponse.ok(), await canonicalResponse.text()).toBe(true);
   const canonical = await canonicalResponse.json() as { revision: number; progress: Progress };
-  expect(canonical.revision).toBe(2);
-  expect(canonical.progress.completed).toEqual(['task-001', 'task-002']);
-  expect(canonical.progress.taskStats['task-001']?.independentPasses).toBe(1);
-  expect(canonical.progress.taskStats['task-002']?.independentPasses).toBe(1);
+  expect(canonical.revision).toBe(3);
+  expect(canonical.progress.completed).toEqual(['task-001']);
+  expect(canonical.progress.taskStats['task-001']).toMatchObject({
+    attempts: 7,
+    incorrect: 3,
+    hintsUsed: 3,
+    independentPasses: 2,
+    errorKinds: { syntax: 3 }
+  });
+  expect(Object.keys(canonical.progress.taskStats['task-001'].counterComponents || {}).sort()).toEqual([
+    'legacy',
+    'replica-device-a',
+    'replica-device-b'
+  ]);
+
+  const downgraded = structuredClone(canonical.progress);
+  delete downgraded.taskStats['task-001'].counterComponents;
+  const downgradeWrite = await page.request.put(`${WORKER_URL}/api/mastery/progress`, {
+    headers,
+    data: { progress: downgraded, baseRevision: canonical.revision }
+  });
+  expect(downgradeWrite.status()).toBe(409);
+  expect(await downgradeWrite.json()).toMatchObject({ code: 'PROGRESS_COUNTERS_STALE', revision: 3 });
+
+  const afterDowngradeResponse = await page.request.get(`${WORKER_URL}/api/mastery/progress`, { headers });
+  const afterDowngrade = await afterDowngradeResponse.json() as { revision: number; progress: Progress };
+  expect(afterDowngrade.revision).toBe(3);
+  expect(afterDowngrade.progress.taskStats['task-001'].attempts).toBe(7);
 
   await page.addInitScript(({ key, value }) => localStorage.setItem(key, JSON.stringify(value)), {
     key: PROGRESS_KEY,
@@ -139,7 +168,8 @@ test('desktop mastery evidence sync resolves a real D1 stale-device conflict wit
   await syncButton.click();
   await expect(syncButton.locator('.lucide-wifi')).toBeVisible();
   const afterReload = await page.evaluate(key => JSON.parse(localStorage.getItem(key) || 'null') as Progress, PROGRESS_KEY);
-  expect(afterReload.completed).toEqual(['task-001', 'task-002']);
+  expect(afterReload.completed).toEqual(['task-001']);
+  expect(afterReload.taskStats['task-001'].attempts).toBe(7);
 
   const beforeNetworkFailure = await page.evaluate(key => localStorage.getItem(key), PROGRESS_KEY);
   await page.route('**/api/mastery/progress', route => route.abort('failed'));
@@ -150,7 +180,7 @@ test('desktop mastery evidence sync resolves a real D1 stale-device conflict wit
   await page.unroute('**/api/mastery/progress');
 
   await testInfo.attach('evidence-sync-timeline.json', {
-    body: Buffer.from(JSON.stringify({ timeline, canonicalRevision: canonical.revision, completed: canonical.progress.completed, cachedClient }, null, 2)),
+    body: Buffer.from(JSON.stringify({ timeline, canonicalRevision: afterDowngrade.revision, completed: afterDowngrade.progress.completed, cachedClient }, null, 2)),
     contentType: 'application/json'
   });
 

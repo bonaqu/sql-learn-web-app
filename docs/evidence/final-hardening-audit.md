@@ -21,7 +21,7 @@ Status vocabulary:
 | 7 | Hint system | Verified | bounded hint/solution provenance in task contracts, assessment reports, durable-evidence invalidation and analytics separation |
 | 8 | AI tutor / mentor | Verified | Mentor, Assessment Interviewer and Debrief share explicit consent, one application flag, D1 quota, redaction, untrusted-data envelope, timeout, strict output validation and local fallback contracts |
 | 9 | Misconception engine | Verified | misconception taxonomy in task contracts; `scripts/validate-course-health.ts`; all-checkpoint two-stage discriminating-practice/transfer proof in `scripts/validate-checkpoint-remediation.ts`; ordered desktop/mobile recovery in `tests/e2e/checkpoint-remediation.spec.ts` |
-| 10 | Mastery means demonstrated knowledge | Verified | direct core evidence and delayed retrieval are contracted; all eight checkpoint, phase, access and certificate gates require the current immutable completed report and reject completion-only, assisted and migrated task history |
+| 10 | Mastery means demonstrated knowledge | Verified | direct core evidence and delayed retrieval are contracted; all eight checkpoint, phase, access and certificate gates require the current immutable completed report and reject completion-only, assisted and migrated task history; bounded replica counters preserve simultaneous same-task evidence instead of collapsing it with a scalar maximum |
 | 11 | Spaced review, retrieval and interleaving | Verified | `scripts/validate-review-scheduling.ts`; daily-route and durable-mastery contracts; `tests/e2e/mastery-loop.spec.ts` |
 | 12 | Daily learning loop | Verified | `docs/adaptive-placement-and-daily-route.md`; deterministic allocation validator; guided-journey browser coverage |
 | 13 | Motivation without replacing pedagogy | Verified | calm progress/recovery UX in `docs/calm-accessible-fast-ux.md`; no XP/click/session-time mastery proxies in the metrics dictionary |
@@ -60,7 +60,7 @@ Desktop/mobile journeys cover account-first entry, onboarding, focused Practice,
 
 ### Edge cases and saved-state compatibility
 
-Validators exercise empty and long SQL, Unicode, NULL, duplicates, ties, shape mismatches, large results, prohibited mutation, dated review scheduling, revision conflict and legacy payload migration. Server writes use revisioned compare-and-swap/reconciliation; invalid or older evidence fails closed rather than granting progress. Export/delete and account cascade paths remain separate from learning-state migration.
+Validators exercise empty and long SQL, Unicode, NULL, duplicates, ties, shape mismatches, large results, prohibited mutation, dated review scheduling, revision conflict and legacy payload migration. Server writes use revisioned compare-and-swap/reconciliation; per-replica grow-only counters prove that two stale devices incrementing the same task converge to baseline + A + B, while mismatched totals and replica overflow fail closed. Export/delete and account cascade paths remain separate from learning-state migration.
 
 ### Security and privacy
 

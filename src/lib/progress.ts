@@ -5,6 +5,11 @@ import {
   TASK_EVALUATION_CONTRACT_VERSION,
   type TaskEvaluationEvidence
 } from './task-evaluation-types';
+import {
+  incrementTaskCounterStats,
+  normalizeTaskCounterStats,
+  type TaskCounterComponents
+} from './progress-counters';
 
 export type ActivityPoint = { day: string; solved: number };
 export type TaskStats = {
@@ -29,6 +34,7 @@ export type TaskStats = {
   independentPasses?: number;
   lastIndependentAt?: string;
   errorKinds?: Partial<Record<AttemptErrorKind, number>>;
+  counterComponents?: TaskCounterComponents;
   lastDiagnostic?: AttemptDiagnostic;
   lastAttemptAt?: string;
   completedAt?: string;
@@ -55,6 +61,7 @@ export type AttemptEvidence = {
   independent?: boolean;
   contractEvidence?: TaskEvaluationEvidence;
   at?: Date | string | number;
+  replicaId?: string;
 };
 
 export const STORAGE_KEY = 'sql-academy-progress-v4';
@@ -102,7 +109,7 @@ function normalizeStats(raw: unknown): Record<string, TaskStats> {
   for (const [taskId, candidate] of Object.entries(raw)) {
     if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) continue;
     const value = candidate as Partial<TaskStats>;
-    result[taskId] = {
+    const normalized: TaskStats = {
       attempts: Math.max(0, Number(value.attempts) || 0),
       incorrect: Math.max(0, Number(value.incorrect) || 0),
       hintsUsed: Math.max(0, Number(value.hintsUsed) || 0),
@@ -126,6 +133,9 @@ function normalizeStats(raw: unknown): Record<string, TaskStats> {
       independentPasses: value.independentPasses === undefined ? undefined : Math.max(0, Number(value.independentPasses) || 0),
       lastIndependentAt: typeof value.lastIndependentAt === 'string' ? value.lastIndependentAt : undefined,
       errorKinds: value.errorKinds && typeof value.errorKinds === 'object' ? value.errorKinds : undefined,
+      counterComponents: value.counterComponents && typeof value.counterComponents === 'object'
+        ? value.counterComponents
+        : undefined,
       lastDiagnostic: value.lastDiagnostic && typeof value.lastDiagnostic === 'object' ? value.lastDiagnostic : undefined,
       lastAttemptAt: typeof value.lastAttemptAt === 'string' ? value.lastAttemptAt : undefined,
       completedAt: typeof value.completedAt === 'string' ? value.completedAt : undefined,
@@ -139,6 +149,7 @@ function normalizeStats(raw: unknown): Record<string, TaskStats> {
         ? Array.from(new Set(value.hiddenFixtureIds.filter((item): item is string => typeof item === 'string'))).sort()
         : undefined
     };
+    result[taskId] = { ...normalized, ...normalizeTaskCounterStats(normalized) };
   }
   return result;
 }
@@ -284,17 +295,17 @@ export function recordAttempt(
         ? progress.streak + 1
         : 1
     : progress.streak;
-  const errorKinds = { ...(previous.errorKinds || {}) };
-  if (!correct && evidence.diagnostic) {
-    errorKinds[evidence.diagnostic.kind] = (errorKinds[evidence.diagnostic.kind] || 0) + 1;
-  }
-
-  const retrievalSuccesses = scheduledRetrieval && independentPass
-    ? (previous.retrievalSuccesses || 0) + 1
-    : previous.retrievalSuccesses;
-  const retrievalLapses = scheduledRetrieval && !independentPass
-    ? (previous.retrievalLapses || 0) + 1
-    : previous.retrievalLapses;
+  const counterStats = incrementTaskCounterStats(previous, {
+    attempts: 1,
+    incorrect: correct ? 0 : 1,
+    assistedPasses: correct && !independentPass ? 1 : 0,
+    independentPasses: independentPass ? 1 : 0,
+    retrievalSuccesses: scheduledRetrieval && independentPass ? 1 : 0,
+    retrievalLapses: scheduledRetrieval && !independentPass ? 1 : 0,
+    errorKinds: !correct && evidence.diagnostic ? { [evidence.diagnostic.kind]: 1 } : undefined
+  }, evidence.replicaId);
+  const retrievalSuccesses = counterStats.retrievalSuccesses;
+  const retrievalLapses = counterStats.retrievalLapses;
   const retrievalIntervalDays = scheduledRetrieval && independentPass
     ? nextIntervalDays(retrievalSuccesses || 1, previous.retrievalIntervalDays || 0)
     : scheduledRetrieval && !independentPass
@@ -307,11 +318,8 @@ export function recordAttempt(
     : previous.retrievalDueAt;
   const nextCurrentStats: TaskStats = {
     ...previous,
-    attempts: previous.attempts + 1,
-    incorrect: previous.incorrect + (correct ? 0 : 1),
-    assistedPasses: (previous.assistedPasses || 0) + (correct && !independentPass ? 1 : 0),
+    ...counterStats,
     lastAssistedAt: correct && !independentPass ? now.toISOString() : previous.lastAssistedAt,
-    independentPasses: (previous.independentPasses || 0) + (independentPass ? 1 : 0),
     lastIndependentAt: independentPass ? now.toISOString() : previous.lastIndependentAt,
     retrievalDueAt: nextRetrievalDueAt,
     retrievalIntervalDays,
@@ -321,7 +329,6 @@ export function recordAttempt(
     lastRetrievalPassed: scheduledRetrieval ? independentPass : previous.lastRetrievalPassed,
     durableEvidenceAt: scheduledRetrieval && independentPass ? now.toISOString() : scheduledRetrieval ? undefined : previous.durableEvidenceAt,
     durableUntil: scheduledRetrieval && independentPass ? nextRetrievalDueAt : scheduledRetrieval ? undefined : previous.durableUntil,
-    errorKinds,
     lastDiagnostic: !correct && evidence.diagnostic ? evidence.diagnostic : previous.lastDiagnostic,
     lastAttemptAt: now.toISOString(),
     completedAt: newlyCompleted ? now.toISOString() : previous.completedAt,
@@ -363,28 +370,30 @@ export function recordAttempt(
   };
 }
 
-export function recordHint(progress: Progress, taskId: string): Progress {
+export function recordHint(progress: Progress, taskId: string, replicaId?: string): Progress {
   const previous = progress.taskStats[taskId] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
+  const counterStats = incrementTaskCounterStats(previous, { hintsUsed: 1 }, replicaId);
   return {
     ...progress,
     taskStats: {
       ...progress.taskStats,
-      [taskId]: { ...previous, hintsUsed: previous.hintsUsed + 1 }
+      [taskId]: { ...previous, ...counterStats }
     }
   };
 }
 
-export function recordSolutionView(progress: Progress, taskId: string, at?: Date | string | number): Progress {
+export function recordSolutionView(progress: Progress, taskId: string, at?: Date | string | number, replicaId?: string): Progress {
   const previous = progress.taskStats[taskId] || { attempts: 0, incorrect: 0, hintsUsed: 0 };
   const now = evidenceDate(at);
   const task = tasks.find(item => item.id === taskId);
+  const counterStats = incrementTaskCounterStats(previous, { solutionViews: 1 }, replicaId);
   const next = {
     ...progress,
     taskStats: {
       ...progress.taskStats,
       [taskId]: {
         ...previous,
-        solutionViews: (previous.solutionViews || 0) + 1,
+        ...counterStats,
         solutionViewedAt: now.toISOString(),
         retrievalDueAt: previous.retrievalSourceTaskId
           ? new Date(now.getTime() + INITIAL_RETRIEVAL_DELAY_MINUTES * 60_000).toISOString()

@@ -149,11 +149,19 @@ assert.deepEqual(migratedA, migratedB, 'Saved-state migration must be determinis
 assert.equal(hasIndependentTaskEvidence(migratedA, 'task-001'), false, 'Legacy single-seed evidence must not unlock the versioned corridor');
 assert.equal(hasIndependentTaskEvidence(migratedA, 'task-100'), false, 'Legacy single-seed evidence must not unlock a converted core contract');
 assert.equal(hasIndependentTaskEvidence(migratedA, 'task-121'), true, 'Unrelated non-converted progress must remain usable');
+const { counterComponents: migratedCounterComponents, ...migratedTaskEvidence } = migratedA.taskStats['task-100'];
 assert.deepEqual(
-  JSON.parse(JSON.stringify(migratedA.taskStats['task-100'])),
+  JSON.parse(JSON.stringify(migratedTaskEvidence)),
   legacy.taskStats['task-100'],
   'Unrelated task evidence changed during migration'
 );
+assert.deepEqual(migratedCounterComponents?.legacy, {
+  attempts: 3,
+  incorrect: 2,
+  hintsUsed: 1,
+  independentPasses: 1,
+  errorKinds: { values: 2 }
+}, 'Legacy counters must migrate into one deterministic shared-baseline component');
 const exported = JSON.stringify(migratedA);
 const restored = migrateProgress(JSON.parse(exported));
 assert.deepEqual(restored, migratedA, 'Export/restore changed migrated progress');

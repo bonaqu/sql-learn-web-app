@@ -48,6 +48,38 @@ const diagnostic = {
   atlasId: 'logical-join-multiplication'
 };
 
+const counterFields = [
+  'attempts', 'incorrect', 'hintsUsed', 'solutionViews', 'assistedPasses',
+  'retrievalSuccesses', 'retrievalLapses', 'independentPasses'
+];
+
+function legacyCounterComponents(stats) {
+  return {
+    legacy: Object.fromEntries([
+      ...counterFields.filter(field => stats[field] !== undefined).map(field => [field, stats[field]]),
+      ...(stats.errorKinds ? [['errorKinds', structuredClone(stats.errorKinds)]] : [])
+    ])
+  };
+}
+
+function mergeCounterStats(left, right) {
+  const components = {};
+  const leftComponents = left.counterComponents || legacyCounterComponents(left);
+  const rightComponents = right.counterComponents || legacyCounterComponents(right);
+  for (const replicaId of new Set([...Object.keys(leftComponents), ...Object.keys(rightComponents)])) {
+    const a = leftComponents[replicaId] || {};
+    const b = rightComponents[replicaId] || {};
+    const component = Object.fromEntries(counterFields.map(field => [field, Math.max(a[field] || 0, b[field] || 0)]));
+    const kinds = new Set([...Object.keys(a.errorKinds || {}), ...Object.keys(b.errorKinds || {})]);
+    if (kinds.size) component.errorKinds = Object.fromEntries([...kinds].map(kind => [kind, Math.max(a.errorKinds?.[kind] || 0, b.errorKinds?.[kind] || 0)]));
+    components[replicaId] = component;
+  }
+  const totals = Object.fromEntries(counterFields.map(field => [field, Object.values(components).reduce((sum, component) => sum + (component[field] || 0), 0)]));
+  const kinds = new Set(Object.values(components).flatMap(component => Object.keys(component.errorKinds || {})));
+  if (kinds.size) totals.errorKinds = Object.fromEntries([...kinds].map(kind => [kind, Object.values(components).reduce((sum, component) => sum + (component.errorKinds?.[kind] || 0), 0)]));
+  return { ...totals, counterComponents: components };
+}
+
 const progress = {
   version: 4,
   completed: ['task-001', 'task-002'],
@@ -60,6 +92,16 @@ const progress = {
       independentPasses: 1,
       lastIndependentAt: '2026-07-25T18:00:00.000Z',
       errorKinds: { syntax: 1, 'join-cardinality': 2 },
+      counterComponents: {
+        legacy: {
+          attempts: 4,
+          incorrect: 3,
+          hintsUsed: 1,
+          solutionViews: 1,
+          independentPasses: 1,
+          errorKinds: { syntax: 1, 'join-cardinality': 2 }
+        }
+      },
       lastDiagnostic: diagnostic,
       lastAttemptAt: '2026-07-25T18:00:00.000Z',
       completedAt: '2026-07-25T17:00:00.000Z'
@@ -77,6 +119,16 @@ const progress = {
       retrievalIntervalDays: 1,
       retrievalSuccesses: 1,
       retrievalLapses: 0,
+      counterComponents: {
+        legacy: {
+          attempts: 1,
+          incorrect: 0,
+          hintsUsed: 0,
+          independentPasses: 1,
+          retrievalSuccesses: 1,
+          retrievalLapses: 0
+        }
+      },
       lastRetrievalAt: '2026-07-25T18:10:00.000Z',
       lastRetrievalPassed: true,
       durableEvidenceAt: '2026-07-25T18:10:00.000Z',
@@ -184,25 +236,51 @@ try {
   expectStatus(forgedRejected, 400, 'forged durable evidence');
   expectMasteryContract(forgedRejected, 'forged durable evidence');
 
-  await mark('reject-stale-revision');
-  const secondDeviceProgress = structuredClone(progress);
-  secondDeviceProgress.completed = ['task-003'];
-  secondDeviceProgress.taskStats = {
-    'task-003': {
-      attempts: 1,
-      incorrect: 0,
-      hintsUsed: 0,
-      independentPasses: 1,
-      lastIndependentAt: '2026-07-25T19:00:00.000Z',
-      lastAttemptAt: '2026-07-25T19:00:00.000Z',
-      completedAt: '2026-07-25T19:00:00.000Z'
-    }
+  await mark('reject-inconsistent-counter-components');
+  const inconsistentCounters = structuredClone(progress);
+  inconsistentCounters.taskStats['task-001'].attempts += 1;
+  const inconsistentRejected = await request(PROGRESS_PATH, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ progress: inconsistentCounters, baseRevision: 1 })
+  });
+  expectStatus(inconsistentRejected, 400, 'inconsistent counter components');
+  expectMasteryContract(inconsistentRejected, 'inconsistent counter components');
+
+  await mark('write-first-device-same-task-delta');
+  const firstDeviceProgress = structuredClone(progress);
+  firstDeviceProgress.taskStats['task-001'].counterComponents['replica-device-a'] = {
+    attempts: 1,
+    incorrect: 1,
+    hintsUsed: 1,
+    errorKinds: { syntax: 1 }
   };
-  secondDeviceProgress.lastTask = 'task-003';
+  Object.assign(firstDeviceProgress.taskStats['task-001'], mergeCounterStats(progress.taskStats['task-001'], firstDeviceProgress.taskStats['task-001']));
+  firstDeviceProgress.taskStats['task-001'].lastAttemptAt = '2026-07-25T19:00:00.000Z';
+  const firstDeviceStored = await request(PROGRESS_PATH, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ progress: firstDeviceProgress, baseRevision: 1 })
+  });
+  expectStatus(firstDeviceStored, 200, 'first device same-task delta');
+  expectMasteryContract(firstDeviceStored, 'first device same-task delta');
+  if (firstDeviceStored.body?.revision !== 2) throw new Error(`expected first device revision 2, got ${firstDeviceStored.text}`);
+
+  await mark('reject-stale-second-device-same-task-delta');
+  const secondDeviceProgress = structuredClone(progress);
+  secondDeviceProgress.taskStats['task-001'].counterComponents['replica-device-b'] = {
+    attempts: 1,
+    incorrect: 0,
+    hintsUsed: 1,
+    independentPasses: 1
+  };
+  Object.assign(secondDeviceProgress.taskStats['task-001'], mergeCounterStats(progress.taskStats['task-001'], secondDeviceProgress.taskStats['task-001']));
+  secondDeviceProgress.taskStats['task-001'].lastIndependentAt = '2026-07-25T19:10:00.000Z';
+  secondDeviceProgress.taskStats['task-001'].lastAttemptAt = '2026-07-25T19:10:00.000Z';
   const conflict = await request(PROGRESS_PATH, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ progress: secondDeviceProgress, baseRevision: 0 })
+    body: JSON.stringify({ progress: secondDeviceProgress, baseRevision: 1 })
   });
   expectStatus(conflict, 409, 'stale revision');
   expectMasteryContract(conflict, 'stale revision');
@@ -211,8 +289,12 @@ try {
   const reread = await request(PROGRESS_PATH);
   expectStatus(reread, 200, 'reread after conflict');
   const nextProgress = structuredClone(reread.body.progress);
-  nextProgress.completed = [...new Set([...nextProgress.completed, ...secondDeviceProgress.completed])].sort();
-  nextProgress.taskStats = { ...nextProgress.taskStats, ...secondDeviceProgress.taskStats };
+  nextProgress.taskStats['task-001'] = {
+    ...nextProgress.taskStats['task-001'],
+    ...mergeCounterStats(nextProgress.taskStats['task-001'], secondDeviceProgress.taskStats['task-001']),
+    lastIndependentAt: secondDeviceProgress.taskStats['task-001'].lastIndependentAt,
+    lastAttemptAt: secondDeviceProgress.taskStats['task-001'].lastAttemptAt
+  };
   nextProgress.lastTask = secondDeviceProgress.lastTask;
   const updated = await request(PROGRESS_PATH, {
     method: 'PUT',
@@ -221,21 +303,44 @@ try {
   });
   expectStatus(updated, 200, 'update mastery evidence');
   expectMasteryContract(updated, 'update mastery evidence');
-  if (updated.body?.revision !== 2
-    || !updated.body?.progress?.completed?.includes('task-001')
-    || !updated.body?.progress?.completed?.includes('task-002')
-    || !updated.body?.progress?.completed?.includes('task-003')) {
-    throw new Error(`expected canonical merged revision 2, got ${updated.text}`);
+  const updatedStats = updated.body?.progress?.taskStats?.['task-001'];
+  if (updated.body?.revision !== 3
+    || updatedStats?.attempts !== 6
+    || updatedStats?.incorrect !== 4
+    || updatedStats?.hintsUsed !== 3
+    || updatedStats?.independentPasses !== 2
+    || updatedStats?.errorKinds?.syntax !== 2
+    || !updatedStats?.counterComponents?.['replica-device-a']
+    || !updatedStats?.counterComponents?.['replica-device-b']) {
+    throw new Error(`expected additive same-task canonical revision 3, got ${updated.text}`);
+  }
+
+  await mark('reject-counter-component-downgrade');
+  const downgraded = structuredClone(updated.body.progress);
+  delete downgraded.taskStats['task-001'].counterComponents['replica-device-a'];
+  downgraded.taskStats['task-001'].attempts -= 1;
+  downgraded.taskStats['task-001'].incorrect -= 1;
+  downgraded.taskStats['task-001'].hintsUsed -= 1;
+  downgraded.taskStats['task-001'].errorKinds.syntax -= 1;
+  const downgradeRejected = await request(PROGRESS_PATH, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ progress: downgraded, baseRevision: 3 })
+  });
+  expectStatus(downgradeRejected, 409, 'counter component downgrade');
+  expectMasteryContract(downgradeRejected, 'counter component downgrade');
+  if (downgradeRejected.body?.code !== 'PROGRESS_COUNTERS_STALE' || downgradeRejected.body?.revision !== 3) {
+    throw new Error(`counter downgrade did not return the stale-component contract: ${downgradeRejected.text}`);
   }
 
   await mark('verify-updated-evidence');
   const verified = await request(PROGRESS_PATH);
   expectStatus(verified, 200, 'verify mastery evidence');
   expectMasteryContract(verified, 'verify mastery evidence');
-  if (verified.body?.revision !== 2
-    || verified.body?.progress?.taskStats?.['task-001']?.independentPasses !== 1
-    || verified.body?.progress?.taskStats?.['task-002']?.lastRetrievalPassed !== true
-    || verified.body?.progress?.taskStats?.['task-003']?.independentPasses !== 1) {
+  if (verified.body?.revision !== 3
+    || verified.body?.progress?.taskStats?.['task-001']?.attempts !== 6
+    || verified.body?.progress?.taskStats?.['task-001']?.independentPasses !== 2
+    || verified.body?.progress?.taskStats?.['task-002']?.lastRetrievalPassed !== true) {
     throw new Error(`merged two-device evidence is missing: ${verified.text}`);
   }
 
@@ -253,7 +358,7 @@ try {
   expectMasteryContract(revoked, 'revoked progress session');
 
   await mark('complete');
-  process.stdout.write('Mastery progress production smoke passed: versioned durable retrieval round-trip, canonical revisions, cached-client fail-closed behavior, two-device conflict recovery and account cleanup.\n');
+  process.stdout.write('Mastery progress production smoke passed: durable retrieval round-trip, canonical revisions, cached-client fail-closed behavior, additive same-task two-device recovery and account cleanup.\n');
 } catch (error) {
   await fs.writeFile(failureFile, `stage=${stage}\n${error instanceof Error ? error.stack || error.message : String(error)}\n`);
   throw error;

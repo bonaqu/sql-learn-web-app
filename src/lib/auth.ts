@@ -1,5 +1,5 @@
 import type { Progress, TaskStats } from './progress';
-import type { AttemptErrorKind } from './attempt-diagnostics';
+import { mergeTaskCounterStats } from './progress-counters';
 
 export const AUTH_SESSION_KEY = 'sql-academy-auth-session-v2';
 export const AUTH_TOKEN_KEY = 'sql-academy-auth-token-v1';
@@ -335,15 +335,6 @@ function earliestTimestamp(left?: string, right?: string) {
   return new Date(left).getTime() <= new Date(right).getTime() ? left : right;
 }
 
-function mergeCounters<T extends string>(left?: Partial<Record<T, number>>, right?: Partial<Record<T, number>>) {
-  const keys = new Set<T>([
-    ...Object.keys(left || {}) as T[],
-    ...Object.keys(right || {}) as T[]
-  ]);
-  if (!keys.size) return undefined;
-  return Object.fromEntries(Array.from(keys, key => [key, Math.max(left?.[key] || 0, right?.[key] || 0)])) as Partial<Record<T, number>>;
-}
-
 function latestDiagnostic(left: TaskStats, right: TaskStats) {
   const leftTime = new Date(left.lastAttemptAt || 0).getTime();
   const rightTime = new Date(right.lastAttemptAt || 0).getTime();
@@ -358,6 +349,7 @@ function mergeTaskStats(
   left: TaskStats = { attempts: 0, incorrect: 0, hintsUsed: 0 },
   right: TaskStats = { attempts: 0, incorrect: 0, hintsUsed: 0 }
 ): TaskStats {
+  const counters = mergeTaskCounterStats(left, right);
   const evidenceSource = [left, right]
     .filter(stats => stats.evidenceContractVersion && stats.evaluationContractId && stats.evaluationContractVersion)
     .sort((a, b) => (b.validatedFixtureIds?.length || 0) - (a.validatedFixtureIds?.length || 0))[0];
@@ -370,33 +362,19 @@ function mergeTaskStats(
       return Number(b.lastRetrievalPassed === false) - Number(a.lastRetrievalPassed === false);
     })[0];
   return {
-    attempts: Math.max(left.attempts, right.attempts),
-    incorrect: Math.max(left.incorrect, right.incorrect),
-    hintsUsed: Math.max(left.hintsUsed, right.hintsUsed),
-    solutionViews: left.solutionViews === undefined && right.solutionViews === undefined
-      ? undefined
-      : Math.max(left.solutionViews || 0, right.solutionViews || 0),
+    ...counters,
     solutionViewedAt: latestTimestamp(left.solutionViewedAt, right.solutionViewedAt),
-    assistedPasses: left.assistedPasses === undefined && right.assistedPasses === undefined
-      ? undefined
-      : Math.max(left.assistedPasses || 0, right.assistedPasses || 0),
     lastAssistedAt: latestTimestamp(left.lastAssistedAt, right.lastAssistedAt),
     retrievalDueAt: retrievalSource?.retrievalDueAt,
     retrievalEvidenceVersion: retrievalSource?.retrievalEvidenceVersion,
     retrievalSourceTaskId: retrievalSource?.retrievalSourceTaskId,
     retrievalScheduledAt: retrievalSource?.retrievalScheduledAt,
     retrievalIntervalDays: retrievalSource?.retrievalIntervalDays,
-    retrievalSuccesses: Math.max(left.retrievalSuccesses || 0, right.retrievalSuccesses || 0) || undefined,
-    retrievalLapses: Math.max(left.retrievalLapses || 0, right.retrievalLapses || 0) || undefined,
     lastRetrievalAt: retrievalSource?.lastRetrievalAt,
     lastRetrievalPassed: retrievalSource?.lastRetrievalPassed,
     durableEvidenceAt: retrievalSource?.lastRetrievalPassed ? retrievalSource.durableEvidenceAt : undefined,
     durableUntil: retrievalSource?.lastRetrievalPassed ? retrievalSource.durableUntil : undefined,
-    independentPasses: left.independentPasses === undefined && right.independentPasses === undefined
-      ? undefined
-      : Math.max(left.independentPasses || 0, right.independentPasses || 0),
     lastIndependentAt: latestTimestamp(left.lastIndependentAt, right.lastIndependentAt),
-    errorKinds: mergeCounters<AttemptErrorKind>(left.errorKinds, right.errorKinds),
     lastDiagnostic: latestDiagnostic(left, right),
     lastAttemptAt: latestTimestamp(left.lastAttemptAt, right.lastAttemptAt),
     completedAt: earliestTimestamp(left.completedAt, right.completedAt),
