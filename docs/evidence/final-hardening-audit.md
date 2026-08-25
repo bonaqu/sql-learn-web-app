@@ -37,7 +37,7 @@ Status vocabulary:
 | 23 | Cloudflare skills and boundaries | Verified | Worker compatibility, D1 lifecycle, resource health, dry-run deploy and production lifecycle smoke contracts |
 | 24 | GitHub skills and delivery process | Verified | protected default branch, exact-head Quality, Pages and Cloudflare workflow gates; executable failure compensation watches the actual production workflow and rejects success, unrelated and retired-name fixtures |
 | 25 | Skills/plugins discipline | Verified | run-owned applied-skills record and phase evidence; no unavailable plugin was substituted for product proof |
-| 26 | Security and privacy | Verified | auth/origin/retention/export/delete are contracted; Mentor, Interviewer and Debrief share explicit consent, server-side minimization/redaction, strict output and one atomic application-wide D1 quota |
+| 26 | Security and privacy | Verified | auth/origin/retention/export/delete are contracted; authenticated offline reload grants only local study with an explicit unverified/unsynced state, hides profile actions and fails closed on a definitive `401`; Mentor, Interviewer and Debrief share explicit consent, server-side minimization/redaction, strict output and one atomic application-wide D1 quota |
 | 27 | Learning analytics | Verified | `docs/learning-metrics-dictionary.md`; privacy-minimal allowlists, item k-anonymity, lifecycle and persona validators |
 | 28 | Content quality | Verified | 240-task title/source scan, curriculum/editorial matrix, syntax frontier, duplicate/provenance and authored-topic validators |
 | 29 | Avoid needless complexity | Verified | free-first architecture, lazy heavy tools, native disclosure/dialog semantics and validator-backed contracts instead of parallel scoring stacks |
@@ -56,11 +56,11 @@ The prerequisite graph, syntax frontier, lesson bridges, 120 core contracts, adv
 
 ### UX and state coverage
 
-Desktop/mobile journeys cover account-first entry, onboarding, focused Practice, lessons, Today, Route, Review, assessment and analytics. Loading, empty, transient error, unauthorized, offline, slow response, quota, conflict and stale-client recovery have explicit copy or executable tests. Phase 14 additionally converts a raw Service Worker exception into a dismissible, non-blocking Russian notice that explicitly preserves online study.
+Desktop/mobile journeys cover account-first entry, onboarding, focused Practice, lessons, Today, Route, Review, assessment and analytics. Loading, empty, transient error, unauthorized, offline, slow response, quota, conflict and stale-client recovery have explicit copy or executable tests. `tests/e2e/academy.spec.ts` now performs a production-build service-worker reload while Chromium is offline, completes a real local SQLite task without advancing the cloud revision, restores network, verifies the session and observes the progress in the Worker. Its negative companion revokes the cached token first and proves that `401` returns to login instead of granting the local fallback. Phase 14 additionally converts a raw Service Worker exception into a dismissible, non-blocking Russian notice that explicitly preserves online study.
 
 ### Edge cases and saved-state compatibility
 
-Validators exercise empty and long SQL, Unicode, NULL, duplicates, ties, shape mismatches, large results, prohibited mutation, dated review scheduling, revision conflict and legacy payload migration. Server writes use revisioned compare-and-swap/reconciliation; per-replica grow-only counters prove that two stale devices incrementing the same task converge to baseline + A + B, while mismatched totals and replica overflow fail closed. Export/delete and account cascade paths remain separate from learning-state migration.
+Validators exercise empty and long SQL, Unicode, NULL, duplicates, ties, shape mismatches, large results, prohibited mutation, dated review scheduling, revision conflict and legacy payload migration. Server writes use revisioned compare-and-swap/reconciliation; per-replica grow-only counters prove that two stale devices incrementing the same task converge to baseline + A + B, while mismatched totals and replica overflow fail closed. An offline reload retains the same-tab `sessionStorage` token and local namespace without treating it as cloud authorization; account/profile surfaces remain unavailable until live validation, and a revoked token clears both metadata and token. Export/delete and account cascade paths remain separate from learning-state migration.
 
 ### Security and privacy
 

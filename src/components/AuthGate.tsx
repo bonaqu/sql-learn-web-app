@@ -52,7 +52,7 @@ const PENDING_RECOVERY_KEY = 'sql-academy-pending-recovery-v1';
 const PROGRESS_CHANGED_EVENT = 'sql-academy-progress-changed';
 
 type AuthMode = 'login' | 'register' | 'reset';
-type GateState = 'loading' | 'guest' | 'recovery' | 'authenticated';
+type GateState = 'loading' | 'guest' | 'recovery' | 'authenticated' | 'local-unverified';
 type ProfileTab = 'profile' | 'security' | 'sessions';
 
 type PendingRegistration = {
@@ -505,11 +505,57 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<AuthSession | null>(() => loadAuthSession());
   const [pending, setPending] = useState<PendingRegistration | null>(initialPending);
   const syncTimer = useRef<number | null>(null);
+  const verificationRunning = useRef(false);
+  const verificationQueued = useRef(false);
 
   const setAuthenticated = useCallback((next: AuthSession | null) => {
     setSession(next);
     setState(next ? 'authenticated' : 'guest');
   }, []);
+
+  const useLocalSession = useCallback((next: AuthSession) => {
+    setSession(next);
+    setState('local-unverified');
+  }, []);
+
+  const verifyStoredSession = useCallback(async function verify() {
+    if (verificationRunning.current) {
+      verificationQueued.current = true;
+      return;
+    }
+    const stored = loadAuthSession();
+    if (!stored) {
+      setAuthenticated(null);
+      return;
+    }
+
+    verificationRunning.current = true;
+    try {
+      const { session: validated } = await validateSession();
+      try {
+        const synced = await syncUserProgress(validated);
+        setAuthenticated(synced.session);
+      } catch (error) {
+        if ((error as Error & { status?: number }).status === 401) throw error;
+        setAuthenticated(validated);
+      }
+    } catch (error) {
+      if ((error as Error & { status?: number }).status === 401) {
+        clearAuthSession();
+        setAuthenticated(null);
+        return;
+      }
+      const cached = loadAuthSession();
+      if (cached) useLocalSession(cached);
+      else setAuthenticated(null);
+    } finally {
+      verificationRunning.current = false;
+      if (verificationQueued.current) {
+        verificationQueued.current = false;
+        window.setTimeout(() => void verify(), 0);
+      }
+    }
+  }, [setAuthenticated, useLocalSession]);
 
   useEffect(() => {
     const registrationHandler = (event: Event) => {
@@ -532,20 +578,40 @@ export default function AuthGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (pending) return;
-    const stored = loadAuthSession();
-    if (!stored) { setState('guest'); return; }
-    void validateSession()
-      .then(async ({ session: validated }) => {
-        try {
-          const synced = await syncUserProgress(validated);
-          setAuthenticated(synced.session);
-        } catch (error) {
-          if ((error as Error & { status?: number }).status === 401) throw error;
-          setAuthenticated(validated);
-        }
-      })
-      .catch(() => { clearAuthSession(); setAuthenticated(null); });
-  }, [pending, setAuthenticated]);
+    void verifyStoredSession();
+  }, [pending, verifyStoredSession]);
+
+  useEffect(() => {
+    if (pending) return;
+    const verifyIfReachable = () => {
+      if (navigator.onLine && loadAuthSession()) void verifyStoredSession();
+    };
+    window.addEventListener('online', verifyIfReachable);
+    return () => window.removeEventListener('online', verifyIfReachable);
+  }, [pending, verifyStoredSession]);
+
+  useEffect(() => {
+    if (pending || state !== 'local-unverified') return;
+    let retries = 0;
+    const verifyIfReachable = () => {
+      if (navigator.onLine) void verifyStoredSession();
+    };
+    const verifyVisible = () => {
+      if (document.visibilityState === 'visible') verifyIfReachable();
+    };
+    const retryTimer = window.setInterval(() => {
+      retries += 1;
+      verifyIfReachable();
+      if (retries >= 6) window.clearInterval(retryTimer);
+    }, 3_000);
+    window.addEventListener('focus', verifyIfReachable);
+    document.addEventListener('visibilitychange', verifyVisible);
+    return () => {
+      window.clearInterval(retryTimer);
+      window.removeEventListener('focus', verifyIfReachable);
+      document.removeEventListener('visibilitychange', verifyVisible);
+    };
+  }, [pending, state, verifyStoredSession]);
 
   useEffect(() => {
     if (state !== 'authenticated' || !session) return;
@@ -584,7 +650,14 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   if (!session) return <AuthScreen onAuthenticated={setAuthenticated} />;
 
   return <>
+    {state === 'local-unverified' && <section className="auth-local-session-notice" role="status" aria-live="polite" data-testid="auth-local-session-notice">
+      <Unplug aria-hidden="true" />
+      <div>
+        <strong>Локальная сессия — без подтверждения сервера</strong>
+        <p>Задания и локальный SQLite доступны. Изменения сохраняются на этом устройстве и пока не синхронизированы; профиль и облачные функции вернутся после проверки подключения.</p>
+      </div>
+    </section>}
     {children}
-    <ProfilePortal session={session} onSessionChange={setAuthenticated} />
+    {state === 'authenticated' && <ProfilePortal session={session} onSessionChange={setAuthenticated} />}
   </>;
 }

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { authenticatePage } from './auth-helper';
+import { authenticatePage, installAuthSession, registerTestUser } from './auth-helper';
 import { seedFirstLessonEvidence } from './navigation-helper';
 
 const expectNoHorizontalOverflow = async (page: import('@playwright/test').Page) => {
@@ -101,6 +101,98 @@ test('desktop academy workflow is usable and shares the authenticated Cloudflare
 
   await page.screenshot({ path: testInfo.outputPath('desktop-academy.png'), fullPage: true });
   expect(pageErrors).toEqual([]);
+});
+
+test('desktop academy preserves authenticated local work across an offline reload and resynchronizes after verification', async ({ page, context }) => {
+  const auth = await registerTestUser(page, 'offline-reload');
+  await page.goto('./');
+  await installAuthSession(page, auth.session);
+  await page.reload();
+  await expect(page.getByTestId('guided-first-run')).toBeVisible();
+
+  await page.locator('.sidebar nav').getByRole('button', { name: 'Практика' }).click();
+  await seedFirstLessonEvidence(page);
+  const firstTask = page.locator('.task-row').first();
+  await expect(firstTask).toContainText('Текущий шаг маршрута');
+  await firstTask.click();
+  await expect(page.locator('.editor-panel')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Проверить SQL/ })).toBeEnabled();
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  if (!await page.evaluate(() => Boolean(navigator.serviceWorker.controller))) {
+    await page.reload();
+    await expect(page.getByTestId('guided-first-run')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+  }
+
+  const cloudRevision = await page.evaluate(() => {
+    const session = JSON.parse(localStorage.getItem('sql-academy-auth-session-v2') || 'null') as { revision?: number } | null;
+    return Number(session?.revision || 0);
+  });
+
+  await context.setOffline(true);
+  await page.reload();
+  const localNotice = page.getByTestId('auth-local-session-notice');
+  await expect(localNotice).toBeVisible();
+  await expect(localNotice).toContainText('без подтверждения сервера');
+  await expect(localNotice).toContainText('пока не синхронизированы');
+  await expect(page.getByTestId('profile-trigger')).toHaveCount(0);
+  await expect(page.getByTestId('guided-first-run')).toBeVisible();
+
+  await page.locator('.sidebar nav').getByRole('button', { name: 'Практика' }).click();
+  await page.locator('.task-row').first().click();
+  await expect(page.locator('.editor-panel')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Проверить SQL/ })).toBeEnabled();
+  await replaceEditorSql(page, 'SELECT ticket_id, service FROM tickets;');
+  await page.getByRole('button', { name: /Проверить SQL/ }).click();
+  await expect(page.locator('.feedback.success')).toContainText('Верно');
+
+  const offlineState = await page.evaluate(() => {
+    const session = JSON.parse(localStorage.getItem('sql-academy-auth-session-v2') || 'null') as { revision?: number } | null;
+    const progress = JSON.parse(localStorage.getItem('sql-academy-progress-v4') || 'null') as { completed?: string[] } | null;
+    return {
+      revision: Number(session?.revision || 0),
+      completed: progress?.completed || [],
+      tokenPresent: Boolean(sessionStorage.getItem('sql-academy-auth-token-v1'))
+    };
+  });
+  expect(offlineState.revision).toBe(cloudRevision);
+  expect(offlineState.completed.length).toBeGreaterThan(0);
+  expect(offlineState.tokenPresent).toBe(true);
+
+  await context.setOffline(false);
+  await expect(localNotice).toBeHidden();
+  await expect(page.getByTestId('profile-trigger')).toBeVisible();
+  await expect.poll(async () => page.evaluate(async () => {
+    const response = await fetch('/api/user/progress');
+    if (!response.ok) return 0;
+    const payload = await response.json() as { progress?: { completed?: string[] } };
+    return payload.progress?.completed?.length || 0;
+  })).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => {
+    const session = JSON.parse(localStorage.getItem('sql-academy-auth-session-v2') || 'null') as { revision?: number } | null;
+    return Number(session?.revision || 0);
+  })).toBeGreaterThan(cloudRevision);
+});
+
+test('desktop academy rejects a revoked cached session instead of granting local fallback', async ({ page }) => {
+  const auth = await registerTestUser(page, 'revoked-cache');
+  await page.goto('./');
+  await installAuthSession(page, auth.session);
+  await page.reload();
+  await expect(page.getByTestId('guided-first-run')).toBeVisible();
+
+  const logoutStatus = await page.evaluate(async () => (await fetch('/api/auth/logout', { method: 'POST' })).status);
+  expect(logoutStatus).toBe(200);
+  expect(await page.evaluate(() => Boolean(localStorage.getItem('sql-academy-auth-session-v2')))).toBe(true);
+
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Войти в академию' })).toBeVisible();
+  await expect(page.getByTestId('auth-local-session-notice')).toHaveCount(0);
+  const stored = await page.evaluate(() => ({
+    metadata: localStorage.getItem('sql-academy-auth-session-v2'),
+    token: sessionStorage.getItem('sql-academy-auth-token-v1')
+  }));
+  expect(stored).toEqual({ metadata: null, token: null });
 });
 
 test('desktop academy never leaks bearer credentials to a cross-origin api-shaped URL', async ({ page }) => {
