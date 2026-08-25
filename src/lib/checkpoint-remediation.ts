@@ -15,6 +15,13 @@ export type CheckpointRemediationModule = {
   moduleTitle: string;
   score: number;
   weakTaskIds: string[];
+  discriminatingTaskId: string;
+  transferTaskId: string;
+};
+
+export type CheckpointRemediationStep = {
+  kind: 'discriminating' | 'transfer';
+  taskId: string;
 };
 
 export type CheckpointRemediationState = {
@@ -34,7 +41,6 @@ type RawRecord = Record<string, unknown>;
 
 const checkpointMap = new Map(curriculumCheckpoints.map(checkpoint => [checkpoint.id, checkpoint]));
 const moduleTitles = new Map(modules.map(([id, title]) => [id, title]));
-const knownTaskIds = new Set(tasks.map(task => task.id));
 
 function record(value: unknown): RawRecord | null {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -80,7 +86,6 @@ function weakTaskMap(value: unknown, checkpointTaskIds: ReadonlySet<string>, all
     const item = record(candidate);
     if (!item
       || typeof item.taskId !== 'string'
-      || !knownTaskIds.has(item.taskId)
       || !checkpointTaskIds.has(item.taskId)
       || typeof item.module !== 'string'
       || !allowedModules.has(item.module)) continue;
@@ -92,6 +97,26 @@ function weakTaskMap(value: unknown, checkpointTaskIds: ReadonlySet<string>, all
     ]);
   }
   return result;
+}
+
+function remediationTaskPair(
+  moduleId: string,
+  checkpointTaskIds: ReadonlySet<string>,
+  attemptNumber: number
+) {
+  const available = tasks
+    .filter(task => task.module === moduleId && !checkpointTaskIds.has(task.id))
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const discriminating = available.filter(task => task.mode === 'practice');
+  const transfer = available.filter(task => task.mode === 'interview' || task.mode === 'puzzle');
+  if (!discriminating.length || !transfer.length) {
+    throw new Error(`Checkpoint remediation requires distinct practice and transfer tasks for ${moduleId}.`);
+  }
+  const rotation = Math.max(0, attemptNumber - 1);
+  return {
+    discriminatingTaskId: discriminating[rotation % discriminating.length].id,
+    transferTaskId: transfer[rotation % transfer.length].id
+  };
 }
 
 export function checkpointRemediationsFromAttemptSnapshot(
@@ -135,7 +160,8 @@ export function checkpointRemediationsFromAttemptSnapshot(
         score: scores.get(moduleId) ?? latest.score,
         weakTaskIds: Array.from(new Set((weakTasks.get(moduleId) || [])
           .sort((left, right) => left.score - right.score || left.taskId.localeCompare(right.taskId))
-          .map(item => item.taskId)))
+          .map(item => item.taskId))),
+        ...remediationTaskPair(moduleId, checkpointTaskIds, latest.attemptNumber)
       }))
       .sort((left, right) =>
         left.score - right.score
@@ -176,12 +202,11 @@ export function checkpointRemediationsFromReports(
   );
 }
 
-function independentAfter(progress: Progress, taskId: string, completedAt: string) {
+function independentTimestampAfter(progress: Progress, taskId: string, after: string) {
   if (!hasIndependentTaskEvidence(progress, taskId)) return false;
   const lastIndependentAt = progress.taskStats[taskId]?.lastIndependentAt;
-  return typeof lastIndependentAt === 'string'
-    && Number.isFinite(Date.parse(lastIndependentAt))
-    && lastIndependentAt > completedAt;
+  const timestamp = typeof lastIndependentAt === 'string' ? Date.parse(lastIndependentAt) : Number.NaN;
+  return Number.isFinite(timestamp) && timestamp > Date.parse(after) ? lastIndependentAt : false;
 }
 
 export function checkpointRemediationModuleRepaired(
@@ -189,15 +214,7 @@ export function checkpointRemediationModuleRepaired(
   moduleId: string,
   progress: Progress
 ) {
-  const module = state.modules.find(item => item.moduleId === moduleId);
-  if (!module) return true;
-  const taskIds = module.weakTaskIds.length
-    ? module.weakTaskIds
-    : tasks
-        .filter(task => task.module === moduleId && task.mode === 'practice')
-        .map(task => task.id);
-  return taskIds.length > 0
-    && taskIds.every(taskId => independentAfter(progress, taskId, state.completedAt));
+  return nextCheckpointRemediationStep(state, moduleId, progress) === null;
 }
 
 export function unresolvedCheckpointRemediationModules(
@@ -209,17 +226,21 @@ export function unresolvedCheckpointRemediationModules(
   );
 }
 
-export function nextCheckpointRemediationTaskId(
+export function nextCheckpointRemediationStep(
   state: CheckpointRemediationState,
   moduleId: string,
   progress: Progress
-) {
+): CheckpointRemediationStep | null {
   const module = state.modules.find(item => item.moduleId === moduleId);
   if (!module) return null;
-  const candidates = module.weakTaskIds.length
-    ? module.weakTaskIds
-    : tasks
-        .filter(task => task.module === moduleId && task.mode === 'practice')
-        .map(task => task.id);
-  return candidates.find(taskId => !independentAfter(progress, taskId, state.completedAt)) || null;
+  const discriminatingAt = independentTimestampAfter(
+    progress,
+    module.discriminatingTaskId,
+    state.completedAt
+  );
+  if (!discriminatingAt) {
+    return { kind: 'discriminating', taskId: module.discriminatingTaskId };
+  }
+  const transferAt = independentTimestampAfter(progress, module.transferTaskId, discriminatingAt);
+  return transferAt ? null : { kind: 'transfer', taskId: module.transferTaskId };
 }

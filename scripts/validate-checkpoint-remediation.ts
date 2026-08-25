@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
+import { checkpointTaskById } from '../src/data/checkpoint-task-bank';
 import { curriculumCheckpoints, curriculumLessons } from '../src/data/complete-curriculum';
 import { tasks } from '../src/data/course-catalog';
 import { lessonChecks } from '../src/data/lesson-checks';
 import { phaseDefinitions } from '../src/data/learning-structure';
 import {
   checkpointRemediationsFromReports,
-  nextCheckpointRemediationTaskId,
+  nextCheckpointRemediationStep,
   unresolvedCheckpointRemediationModules
 } from '../src/lib/checkpoint-remediation';
 import { emptyCurriculumProgress } from '../src/lib/curriculum-progress';
@@ -47,7 +48,7 @@ const priorCheckpointIds = curriculumCheckpoints
 const userId = 'checkpoint-remediation-validator';
 const weakModules = checkpoint.moduleIds.slice(0, 2);
 const weakTasks = checkpoint.taskIds.flatMap(taskId => {
-  const task = tasks.find(item => item.id === taskId);
+  const task = checkpointTaskById(taskId) || tasks.find(item => item.id === taskId);
   return task && weakModules.includes(task.module) ? [task] : [];
 });
 assert.ok(weakModules.length >= 1 && weakTasks.length >= 1,
@@ -122,6 +123,67 @@ assert.deepEqual(
 );
 assert.equal(new Set(state.modules.map(module => module.moduleId)).size, state.modules.length,
   'Remediation modules must be deduplicated.');
+for (const module of state.modules) {
+  const discriminating = tasks.find(task => task.id === module.discriminatingTaskId);
+  const transfer = tasks.find(task => task.id === module.transferTaskId);
+  assert.equal(discriminating?.module, module.moduleId);
+  assert.equal(discriminating?.mode, 'practice');
+  assert.equal(transfer?.module, module.moduleId);
+  assert.ok(transfer?.mode === 'interview' || transfer?.mode === 'puzzle');
+  assert.notEqual(module.discriminatingTaskId, module.transferTaskId);
+  assert.ok(!checkpoint.taskIds.includes(module.discriminatingTaskId)
+    && !checkpoint.taskIds.includes(module.transferTaskId),
+  'Remediation tasks must be distinct from every task in the failed checkpoint.');
+}
+
+for (const [index, candidate] of curriculumCheckpoints.entries()) {
+  const candidateTasks = candidate.taskIds.map(taskId => {
+    const task = checkpointTaskById(taskId) || tasks.find(item => item.id === taskId);
+    assert.ok(task, `Checkpoint ${candidate.id} references unknown task ${taskId}.`);
+    return task;
+  });
+  const candidateState = checkpointRemediationsFromReports([{
+    ...report(),
+    id: `candidate-${candidate.id}`,
+    checkpointId: candidate.id,
+    completedAt: new Date(Date.parse('2026-08-03T18:00:00.000Z') + index * 1_000).toISOString(),
+    passingScore: candidate.passingScore,
+    taskScores: candidateTasks.map(task => ({
+      taskId: task.id,
+      title: task.title,
+      module: task.module,
+      correct: false,
+      skipped: false,
+      attempts: 2,
+      elapsedSeconds: 120,
+      score: 30
+    })),
+    moduleScores: candidate.moduleIds.map(module => ({
+      module,
+      title: module,
+      score: 30,
+      correct: 0,
+      total: 1
+    })),
+    remediationModules: [...candidate.moduleIds]
+  }], userId)[0];
+  assert.ok(candidateState, `Checkpoint ${candidate.id} must create remediation.`);
+  assert.deepEqual(
+    [...candidateState.modules.flatMap(module => module.weakTaskIds)].sort(),
+    [...candidate.taskIds].sort(),
+    `Checkpoint-bank and catalog weak task IDs must survive normalization for ${candidate.id}.`
+  );
+  for (const module of candidateState.modules) {
+    const discriminating = tasks.find(task => task.id === module.discriminatingTaskId);
+    const transfer = tasks.find(task => task.id === module.transferTaskId);
+    assert.equal(discriminating?.module, module.moduleId);
+    assert.equal(discriminating?.mode, 'practice');
+    assert.equal(transfer?.module, module.moduleId);
+    assert.ok(transfer?.mode === 'interview' || transfer?.mode === 'puzzle');
+    assert.ok(!candidate.taskIds.includes(module.discriminatingTaskId)
+      && !candidate.taskIds.includes(module.transferTaskId));
+  }
+}
 
 const polluted = checkpointRemediationsFromReports([
   report({ remediationModules: [weakModules[0], 'foreign-module', weakModules[0]] })
@@ -176,9 +238,9 @@ function emptyProgress(): Progress {
   };
 }
 
-function progressWithIndependentAt(when: string | null, taskIds = state.modules.flatMap(module => module.weakTaskIds)): Progress {
+function progressWithIndependentTimes(evidence: Readonly<Record<string, string | null>>): Progress {
   const taskStats: Record<string, TaskStats> = {};
-  for (const taskId of taskIds) {
+  for (const [taskId, when] of Object.entries(evidence)) {
     const task = tasks.find(item => item.id === taskId);
     const contract = evaluationContractForTask(taskId);
     taskStats[taskId] = {
@@ -206,15 +268,42 @@ function progressWithIndependentAt(when: string | null, taskIds = state.modules.
   };
 }
 
-const beforeFailure = progressWithIndependentAt('2026-08-03T17:59:00.000Z');
+function progressWithIndependentAt(when: string | null, taskIds: readonly string[]): Progress {
+  return progressWithIndependentTimes(Object.fromEntries(taskIds.map(taskId => [taskId, when])));
+}
+
+const remediationTaskIds = state.modules.flatMap(module => [
+  module.discriminatingTaskId,
+  module.transferTaskId
+]);
+const firstRemediationModule = state.modules[0];
+
+const beforeFailure = progressWithIndependentAt('2026-08-03T17:59:00.000Z', remediationTaskIds);
 assert.ok(unresolvedCheckpointRemediationModules(state, beforeFailure).length > 0,
   'Independent evidence before the failed report must not count as repair.');
-assert.ok(nextCheckpointRemediationTaskId(state, state.modules[0].moduleId, beforeFailure),
-  'An unresolved module must expose a concrete repair task.');
+assert.deepEqual(
+  nextCheckpointRemediationStep(state, firstRemediationModule.moduleId, beforeFailure),
+  { kind: 'discriminating', taskId: firstRemediationModule.discriminatingTaskId },
+  'An unresolved module must start with a distinct discriminating task.'
+);
 
-const afterFailure = progressWithIndependentAt('2026-08-03T18:30:00.000Z');
+const outOfOrder = progressWithIndependentTimes({
+  [firstRemediationModule.transferTaskId]: '2026-08-03T18:15:00.000Z',
+  [firstRemediationModule.discriminatingTaskId]: '2026-08-03T18:30:00.000Z'
+});
+assert.deepEqual(
+  nextCheckpointRemediationStep(state, firstRemediationModule.moduleId, outOfOrder),
+  { kind: 'transfer', taskId: firstRemediationModule.transferTaskId },
+  'Transfer evidence completed before discriminating practice must not repair the module.'
+);
+
+const orderedEvidence = Object.fromEntries(state.modules.flatMap(module => [
+  [module.discriminatingTaskId, '2026-08-03T18:30:00.000Z'],
+  [module.transferTaskId, '2026-08-03T18:45:00.000Z']
+]));
+const afterFailure = progressWithIndependentTimes(orderedEvidence);
 assert.deepEqual(unresolvedCheckpointRemediationModules(state, afterFailure), [],
-  'Fresh independent evidence after the report must repair targeted tasks.');
+  'Ordered post-report discriminating and transfer evidence must repair targeted modules.');
 
 const goals: LearnerGoal[] = ['support', 'analyst', 'backend', 'data-engineering', 'interview', 'full'];
 const remediationActions = goals.map(goal => buildJourneyFrontier(emptyProgress(), emptyCurriculumProgress(), {
@@ -268,16 +357,12 @@ const repairedCurriculum = {
   updatedAt: '2026-08-03T18:30:00.000Z'
 };
 const prerequisiteFoundationTasks = prerequisiteModuleIds.flatMap(moduleId => foundationTasksForModule(moduleId));
-const repairedTaskIds = Array.from(new Set([
-  ...prerequisiteFoundationTasks.map(task => task.id),
-  ...state.modules.flatMap(module => module.weakTaskIds)
-]));
-const repairedProgress = progressWithIndependentAt(
-  '2026-08-03T18:30:00.000Z',
-  repairedTaskIds
-);
+const repairedProgress = progressWithIndependentTimes({
+  ...Object.fromEntries(prerequisiteFoundationTasks.map(task => [task.id, '2026-08-03T18:30:00.000Z'])),
+  ...orderedEvidence
+});
 assert.deepEqual(unresolvedCheckpointRemediationModules(state, repairedProgress), [],
-  'Retry fixture must repair every weak checkpoint task and the complete prerequisite prefix.');
+  'Retry fixture must complete every ordered remediation pair and the prerequisite prefix.');
 const retry = buildJourneyFrontier(repairedProgress, repairedCurriculum, {
   includeReview: false,
   goal: 'analyst',
@@ -302,4 +387,4 @@ assert.notEqual(afterPass.action.routeReasonCode, 'checkpoint-remediation',
   'A real passed report must clear remediation priority.');
 assert.ok(afterPass.passedPhaseIds.includes(state.phaseId));
 
-console.log(`Checkpoint remediation validated: latest failed attempt, ownership/status filtering, ${state.modules.length} bounded weak modules, all-goal priority, complete prerequisite prefix, post-report repair, explicit retry and pass clearing.`);
+console.log(`Checkpoint remediation validated: all ${curriculumCheckpoints.length} checkpoints retain weak IDs and assign distinct ordered practice/transfer pairs; latest-attempt ownership, all-goal priority, prerequisites, retry and pass clearing hold.`);
