@@ -63,7 +63,7 @@ function browserSession(payload: {
   };
 }
 
-export async function authenticatePage(page: Page, label = 'academy'): Promise<TestAuth> {
+export async function registerTestUser(page: Page, label = 'academy'): Promise<TestAuth> {
   let lastError: unknown = null;
   for (let attempt = 1; attempt <= WORKER_ATTEMPTS; attempt += 1) {
     const username = testUsername(`${label}${attempt}`);
@@ -89,10 +89,6 @@ export async function authenticatePage(page: Page, label = 'academy'): Promise<T
       };
       expect(payload.recoveryCodes).toHaveLength(8);
       const session = browserSession(payload);
-      await page.addInitScript(({ key, value }) => localStorage.setItem(key, JSON.stringify(value)), {
-        key: SESSION_KEY,
-        value: session
-      });
       return { username, password: TEST_PASSWORD, recoveryCodes: payload.recoveryCodes, session };
     } catch (error) {
       lastError = error;
@@ -100,6 +96,23 @@ export async function authenticatePage(page: Page, label = 'academy'): Promise<T
     }
   }
   throw lastError instanceof Error ? lastError : new Error('Unable to register Playwright user after Worker recovery');
+}
+
+export async function authenticatePage(page: Page, label = 'academy'): Promise<TestAuth> {
+  const auth = await registerTestUser(page, label);
+  await page.addInitScript(({ key, value }) => localStorage.setItem(key, JSON.stringify(value)), {
+    key: SESSION_KEY,
+    value: auth.session
+  });
+  return auth;
+}
+
+export async function installAuthSession(page: Page, session: Record<string, unknown>) {
+  await page.evaluate(({ key, value }) => {
+    const { token, ...metadata } = value as { token?: unknown } & Record<string, unknown>;
+    localStorage.setItem(key, JSON.stringify(metadata));
+    if (typeof token === 'string' && token) sessionStorage.setItem('sql-academy-auth-token-v1', token);
+  }, { key: SESSION_KEY, value: session });
 }
 
 export async function loginPage(page: Page, username: string, password = TEST_PASSWORD) {
