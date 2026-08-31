@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { curriculumLessons } from '../../src/data/complete-curriculum';
+import { tasks } from '../../src/data/course-catalog';
 import { lessonChecks } from '../../src/data/lesson-checks';
 import { lessonTransitions } from '../../src/data/lesson-bridges';
 import { OPEN_DEFERRED_FEATURE_EVENT } from '../../src/lib/deferred-features';
@@ -67,6 +68,53 @@ async function seedLessonsThrough(page: import('@playwright/test').Page, lessonI
   }, payload);
 }
 
+async function seedCompleteTaskEvidence(page: import('@playwright/test').Page) {
+  const completedAt = new Date().toISOString();
+  const payload = {
+    completedAt,
+    xp: tasks.reduce((total, task) => total + task.xp, 0),
+    tasks: tasks.map(task => ({
+      id: task.id,
+      evaluationContractId: task.evaluationContractId || null
+    }))
+  };
+
+  await page.evaluate(seed => {
+    const taskStats = Object.fromEntries(seed.tasks.map(task => [task.id, {
+      attempts: 1,
+      incorrect: 0,
+      hintsUsed: 0,
+      independentPasses: 1,
+      completedAt: seed.completedAt,
+      lastAttemptAt: seed.completedAt,
+      lastIndependentAt: seed.completedAt,
+      ...(task.evaluationContractId ? {
+        evidenceContractVersion: 'foundation-evidence-v1',
+        evaluationContractVersion: 'task-evaluation-v1',
+        evaluationContractId: task.evaluationContractId,
+        validatedFixtureIds: ['public', 'hidden-a', 'hidden-b'],
+        hiddenFixtureIds: ['hidden-a', 'hidden-b']
+      } : {})
+    }]));
+    const progress = {
+      version: 4,
+      completed: seed.tasks.map(task => task.id),
+      taskStats,
+      xp: seed.xp,
+      streak: 1,
+      history: [
+        { day: 'Пн', solved: seed.tasks.length },
+        { day: 'Вт', solved: 0 }, { day: 'Ср', solved: 0 }, { day: 'Чт', solved: 0 },
+        { day: 'Пт', solved: 0 }, { day: 'Сб', solved: 0 }, { day: 'Вс', solved: 0 }
+      ],
+      lastTask: seed.tasks.at(-1)?.id,
+      lastStudyDate: seed.completedAt.slice(0, 10)
+    };
+    localStorage.setItem('sql-academy-progress-v4', JSON.stringify(progress));
+    window.dispatchEvent(new CustomEvent('sql-academy-progress-changed', { detail: progress }));
+  }, payload);
+}
+
 async function openCurriculumLesson(page: import('@playwright/test').Page, lessonId: string) {
   await page.evaluate(({ eventName, id }) => {
     const params = new URLSearchParams();
@@ -117,7 +165,7 @@ test('desktop curriculum beginner loop reaches offline SQL and an independent ne
   await page.context().setOffline(false);
 
   await loop.getByRole('button', { name: 'Решить самостоятельно' }).click();
-  await expect(page.getByRole('button', { name: /002 Форма результата: обращение и состояние/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /006 Puzzle · Объясни гранулярность приоритета сервиса/ })).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('desktop-beginner-lesson-loop.png'), fullPage: true });
 });
@@ -137,6 +185,54 @@ test('mobile mastery beginner loop explains a wrong prediction and stays readabl
   await expectNoSeriousAxeViolations(page);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('mobile-beginner-lesson-loop.png'), fullPage: true });
+});
+
+test('desktop curriculum exposes 44 gated lesson cycles and an advanced semantic transfer', async ({ page }, testInfo) => {
+  await authenticatePage(page, 'complete-lesson-loop');
+  await page.goto('./');
+  await openAdvancedTool(page, 'curriculum-trigger');
+
+  const studio = page.getByTestId('curriculum-studio');
+  await expect(studio.getByTestId('curriculum-sync')).toContainText(/В облаке|Офлайн/, { timeout: 25_000 });
+  await seedLessonsThrough(page, curriculumLessons.at(-1)!.id);
+  await seedCompleteTaskEvidence(page);
+  for (const lesson of curriculumLessons) {
+    await openCurriculumLesson(page, lesson.id);
+    await expect(lessonReaderHeading(studio, lesson.title)).toBeVisible();
+    const loop = studio.getByTestId('beginner-lesson-loop');
+    await expect(loop).toBeVisible();
+    await expect(loop.getByTestId('worked-example-locked')).toBeVisible();
+    await expect(loop.getByTestId('independent-transfer-locked')).toBeVisible();
+    await expect(studio.getByRole('button', { name: /Отметить раздел изученным/i })).toHaveCount(0);
+  }
+
+  const advancedLesson = curriculumLessons.find(lesson => lesson.id === 'lesson-dml-foundation')!;
+  const cycle = advancedLesson.beginnerCycle!;
+  const fadedTask = tasks.find(task => task.id === cycle.fadedPractice.evaluationTaskId)!;
+  await openCurriculumLesson(page, advancedLesson.id);
+  const loop = studio.getByTestId('beginner-lesson-loop');
+  const prediction = loop.getByTestId('beginner-prediction');
+  await prediction.getByRole('radio').nth(cycle.prediction.correctIndex).check();
+  await prediction.getByRole('button', { name: 'Проверить прогноз' }).click();
+  await expect(loop.getByTestId('faded-practice-locked')).toBeVisible();
+  const runExample = loop.getByRole('button', { name: 'Выполнить пример' });
+  await expect(runExample).toBeEnabled();
+  await runExample.click();
+  await expect(loop.getByTestId('beginner-example-result')).toBeVisible();
+
+  const faded = loop.getByTestId('beginner-faded-practice');
+  await expect(faded.getByRole('textbox', { name: /SQL с пропуском/i })).toHaveValue(/___/);
+  await faded.getByRole('textbox', { name: /SQL с пропуском/i }).fill(fadedTask.solution);
+  await faded.getByRole('button', { name: 'Проверить мой SQL' }).click();
+  await expect(faded.locator('.beginner-loop-feedback')).toHaveClass(/success/);
+  await expect(loop.getByTestId('beginner-transfer')).toBeVisible();
+  await expect(loop.getByTestId('independent-transfer-locked')).toHaveCount(0);
+  await expectNoSeriousAxeViolations(page);
+  await expectNoHorizontalOverflow(page);
+  await page.screenshot({ path: testInfo.outputPath('desktop-complete-lesson-loop.png'), fullPage: true });
+
+  await loop.getByRole('button', { name: 'Решить самостоятельно' }).click();
+  await expect(page.getByRole('button', { name: /125 Puzzle · Откати только рискованный шаг/ })).toBeVisible();
 });
 
 test('desktop curriculum explains why each lesson follows and routes phase boundaries through checkpoints', async ({ page }, testInfo) => {
@@ -183,7 +279,7 @@ test('desktop curriculum explains why each lesson follows and routes phase bound
   await page.screenshot({ path: testInfo.outputPath('desktop-lesson-continuity.png'), fullPage: true });
 });
 
-test('mobile curriculum keeps the continuity companion compact and readable', async ({ page }, testInfo) => {
+test('mobile mastery curriculum keeps the continuity companion compact and readable', async ({ page }, testInfo) => {
   await authenticatePage(page, 'mobile-lesson-continuity');
   await page.goto('./');
   await openAdvancedTool(page, 'curriculum-trigger');

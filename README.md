@@ -112,7 +112,7 @@ Syllabus Center отвечает на три вопроса:
 
 ## Curriculum Studio и Project Lab
 
-Каждый lesson включает objectives, prerequisites, theory, glossary, runnable SQLite example, knowledge check и переход к Practice/Interview/Puzzle.
+Каждый из 44 lessons включает objectives, prerequisites, theory, glossary и последовательный практический цикл: прогноз до показа кода → runnable SQLite example → semantic faded practice → отдельный Puzzle без эталона. Ручная отметка чтения не завершает урок.
 
 Project Lab содержит:
 
