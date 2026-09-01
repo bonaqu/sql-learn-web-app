@@ -6,7 +6,7 @@ updates:
       interval: weekly
       day: monday
       time: "06:00"
-      timezone: Europe/Riga
+      timezone: Europe/Moscow
     open-pull-requests-limit: 5
     labels:
       - dependencies
