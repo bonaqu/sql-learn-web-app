@@ -23,6 +23,7 @@ export default function BeginnerLessonLoop({ lesson, onStageComplete, onOpenTask
   const cycle = lesson.beginnerCycle!;
   const [prediction, setPrediction] = useState<number | null>(null);
   const [predictionChecked, setPredictionChecked] = useState(false);
+  const [workedCompleted, setWorkedCompleted] = useState(false);
   const [workedSql, setWorkedSql] = useState(cycle.workedExample.sql);
   const [fadedSql, setFadedSql] = useState(cycle.fadedPractice.starterSql);
   const [running, setRunning] = useState<'worked' | 'faded' | null>(null);
@@ -35,6 +36,7 @@ export default function BeginnerLessonLoop({ lesson, onStageComplete, onOpenTask
   useEffect(() => {
     setPrediction(null);
     setPredictionChecked(false);
+    setWorkedCompleted(false);
     setWorkedSql(cycle.workedExample.sql);
     setFadedSql(cycle.fadedPractice.starterSql);
     setRunning(null);
@@ -89,6 +91,7 @@ export default function BeginnerLessonLoop({ lesson, onStageComplete, onOpenTask
         setWorkedResult(output as SqlTable[]);
         const rowCount = output.reduce((sum, block) => sum + block.values.length, 0);
         setMessage(output.length ? `Готово: ${rowCount} строк. ${cycle.workedExample.observation}` : 'Запрос выполнен без табличного результата.');
+        setWorkedCompleted(true);
         onStageComplete(lesson.sections[1].id);
       } finally {
         database.close();
@@ -130,9 +133,11 @@ export default function BeginnerLessonLoop({ lesson, onStageComplete, onOpenTask
       {!!workedResult.length && <div className="beginner-loop-result" data-testid="beginner-example-result">{workedResult.map((block, blockIndex) => <div className="result-table-wrap" key={blockIndex}><table><caption>Результат запроса: {cycle.workedExample.title}</caption><thead><tr>{block.columns.map(column => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{block.values.map((row, rowIndex) => <tr key={rowIndex}>{row.map((value, columnIndex) => <td key={columnIndex}>{formatValue(value)}</td>)}</tr>)}</tbody></table></div>)}</div>}
     </article>}
 
-    {predictionChecked && <article className="beginner-loop-card faded" data-testid="beginner-faded-practice">
+    {predictionChecked && !workedCompleted && <div className="beginner-loop-locked" data-testid="faded-practice-locked"><Sparkles /><p><strong>Сначала выполни пример.</strong> Следующая заготовка откроется после успешного запуска SQL.</p></div>}
+
+    {workedCompleted && <article className="beginner-loop-card faded" data-testid="beginner-faded-practice">
       <div className="beginner-loop-card-title"><Sparkles /><div><small>Шаг 3 · подсказка сокращается</small><h3>{cycle.fadedPractice.title}</h3><p>{cycle.fadedPractice.prompt}</p></div></div>
-      <label className="beginner-sql-editor"><span>Замени ___ и запусти</span><textarea value={fadedSql} onChange={event => setFadedSql(event.target.value)} spellCheck={false} aria-label={`SQL с пропуском: ${cycle.fadedPractice.title}`} /></label>
+      <label className="beginner-sql-editor"><span>Заполни все ___ и запусти</span><textarea value={fadedSql} onChange={event => setFadedSql(event.target.value)} spellCheck={false} aria-label={`SQL с пропуском: ${cycle.fadedPractice.title}`} /></label>
       <div className="beginner-loop-actions"><button type="button" onClick={() => void runSql('faded', fadedSql)} disabled={running !== null || !sqlReady}><Play />{running === 'faded' ? 'Проверяю…' : 'Проверить мой SQL'}</button></div>
       {fadedFeedback && <div className={`beginner-loop-feedback ${fadedFeedback.correct ? 'success' : 'error'}`} role="status" aria-live="polite">{fadedFeedback.correct ? <CheckCircle2 /> : <AlertTriangle />}<p>{fadedFeedback.message}</p></div>}
       {!!fadedResult.length && <div className="beginner-loop-result" data-testid="beginner-faded-result">{fadedResult.map((block, blockIndex) => <div className="result-table-wrap" key={blockIndex}><table><caption>Результат упражнения: {cycle.fadedPractice.title}</caption><thead><tr>{block.columns.map(column => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{block.values.map((row, rowIndex) => <tr key={rowIndex}>{row.map((value, columnIndex) => <td key={columnIndex}>{formatValue(value)}</td>)}</tr>)}</tbody></table></div>)}</div>}
@@ -140,10 +145,10 @@ export default function BeginnerLessonLoop({ lesson, onStageComplete, onOpenTask
 
     <div className="beginner-visual-grid">{cycle.visualizations.map(visual => <details className="beginner-visual" key={visual.id}><summary>{visual.title}</summary><div className="result-table-wrap"><table><caption>{visual.caption}</caption><thead><tr>{visual.columns.map(column => <th scope="col" key={column}>{column}</th>)}<th scope="col">Решение</th></tr></thead><tbody>{visual.rows.map((row, rowIndex) => <tr className={row.state} key={rowIndex}>{row.values.map((value, columnIndex) => <td key={columnIndex}>{value}</td>)}<td><strong>{row.stateLabel}</strong></td></tr>)}</tbody></table></div><p>{visual.note}</p></details>)}</div>
 
-    <article className="beginner-transfer" data-testid="beginner-transfer">
+    {fadedFeedback?.correct ? <article className="beginner-transfer" data-testid="beginner-transfer">
       <div><Route /><span><small>Шаг 4 · ответственность у тебя</small><h3>Сначала с опорой, затем без эталона</h3><p>{cycle.independentContext}</p></span></div>
       <div className="beginner-transfer-actions"><button type="button" onClick={() => onOpenTask(cycle.supportedTaskId)}>Открыть задачу с опорой</button><button type="button" className="primary" onClick={() => onOpenTask(cycle.independentTaskId)}>Решить самостоятельно</button></div>
-    </article>
+    </article> : <div className="beginner-loop-locked" data-testid="independent-transfer-locked"><Route /><p><strong>Самостоятельная задача пока закрыта.</strong> Сначала выполни пример и пройди SQL-практику с сокращённой подсказкой.</p></div>}
 
     <aside className="beginner-misconception" data-testid="beginner-remediation"><AlertTriangle /><div><small>Если результат не совпал с прогнозом</small><h3>{cycle.misconception.title}</h3><p>{cycle.misconception.mismatch}</p><code>{cycle.misconception.counterexample}</code><button type="button" onClick={() => onRevisit(cycle.misconception.revisitSectionId)}>Вернуться к нужному объяснению</button></div></aside>
     <p className="beginner-delayed-review"><strong>Проверка позже:</strong> {cycle.delayedReview}</p>

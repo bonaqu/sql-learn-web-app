@@ -37,7 +37,7 @@ const normalizedCoreLessons = applyCoreLessonTaskLinks(
     ? { ...lesson, title: 'CTE и этапы запроса' }
     : lesson),
   tasks
-).map(lesson => ({ ...lesson, beginnerCycle: beginnerLessonCycle(lesson.module) }));
+).map(lesson => ({ ...lesson, beginnerCycle: beginnerLessonCycle(lesson, tasks) }));
 const normalizedCoreCheckpoints = applyCoreCheckpointTaskLinks(coreCheckpoints);
 
 function diversifyAdvancedLesson(lesson: CurriculumLesson): CurriculumLesson {
@@ -69,7 +69,8 @@ function alignAdvancedLessonExample(lesson: CurriculumLesson): CurriculumLesson 
 
 const normalizedAdvancedLessons = applySyntaxFrontierLessonOverrides(
   advancedCurriculumLessons.map(diversifyAdvancedLesson)
-).map(alignAdvancedLessonExample);
+).map(alignAdvancedLessonExample)
+  .map(lesson => ({ ...lesson, beginnerCycle: beginnerLessonCycle(lesson, tasks) }));
 const sourceLessons = [...normalizedCoreLessons, ...normalizedAdvancedLessons];
 const lessonSourceOrder = new Map<string, number>(sourceLessons.map((lesson, index) => [lesson.id, index]));
 const checkpointOrder = new Map<string, number>(phaseDefinitions.map((phase, index) => [phase.id, index]));

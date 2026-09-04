@@ -8,7 +8,9 @@ Issue #51 переводит Curriculum Studio с одного MCQ на пров
 4. prediction check, когда у модуля есть runnable counterexample;
 5. independent SQL и retrieval review вне knowledge checks.
 
-`npm run validate:concepts` является исполняемой версией этой матрицы: проверяет lesson coverage, уникальность IDs, 3–4 checks, answer-position distribution, per-option feedback, duplicate prose и выполнение wrong/correct SQL.
+`npm run validate:concepts` является исполняемой версией concept-check части матрицы: проверяет lesson coverage, уникальность IDs, 3–4 checks, answer-position distribution, per-option feedback, duplicate prose и выполнение wrong/correct SQL.
+
+`npm run validate:beginner-loop` проверяет полный практический цикл для всех строк ниже. 20 core-уроков получают блоки по 6 задач (`lesson → practice → practice → faded practice → interview → independent puzzle`), 24 advanced-урока — непересекающиеся блоки по 5 (`lesson → practice → faded practice → interview → independent puzzle`). Итоговый gate требует 44/44 циклов, 240/240 task IDs без повторов, distinct supported/faded/independent IDs, канонический semantic pass и negative mutant на каждый урок. `tests/e2e/lesson-continuity.spec.ts` открывает в браузере все 44 цикла; один advanced DML-цикл проходит полностью до puzzle-переноса.
 
 | Lesson | Module | Editorial focus | Review state |
 |---|---|---|---|
@@ -65,3 +67,5 @@ Issue #51 переводит Curriculum Studio с одного MCQ на пров
 - Feedback states why the selected model fails and gives one concrete next action.
 - Counterexamples differ observably on the shared training seed.
 - No lesson completion is granted by reading sections or one legacy answer alone.
+- Faded practice opens only after the runnable example, and independent transfer opens only after semantic success.
+- Independent transfer is a distinct puzzle task, not the same example with renamed columns.
