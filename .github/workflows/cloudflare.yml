@@ -45,7 +45,7 @@ jobs:
       EXPECT_ADMIN_CONSOLE: ${{ vars.EXPECT_ADMIN_CONSOLE || 'false' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Report Cloudflare deployment pending
         uses: actions/github-script@v9
