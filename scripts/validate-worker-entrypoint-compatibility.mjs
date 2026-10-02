@@ -13,7 +13,7 @@ const stagingRenderer = read('scripts/render-staging-wrangler.mjs');
 const manifest = JSON.parse(read('package.json'));
 const lockfile = JSON.parse(read('package-lock.json'));
 
-const SANDBOX_VERSION = '0.12.4';
+const SANDBOX_VERSION = '0.12.7';
 const SANDBOX_EXPORT = "export { Sandbox } from '@cloudflare/sandbox';";
 const ENTRYPOINT_PREFLIGHT = 'node scripts/validate-worker-entrypoint-compatibility.mjs';
 
