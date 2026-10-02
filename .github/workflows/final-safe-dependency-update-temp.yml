@@ -37,45 +37,6 @@ jobs:
       - name: Generate dependency notices
         run: node scripts/generate-third-party-notices.mjs
 
-      - name: Upgrade checkout action and contracts
-        shell: bash
-        run: |
-          node --input-type=module <<'NODE'
-          import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
-
-          for (const file of readdirSync('.github/workflows').filter(name => /\.ya?ml$/i.test(name))) {
-            const path = `.github/workflows/${file}`;
-            const before = readFileSync(path, 'utf8');
-            const after = before.replaceAll('actions/checkout@v4', 'actions/checkout@v7');
-            if (after !== before) writeFileSync(path, after);
-          }
-
-          {
-            const path = 'scripts/validate-cloudflare-failure-status.mjs';
-            const before = readFileSync(path, 'utf8');
-            const after = before.replace('actions\\/checkout@v4', 'actions\\/checkout@v7');
-            if (after === before) throw new Error('Expected checkout v4 contract was not found');
-            writeFileSync(path, after);
-          }
-
-          {
-            const path = 'scripts/validate-github-actions-runtime.mjs';
-            const before = readFileSync(path, 'utf8');
-            const marker = 'const supportedActions = new Map([\n';
-            let after = before;
-            if (!after.includes("['actions/checkout', 7]")) {
-              if (!after.includes(marker)) throw new Error('supportedActions marker was not found');
-              after = after.replace(marker, marker + "  ['actions/checkout', 7],\n");
-            }
-            writeFileSync(path, after);
-          }
-          NODE
-
-      - name: Validate action contracts
-        run: |
-          node scripts/validate-github-actions-runtime.mjs
-          node scripts/validate-cloudflare-failure-status.mjs
-
       - name: Audit production dependencies
         run: npm audit --omit=dev
 
@@ -84,7 +45,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json package-lock.json THIRD_PARTY_NOTICES.md docs/third-party-dependencies.json .github/workflows scripts/validate-cloudflare-failure-status.mjs scripts/validate-github-actions-runtime.mjs
+          git add package.json package-lock.json THIRD_PARTY_NOTICES.md docs/third-party-dependencies.json
           if git diff --cached --quiet; then
             echo "No dependency changes to commit."
             exit 0
