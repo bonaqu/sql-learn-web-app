@@ -131,7 +131,8 @@
     "wrangler": "4.122.0"
   },
   "overrides": {
-    "dompurify": "3.4.13"
+    "dompurify": "3.4.16",
+    "hono": "4.13.12"
   },
   "license": "SEE LICENSE IN LICENSE"
 }
