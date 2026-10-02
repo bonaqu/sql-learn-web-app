@@ -12,7 +12,7 @@ Unique bundled notice/license texts: **200**
 ## Installed dependency inventory
 
 - `@apideck/better-ajv-errors@0.3.7` — MIT — transitive — https://github.com/apideck-libraries/better-ajv-errors
-- `@axe-core/playwright@4.12.1` — MPL-2.0 — direct-development — https://github.com/dequelabs/axe-core-npm
+- `@axe-core/playwright@4.13.0` — MPL-2.0 — direct-development — https://github.com/dequelabs/axe-core-npm
 - `@babel/code-frame@7.29.7` — MIT — transitive — https://github.com/babel/babel
 - `@babel/compat-data@7.29.7` — MIT — transitive — https://github.com/babel/babel
 - `@babel/core@7.29.7` — MIT — transitive — https://github.com/babel/babel
@@ -211,7 +211,7 @@ Unique bundled notice/license texts: **200**
 - `at-least-node@1.0.0` — ISC — transitive — https://github.com/RyanZim/at-least-node
 - `available-typed-arrays@1.0.7` — MIT — transitive — https://github.com/inspect-js/available-typed-arrays
 - `aws4fetch@1.0.20` — MIT — transitive — https://github.com/mhart/aws4fetch
-- `axe-core@4.12.1` — MPL-2.0 — transitive — https://github.com/dequelabs/axe-core
+- `axe-core@4.13.0` — MPL-2.0 — transitive — https://github.com/dequelabs/axe-core
 - `babel-plugin-polyfill-corejs2@0.4.17` — MIT — transitive — https://github.com/babel/babel-polyfills
 - `babel-plugin-polyfill-corejs3@0.14.2` — MIT — transitive — https://github.com/babel/babel-polyfills
 - `babel-plugin-polyfill-regenerator@0.6.8` — MIT — transitive — https://github.com/babel/babel-polyfills
@@ -4436,7 +4436,7 @@ SOFTWARE.
 
 ### SHA-256 `499e0b5ff026e7d7c84d23dfb71986e229927419f0298217cf70fb7d3aaa1cbe`
 
-Applies to: `axe-core@4.12.1 (LICENSE-3RD-PARTY.txt)`
+Applies to: `axe-core@4.13.0 (LICENSE-3RD-PARTY.txt)`
 
 ```text
 -----------------------------------------------------------------------------
@@ -7567,7 +7567,7 @@ SOFTWARE.
 
 ### SHA-256 `812e9d96e900a093ae4d1d3f22c5f82f568a0a0461c3007a99d00573d41c5461`
 
-Applies to: `@axe-core/playwright@4.12.1 (LICENSE)`, `axe-core@4.12.1 (LICENSE)`
+Applies to: `@axe-core/playwright@4.13.0 (LICENSE)`, `axe-core@4.13.0 (LICENSE)`
 
 ```text
 Mozilla Public License, version 2.0
