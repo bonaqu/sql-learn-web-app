@@ -1,4 +1,5 @@
 name: Safe NPM Update Temporary
+# Trigger after workflow registration
 
 on:
   push:
