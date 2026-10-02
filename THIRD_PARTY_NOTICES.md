@@ -356,7 +356,7 @@ Unique bundled notice/license texts: **200**
 - `lodash.debounce@4.0.8` — MIT — transitive — lodash/lodash
 - `lru-cache@11.5.2` — BlueOak-1.0.0 — transitive — ssh://git@github.com/isaacs/node-lru-cache
 - `lru-cache@5.1.1` — ISC — transitive — https://github.com/isaacs/node-lru-cache
-- `lucide-react@1.28.0` — ISC — direct-runtime — https://github.com/lucide-icons/lucide
+- `lucide-react@1.33.0` — ISC — direct-runtime — https://github.com/lucide-icons/lucide
 - `magic-string@0.30.21` — MIT — transitive — https://github.com/Rich-Harris/magic-string
 - `marked@14.0.0` — MIT — transitive — https://github.com/markedjs/marked
 - `math-intrinsics@1.1.0` — MIT — transitive — https://github.com/es-shims/math-intrinsics
@@ -12064,7 +12064,7 @@ SOFTWARE.
 
 ### SHA-256 `ee35498e6684b30c9efaae009415884772f4450b3f6a3ae49103cd550a2c8ceb`
 
-Applies to: `lucide-react@1.28.0 (LICENSE)`
+Applies to: `lucide-react@1.33.0 (LICENSE)`
 
 ```text
 ISC License
