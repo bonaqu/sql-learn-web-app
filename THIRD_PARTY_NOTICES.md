@@ -106,7 +106,7 @@ Unique bundled notice/license texts: **200**
 - `@babel/types@7.29.8` — MIT — transitive — https://github.com/babel/babel
 - `@cloudflare/containers@0.3.7` — MIT OR Apache-2.0 — transitive — https://github.com/cloudflare/containers
 - `@cloudflare/kv-asset-handler@0.5.0` — MIT OR Apache-2.0 — transitive — https://github.com/cloudflare/workers-sdk
-- `@cloudflare/sandbox@0.12.4` — Apache-2.0 — direct-runtime — https://github.com/cloudflare/sandbox-sdk
+- `@cloudflare/sandbox@0.12.7` — Apache-2.0 — direct-runtime — https://github.com/cloudflare/sandbox-sdk
 - `@cloudflare/unenv-preset@2.16.1` — MIT OR Apache-2.0 — transitive — https://github.com/cloudflare/workers-sdk
 - `@cloudflare/workerd-linux-64@1.20260811.1` — Apache-2.0 — transitive — https://github.com/cloudflare/workerd
 - `@cspotcode/source-map-support@0.8.1` — MIT — transitive — https://github.com/cspotcode/node-source-map-support
@@ -259,7 +259,7 @@ Unique bundled notice/license texts: **200**
 - `define-properties@1.2.1` — MIT — transitive — https://github.com/ljharb/define-properties
 - `detect-libc@2.1.2` — Apache-2.0 — transitive — https://github.com/lovell/detect-libc
 - `detect-node-es@1.1.0` — MIT — transitive — https://github.com/thekashey/detect-node
-- `dompurify@3.4.13` — (MPL-2.0 OR Apache-2.0) — transitive — https://github.com/cure53/DOMPurify
+- `dompurify@3.4.16` — (MPL-2.0 OR Apache-2.0) — transitive — https://github.com/cure53/DOMPurify
 - `dunder-proto@1.0.1` — MIT — transitive — https://github.com/es-shims/dunder-proto
 - `ejs@3.1.10` — Apache-2.0 — transitive — https://github.com/mde/ejs
 - `electron-to-chromium@1.5.401` — ISC — transitive — https://github.com/Kilian/electron-to-chromium
@@ -306,7 +306,7 @@ Unique bundled notice/license texts: **200**
 - `has-symbols@1.1.0` — MIT — transitive — https://github.com/inspect-js/has-symbols
 - `has-tostringtag@1.0.2` — MIT — transitive — https://github.com/inspect-js/has-tostringtag
 - `hasown@2.0.4` — MIT — transitive — https://github.com/inspect-js/hasOwn
-- `hono@4.13.0` — MIT — transitive — https://github.com/honojs/hono
+- `hono@4.13.12` — MIT — transitive — https://github.com/honojs/hono
 - `idb@7.1.1` — ISC — transitive — https://github.com/jakearchibald/idb
 - `immer@11.1.15` — MIT — transitive — https://github.com/immerjs/immer
 - `internal-slot@1.1.0` — MIT — transitive — https://github.com/ljharb/internal-slot
@@ -1442,7 +1442,7 @@ SOFTWARE.
 
 ### SHA-256 `283ea6cc2997a1a70da0049e09adf9317bb60ca1b51279b65196b83a69e1996b`
 
-Applies to: `baseline-browser-mapping@2.11.12 (LICENSE.txt)`, `dompurify@3.4.13 (LICENSE)`, `ejs@3.1.10 (LICENSE)`
+Applies to: `baseline-browser-mapping@2.11.12 (LICENSE.txt)`, `dompurify@3.4.16 (LICENSE)`, `ejs@3.1.10 (LICENSE)`
 
 ```text
 Apache License
@@ -1705,7 +1705,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ### SHA-256 `2e0a854a11062f91280bdd32ad287d311a394f55e22b885948bfd965398327f9`
 
-Applies to: `hono@4.13.0 (LICENSE)`
+Applies to: `hono@4.13.12 (LICENSE)`
 
 ```text
 MIT License
@@ -7963,7 +7963,7 @@ THE SOFTWARE.
 
 ### SHA-256 `85ad950cce8752f716dbf49be95b2639172cb49f291336d57f1fdc9989e38179`
 
-Applies to: `@cloudflare/sandbox@0.12.4 (LICENSE)`
+Applies to: `@cloudflare/sandbox@0.12.7 (LICENSE)`
 
 ```text
 Apache License
@@ -10854,7 +10854,7 @@ SOFTWARE.
 
 ### SHA-256 `c76f740d1521b9bed9ca7a04ad526c310493c62621b1341d623b431736533b30`
 
-Applies to: `dompurify@3.4.13 (LICENSE-MPL)`
+Applies to: `dompurify@3.4.16 (LICENSE-MPL)`
 
 ```text
 Mozilla Public License Version 2.0
