@@ -4122,7 +4122,7 @@
     },
     {
       "name": "lucide-react",
-      "version": "1.28.0",
+      "version": "1.33.0",
       "kind": "direct-runtime",
       "license": "ISC",
       "repository": "https://github.com/lucide-icons/lucide",
