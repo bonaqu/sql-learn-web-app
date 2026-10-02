@@ -5236,7 +5236,7 @@
     },
     {
       "name": "tsx",
-      "version": "4.23.7",
+      "version": "4.23.12",
       "kind": "direct-development",
       "license": "MIT",
       "repository": "privatenumber/tsx",
