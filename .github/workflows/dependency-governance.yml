@@ -49,16 +49,21 @@ jobs:
       - name: Install exact locked dependency tree
         run: npm ci --ignore-scripts --no-audit --no-fund
 
-      - name: Generate third-party artifacts for review
-        run: node scripts/generate-third-party-notices.mjs
+      - name: Capture and generate third-party artifacts for review
+        shell: bash
+        run: |
+          mkdir -p notice-artifacts/before/docs notice-artifacts/after/docs
+          cp THIRD_PARTY_NOTICES.md notice-artifacts/before/THIRD_PARTY_NOTICES.md
+          cp docs/third-party-dependencies.json notice-artifacts/before/docs/third-party-dependencies.json
+          node scripts/generate-third-party-notices.mjs
+          cp THIRD_PARTY_NOTICES.md notice-artifacts/after/THIRD_PARTY_NOTICES.md
+          cp docs/third-party-dependencies.json notice-artifacts/after/docs/third-party-dependencies.json
 
-      - name: Upload generated third-party artifacts
+      - name: Upload before/after third-party artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: generated-third-party-notices-211
-          path: |
-            THIRD_PARTY_NOTICES.md
-            docs/third-party-dependencies.json
+          name: generated-third-party-before-after-211
+          path: notice-artifacts
           retention-days: 1
 
       - name: Validate dependency governance contract
