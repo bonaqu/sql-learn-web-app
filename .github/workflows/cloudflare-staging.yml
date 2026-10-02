@@ -43,7 +43,7 @@ jobs:
       EXPECT_ADMIN_CONSOLE: ${{ vars.STAGING_EXPECT_ADMIN_CONSOLE || 'false' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Initialize acceptance evidence
         run: |
