@@ -18,7 +18,7 @@ assert.match(
 );
 assert.match(compensationWorkflow, /cloudflareFailureStatusForWorkflowRun/,
   'The workflow must execute the tested compensation contract.');
-assert.match(compensationWorkflow, /actions\/checkout@v4/,
+assert.match(compensationWorkflow, /actions\/checkout@v7/,
   'The workflow must check out the trusted contract before importing it.');
 
 const failedRun = {

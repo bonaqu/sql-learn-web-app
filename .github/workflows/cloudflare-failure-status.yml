@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout trusted compensation contract
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Publish diagnostic failure status
         uses: actions/github-script@v9

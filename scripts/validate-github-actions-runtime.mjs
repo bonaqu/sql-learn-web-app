@@ -16,6 +16,7 @@ assert.deepEqual(
 );
 
 const supportedActions = new Map([
+  ['actions/checkout', 7],
   ['actions/github-script', 9],
   ['actions/upload-artifact', 7],
   ['actions/upload-pages-artifact', 5]
