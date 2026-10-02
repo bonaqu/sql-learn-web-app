@@ -449,7 +449,7 @@ Unique bundled notice/license texts: **200**
 - `tiny-invariant@1.3.3` — MIT — transitive — https://github.com/alexreardon/tiny-invariant
 - `tinyglobby@0.2.17` — MIT — transitive — https://github.com/SuperchupuDev/tinyglobby
 - `tslib@2.8.1` — 0BSD — transitive — https://github.com/Microsoft/tslib
-- `tsx@4.23.7` — MIT — direct-development — privatenumber/tsx
+- `tsx@4.23.12` — MIT — direct-development — privatenumber/tsx
 - `type-fest@0.16.0` — (MIT OR CC0-1.0) — transitive — sindresorhus/type-fest
 - `typed-array-buffer@1.0.3` — MIT — transitive — https://github.com/inspect-js/typed-array-buffer
 - `typed-array-byte-length@1.0.3` — MIT — transitive — https://github.com/inspect-js/typed-array-byte-length
@@ -8921,7 +8921,7 @@ Repository: https://github.com/yargs/yargs-parser.git
 
 ### SHA-256 `8dded67841a9261a622c739fb61c81785e93765de852828ceeb9403d20a74581`
 
-Applies to: `tsx@4.23.7 (LICENSE)`
+Applies to: `tsx@4.23.12 (LICENSE)`
 
 ```text
 MIT License
