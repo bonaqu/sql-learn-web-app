@@ -114,7 +114,7 @@
     "react-dom": "^19.1.1",
     "recharts": "^3.1.2",
     "sql.js": "^1.13.0",
-    "tailwind-merge": "^3.3.1"
+    "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
