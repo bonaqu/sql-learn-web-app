@@ -113,7 +113,7 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "recharts": "^3.1.2",
-    "sql.js": "^1.13.0",
+    "sql.js": "^1.14.2",
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
