@@ -33,9 +33,9 @@ test('desktop curriculum advanced disposable task rejects persistent writes and 
         [taskId]: {
           attempts: 1,
           incorrect: 0,
-          hintsUsed: 1,
-          assistedPasses: 1,
-          independentPasses: 0,
+          hintsUsed: 0,
+          assistedPasses: 0,
+          independentPasses: 1,
           completedAt,
           lastAttemptAt: completedAt
         }
@@ -50,7 +50,11 @@ test('desktop curriculum advanced disposable task rejects persistent writes and 
 
   await page.locator('.sidebar nav').getByRole('button', { name: 'Практика' }).click();
   await page.getByLabel('Фильтр по модулю').selectOption('dml');
-  await page.getByRole('button', { name: /121 Докажи target set перед UPDATE/ }).click();
+  const taskRow = page.getByRole('button', { name: /121 Докажи target set перед UPDATE/ });
+  await expect(taskRow).toContainText('решение в истории');
+  await expect(taskRow).toContainText('Нужна новая проверка');
+  await expect(taskRow).not.toContainText('самостоятельно ✓');
+  await taskRow.click();
 
   const runButton = page.getByRole('button', { name: /Проверить SQL/ });
   await replaceEditorSql(page, "UPDATE tickets SET status = 'Closed' WHERE ticket_id = 1001; SELECT ticket_id FROM tickets;");
@@ -68,6 +72,7 @@ test('desktop curriculum advanced disposable task rejects persistent writes and 
   await replaceEditorSql(page, advancedTask.solution);
   await runButton.click();
   await expect(page.locator('.feedback.success')).toContainText('Верно');
+  await expect(taskRow).toContainText('самостоятельно ✓');
   await expect(page.locator('.result-table-wrap')).toBeVisible();
   await expect(page.locator('.result-table-wrap')).toContainText('was_target');
   await expect.poll(() => page.evaluate(taskId => {

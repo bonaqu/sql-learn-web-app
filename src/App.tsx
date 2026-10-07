@@ -56,6 +56,7 @@ import {
 import { syncUserProgress } from './lib/auth';
 import { productIdentity } from './generated/product-identity';
 import {
+  hasIndependentTaskEvidence,
   loadProgress,
   Progress,
   PROGRESS_CHANGED_EVENT,
@@ -736,7 +737,7 @@ function App() {
                   <span className="task-number">{task.id.replace('task-', '')}</span>
                   <span>
                     <strong>{task.title}</strong>
-                    <small>{task.difficulty} · {workspaceStageLabel(task)} · {readiness?.label || 'Сверяю маршрут'} · {task.xp} XP{stats?.incorrect ? ` · ошибок ${stats.incorrect}` : ''}{stats?.independentPasses ? ' · самостоятельно ✓' : ''}</small>
+                    <small>{task.difficulty} · {workspaceStageLabel(task)} · {readiness?.label || 'Сверяю маршрут'} · {task.xp} XP{stats?.incorrect ? ` · ошибок ${stats.incorrect}` : ''}{stats?.independentPasses ? hasIndependentTaskEvidence(progress, task.id) ? ' · самостоятельно ✓' : ' · решение в истории' : ''}</small>
                   </span>
                   {preview ? <LockKeyhole className="preview-lock" /> : completed.has(task.id) ? <CheckCircle2 className="done" /> : <ChevronRight />}
                 </button>;
