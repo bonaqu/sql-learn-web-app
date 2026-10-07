@@ -15,8 +15,7 @@ import { nextJourneyAction, type JourneyAction } from '../src/lib/learning-journ
 import { emptyCurriculumProgress, type CurriculumProgressV1 } from '../src/lib/curriculum-progress.ts';
 import type { LearnerGoal } from '../src/lib/learner-onboarding.ts';
 import type { Progress } from '../src/lib/progress.ts';
-import { evaluationContractForTask } from '../src/data/foundation-evaluation-contracts.ts';
-import { FOUNDATION_EVIDENCE_CONTRACT_VERSION, TASK_EVALUATION_CONTRACT_VERSION } from '../src/lib/task-evaluation-contract.ts';
+import { taskEvidenceFixture } from './task-evidence-fixture.ts';
 
 const timestamp = '2026-08-01T10:00:00.000Z';
 const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
@@ -30,15 +29,7 @@ const emptyProgress: Progress = {
 };
 
 function contractEvidence(task: (typeof tasks)[number]) {
-  if (!task.evaluationContractId) return {};
-  const contract = evaluationContractForTask(task.id);
-  return {
-    evidenceContractVersion: FOUNDATION_EVIDENCE_CONTRACT_VERSION,
-    evaluationContractId: task.evaluationContractId,
-    evaluationContractVersion: TASK_EVALUATION_CONTRACT_VERSION,
-    validatedFixtureIds: contract?.fixtures.map(fixture => fixture.id),
-    hiddenFixtureIds: contract?.fixtures.filter(fixture => fixture.visibility !== 'public').map(fixture => fixture.id)
-  };
+  return taskEvidenceFixture(task);
 }
 
 const practicedProgress: Progress = {

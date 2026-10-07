@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import { curriculumLessons } from '../../src/data/complete-curriculum';
 import { tasks } from '../../src/data/course-catalog';
+import { taskEvidenceFixture } from '../../scripts/task-evidence-fixture';
 import { lessonChecks } from '../../src/data/lesson-checks';
 import { lessonTransitions } from '../../src/data/lesson-bridges';
 import { OPEN_DEFERRED_FEATURE_EVENT } from '../../src/lib/deferred-features';
@@ -75,7 +76,7 @@ async function seedCompleteTaskEvidence(page: import('@playwright/test').Page) {
     xp: tasks.reduce((total, task) => total + task.xp, 0),
     tasks: tasks.map(task => ({
       id: task.id,
-      evaluationContractId: task.evaluationContractId || null
+      evidence: taskEvidenceFixture(task)
     }))
   };
 
@@ -88,13 +89,7 @@ async function seedCompleteTaskEvidence(page: import('@playwright/test').Page) {
       completedAt: seed.completedAt,
       lastAttemptAt: seed.completedAt,
       lastIndependentAt: seed.completedAt,
-      ...(task.evaluationContractId ? {
-        evidenceContractVersion: 'foundation-evidence-v1',
-        evaluationContractVersion: 'task-evaluation-v1',
-        evaluationContractId: task.evaluationContractId,
-        validatedFixtureIds: ['public', 'hidden-a', 'hidden-b'],
-        hiddenFixtureIds: ['hidden-a', 'hidden-b']
-      } : {})
+      ...task.evidence
     }]));
     const progress = {
       version: 4,

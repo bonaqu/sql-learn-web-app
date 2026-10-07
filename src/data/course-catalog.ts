@@ -4,6 +4,7 @@ import {
   tasks as coreTasks
 } from './course';
 import { applyAdvancedAuthoredCatalogOverrides } from './advanced-authored-catalog';
+import { applyAdvancedEvaluationContracts } from './advanced-evaluation-contracts';
 import { advancedModules, advancedTasks } from './advanced-syllabus';
 import { applyAdvancedTaskProgression } from './advanced-task-progression';
 import { applyAdvancedTransferContracts } from './advanced-transfer-contracts';
@@ -30,18 +31,20 @@ const sourceModules: readonly (readonly [string, string, string])[] = [
   ...coreModules,
   ...advancedModules
 ];
-const sourceTasks = applyAdvancedTransferContracts(
-  applyCoreAuthoredTasks(
-    applyCoreTransferContracts(
-    applyAdvancedTaskProgression(
-      applyCoreTaskProgression(
-        applyFoundationCorridorOverrides(
-          applySyntaxFrontierTaskOverrides(
-            applyAdvancedAuthoredCatalogOverrides([...coreTasks, ...advancedTasks])
+const sourceTasks = applyAdvancedEvaluationContracts(
+  applyAdvancedTransferContracts(
+    applyCoreAuthoredTasks(
+      applyCoreTransferContracts(
+        applyAdvancedTaskProgression(
+          applyCoreTaskProgression(
+            applyFoundationCorridorOverrides(
+              applySyntaxFrontierTaskOverrides(
+                applyAdvancedAuthoredCatalogOverrides([...coreTasks, ...advancedTasks])
+              )
+            )
           )
         )
       )
-    )
     )
   )
 );

@@ -61,6 +61,9 @@ export function workspaceTaskReadiness(
   }
 
   if (progress.completed.includes(task.id)) {
+    if (task.evaluationContractId && (progress.taskStats[task.id]?.independentPasses || 0) > 0) {
+      return ready('Нужна новая проверка', 'История решения и XP сохранены. Повтори задачу без подсказок: текущая проверка должна заново подтвердить самостоятельный результат.');
+    }
     return ready('Повтор задачи с поддержкой', 'Задача уже решалась; повторный запуск поможет подтвердить навык самостоятельно или лучше его закрепить.');
   }
 

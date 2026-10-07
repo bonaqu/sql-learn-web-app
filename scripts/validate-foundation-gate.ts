@@ -148,7 +148,7 @@ const migratedB = migrateProgress(JSON.parse(JSON.stringify(legacy)));
 assert.deepEqual(migratedA, migratedB, 'Saved-state migration must be deterministic');
 assert.equal(hasIndependentTaskEvidence(migratedA, 'task-001'), false, 'Legacy single-seed evidence must not unlock the versioned corridor');
 assert.equal(hasIndependentTaskEvidence(migratedA, 'task-100'), false, 'Legacy single-seed evidence must not unlock a converted core contract');
-assert.equal(hasIndependentTaskEvidence(migratedA, 'task-121'), true, 'Unrelated non-converted progress must remain usable');
+assert.equal(hasIndependentTaskEvidence(migratedA, 'task-121'), false, 'Legacy single-dataset advanced evidence must not impersonate the new hidden-contract receipt');
 const { counterComponents: migratedCounterComponents, ...migratedTaskEvidence } = migratedA.taskStats['task-100'];
 assert.deepEqual(
   JSON.parse(JSON.stringify(migratedTaskEvidence)),

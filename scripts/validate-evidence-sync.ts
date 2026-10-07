@@ -9,6 +9,7 @@ import {
   defaultProgress,
   DURABLE_MASTERY_EVIDENCE_VERSION,
   hasDurableTaskEvidence,
+  hasIndependentTaskEvidence,
   migrateProgress,
   recordAttempt,
   recordHint,
@@ -18,6 +19,7 @@ import { diagnosticForKind } from '../src/lib/attempt-diagnostics.ts';
 import { preservesTaskCounterComponents } from '../src/lib/progress-counters.ts';
 import core from '../worker/core.ts';
 import { validMasteryProgressPayload } from '../worker/mastery-progress.ts';
+import { taskContractEvidenceFixture } from './task-evidence-fixture.ts';
 
 const failures: string[] = [];
 const assert = (condition: unknown, message: string) => { if (!condition) failures.push(message); };
@@ -284,6 +286,21 @@ assert(!validMasteryProgressPayload(arbitraryRetry),
   'D1 progress contract must reject retry delays outside the deterministic bounded ladder');
 
 let legacyDatabaseCalls = 0;
+const advancedTask = tasks.find(task => task.id === 'task-121')!;
+const advancedReceipt = taskContractEvidenceFixture(advancedTask)!;
+const advancedPass = recordAttempt(migrateProgress({ ...defaultProgress, completed: [], taskStats: {}, xp: 0 }), advancedTask, true, {
+  independent: true,
+  at: Date.parse('2026-10-07T09:00:00.000Z'),
+  contractEvidence: advancedReceipt
+});
+const importedAdvanced = migrateProgress(JSON.parse(JSON.stringify(advancedPass)));
+const mergedAdvanced = mergeProgress(oldProgress, importedAdvanced);
+assert(validMasteryProgressPayload(mergedAdvanced), 'D1 must accept advanced versioned evidence without a progress schema change');
+assert(mergedAdvanced.taskStats[advancedTask.id]?.evidenceContractVersion === advancedReceipt.evidenceContractVersion,
+  'Import and merge must preserve advanced evidence version');
+assert(hasIndependentTaskEvidence(mergedAdvanced, advancedTask.id), 'Import and merge must preserve current advanced mastery');
+assert(mergedAdvanced.completed.includes('task-001'), 'Advanced evidence merge must preserve legacy completion history');
+
 const legacyResponse = await core.fetch(new Request('https://academy.test/api/progress', {
   method: 'PUT',
   headers: { 'content-type': 'application/json', 'x-profile-id': 'cached_client_123' },

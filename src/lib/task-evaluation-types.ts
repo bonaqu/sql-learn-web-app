@@ -2,6 +2,8 @@ import type { AttemptDiagnostic } from './attempt-diagnostics';
 
 export const TASK_EVALUATION_CONTRACT_VERSION = 'task-evaluation-v1' as const;
 export const FOUNDATION_EVIDENCE_CONTRACT_VERSION = 'foundation-evidence-v1' as const;
+export const ADVANCED_TASK_EVALUATION_CONTRACT_VERSION = 'advanced-task-evaluation-v1' as const;
+export const ADVANCED_EVIDENCE_CONTRACT_VERSION = 'advanced-evidence-v1' as const;
 
 export type SqlResultType = 'integer' | 'real' | 'text';
 export type TaskEvaluationSurface = 'practice' | 'checkpoint' | 'placement' | 'assessment';
@@ -80,8 +82,8 @@ export type TaskEvaluationDiagnostic = AttemptDiagnostic & {
 
 export type TaskEvaluationEvidence = {
   contractId: string;
-  contractVersion: typeof TASK_EVALUATION_CONTRACT_VERSION;
-  evidenceContractVersion: typeof FOUNDATION_EVIDENCE_CONTRACT_VERSION;
+  contractVersion: typeof TASK_EVALUATION_CONTRACT_VERSION | typeof ADVANCED_TASK_EVALUATION_CONTRACT_VERSION;
+  evidenceContractVersion: typeof FOUNDATION_EVIDENCE_CONTRACT_VERSION | typeof ADVANCED_EVIDENCE_CONTRACT_VERSION;
   fixtureIds: string[];
   hiddenFixtureIds: string[];
 };

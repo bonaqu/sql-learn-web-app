@@ -22,8 +22,7 @@ import {
 } from '../src/lib/learning-journey';
 import type { LearnerGoal } from '../src/lib/learner-onboarding';
 import type { Progress, TaskStats } from '../src/lib/progress';
-import { evaluationContractForTask } from '../src/data/foundation-evaluation-contracts';
-import { FOUNDATION_EVIDENCE_CONTRACT_VERSION, TASK_EVALUATION_CONTRACT_VERSION } from '../src/lib/task-evaluation-contract';
+import { taskEvidenceFixture } from './task-evidence-fixture';
 
 function emptyProgress(): Progress {
   return {
@@ -50,13 +49,7 @@ function progressWithEvidence(
       independentPasses: 1,
       completedAt: '2026-08-01T00:00:00.000Z',
       lastAttemptAt: '2026-08-01T00:00:00.000Z',
-      ...(task.evaluationContractId ? {
-        evidenceContractVersion: FOUNDATION_EVIDENCE_CONTRACT_VERSION,
-        evaluationContractId: task.evaluationContractId,
-        evaluationContractVersion: TASK_EVALUATION_CONTRACT_VERSION,
-        validatedFixtureIds: evaluationContractForTask(task.id)?.fixtures.map(fixture => fixture.id),
-        hiddenFixtureIds: evaluationContractForTask(task.id)?.fixtures.filter(fixture => fixture.visibility !== 'public').map(fixture => fixture.id)
-      } : {})
+      ...taskEvidenceFixture(task)
     };
   }
   for (const task of guidedTasks) {

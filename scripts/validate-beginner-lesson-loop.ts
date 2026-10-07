@@ -87,12 +87,11 @@ for (const lesson of curriculumLessons) {
 
   const canonical = evaluateTaskSql(SQL, evaluationTask, evaluationTask.solution, 'practice');
   assert.equal(canonical.correct, true, `${lesson.id}: faded canonical SQL fails its semantic evaluator`);
-  if (evaluationTask.evaluationContractId) {
-    assert.ok((canonical.evidence?.fixtureIds.length || 0) >= 3, `${lesson.id}: faded practice lacks multi-fixture evidence`);
-    assert.ok((canonical.evidence?.hiddenFixtureIds.length || 0) >= 2, `${lesson.id}: faded practice lacks hidden/adversarial evidence`);
-  } else {
+  assert.ok(evaluationTask.evaluationContractId, `${lesson.id}: faded practice lacks a versioned evaluation contract`);
+  assert.ok((canonical.evidence?.fixtureIds.length || 0) >= 3, `${lesson.id}: faded practice lacks multi-fixture evidence`);
+  assert.ok((canonical.evidence?.hiddenFixtureIds.length || 0) >= 2, `${lesson.id}: faded practice lacks hidden/adversarial evidence`);
+  if (evaluationTask.evaluationContractId?.startsWith('advanced:')) {
     assert.equal(evaluationTask.evaluationPolicy, 'disposable-script', `${lesson.id}: advanced faded practice needs an isolated disposable evaluator`);
-    assert.equal(canonical.evidence, null, `${lesson.id}: disposable comparison must not claim hidden-fixture evidence`);
   }
 
   const mutant = evaluateTaskSql(SQL, evaluationTask, 'SELECT 1 AS incorrect_lesson_result;', 'practice');
