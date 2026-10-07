@@ -6,6 +6,8 @@ import { tasks } from '../data/course-catalog';
 import { trainingSeedSql } from '../data/training-dataset';
 import initSqlJs from '../lib/sql-browser';
 import { evaluateTaskSql } from '../lib/task-evaluation-contract';
+import type { LessonHandoff } from '../lib/lesson-handoff';
+import SqlFirstSteps from './SqlFirstSteps';
 
 type SqlTable = { columns: string[]; values: unknown[][] };
 
@@ -14,10 +16,11 @@ function formatValue(value: unknown) {
   return String(value);
 }
 
-export default function BeginnerLessonLoop({ lesson, onStageComplete, onOpenTask, onRevisit }: {
+export default function BeginnerLessonLoop({ lesson, handoff, onStageComplete, onContinue, onRevisit }: {
   lesson: CurriculumLesson;
+  handoff: LessonHandoff;
   onStageComplete: (sectionId: string) => void;
-  onOpenTask: (taskId: string) => void;
+  onContinue: () => void;
   onRevisit: (sectionId: string) => void;
 }) {
   const cycle = lesson.beginnerCycle!;
@@ -107,14 +110,21 @@ export default function BeginnerLessonLoop({ lesson, onStageComplete, onOpenTask
 
   const predictionCorrect = prediction === cycle.prediction.correctIndex;
 
-  return <section className="beginner-loop" data-testid="beginner-lesson-loop" aria-labelledby={`beginner-loop-${lesson.id}`}>
+  return <section className="beginner-loop" data-testid="beginner-lesson-loop" tabIndex={-1} aria-labelledby={`beginner-loop-${lesson.id}`}>
+    {lesson.id === 'lesson-sql-thinking' ? <SqlFirstSteps /> : <section className="lesson-orientation" data-testid="lesson-orientation">
+      <h3>Зачем эта тема</h3><p>{lesson.sections[0].lead}</p><p>{lesson.sections[0].paragraphs[0]}</p>
+    </section>}
+
     <header className="beginner-loop-header">
       <div><small>Практический цикл</small><h2 id={`beginner-loop-${lesson.id}`}>Сначала предскажи, затем проверь на данных</h2><p>{cycle.objective}</p></div>
       <span><Target /><b>Готово, когда</b>{cycle.successCriterion}</span>
     </header>
 
-    <ol className="beginner-loop-steps" aria-label="Этапы урока" tabIndex={0}>
-      <li className="current"><span>1</span>Прогноз</li><li><span>2</span>Пример</li><li><span>3</span>Меньше подсказок</li><li><span>4</span>Самостоятельно</li>
+    <ol className="beginner-loop-steps" aria-label="Этапы урока">
+      <li className={!predictionChecked ? 'current' : ''} aria-current={!predictionChecked ? 'step' : undefined}><span>1</span>Прогноз</li>
+      <li className={predictionChecked && !workedCompleted ? 'current' : ''} aria-current={predictionChecked && !workedCompleted ? 'step' : undefined}><span>2</span>Пример</li>
+      <li className={workedCompleted && !fadedFeedback?.correct ? 'current' : ''} aria-current={workedCompleted && !fadedFeedback?.correct ? 'step' : undefined}><span>3</span>Дополни SQL</li>
+      <li className={fadedFeedback?.correct ? 'current' : ''} aria-current={fadedFeedback?.correct ? 'step' : undefined}><span>4</span>Проверь понимание</li>
     </ol>
 
     <article className="beginner-loop-card prediction" data-testid="beginner-prediction">
@@ -146,9 +156,9 @@ export default function BeginnerLessonLoop({ lesson, onStageComplete, onOpenTask
     <div className="beginner-visual-grid">{cycle.visualizations.map(visual => <details className="beginner-visual" key={visual.id}><summary>{visual.title}</summary><div className="result-table-wrap"><table><caption>{visual.caption}</caption><thead><tr>{visual.columns.map(column => <th scope="col" key={column}>{column}</th>)}<th scope="col">Решение</th></tr></thead><tbody>{visual.rows.map((row, rowIndex) => <tr className={row.state} key={rowIndex}>{row.values.map((value, columnIndex) => <td key={columnIndex}>{value}</td>)}<td><strong>{row.stateLabel}</strong></td></tr>)}</tbody></table></div><p>{visual.note}</p></details>)}</div>
 
     {fadedFeedback?.correct ? <article className="beginner-transfer" data-testid="beginner-transfer">
-      <div><Route /><span><small>Шаг 4 · ответственность у тебя</small><h3>Сначала с опорой, затем без эталона</h3><p>{cycle.independentContext}</p></span></div>
-      <div className="beginner-transfer-actions"><button type="button" onClick={() => onOpenTask(cycle.supportedTaskId)}>Открыть задачу с опорой</button><button type="button" className="primary" onClick={() => onOpenTask(cycle.independentTaskId)}>Решить самостоятельно</button></div>
-    </article> : <div className="beginner-loop-locked" data-testid="independent-transfer-locked"><Route /><p><strong>Самостоятельная задача пока закрыта.</strong> Сначала выполни пример и пройди SQL-практику с сокращённой подсказкой.</p></div>}
+      <div><Route /><span><small>Шаг 4 · продолжение урока</small><h3>{handoff.title}</h3><p>{handoff.description}</p></span></div>
+      <div className="beginner-transfer-actions"><button type="button" className="primary" onClick={onContinue} data-testid="lesson-handoff" data-target={handoff.target}>{handoff.cta}</button></div>
+    </article> : <div className="beginner-loop-locked" data-testid="independent-transfer-locked"><Route /><p><strong>Продолжение откроется после упражнения.</strong> Сначала выполни пример и дополни SQL. Затем проверь понимание и переходи к доступной практике.</p></div>}
 
     <aside className="beginner-misconception" data-testid="beginner-remediation"><AlertTriangle /><div><small>Если результат не совпал с прогнозом</small><h3>{cycle.misconception.title}</h3><p>{cycle.misconception.mismatch}</p><code>{cycle.misconception.counterexample}</code><button type="button" onClick={() => onRevisit(cycle.misconception.revisitSectionId)}>Вернуться к нужному объяснению</button></div></aside>
     <p className="beginner-delayed-review"><strong>Проверка позже:</strong> {cycle.delayedReview}</p>

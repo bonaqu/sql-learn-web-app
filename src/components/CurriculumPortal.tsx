@@ -38,7 +38,7 @@ import {
 import { modules, tasks } from '../data/course-catalog';
 import { trainingSeedSql } from '../data/training-dataset';
 import { professionalTrack } from '../data/role-track-matrices';
-import { openAcademyTask } from '../lib/academy-navigation';
+import { openAcademyTask, openJourneyDestination } from '../lib/academy-navigation';
 import { loadLocalAssessmentReports } from '../lib/assessment';
 import {
   diagnosticPassingScore,
@@ -60,6 +60,10 @@ import {
 import { useDialogFocus } from '../lib/dialog-focus';
 import { openDeferredFeature } from '../lib/deferred-features';
 import { lessonMasteryState } from '../lib/mastery-loop';
+import { buildJourneyFrontier } from '../lib/learning-journey';
+import { JOURNEY_EVIDENCE_EVENTS, loadJourneyEvidenceSnapshot } from '../lib/journey-evidence';
+import { loadOnboardingProfile, ONBOARDING_CHANGED_EVENT } from '../lib/learner-onboarding';
+import { lessonHandoff } from '../lib/lesson-handoff';
 import initSqlJs from '../lib/sql-browser';
 import { loadProgress, PROGRESS_CHANGED_EVENT } from '../lib/progress';
 import { loadReviewState, REVIEW_CHANGED_EVENT } from '../lib/spaced-repetition';
@@ -117,6 +121,7 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
   const [projectId, setProjectId] = useState(initialProject.id);
   const [progress, setProgress] = useState<CurriculumProgressV1>(initialProgress);
   const [taskProgress, setTaskProgress] = useState(() => loadProgress());
+  const [journeyRevision, setJourneyRevision] = useState(0);
   const [reviewState, setReviewState] = useState(() => loadReviewState());
   const [reports, setReports] = useState(() => loadLocalAssessmentReports());
   const [choice, setChoice] = useState<number | null>(initialProgress.answers[initialLesson.check.id]?.optionIndex ?? null);
@@ -147,6 +152,19 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
   const completion = progressCompletion(progress);
   const activeDraft = projectDraft(progress, project.id);
   const currentLessonIndex = curriculumLessons.findIndex(item => item.id === lesson.id);
+  const journey = useMemo(() => {
+    const evidence = loadJourneyEvidenceSnapshot();
+    const profile = loadOnboardingProfile();
+    return buildJourneyFrontier(taskProgress, progress, {
+      includeReview: false,
+      goal: profile.goal,
+      passedCheckpointIds: evidence.passedCheckpointIds,
+      checkpointRemediations: evidence.checkpointRemediations,
+      assessmentComplete: evidence.assessmentComplete,
+      bypassedModuleIds: profile.placement.status === 'completed' ? profile.placement.strongModuleIds : []
+    });
+  }, [taskProgress, progress, journeyRevision]);
+  const handoff = lessonHandoff(lesson, progress, journey.action);
 
   useEffect(() => {
     if (openRequest <= 0) return;
@@ -174,13 +192,28 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
 
   useEffect(() => {
     if (!open) return;
+    let disposed = false;
+    let pendingJourneyUpdate = false;
     const updateTasks = () => setTaskProgress(loadProgress());
     const updateReview = () => setReviewState(loadReviewState());
+    const updateJourney = () => {
+      if (pendingJourneyUpdate) return;
+      pendingJourneyUpdate = true;
+      queueMicrotask(() => {
+        pendingJourneyUpdate = false;
+        if (disposed) return;
+        setProgress(loadCurriculumProgress());
+        setJourneyRevision(value => value + 1);
+      });
+    };
     window.addEventListener(PROGRESS_CHANGED_EVENT, updateTasks);
     window.addEventListener(REVIEW_CHANGED_EVENT, updateReview);
+    for (const event of [...JOURNEY_EVIDENCE_EVENTS, ONBOARDING_CHANGED_EVENT]) window.addEventListener(event, updateJourney);
     return () => {
+      disposed = true;
       window.removeEventListener(PROGRESS_CHANGED_EVENT, updateTasks);
       window.removeEventListener(REVIEW_CHANGED_EVENT, updateReview);
+      for (const event of [...JOURNEY_EVIDENCE_EVENTS, ONBOARDING_CHANGED_EVENT]) window.removeEventListener(event, updateJourney);
     };
   }, [open]);
 
@@ -276,6 +309,23 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
     window.setTimeout(() => openDeferredFeature('syllabus'), 50);
   };
 
+  const continueLesson = () => {
+    if (handoff.target !== 'journey') {
+      const target = handoff.target === 'questions'
+        ? document.getElementById(`lesson-questions-${lesson.id}`)
+        : shellRef.current?.querySelector<HTMLElement>('[data-testid="beginner-lesson-loop"]');
+      target?.focus({ preventScroll: true });
+      target?.scrollIntoView({ block: 'start' });
+      return;
+    }
+    if (journey.action.task) {
+      openMasteryTask(journey.action.task.id);
+      return;
+    }
+    close();
+    window.setTimeout(() => openJourneyDestination(journey.action), 50);
+  };
+
   if (!open) return null;
 
   const lessonBody = !access.unlocked ? <section className="curriculum-access-gate" data-testid="curriculum-access-gate">
@@ -300,8 +350,9 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
   </section> : <>
     {lesson.beginnerCycle && <BeginnerLessonLoop
       lesson={lesson}
-      onStageComplete={sectionId => setProgress(current => markCurriculumSection(current, lesson.id, sectionId))}
-      onOpenTask={openMasteryTask}
+      handoff={handoff}
+      onStageComplete={sectionId => setProgress(markCurriculumSection(loadCurriculumProgress(), lesson.id, sectionId))}
+      onContinue={continueLesson}
       onRevisit={scrollToSection}
     />}
     <nav className="curriculum-section-nav" aria-label="Разделы текущего урока">
@@ -361,6 +412,8 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
 
     <LessonMasteryPanel
       lesson={lesson}
+      handoff={handoff}
+      onContinue={continueLesson}
       progress={taskProgress}
       curriculum={progress}
       reviewState={reviewState}
@@ -438,10 +491,10 @@ export default function CurriculumPortal({ openRequest = 0 }: { openRequest?: nu
                   : `${lesson.sections.filter(section => completedSections.has(section.id)).length}/${lesson.sections.length} раздела`
             : 'Сначала пройди предыдущие темы'}</span>
         </div>
-        <div className="curriculum-objectives">
-          <strong>После урока ты сможешь</strong>
+        <details className="curriculum-objectives">
+          <summary>После урока ты сможешь</summary>
           <ul>{lesson.objectives.map(item => <li key={item}><Check />{item}</li>)}</ul>
-        </div>
+        </details>
         {!!lesson.prerequisites.length && <div className="curriculum-prerequisites">
           <span>Перед этим:</span>{lesson.prerequisites.map(moduleId => {
             const prerequisite = lessonForModule(moduleId);

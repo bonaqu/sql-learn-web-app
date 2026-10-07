@@ -56,7 +56,7 @@ export const beginnerLessonCycles: Record<BeginnerCycleModule, BeginnerLessonCyc
     objective: 'До запуска назвать, что означает одна строка результата, и выбрать только нужные столбцы.',
     successCriterion: 'Запрос возвращает ticket_id и service: одна строка — одно обращение, без случайного удаления повторяющихся сервисов.',
     prediction: {
-      prompt: 'В tickets есть 14 обращений. Сколько строк вернёт SELECT service FROM tickets без WHERE и DISTINCT?',
+      prompt: 'В tickets есть 14 обращений. Сколько строк вернёт SELECT service FROM tickets, который только выбирает столбец service?',
       options: ['5 — по одной строке на сервис', '14 — по одной строке на обращение', 'Зависит от порядка строк'],
       correctIndex: 1,
       correctFeedback: 'Верно: SELECT выбирает столбцы, но сам по себе не объединяет одинаковые значения.',

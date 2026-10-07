@@ -6,6 +6,13 @@ import { beginnerLessonCycles, type BeginnerLessonCycle } from '../src/data/begi
 import { curriculumLessons } from '../src/data/complete-curriculum';
 import { tasks } from '../src/data/course-catalog';
 import { evaluateTaskSql } from '../src/lib/task-evaluation-contract';
+import { lessonChecks } from '../src/data/lesson-checks';
+import { emptyCurriculumProgress } from '../src/lib/curriculum-progress';
+import { buildJourneyFrontier } from '../src/lib/learning-journey';
+import { lessonHandoff } from '../src/lib/lesson-handoff';
+import { defaultProgress } from '../src/lib/progress';
+import { workspaceTaskReadiness } from '../src/lib/workspace-readiness';
+import { trainingSeedSql } from '../src/data/training-dataset';
 
 const forbiddenVisibleTerms = /\b(mastery|frontier|foundation|evidence|placement|independent|guided|preview|mental model)\b/i;
 const require = createRequire(import.meta.url);
@@ -61,6 +68,30 @@ for (const lesson of curriculumLessons) {
   assert.deepEqual(cycle.coveredTaskIds, lesson.practiceTaskIds, `${lesson.id}: cycle does not cover its authored task block`);
   assert.ok(cycle.objective.length >= 55 && cycle.successCriterion.length >= 70, `${lesson.id}: objective is not measurable enough`);
   assert.ok(cycle.workedExample.context !== cycle.independentContext, `${lesson.id}: independent context repeats worked example`);
+  const emptyCurriculum = emptyCurriculumProgress();
+  const routeOptions = { includeReview: false, passedCheckpointIds: [], checkpointRemediations: [] };
+  const firstRoute = buildJourneyFrontier(defaultProgress, emptyCurriculum, routeOptions);
+  assert.equal(lessonHandoff(lesson, emptyCurriculum, firstRoute.action).target, 'cycle', `${lesson.id}: reading must not unlock a task`);
+  const exercisedCurriculum = { ...emptyCurriculum, completedSections: lesson.sections.map(section => section.id) };
+  assert.equal(lessonHandoff(lesson, exercisedCurriculum, firstRoute.action).target, 'questions', `${lesson.id}: faded SQL must not skip understanding checks`);
+  const answeredAt = new Date().toISOString();
+  const checkedCurriculum = {
+    ...exercisedCurriculum,
+    completedLessons: [lesson.id],
+    answers: Object.fromEntries(lessonChecks(lesson).map(check => [check.id, {
+      optionIndex: check.correctIndex, correct: true, answeredAt
+    }]))
+  };
+  const checkedRoute = buildJourneyFrontier(defaultProgress, checkedCurriculum, routeOptions);
+  const handoff = lessonHandoff(lesson, checkedCurriculum, checkedRoute.action);
+  assert.equal(handoff.target, 'journey');
+  assert.equal(handoff.cta, checkedRoute.action.cta, `${lesson.id}: handoff must name the real current step`);
+  if (checkedRoute.action.task) {
+    assert.equal(workspaceTaskReadiness(checkedRoute.action.task, defaultProgress, checkedRoute, 'practice').canRun, true, `${lesson.id}: handoff opens a locked task`);
+  }
+  if (lesson.id === 'lesson-sql-thinking') {
+    assert.equal(checkedRoute.action.task?.id, 'task-001', 'First lesson must lead to runnable foundation work, not task-006 puzzle preview');
+  }
   assert.ok(lesson.sections.some(section => section.id === cycle.misconception.revisitSectionId), `${lesson.id}: remediation target is outside the lesson`);
 
   const supportedTask = tasks.find(task => task.id === cycle.supportedTaskId && task.module === lesson.module);
@@ -128,6 +159,17 @@ const loopSource = readFileSync(new URL('../src/components/BeginnerLessonLoop.ts
 const portalSource = readFileSync(new URL('../src/components/CurriculumPortal.tsx', import.meta.url), 'utf8');
 const conceptSource = readFileSync(new URL('../src/components/ConceptCheckPanel.tsx', import.meta.url), 'utf8');
 const cssSource = readFileSync(new URL('../src/styles-curriculum.css', import.meta.url), 'utf8');
+const introductionSource = readFileSync(new URL('../src/components/SqlFirstSteps.tsx', import.meta.url), 'utf8');
+const introductionDatabase = new SQL.Database();
+try {
+  introductionDatabase.run(trainingSeedSql);
+  assert.deepEqual(introductionDatabase.exec('SELECT ticket_id, service, resolution_minutes FROM tickets WHERE ticket_id IN (1001,1002,1003) ORDER BY ticket_id;')[0].values,
+    [[1001, 'VPN', 85], [1002, 'LMS', null], [1003, 'VPN', 40]], 'First lesson table must match the real runnable dataset');
+} finally { introductionDatabase.close(); }
+assert.match(introductionSource, /База данных хранит таблицы/, 'Zero-level orientation must explain the storage model');
+assert.match(introductionSource, /SELECT ticket_id/, 'Zero-level orientation must explain SELECT before the prediction');
+assert.doesNotMatch(loopSource, /onOpenTask\(cycle\.(?:supportedTaskId|independentTaskId)\)/, 'Lesson buttons must not bypass canonical route readiness');
+assert.match(loopSource, /data-testid="lesson-handoff"/, 'Lesson continuation requires a verifiable canonical handoff');
 
 for (const sourcePath of noviceJourneySources) {
   const source = readFileSync(new URL(sourcePath, import.meta.url), 'utf8');
