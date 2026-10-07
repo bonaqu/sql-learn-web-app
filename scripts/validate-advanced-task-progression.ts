@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import { applyAdvancedAuthoredCatalogOverrides } from '../src/data/advanced-authored-catalog';
 import {
+  ADVANCED_EVIDENCE_CONTRACT_VERSION,
+  ADVANCED_TASK_EVALUATION_CONTRACT_VERSION,
+  advancedTaskEvaluationContract,
+  applyAdvancedEvaluationContracts
+} from '../src/data/advanced-evaluation-contracts';
+import {
   advancedAuthoredTaskEvidence,
   advancedAuthoredTaskIds
 } from '../src/data/advanced-authored-content';
@@ -69,13 +75,21 @@ function emptyProgress(): Progress {
 function progressWithEvidence(independent: readonly SqlTask[], guided: readonly SqlTask[] = []): Progress {
   const taskStats: Record<string, TaskStats> = {};
   for (const task of independent) {
+    const contract = task.evaluationContractId ? advancedTaskEvaluationContract(task.evaluationContractId) : null;
     taskStats[task.id] = {
       attempts: 1,
       incorrect: 0,
       hintsUsed: 0,
       independentPasses: 1,
       completedAt: '2026-08-02T00:00:00.000Z',
-      lastAttemptAt: '2026-08-02T00:00:00.000Z'
+      lastAttemptAt: '2026-08-02T00:00:00.000Z',
+      ...(contract ? {
+        evidenceContractVersion: ADVANCED_EVIDENCE_CONTRACT_VERSION,
+        evaluationContractId: contract.id,
+        evaluationContractVersion: ADVANCED_TASK_EVALUATION_CONTRACT_VERSION,
+        validatedFixtureIds: ['public-disposable', ...contract.probes.map(probe => probe.id)],
+        hiddenFixtureIds: contract.probes.map(probe => probe.id)
+      } : {})
     };
   }
   for (const task of guided) {
@@ -107,8 +121,10 @@ function checkpointForPhase(phaseId: string) {
 }
 
 const expectedContent = new Map(
-  applySyntaxFrontierTaskOverrides(
-    applyAdvancedAuthoredCatalogOverrides(advancedTasks)
+  applyAdvancedEvaluationContracts(
+    applySyntaxFrontierTaskOverrides(
+      applyAdvancedAuthoredCatalogOverrides(advancedTasks)
+    )
   ).map(task => [task.id, task])
 );
 const totalModes: Record<TaskMode, number> = { lesson: 0, practice: 0, interview: 0, puzzle: 0 };

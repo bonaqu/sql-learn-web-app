@@ -13,8 +13,7 @@ import { calculateCompleteReadiness } from '../src/lib/complete-readiness';
 import { emptyCurriculumProgress } from '../src/lib/curriculum-progress';
 import type { Progress, TaskStats } from '../src/lib/progress';
 import { buildSkillEvidenceGraph } from '../src/lib/skill-evidence';
-import { evaluationContractForTask } from '../src/data/foundation-evaluation-contracts';
-import { FOUNDATION_EVIDENCE_CONTRACT_VERSION, TASK_EVALUATION_CONTRACT_VERSION } from '../src/lib/task-evaluation-contract';
+import { taskEvidenceFixture } from './task-evidence-fixture';
 
 const userId = 'checkpoint-current-readiness-validator';
 const checkpoint = curriculumCheckpoints[0];
@@ -33,13 +32,7 @@ function completeProgress(): Progress {
       completedAt: now,
       lastAttemptAt: now,
       lastIndependentAt: now,
-      ...(task.evaluationContractId ? {
-        evidenceContractVersion: FOUNDATION_EVIDENCE_CONTRACT_VERSION,
-        evaluationContractId: task.evaluationContractId,
-        evaluationContractVersion: TASK_EVALUATION_CONTRACT_VERSION,
-        validatedFixtureIds: evaluationContractForTask(task.id)?.fixtures.map(fixture => fixture.id),
-        hiddenFixtureIds: evaluationContractForTask(task.id)?.fixtures.filter(fixture => fixture.visibility !== 'public').map(fixture => fixture.id)
-      } : {})
+      ...taskEvidenceFixture(task)
     };
   }
   return {

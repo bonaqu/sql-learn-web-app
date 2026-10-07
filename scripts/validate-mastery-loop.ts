@@ -1,5 +1,4 @@
 import { curriculumLessons } from '../src/data/complete-curriculum.ts';
-import { evaluationContractForTask } from '../src/data/foundation-evaluation-contracts.ts';
 import { lessonChecks } from '../src/data/lesson-checks.ts';
 import { tasks, type SqlTask } from '../src/data/course-catalog.ts';
 import { classifySqlAttempt, diagnosticForKind } from '../src/lib/attempt-diagnostics.ts';
@@ -25,11 +24,7 @@ import {
   reviewStats,
   type ReviewState
 } from '../src/lib/spaced-repetition.ts';
-import {
-  FOUNDATION_EVIDENCE_CONTRACT_VERSION,
-  TASK_EVALUATION_CONTRACT_VERSION,
-  type TaskEvaluationEvidence
-} from '../src/lib/task-evaluation-contract.ts';
+import { taskContractEvidenceFixture } from './task-evidence-fixture.ts';
 
 const failures: string[] = [];
 const assert = (condition: unknown, message: string) => { if (!condition) failures.push(message); };
@@ -45,25 +40,13 @@ function blankProgress(): Progress {
   return { ...defaultProgress, taskStats: {}, completed: [], history: defaultProgress.history.map(item => ({ ...item })) };
 }
 
-function contractEvidenceFor(task: SqlTask): TaskEvaluationEvidence | undefined {
-  const contract = evaluationContractForTask(task.id);
-  if (!contract) return undefined;
-  return {
-    contractId: contract.id,
-    contractVersion: TASK_EVALUATION_CONTRACT_VERSION,
-    evidenceContractVersion: FOUNDATION_EVIDENCE_CONTRACT_VERSION,
-    fixtureIds: contract.fixtures.map(fixture => fixture.id),
-    hiddenFixtureIds: contract.fixtures
-      .filter(fixture => fixture.visibility !== 'public')
-      .map(fixture => fixture.id)
-  };
-}
+const contractEvidenceFor = taskContractEvidenceFixture;
 
 const selectTask = taskFor('select');
 const filteringTask = taskFor('filtering');
 const aggregateTask = taskFor('aggregates');
 const joinTask = taskFor('joins');
-const uncontractedTask = taskFor('dml');
+const advancedTask = taskFor('dml');
 const expected = [{ columns: ['id', 'name'], values: [[1, 'A'], [2, 'B']] }];
 
 assert(classifySqlAttempt({ task: selectTask, sql: 'SELECT,', errorMessage: 'near "FROM": syntax error' }).kind === 'syntax', 'Syntax errors must be classified');
@@ -113,13 +96,31 @@ const guidedLegacy: Progress = {
   taskStats: { [selectTask.id]: { attempts: 2, incorrect: 1, hintsUsed: 1, completedAt: '2026-01-01T00:00:00.000Z' } }
 };
 assert(!hasIndependentTaskEvidence(guidedLegacy, selectTask.id), 'Hinted legacy completion must not be assumed independent');
-const uncontractedLegacy: Progress = {
+const advancedLegacy: Progress = {
   ...defaultProgress,
-  completed: [uncontractedTask.id],
-  taskStats: { [uncontractedTask.id]: { attempts: 1, incorrect: 0, hintsUsed: 0, completedAt: '2026-01-01T00:00:00.000Z' } },
+  completed: [advancedTask.id],
+  taskStats: { [advancedTask.id]: { attempts: 1, incorrect: 0, hintsUsed: 0, completedAt: '2026-01-01T00:00:00.000Z' } },
   history: defaultProgress.history.map(item => ({ ...item }))
 };
-assert(hasIndependentTaskEvidence(uncontractedLegacy, uncontractedTask.id), 'Uncontracted legacy modules must retain their compatibility fallback');
+assert(!hasIndependentTaskEvidence(advancedLegacy, advancedTask.id), 'Legacy advanced completion must not become current multi-input evidence');
+assert(advancedLegacy.completed.includes(advancedTask.id), 'Evidence upgrade must preserve historical advanced completion');
+const advancedEvidence = contractEvidenceFor(advancedTask)!;
+const currentAdvanced = recordAttempt(advancedLegacy, advancedTask, true, { independent: true, contractEvidence: advancedEvidence, at: now });
+assert(hasIndependentTaskEvidence(currentAdvanced, advancedTask.id, now + 1), 'Current advanced receipt must establish independent mastery');
+for (const fixtureId of advancedEvidence.fixtureIds) {
+  const incompleteReceipt: Progress = {
+    ...currentAdvanced,
+    taskStats: { ...currentAdvanced.taskStats, [advancedTask.id]: {
+      ...currentAdvanced.taskStats[advancedTask.id],
+      validatedFixtureIds: advancedEvidence.fixtureIds.filter(id => id !== fixtureId)
+    } }
+  };
+  assert(!hasIndependentTaskEvidence(incompleteReceipt, advancedTask.id, now + 1), `Advanced mastery must require fixture ${fixtureId}`);
+}
+const fixedInputTask = tasks.find(task => task.id === 'task-141')!;
+const fixedInputEvidence = contractEvidenceFor(fixedInputTask)!;
+assert(fixedInputEvidence.fixtureIds.length === 1 && fixedInputEvidence.hiddenFixtureIds.length === 0, 'Fixed-input lab must not fabricate hidden evidence');
+assert(hasIndependentTaskEvidence(recordAttempt(blankProgress(), fixedInputTask, true, { independent: true, contractEvidence: fixedInputEvidence, at: now }), fixedInputTask.id, now + 1), 'Declared fixed-input receipt must remain valid');
 
 const schemaDiagnostic = diagnosticForKind('schema');
 const localProgress: Progress = {

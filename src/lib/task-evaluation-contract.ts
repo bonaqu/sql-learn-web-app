@@ -1,9 +1,17 @@
 import type { QueryExecResult } from 'sql.js';
 import type { SqlTask } from '../data/course';
+import {
+  advancedTaskEvaluationContract
+} from '../data/advanced-evaluation-contracts';
+import { advancedInputFixture, executeScriptOnInput, type AdvancedInputFixture } from './advanced-input-fixtures';
+import { splitSqlStatements } from './sql-statements';
+import { advancedSchemaBehavior } from './advanced-schema-probes';
 import { trainingSeedSql } from '../data/training-dataset';
 import { taskEvaluationContract } from '../data/foundation-evaluation-contracts';
 import type { AttemptDiagnostic } from './attempt-diagnostics';
 import {
+  ADVANCED_EVIDENCE_CONTRACT_VERSION,
+  ADVANCED_TASK_EVALUATION_CONTRACT_VERSION,
   FOUNDATION_EVIDENCE_CONTRACT_VERSION,
   TASK_EVALUATION_CONTRACT_VERSION,
   type TaskEvaluationColumn,
@@ -32,37 +40,7 @@ function errorMessage(reason: unknown) {
   return reason instanceof Error ? reason.message : String(reason);
 }
 
-function statements(source: string) {
-  const result: string[] = [];
-  let current = '';
-  let quote: "'" | '"' | null = null;
-  for (let index = 0; index < source.length; index += 1) {
-    const character = source[index];
-    if (quote) {
-      current += character;
-      if (character === quote) {
-        if (source[index + 1] === quote) {
-          current += source[index + 1];
-          index += 1;
-        } else quote = null;
-      }
-      continue;
-    }
-    if (character === "'" || character === '"') {
-      quote = character;
-      current += character;
-      continue;
-    }
-    if (character === ';') {
-      if (current.trim()) result.push(current.trim());
-      current = '';
-      continue;
-    }
-    current += character;
-  }
-  if (current.trim()) result.push(current.trim());
-  return result;
-}
+const statements = splitSqlStatements;
 
 const SQL_IDENTIFIER_SOURCE = '(?:"(?:""|[^"])+"|\\[(?:\\]\\]|[^\\]])+\\]|`(?:``|[^`])+`|[A-Za-z_][A-Za-z0-9_$]*)';
 
@@ -338,31 +316,8 @@ function comparableFallback(results: QueryExecResult[]) {
   })));
 }
 
-function quoteIdentifier(value: string) {
-  return `"${value.replace(/"/g, '""')}"`;
-}
 
-function comparableTempState(database: InstanceType<TaskSqlEngine['Database']>) {
-  const catalog = database.exec("SELECT type, name FROM sqlite_temp_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY type, name;");
-  const rows = catalog[0]?.values || [];
-  const objects = rows.map(row => {
-    const type = String(row[0]);
-    const name = String(row[1]);
-    const info = database.exec(`PRAGMA temp.table_info(${quoteIdentifier(name)});`);
-    const output = database.exec(`SELECT * FROM temp.${quoteIdentifier(name)};`);
-    const values = (output[0]?.values || []).map(item => [...item]);
-    values.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
-    return {
-      type,
-      name: name.toLowerCase(),
-      columns: (info[0]?.values || []).map(column => [column[1], column[2], column[3], column[4], column[5]]),
-      values
-    };
-  });
-  return JSON.stringify(objects);
-}
-
-function executeDisposableScript(engine: TaskSqlEngine, source: string, role: 'learner' | 'reference') {
+function executeDisposableScript(engine: TaskSqlEngine, task: SqlTask, source: string, role: 'learner' | 'reference', fixture?: AdvancedInputFixture) {
   let database: InstanceType<TaskSqlEngine['Database']>;
   try {
     database = new engine.Database();
@@ -376,8 +331,8 @@ function executeDisposableScript(engine: TaskSqlEngine, source: string, role: 'l
       throw new TaskSqlExecutionError('technical', `Disposable lab initialization failed: ${errorMessage(reason)}`, { cause: reason });
     }
     try {
-      const output = database.exec(source);
-      return { output, tempState: comparableTempState(database) };
+      const result = executeScriptOnInput(database,source,fixture);
+      return { ...result, schemaBehavior: advancedSchemaBehavior(database,task.id) };
     } catch (reason) {
       const kind = role === 'learner' ? 'learner' : 'technical';
       const label = role === 'learner' ? 'Learner SQL' : 'Reference SQL';
@@ -405,7 +360,7 @@ function evaluateDisposableScript(engine: TaskSqlEngine, task: SqlTask, source: 
 
   let learner;
   try {
-    learner = executeDisposableScript(engine, source, 'learner');
+    learner = executeDisposableScript(engine, task, source, 'learner');
   } catch (reason) {
     if (reason instanceof TaskSqlExecutionError && reason.kind === 'technical') throw reason;
     const message = errorMessage(reason);
@@ -424,7 +379,7 @@ function evaluateDisposableScript(engine: TaskSqlEngine, task: SqlTask, source: 
       evidence: null
     };
   }
-  const reference = executeDisposableScript(engine, task.solution, 'reference');
+  const reference = executeDisposableScript(engine, task, task.solution, 'reference');
   if (comparableFallback(learner.output) !== comparableFallback(reference.output)) {
     return {
       correct: false,
@@ -441,7 +396,55 @@ function evaluateDisposableScript(engine: TaskSqlEngine, task: SqlTask, source: 
       evidence: null
     };
   }
-  return { correct: true, output: learner.output, diagnostic: null, evidence: null };
+  if (JSON.stringify(learner.schemaBehavior) !== JSON.stringify(reference.schemaBehavior)) {
+    return {
+      correct: false,
+      output: learner.output,
+      diagnostic: diagnostic('wrong-values', 'disposable-lab-constraints', 'Ограничения схемы не работают', 'Видимые строки совпали, но схема принимает запрещённую запись или отклоняет допустимую.', 'Проверь допустимые границы, CHECK, NOT NULL и уникальность.', 'runtime'),
+      evidence: null
+    };
+  }
+  const contract = task.evaluationContractId ? advancedTaskEvaluationContract(task.evaluationContractId) : null;
+  if (!contract || contract.taskId !== task.id) {
+    throw new TaskSqlExecutionError('technical', `${task.id}: missing advanced evaluation contract`);
+  }
+  for (const probe of contract.probes) {
+    let plan: AdvancedInputFixture;
+    try {
+      plan = advancedInputFixture(engine,task,probe.id,probe.kind);
+    } catch (reason) {
+      throw new TaskSqlExecutionError('technical', `${task.id}: ${probe.id} failed: ${errorMessage(reason)}`, { cause: reason });
+    }
+    const expected = executeDisposableScript(engine,task,task.solution,'reference',plan);
+    let actual;
+    try {
+      actual = executeDisposableScript(engine,task,source,'learner',plan);
+    } catch (reason) {
+      if (reason instanceof TaskSqlExecutionError && reason.kind === 'technical') throw reason;
+      return { correct:false, output:learner.output, diagnostic:diagnostic('runtime-error',probe.id,'Ошибка на скрытом наборе','Запрос выполнился на видимых данных, но не обработал дополнительный набор.','Проверь NULL, границы условий и все шаги изменения данных.','runtime'), evidence:null };
+    }
+    if (comparableFallback(actual.output) !== comparableFallback(expected.output) || actual.tempState !== expected.tempState
+      || JSON.stringify(actual.schemaBehavior) !== JSON.stringify(expected.schemaBehavior)) {
+      return {
+        correct: false,
+        output: learner.output,
+        diagnostic: diagnostic('wrong-values',probe.id,'Логика не выдержала новый набор','Видимый результат совпал, но на другом наборе данных запрос или итоговое состояние отличаются.','Вычисляй ответ из таблиц; проверь область изменения, NULL и граничные значения.','values'),
+        evidence: null
+      };
+    }
+  }
+  return {
+    correct: true,
+    output: learner.output,
+    diagnostic: null,
+    evidence: {
+      contractId: contract.id,
+      contractVersion: ADVANCED_TASK_EVALUATION_CONTRACT_VERSION,
+      evidenceContractVersion: ADVANCED_EVIDENCE_CONTRACT_VERSION,
+      fixtureIds: ['public-disposable', ...contract.probes.map(probe => probe.id)],
+      hiddenFixtureIds: contract.probes.map(probe => probe.id)
+    }
+  };
 }
 
 export function executeTaskSql(engine: TaskSqlEngine, source: string, role: 'learner' | 'reference' = 'learner') {

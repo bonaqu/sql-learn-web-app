@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { applyAdvancedAuthoredCatalogOverrides } from '../src/data/advanced-authored-catalog';
+import { applyAdvancedEvaluationContracts } from '../src/data/advanced-evaluation-contracts';
 import { advancedModules, advancedTasks } from '../src/data/advanced-syllabus';
 import { applyAdvancedTaskProgression } from '../src/data/advanced-task-progression';
 import { tasks } from '../src/data/course-catalog';
@@ -10,9 +11,11 @@ import type { SqlTask } from '../src/data/course-catalog';
 
 const advancedModuleIds = new Set(advancedModules.map(([id]) => id));
 const baseline = new Map(
-  applyAdvancedTaskProgression(
-    applySyntaxFrontierTaskOverrides(
-      applyAdvancedAuthoredCatalogOverrides(advancedTasks)
+  applyAdvancedEvaluationContracts(
+    applyAdvancedTaskProgression(
+      applySyntaxFrontierTaskOverrides(
+        applyAdvancedAuthoredCatalogOverrides(advancedTasks)
+      )
     )
   ).map(task => [task.id, task])
 );

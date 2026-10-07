@@ -1,6 +1,9 @@
 import { modules, SqlTask, tasks } from '../data/course-catalog';
+import { advancedTaskEvaluationContract } from '../data/advanced-evaluation-contracts';
 import type { AttemptDiagnostic, AttemptErrorKind } from './attempt-diagnostics';
 import {
+  ADVANCED_EVIDENCE_CONTRACT_VERSION,
+  ADVANCED_TASK_EVALUATION_CONTRACT_VERSION,
   FOUNDATION_EVIDENCE_CONTRACT_VERSION,
   TASK_EVALUATION_CONTRACT_VERSION,
   type TaskEvaluationEvidence
@@ -437,12 +440,17 @@ function hasDirectIndependentEvidence(progress: Progress, taskId: string) {
   if (solutionAfterIndependent) return false;
   const task = tasks.find(item => item.id === taskId);
   if (task?.evaluationContractId) {
+    const advancedContract = task.evaluationContractId.startsWith('advanced:');
+    const contract = advancedContract ? advancedTaskEvaluationContract(task.evaluationContractId) : null;
     return (stats.independentPasses || 0) > 0
-      && stats.evidenceContractVersion === FOUNDATION_EVIDENCE_CONTRACT_VERSION
-      && stats.evaluationContractVersion === TASK_EVALUATION_CONTRACT_VERSION
+      && stats.evidenceContractVersion === (advancedContract ? ADVANCED_EVIDENCE_CONTRACT_VERSION : FOUNDATION_EVIDENCE_CONTRACT_VERSION)
+      && stats.evaluationContractVersion === (advancedContract ? ADVANCED_TASK_EVALUATION_CONTRACT_VERSION : TASK_EVALUATION_CONTRACT_VERSION)
       && stats.evaluationContractId === task.evaluationContractId
-      && (stats.validatedFixtureIds?.length || 0) >= 3
-      && (stats.hiddenFixtureIds?.length || 0) >= 2;
+      && (advancedContract
+        ? Boolean(contract)
+          && (stats.validatedFixtureIds || []).includes('public-disposable')
+          && contract!.probes.every(probe => stats.validatedFixtureIds?.includes(probe.id) && stats.hiddenFixtureIds?.includes(probe.id))
+        : (stats.validatedFixtureIds?.length || 0) >= 3 && (stats.hiddenFixtureIds?.length || 0) >= 2);
   }
   if ((stats.independentPasses || 0) > 0) return true;
   return stats.independentPasses === undefined

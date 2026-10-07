@@ -3,31 +3,19 @@ import { expect, test, type Page } from '@playwright/test';
 import { checkpointTaskById } from '../../src/data/checkpoint-task-bank';
 import { curriculumCheckpoints, curriculumLessons } from '../../src/data/complete-curriculum';
 import { tasks } from '../../src/data/course-catalog';
-import { evaluationContractForTask } from '../../src/data/foundation-evaluation-contracts';
+import { taskEvidenceFixture } from '../../scripts/task-evidence-fixture';
 import { lessonChecks } from '../../src/data/lesson-checks';
 import { phaseDefinitions } from '../../src/data/learning-structure';
 import { checkpointRemediationsFromReports } from '../../src/lib/checkpoint-remediation';
 import { foundationTasksForModule } from '../../src/lib/learning-journey';
-import {
-  FOUNDATION_EVIDENCE_CONTRACT_VERSION,
-  TASK_EVALUATION_CONTRACT_VERSION
-} from '../../src/lib/task-evaluation-types';
 import { authenticatePage } from './auth-helper';
 
 const CHECKPOINT_EVENT = 'sql-academy-checkpoint-reports-changed';
 const PROGRESS_EVENT = 'sql-academy-progress-changed';
 
 function foundationEvidence(taskId: string) {
-  const contract = evaluationContractForTask(taskId);
-  return contract ? {
-    evidenceContractVersion: FOUNDATION_EVIDENCE_CONTRACT_VERSION,
-    evaluationContractId: contract.id,
-    evaluationContractVersion: TASK_EVALUATION_CONTRACT_VERSION,
-    validatedFixtureIds: contract.fixtures.map(fixture => fixture.id),
-    hiddenFixtureIds: contract.fixtures
-      .filter(fixture => fixture.visibility !== 'public')
-      .map(fixture => fixture.id)
-  } : {};
+  const task = tasks.find(item => item.id === taskId);
+  return task ? taskEvidenceFixture(task) : {};
 }
 
 function phaseCheckpointFixture() {

@@ -16,8 +16,7 @@ import {
 } from '../src/lib/learning-journey';
 import type { LearnerGoal } from '../src/lib/learner-onboarding';
 import type { Progress, TaskStats } from '../src/lib/progress';
-import { evaluationContractForTask } from '../src/data/foundation-evaluation-contracts';
-import { FOUNDATION_EVIDENCE_CONTRACT_VERSION, TASK_EVALUATION_CONTRACT_VERSION } from '../src/lib/task-evaluation-contract';
+import { taskEvidenceFixture } from './task-evidence-fixture';
 
 const fixture = phaseDefinitions.flatMap(phase => {
   const phaseModules = new Set<string>(phase.moduleIds);
@@ -242,7 +241,6 @@ function progressWithIndependentTimes(evidence: Readonly<Record<string, string |
   const taskStats: Record<string, TaskStats> = {};
   for (const [taskId, when] of Object.entries(evidence)) {
     const task = tasks.find(item => item.id === taskId);
-    const contract = evaluationContractForTask(taskId);
     taskStats[taskId] = {
       attempts: 1,
       incorrect: 0,
@@ -252,13 +250,7 @@ function progressWithIndependentTimes(evidence: Readonly<Record<string, string |
       lastIndependentAt: when || undefined,
       lastAttemptAt: when || undefined,
       completedAt: when || undefined,
-      ...(task?.evaluationContractId ? {
-        evidenceContractVersion: FOUNDATION_EVIDENCE_CONTRACT_VERSION,
-        evaluationContractId: task.evaluationContractId,
-        evaluationContractVersion: TASK_EVALUATION_CONTRACT_VERSION,
-        validatedFixtureIds: contract?.fixtures.map(fixture => fixture.id),
-        hiddenFixtureIds: contract?.fixtures.filter(fixture => fixture.visibility !== 'public').map(fixture => fixture.id)
-      } : {})
+      ...(task ? taskEvidenceFixture(task) : {})
     };
   }
   return {
