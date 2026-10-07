@@ -83,7 +83,9 @@ assert.ok(companion.includes('[data-testid="curriculum-studio"]'), 'Continuity c
 assert.ok(deferred.includes("lazy(() => import('./CurriculumContinuityCompanion'))"), 'Continuity companion is no longer lazy');
 assert.ok(panel.includes("checkpoint ? <button"), 'Phase checkpoint is not the exclusive forward branch');
 assert.ok(panel.includes("<CourseCompletionPanel />"), 'The final lesson no longer returns to the canonical evidence plan');
-assert.ok(styles.includes('bottom: calc(76px + env(safe-area-inset-bottom))'), 'Mobile companion can overlap primary navigation');
+assert.match(styles, /@media \(max-width: 880px\)[\s\S]*\.curriculum-continuity-companion\s*\{\s*position: static;/, 'Mobile companion must remain in reading flow rather than overlap lesson content or navigation');
+assert.ok(companion.includes('createPortal') && companion.includes('</aside>, reader)'), 'Continuity context must live in the lesson reader, not as an extra modal layout row');
+assert.ok(browser.includes("toHaveCSS('position', 'static')"), 'Browser coverage must prove the mobile companion does not float over learning controls');
 assert.ok(browser.includes("getByRole('button', { name: /Перейти к уроку/i })).toHaveCount(0)"), 'Browser coverage no longer proves phase side doors are absent');
 assert.ok(browser.includes("studio.getByTestId('curriculum-continuity-companion')"), 'Browser coverage no longer proves modal containment');
 

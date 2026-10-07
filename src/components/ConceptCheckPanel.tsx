@@ -81,7 +81,7 @@ export default function ConceptCheckPanel({ lesson, curriculum, onProgress }: {
     } finally { setRunningId(null); }
   };
 
-  return <section className="concept-check-panel" data-testid="concept-check-panel">
+  return <section className="concept-check-panel" id={`lesson-questions-${lesson.id}`} tabIndex={-1} data-testid="concept-check-panel" aria-label="Вопросы по уроку">
     <header className="concept-check-header"><div><small>Проверка понимания</small><h2>{concept?.title || 'Проверяемая модель'}</h2><p>{concept?.mentalModel || lesson.subtitle}</p></div><span className={progress.complete ? 'complete' : ''}><strong>{progress.completed}/{progress.total}</strong><small>обязательных вопросов</small></span></header>
     {concept && <div className="concept-evidence"><Lightbulb /><div><strong>Как подтвердить понимание</strong><p>{concept.evidence}</p></div></div>}
     <div className="concept-check-list">{checks.map((check, checkIndex) => {

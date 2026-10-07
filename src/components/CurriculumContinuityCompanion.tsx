@@ -42,6 +42,9 @@ export default function CurriculumContinuityCompanion() {
 
   if (!studio || !lesson) return null;
 
+  const reader = studio.querySelector<HTMLElement>('[data-testid="curriculum-reader"]');
+  if (!reader) return null;
+
   return createPortal(<aside
     className={`curriculum-continuity-companion ${expanded ? 'expanded' : 'collapsed'}`}
     data-testid="curriculum-continuity-companion"
@@ -54,12 +57,12 @@ export default function CurriculumContinuityCompanion() {
       onClick={() => setExpanded(value => !value)}
     >
       <Link2 />
-      <span><strong>Связь урока</strong><small>{lesson.title} · от прошлого к следующему evidence</small></span>
+      <span><strong>Связь урока</strong><small>{lesson.title} · что уже знаешь и что дальше</small></span>
       {expanded ? <ChevronDown /> : <ChevronUp />}
     </button>
     {expanded && <div className="curriculum-continuity-body">
       <LessonContinuityPanel lessonId={lesson.id} direction="incoming" onOpenLesson={openAcademyLesson} />
       <LessonContinuityPanel lessonId={lesson.id} direction="outgoing" onOpenLesson={openAcademyLesson} />
     </div>}
-  </aside>, studio);
+  </aside>, reader);
 }

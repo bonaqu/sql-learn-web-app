@@ -21,10 +21,13 @@ import {
 import type { Progress } from '../lib/progress';
 import type { ReviewState } from '../lib/spaced-repetition';
 import ConceptCheckPanel from './ConceptCheckPanel';
+import type { LessonHandoff } from '../lib/lesson-handoff';
 import '../concept-checks.css';
 
 export default function LessonMasteryPanel({
   lesson,
+  handoff,
+  onContinue,
   progress,
   curriculum,
   reviewState,
@@ -33,6 +36,8 @@ export default function LessonMasteryPanel({
   onOpenReview
 }: {
   lesson: CurriculumLesson;
+  handoff: LessonHandoff;
+  onContinue: () => void;
   progress: Progress;
   curriculum: CurriculumProgressV1;
   reviewState: ReviewState;
@@ -55,7 +60,6 @@ export default function LessonMasteryPanel({
     setCurrentCurriculum(next);
     onProgress(next);
   };
-  const nextPracticeTaskId = mastery.nextTaskId;
   const steps = [
     { id: 'study', title: 'Понять модель', detail: `${mastery.sectionsCompleted}/${mastery.sectionsTotal} раздела`, done: mastery.theoryComplete, icon: <BookOpen /> },
     { id: 'check', title: 'Предсказать и объяснить', detail: mastery.checkCorrect ? `${mastery.checksCompleted}/${mastery.checksTotal} вопроса` : `готово ${mastery.checksCompleted}/${mastery.checksTotal}`, done: mastery.checkCorrect, icon: <ShieldCheck /> },
@@ -68,7 +72,7 @@ export default function LessonMasteryPanel({
     <section className="lesson-mastery-loop" data-testid="lesson-mastery-loop">
       <header><div><small>Путь к уверенному навыку</small><h2>Узнавания ответа недостаточно</h2><p>Ответь на вопросы, реши SQL самостоятельно и позже воспроизведи модель по памяти. Один тест не завершает урок.</p></div><span className={mastery.durableMastery ? 'durable' : mastery.mastered ? 'applied' : ''}>{mastery.durableMastery ? 'Навык сохранён' : mastery.mastered ? 'Получилось самостоятельно' : 'В процессе'}</span></header>
       <div className="lesson-mastery-steps">{steps.map((step, index) => <article className={step.done ? 'done' : mastery.nextAction === step.id ? 'current' : ''} key={step.id}><span>{step.done ? <CheckCircle2 /> : step.icon || <Circle />}</span><div><small>0{index + 1}</small><strong>{step.title}</strong><p>{step.detail}</p></div></article>)}</div>
-      {!mastery.mastered && <div className="lesson-mastery-next"><Circle /><div><strong>Следующий обязательный шаг</strong><p>{mastery.blocker}</p></div>{mastery.nextAction === 'practice' && nextPracticeTaskId && <button onClick={() => onOpenTask(nextPracticeTaskId)}><Code2 />Открыть самостоятельную задачу</button>}</div>}
+      {!mastery.mastered && <div className="lesson-mastery-next"><Circle /><div><strong>Следующий обязательный шаг</strong><p>{mastery.blocker}</p></div>{mastery.nextAction === 'practice' && <button onClick={onContinue}><Code2 />{handoff.cta}</button>}</div>}
       {mastery.mastered && !mastery.retained && <div className="lesson-mastery-next review"><Repeat2 /><div><strong>Самостоятельное решение получено</strong><p>Прочное освоение пока не подтверждено. Когда подойдёт срок, реши связанную, но другую SQL-задачу без подсказки; карточка помогает запомнить модель, но не заменяет исполняемую проверку.</p></div><button onClick={onOpenReview}><Repeat2 />Открыть повторение</button></div>}
       {remediation && <div className="lesson-remediation" data-testid="lesson-remediation"><AlertTriangle /><div><small>Точечное повторение · {remediation.count} сигналов{remediation.conceptTitle ? ` · ${remediation.conceptTitle}` : ''}</small><strong>{remediation.title}</strong><p>{remediation.explanation}</p><b>{remediation.nextStep}</b></div>{remediation.taskId && <button onClick={() => onOpenTask(remediation.taskId!)}>Повторить задачу</button>}</div>}
     </section>

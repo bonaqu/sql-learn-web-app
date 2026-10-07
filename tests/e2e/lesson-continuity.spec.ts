@@ -9,6 +9,25 @@ import { OPEN_DEFERRED_FEATURE_EVENT } from '../../src/lib/deferred-features';
 import { authenticatePage } from './auth-helper';
 import { openAdvancedTool } from './navigation-helper';
 
+async function answerLessonQuestions(page: import('@playwright/test').Page, lessonId: string) {
+  const lesson = curriculumLessons.find(item => item.id === lessonId)!;
+  const panel = page.getByTestId('concept-check-panel');
+  for (const check of lessonChecks(lesson)) {
+    const card = panel.getByTestId(`concept-check-${check.kind}`);
+    await card.getByRole('radio').nth(check.correctIndex).check();
+    await card.getByRole('button', { name: /Проверить рассуждение|Проверить ещё раз/ }).click();
+    await expect(card).toHaveClass(/correct/);
+  }
+}
+
+async function replaceWorkspaceSql(page: import('@playwright/test').Page, sql: string) {
+  const editor = page.locator('.editor-panel .monaco-editor');
+  await expect(editor).toBeVisible();
+  await editor.click();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.insertText(sql);
+}
+
 async function expectNoHorizontalOverflow(page: import('@playwright/test').Page) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   expect(overflow).toBe(false);
@@ -120,6 +139,8 @@ async function openCurriculumLesson(page: import('@playwright/test').Page, lesso
 }
 
 test('desktop curriculum beginner loop reaches offline SQL and an independent next task without guessing', async ({ page }, testInfo) => {
+  const pageErrors: string[] = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
   await authenticatePage(page, 'beginner-loop');
   await page.goto('./');
   await openAdvancedTool(page, 'curriculum-trigger');
@@ -127,10 +148,34 @@ test('desktop curriculum beginner loop reaches offline SQL and an independent ne
   const studio = page.getByTestId('curriculum-studio');
   const loop = studio.getByTestId('beginner-lesson-loop');
   await expect(loop).toBeVisible();
+  await expect(page).toHaveTitle(/SQL Academy/);
+  await expect(loop.getByTestId('sql-first-steps')).toContainText('База данных хранит таблицы');
+  await expect(loop.getByTestId('sql-first-steps')).toContainText('SELECT ticket_id');
+  const beforePrediction = await loop.evaluate(element => {
+    const intro = element.querySelector('[data-testid="sql-first-steps"]')!;
+    const prediction = element.querySelector('[data-testid="beginner-prediction"]')!;
+    return Boolean(intro.compareDocumentPosition(prediction) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  expect(beforePrediction).toBe(true);
   await expect(loop.getByTestId('worked-example-locked')).toBeVisible();
   await expect(loop.getByTestId('beginner-worked-example')).toHaveCount(0);
   await expect(studio.getByRole('button', { name: /Отметить раздел изученным/i })).toHaveCount(0);
   await expectNoSeriousAxeViolations(page);
+  for (const width of [375, 414, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await expectNoHorizontalOverflow(page);
+    const readerLayout = await studio.getByTestId('curriculum-reader').evaluate(element => ({
+      width: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      children: Array.from(element.children).map(child => ({ className: child.className, width: child.getBoundingClientRect().width, scrollWidth: child.scrollWidth }))
+    }));
+    expect(readerLayout.scrollWidth <= readerLayout.width + 1, `Lesson content must fit the reader at ${width}px: ${JSON.stringify(readerLayout)}`).toBe(true);
+    const steps = loop.locator('.beginner-loop-steps');
+    await expect(steps).toHaveCSS('display', 'grid');
+    const fitsSteps = await steps.evaluate(element => element.scrollWidth <= element.clientWidth + 1);
+    expect(fitsSteps, `All lesson steps must fit at ${width}px`).toBe(true);
+  }
+  await page.screenshot({ path: testInfo.outputPath('desktop-first-lesson-introduction.png') });
 
   const prediction = loop.getByTestId('beginner-prediction');
   const radios = prediction.getByRole('radio');
@@ -159,9 +204,29 @@ test('desktop curriculum beginner loop reaches offline SQL and an independent ne
   await expect(faded.getByTestId('beginner-faded-result')).toBeVisible();
   await page.context().setOffline(false);
 
-  await loop.getByRole('button', { name: 'Решить самостоятельно' }).click();
-  await expect(page.getByRole('button', { name: /006 Puzzle · Объясни гранулярность приоритета сервиса/ })).toBeVisible();
+  const handoff = loop.getByTestId('lesson-handoff');
+  await expect(handoff).toHaveAttribute('data-target', 'questions');
+  await handoff.press('Enter');
+  await expect(studio.getByTestId('concept-check-panel')).toBeFocused();
+  await answerLessonQuestions(page, 'lesson-sql-thinking');
+  await expect(handoff).toHaveAttribute('data-target', 'journey');
+  await expect(handoff).toHaveText('Начать задачу с поддержкой');
+  await handoff.click();
+  await expect(page.getByTestId('curriculum-studio')).toHaveCount(0);
+  const runSql = page.getByRole('button', { name: /Проверить SQL/i });
+  await expect(runSql).toBeEnabled();
+  await expect(page.getByTestId('workspace-preview-gate')).toHaveCount(0);
+  await replaceWorkspaceSql(page, tasks.find(task => task.id === 'task-001')!.solution);
+  await runSql.click();
+  await expect(page.locator('.feedback.success')).toContainText('Самостоятельно: 1');
+  await expect(page.getByTestId('workspace-next-step')).toContainText('Форма результата: обращение и состояние');
+  await page.getByTestId('workspace-next-step').getByRole('button').click();
+  await expect(runSql).toBeEnabled();
+  await replaceWorkspaceSql(page, tasks.find(task => task.id === 'task-002')!.solution);
+  await runSql.click();
+  await expect(page.locator('.feedback.success')).toContainText('Самостоятельно: 1');
   await expectNoHorizontalOverflow(page);
+  expect(pageErrors).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath('desktop-beginner-lesson-loop.png'), fullPage: true });
 });
 
@@ -171,15 +236,34 @@ test('mobile mastery beginner loop explains a wrong prediction and stays readabl
   await openAdvancedTool(page, 'curriculum-trigger');
 
   const loop = page.getByTestId('beginner-lesson-loop');
+  await expect(loop.getByTestId('sql-first-steps')).toBeVisible();
+  const objectives = page.locator('.curriculum-objectives');
+  await expect(objectives).not.toHaveAttribute('open', '');
+  await objectives.getByText('После урока ты сможешь').click();
+  await expect(objectives.getByText('Написать первый SELECT с FROM, сохраняя отдельные обращения')).toBeVisible();
+  await objectives.getByText('После урока ты сможешь').click();
+  await page.screenshot({ path: testInfo.outputPath('mobile-first-lesson-introduction.png') });
   const prediction = loop.getByTestId('beginner-prediction');
   await prediction.getByRole('radio').first().check();
   await prediction.getByRole('button', { name: 'Проверить прогноз' }).click();
   await expect(prediction).toContainText('Есть расхождение');
   await expect(prediction).toContainText('источник tickets содержит обращения');
   await expect(loop.getByTestId('beginner-worked-example')).toBeVisible();
+  await loop.getByRole('button', { name: 'Выполнить пример' }).click();
+  await expect(loop.getByTestId('beginner-example-result')).toBeVisible();
+  const faded = loop.getByTestId('beginner-faded-practice');
+  await faded.getByRole('textbox', { name: /SQL с пропуском/i }).fill('SELECT ticket_id, resolution_minutes FROM tickets ORDER BY ticket_id;');
+  await faded.getByRole('button', { name: 'Проверить мой SQL' }).click();
+  await expect(faded.locator('.beginner-loop-feedback')).toHaveClass(/success/);
+  await loop.getByTestId('lesson-handoff').click();
+  await expect(page.getByTestId('concept-check-panel')).toBeFocused();
+  await answerLessonQuestions(page, 'lesson-sql-thinking');
   await expectNoSeriousAxeViolations(page);
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('mobile-beginner-lesson-loop.png'), fullPage: true });
+  await loop.getByTestId('lesson-handoff').click();
+  await expect(page.getByRole('button', { name: /Проверить SQL/i })).toBeEnabled();
+  await expect(page.getByTestId('workspace-preview-gate')).toHaveCount(0);
 });
 
 test('desktop curriculum exposes 44 gated lesson cycles and an advanced semantic transfer', async ({ page }, testInfo) => {
@@ -226,8 +310,13 @@ test('desktop curriculum exposes 44 gated lesson cycles and an advanced semantic
   await expectNoHorizontalOverflow(page);
   await page.screenshot({ path: testInfo.outputPath('desktop-complete-lesson-loop.png'), fullPage: true });
 
-  await loop.getByRole('button', { name: 'Решить самостоятельно' }).click();
-  await expect(page.getByRole('button', { name: /125 Puzzle · Откати только рискованный шаг/ })).toBeVisible();
+  const handoff = loop.getByTestId('lesson-handoff');
+  await expect(handoff).toHaveAttribute('data-target', 'journey');
+  // This completed fixture still lacks phase checkpoints. A lesson must route
+  // there, not promise that its editorial puzzle is already runnable.
+  await expect(handoff).toHaveText('Пройти контрольную точку');
+  await handoff.click();
+  await expect(page.getByTestId('checkpoint-landing')).toBeVisible();
 });
 
 test('desktop curriculum explains why each lesson follows and routes phase boundaries through checkpoints', async ({ page }, testInfo) => {
@@ -282,6 +371,7 @@ test('mobile mastery curriculum keeps the continuity companion compact and reada
   const studio = page.getByTestId('curriculum-studio');
   const companion = studio.getByTestId('curriculum-continuity-companion');
   await expect(companion).toBeVisible();
+  await expect(companion).toHaveCSS('position', 'static');
   const toggle = companion.getByRole('button', { name: /Связь урока/i });
   await expect(toggle).toHaveAttribute('aria-expanded', 'false');
   await expectNoHorizontalOverflow(page);
